@@ -80,11 +80,16 @@ apt update && apt upgrade -y
 curl -fsSL https://get.docker.com -o get-docker.sh
 sh get-docker.sh
 
-# Install Docker Compose
-apt install docker-compose -y
-
 # Install Git
 apt install git -y
+
+# Install Docker Compose V2 (as Docker plugin)
+mkdir -p /usr/local/lib/docker/cli-plugins
+curl -SL https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-linux-x86_64 -o /usr/local/lib/docker/cli-plugins/docker-compose
+chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+# Verify Docker Compose installation
+docker compose version
 
 # Create application directory
 mkdir -p /opt/mysterymixclub
@@ -221,16 +226,16 @@ server {
 }
 ```
 
-Restart: `docker-compose -f docker-compose.prod.yml restart frontend`
+Restart: `docker compose -f docker-compose.prod.yml restart frontend`
 
 ## Step 10: Verify Deployment
 
 ```bash
 # Check container status
-docker-compose -f docker-compose.prod.yml ps
+docker compose -f docker-compose.prod.yml ps
 
 # Check logs
-docker-compose -f docker-compose.prod.yml logs -f
+docker compose -f docker-compose.prod.yml logs -f
 
 # Test backend
 curl http://localhost:8000/docs
@@ -245,25 +250,25 @@ Visit your domain or IP address in a browser!
 
 ```bash
 # View logs
-docker-compose -f docker-compose.prod.yml logs -f [service]
+docker compose -f docker-compose.prod.yml logs -f [service]
 
 # Restart a service
-docker-compose -f docker-compose.prod.yml restart [service]
+docker compose -f docker-compose.prod.yml restart [service]
 
 # Stop all services
-docker-compose -f docker-compose.prod.yml down
+docker compose -f docker-compose.prod.yml down
 
 # Update application (pull latest code and redeploy)
 git pull origin main
 ./deploy.sh production
 
 # Database backup
-docker-compose -f docker-compose.prod.yml exec db \
+docker compose -f docker-compose.prod.yml exec db \
   mysqldump -u root -p$MYSQL_ROOT_PASSWORD mysterymixclub \
   > backup_$(date +%Y%m%d).sql
 
 # Database restore
-docker-compose -f docker-compose.prod.yml exec -T db \
+docker compose -f docker-compose.prod.yml exec -T db \
   mysql -u root -p$MYSQL_ROOT_PASSWORD mysterymixclub \
   < backup_20240101.sql
 ```
@@ -287,23 +292,23 @@ docker system df
 ### Container won't start
 ```bash
 # Check logs
-docker-compose -f docker-compose.prod.yml logs [service]
+docker compose -f docker-compose.prod.yml logs [service]
 
 # Rebuild container
-docker-compose -f docker-compose.prod.yml build --no-cache [service]
-docker-compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml build --no-cache [service]
+docker compose -f docker-compose.prod.yml up -d
 ```
 
 ### Database connection issues
 ```bash
 # Check database is running
-docker-compose -f docker-compose.prod.yml ps db
+docker compose -f docker-compose.prod.yml ps db
 
 # Check database logs
-docker-compose -f docker-compose.prod.yml logs db
+docker compose -f docker-compose.prod.yml logs db
 
 # Connect to database
-docker-compose -f docker-compose.prod.yml exec db \
+docker compose -f docker-compose.prod.yml exec db \
   mysql -u root -p$MYSQL_ROOT_PASSWORD mysterymixclub
 ```
 
@@ -313,7 +318,7 @@ docker-compose -f docker-compose.prod.yml exec db \
 docker system prune -a
 
 # Clean up logs
-docker-compose -f docker-compose.prod.yml logs --tail=0 -f > /dev/null &
+docker compose -f docker-compose.prod.yml logs --tail=0 -f > /dev/null &
 ```
 
 ## Security Checklist

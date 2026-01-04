@@ -31,14 +31,14 @@ fi
 
 # Stop existing containers
 echo "🛑 Stopping existing containers..."
-docker-compose -f docker-compose.prod.yml down
+docker compose -f docker-compose.prod.yml down
 
 # Build and start containers
 echo "🔨 Building containers..."
-docker-compose -f docker-compose.prod.yml build --no-cache
+docker compose -f docker-compose.prod.yml build --no-cache
 
 echo "🚀 Starting containers..."
-docker-compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml up -d
 
 # Wait for database to be ready
 echo "⏳ Waiting for database to be ready..."
@@ -46,17 +46,17 @@ sleep 10
 
 # Run database migrations
 echo "📊 Running database migrations..."
-docker-compose -f docker-compose.prod.yml exec -T backend alembic upgrade head
+docker compose -f docker-compose.prod.yml exec -T backend alembic upgrade head
 
 echo "✅ Deployment complete!"
 echo ""
 echo "📋 Container status:"
-docker-compose -f docker-compose.prod.yml ps
+docker compose -f docker-compose.prod.yml ps
 
 echo ""
 echo "🌐 Application should be available at: $FRONTEND_URL"
 echo ""
 echo "📝 Useful commands:"
-echo "  View logs:    docker-compose -f docker-compose.prod.yml logs -f"
-echo "  Stop:         docker-compose -f docker-compose.prod.yml down"
-echo "  Restart:      docker-compose -f docker-compose.prod.yml restart"
+echo "  View logs:    docker compose -f docker-compose.prod.yml logs -f"
+echo "  Stop:         docker compose -f docker-compose.prod.yml down"
+echo "  Restart:      docker compose -f docker-compose.prod.yml restart"

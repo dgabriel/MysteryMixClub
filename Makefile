@@ -2,49 +2,49 @@
 
 # Docker commands
 up:
-	docker-compose up -d
+	docker compose up -d
 
 down:
-	docker-compose down
+	docker compose down
 
 build:
-	docker-compose build
+	docker compose build
 
 logs:
-	docker-compose logs -f
+	docker compose logs -f
 
 restart:
-	docker-compose restart
+	docker compose restart
 
 clean:
-	docker-compose down -v
+	docker compose down -v
 	rm -rf backend/__pycache__
 	find . -type d -name __pycache__ -exec rm -rf {} +
 
 # Database commands
 migrate:
-	docker-compose exec backend alembic upgrade head
+	docker compose exec backend alembic upgrade head
 
 migrate-create:
 	@read -p "Enter migration name: " name; \
-	docker-compose exec backend alembic revision --autogenerate -m "$$name"
+	docker compose exec backend alembic revision --autogenerate -m "$$name"
 
 migrate-downgrade:
-	docker-compose exec backend alembic downgrade -1
+	docker compose exec backend alembic downgrade -1
 
 # Testing commands
 test-backend:
-	docker-compose exec backend pytest
+	docker compose exec backend pytest
 
 test-backend-cov:
-	docker-compose exec backend pytest --cov=app --cov-report=html
+	docker compose exec backend pytest --cov=app --cov-report=html
 
 # Shell access
 shell-backend:
-	docker-compose exec backend bash
+	docker compose exec backend bash
 
 shell-db:
-	docker-compose exec db mysql -u mysterymixclub -p mysterymixclub
+	docker compose exec db mysql -u mysterymixclub -p mysterymixclub
 
 # Initialization
 init:

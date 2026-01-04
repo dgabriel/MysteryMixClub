@@ -23,9 +23,18 @@ curl -fsSL https://get.docker.com -o get-docker.sh
 sh get-docker.sh
 rm get-docker.sh
 
-# Install Docker Compose
-echo "🔧 Installing Docker Compose..."
-apt install docker-compose git -y
+# Install Git
+echo "🔧 Installing Git..."
+apt install git -y
+
+# Install Docker Compose V2 (as Docker plugin)
+echo "🔧 Installing Docker Compose V2..."
+mkdir -p /usr/local/lib/docker/cli-plugins
+curl -SL https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-linux-x86_64 -o /usr/local/lib/docker/cli-plugins/docker-compose
+chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+# Verify installation
+docker compose version
 
 # Enable swap (CRITICAL for 1GB RAM)
 echo "💾 Enabling 2GB swap..."

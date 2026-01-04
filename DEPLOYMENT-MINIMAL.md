@@ -45,10 +45,20 @@ ssh root@YOUR_DROPLET_IP
 # Update system
 apt update && apt upgrade -y
 
-# Install Docker & Docker Compose
+# Install Docker
 curl -fsSL https://get.docker.com -o get-docker.sh
 sh get-docker.sh
-apt install docker-compose git -y
+
+# Install Git
+apt install git -y
+
+# Install Docker Compose V2 (as Docker plugin)
+mkdir -p /usr/local/lib/docker/cli-plugins
+curl -SL https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-linux-x86_64 -o /usr/local/lib/docker/cli-plugins/docker-compose
+chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+# Verify Docker Compose installation
+docker compose version
 
 # Enable swap (CRITICAL for 1GB RAM)
 fallocate -l 2G /swapfile
@@ -136,7 +146,7 @@ swapon --show
 
 **1. Restart containers to free memory:**
 ```bash
-docker-compose -f docker-compose.prod.yml restart
+docker compose -f docker-compose.prod.yml restart
 ```
 
 **2. Clear Docker cache:**
@@ -158,7 +168,7 @@ Edit `mysql-low-memory.cnf`:
 ```ini
 innodb_buffer_pool_size = 64M  # Reduce from 128M
 ```
-Then: `docker-compose -f docker-compose.prod.yml restart db`
+Then: `docker compose -f docker-compose.prod.yml restart db`
 
 ## Performance Expectations
 
@@ -189,7 +199,7 @@ Upgrade to $12/month (2GB) droplet if:
 docker stats --no-stream
 
 # Restart if slow
-docker-compose -f docker-compose.prod.yml restart
+docker compose -f docker-compose.prod.yml restart
 
 # Clean up disk space
 docker system prune -a
@@ -197,7 +207,7 @@ apt autoremove -y
 apt clean
 
 # Database backup
-docker-compose -f docker-compose.prod.yml exec db \
+docker compose -f docker-compose.prod.yml exec db \
   mysqldump -u root -p$MYSQL_ROOT_PASSWORD mysterymixclub \
   | gzip > backup_$(date +%Y%m%d).sql.gz
 ```
@@ -227,7 +237,7 @@ df -h
 docker stats
 
 # Restart containers
-docker-compose -f docker-compose.prod.yml restart
+docker compose -f docker-compose.prod.yml restart
 ```
 
 ### Out of disk space
@@ -307,8 +317,8 @@ Remove the `db` service and update `DATABASE_URL` to point to managed database.
 
 If experiencing issues:
 1. Check memory: `free -m`
-2. Check logs: `docker-compose -f docker-compose.prod.yml logs`
-3. Restart: `docker-compose -f docker-compose.prod.yml restart`
+2. Check logs: `docker compose -f docker-compose.prod.yml logs`
+3. Restart: `docker compose -f docker-compose.prod.yml restart`
 4. Review this guide
 
 ---

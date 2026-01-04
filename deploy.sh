@@ -42,7 +42,24 @@ docker compose -f docker-compose.prod.yml up -d
 
 # Wait for database to be ready
 echo "⏳ Waiting for database to be ready..."
-sleep 10
+echo "This may take 30-60 seconds on first startup..."
+
+# Wait for MySQL to be ready (up to 2 minutes)
+RETRY_COUNT=0
+MAX_RETRIES=24  # 24 * 5 seconds = 2 minutes
+
+until docker compose -f docker-compose.prod.yml exec -T db mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "SELECT 1" >/dev/null 2>&1; do
+  RETRY_COUNT=$((RETRY_COUNT + 1))
+  if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
+    echo "❌ Database failed to start after 2 minutes"
+    echo "Check logs with: docker compose -f docker-compose.prod.yml logs db"
+    exit 1
+  fi
+  echo "Waiting for database... (attempt $RETRY_COUNT/$MAX_RETRIES)"
+  sleep 5
+done
+
+echo "✓ Database is ready!"
 
 # Run database migrations
 echo "📊 Running database migrations..."

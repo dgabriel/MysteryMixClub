@@ -13,11 +13,6 @@ thread_stack = 192K
 thread_cache_size = 8
 max_connections = 50
 
-# Query Cache (helps reduce memory usage)
-query_cache_type = 1
-query_cache_limit = 1M
-query_cache_size = 16M
-
 # InnoDB Settings - Minimal configuration
 innodb_buffer_pool_size = 128M
 innodb_log_file_size = 32M

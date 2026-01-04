@@ -1,5 +1,3 @@
-import { User } from './user';
-
 export interface League {
   id: number;
   name: string;

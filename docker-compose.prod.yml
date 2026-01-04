@@ -18,11 +18,14 @@ services:
       - db
     networks:
       - app-network
+    mem_limit: 256m
+    mem_reservation: 128m
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
-      interval: 30s
+      interval: 60s
       timeout: 10s
       retries: 3
+      start_period: 40s
 
   frontend:
     build:
@@ -44,6 +47,8 @@ services:
       - backend
     networks:
       - app-network
+    mem_limit: 128m
+    mem_reservation: 64m
 
   db:
     image: mysql:8.0
@@ -56,9 +61,12 @@ services:
       - MYSQL_PASSWORD=${MYSQL_PASSWORD}
     volumes:
       - mysql-data:/var/lib/mysql
+      - ./mysql-low-memory.cnf:/etc/mysql/conf.d/custom.cnf:ro
     networks:
       - app-network
-    command: --default-authentication-plugin=mysql_native_password
+    mem_limit: 512m
+    mem_reservation: 256m
+    command: --default-authentication-plugin=mysql_native_password --performance-schema=OFF
 
 volumes:
   mysql-data:

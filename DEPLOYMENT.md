@@ -13,10 +13,13 @@ This guide covers deploying MysteryMixClub to DigitalOcean using Docker Compose 
 
 ## Estimated Costs
 
+- **Minimal Droplet**: $6/month (1GB RAM, 1 vCPU) - See DEPLOYMENT-MINIMAL.md
 - **Basic Droplet**: $12/month (2GB RAM, 1 vCPU)
 - **Recommended Droplet**: $18/month (2GB RAM, 2 vCPU)
 - **Domain**: ~$12/year (if purchasing)
-- **Total**: ~$18-30/month
+- **Total**: ~$6-30/month depending on needs
+
+💡 **Budget Option**: Use the $6/month droplet for MVP/testing. See [DEPLOYMENT-MINIMAL.md](./DEPLOYMENT-MINIMAL.md) for optimized setup.
 
 ## Step 1: Create DigitalOcean Droplet
 

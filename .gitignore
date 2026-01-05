@@ -80,6 +80,5 @@ pyvenv.cfg
 pip-selfcheck.json
 
 # Project specific
-main.py
 test_main.http
 MixxClubb.iml

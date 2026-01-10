@@ -39,27 +39,16 @@ class Round(Base):
 
 class Submission(Base):
     __tablename__ = "submissions"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     round_id = Column(Integer, ForeignKey("rounds.id"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    
-    # Song metadata from Songlink/Odesli
-    song_title = Column(String(200), nullable=False)
-    artist_name = Column(String(200), nullable=False)
-    album_name = Column(String(200), nullable=True)
-    songlink_url = Column(String(500), nullable=False)  # Universal link
-    spotify_url = Column(String(500), nullable=True)
-    apple_music_url = Column(String(500), nullable=True)
-    youtube_url = Column(String(500), nullable=True)
-    artwork_url = Column(String(500), nullable=True)
-    
     submitted_at = Column(DateTime(timezone=True), server_default=func.now())
-    
+
     # Relationships
     round = relationship("Round", back_populates="submissions")
     user = relationship("User", back_populates="submissions")
-    votes = relationship("Vote", back_populates="submission", cascade="all, delete-orphan")
+    songs = relationship("Song", back_populates="submission", cascade="all, delete-orphan", order_by="Song.order")
 
 
 class Vote(Base):
@@ -68,7 +57,7 @@ class Vote(Base):
     id = Column(Integer, primary_key=True, index=True)
     round_id = Column(Integer, ForeignKey("rounds.id"), nullable=False)
     voter_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    submission_id = Column(Integer, ForeignKey("submissions.id"), nullable=False)
+    song_id = Column(Integer, ForeignKey("songs.id"), nullable=False)
     rank = Column(Integer, nullable=False)  # 1 = 1st place, 2 = 2nd place, 3 = 3rd place
 
     voted_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -76,4 +65,4 @@ class Vote(Base):
     # Relationships
     round = relationship("Round", back_populates="votes")
     voter = relationship("User", foreign_keys=[voter_id], back_populates="votes")
-    submission = relationship("Submission", back_populates="votes")
+    song = relationship("Song", back_populates="votes")

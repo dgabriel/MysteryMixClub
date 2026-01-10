@@ -1,3 +1,5 @@
+import { Song, SongInput } from './song';
+
 export enum RoundStatus {
   PENDING = 'pending',
   ACTIVE = 'active',
@@ -7,6 +9,7 @@ export enum RoundStatus {
 export interface Round {
   id: number;
   league_id: number;
+  league_name?: string | null;
   theme: string;
   description: string | null;
   order: number;
@@ -22,22 +25,17 @@ export interface Round {
   created_at: string;
   submission_count?: number;
   user_has_submitted?: boolean;
+  user_has_voted?: boolean;
   is_admin?: boolean;
+  songs_per_round?: number;  // From league settings
 }
 
 export interface Submission {
   id: number;
   round_id: number;
   user_id: number;
-  song_title: string;
-  artist_name: string;
-  album_name: string | null;
-  songlink_url: string;
-  spotify_url: string | null;
-  apple_music_url: string | null;
-  youtube_url: string | null;
-  artwork_url: string | null;
   submitted_at: string;
+  songs: Song[];
   user_name?: string | null;
 }
 
@@ -65,23 +63,5 @@ export interface RoundReorderItem {
 
 export interface SubmissionCreate {
   round_id: number;
-  song_title: string;
-  artist_name: string;
-  album_name?: string;
-  songlink_url: string;
-  spotify_url?: string;
-  apple_music_url?: string;
-  youtube_url?: string;
-  artwork_url?: string;
-}
-
-export interface SubmissionUpdate {
-  song_title?: string;
-  artist_name?: string;
-  album_name?: string;
-  songlink_url?: string;
-  spotify_url?: string;
-  apple_music_url?: string;
-  youtube_url?: string;
-  artwork_url?: string;
+  songs: SongInput[];
 }

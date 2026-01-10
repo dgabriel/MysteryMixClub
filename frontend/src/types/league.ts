@@ -4,6 +4,7 @@ export interface League {
   description?: string | null;
   invite_code: string;
   created_by_id: number;
+  songs_per_round: number;
   created_at: string;
   member_count?: number;
   is_member?: boolean;
@@ -27,11 +28,13 @@ export interface LeagueDetail extends League {
 export interface LeagueCreate {
   name: string;
   description?: string;
+  songs_per_round?: number;
 }
 
 export interface LeagueUpdate {
   name?: string;
   description?: string;
+  songs_per_round?: number;
 }
 
 export interface JoinLeagueRequest {

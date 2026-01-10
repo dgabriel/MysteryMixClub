@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 from app.models.round import Round, Submission, Vote, RoundStatus
+from app.models.song import Song
 from app.models.league import LeagueMember
 from app.schemas.vote import VoteCreate, VoteUpdate, UserVotesResponse
 from typing import List, Optional
@@ -53,23 +54,23 @@ def cast_votes(db: Session, vote_data: VoteCreate, user_id: int) -> List[Vote]:
                 detail="Voting deadline has passed"
             )
 
-    # Validate all submissions exist and belong to this round
-    for submission_id in vote_data.ranked_submissions:
-        submission = db.query(Submission).filter(
-            Submission.id == submission_id,
+    # Validate all songs exist and belong to this round
+    for song_id in vote_data.ranked_songs:
+        song = db.query(Song).join(Submission).filter(
+            Song.id == song_id,
             Submission.round_id == vote_data.round_id
         ).first()
-        if not submission:
+        if not song:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Submission {submission_id} not found in this round"
+                detail=f"Song {song_id} not found in this round"
             )
 
-        # Check if user is trying to vote for their own submission
-        if submission.user_id == user_id:
+        # Check if user is trying to vote for their own song
+        if song.submission.user_id == user_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="You cannot vote for your own submission"
+                detail="You cannot vote for your own song"
             )
 
     # Delete existing votes for this user in this round
@@ -80,11 +81,11 @@ def cast_votes(db: Session, vote_data: VoteCreate, user_id: int) -> List[Vote]:
 
     # Create new votes
     votes = []
-    for rank, submission_id in enumerate(vote_data.ranked_submissions, start=1):
+    for rank, song_id in enumerate(vote_data.ranked_songs, start=1):
         vote = Vote(
             round_id=vote_data.round_id,
             voter_id=user_id,
-            submission_id=submission_id,
+            song_id=song_id,
             rank=rank
         )
         db.add(vote)
@@ -109,7 +110,7 @@ def get_user_votes(db: Session, round_id: int, user_id: int) -> Optional[UserVot
 
     return UserVotesResponse(
         round_id=round_id,
-        ranked_submissions=[vote.submission_id for vote in votes],
+        ranked_songs=[vote.song_id for vote in votes],
         voted_at=votes[0].voted_at
     )
 
@@ -117,7 +118,7 @@ def get_user_votes(db: Session, round_id: int, user_id: int) -> Optional[UserVot
 def update_votes(db: Session, round_id: int, vote_data: VoteUpdate, user_id: int) -> List[Vote]:
     """Update user's votes (replaces all votes)"""
     # Reuse cast_votes logic
-    return cast_votes(db, VoteCreate(round_id=round_id, ranked_submissions=vote_data.ranked_submissions), user_id)
+    return cast_votes(db, VoteCreate(round_id=round_id, ranked_songs=vote_data.ranked_songs), user_id)
 
 
 def delete_votes(db: Session, round_id: int, user_id: int) -> None:
@@ -203,39 +204,40 @@ def calculate_results(db: Session, round_id: int) -> dict:
     votes = db.query(Vote).filter(Vote.round_id == round_id).all()
 
     # Calculate points: 1st place = 3 points, 2nd = 2 points, 3rd = 1 point
-    points_by_submission = defaultdict(int)
-    votes_by_submission = defaultdict(list)  # Track who voted for what rank
+    points_by_song = defaultdict(int)
+    votes_by_song = defaultdict(list)  # Track who voted for what rank
 
     for vote in votes:
         if vote.rank == 1:
-            points_by_submission[vote.submission_id] += 3
+            points_by_song[vote.song_id] += 3
         elif vote.rank == 2:
-            points_by_submission[vote.submission_id] += 2
+            points_by_song[vote.song_id] += 2
         elif vote.rank == 3:
-            points_by_submission[vote.submission_id] += 1
+            points_by_song[vote.song_id] += 1
 
-        votes_by_submission[vote.submission_id].append({
+        votes_by_song[vote.song_id].append({
             "voter_id": vote.voter_id,
             "voter_name": vote.voter.name,
             "rank": vote.rank
         })
 
-    # Get submission details and build results
+    # Get song details and build results
     results = []
-    submissions = db.query(Submission).filter(Submission.round_id == round_id).all()
+    songs = db.query(Song).join(Submission).filter(Submission.round_id == round_id).all()
 
-    for submission in submissions:
+    for song in songs:
         results.append({
-            "submission_id": submission.id,
-            "song_title": submission.song_title,
-            "artist_name": submission.artist_name,
-            "submitter_id": submission.user_id,
-            "submitter_name": submission.user.name,
-            "total_points": points_by_submission[submission.id],
-            "votes_received": votes_by_submission[submission.id],
-            "first_place_votes": sum(1 for v in votes_by_submission[submission.id] if v["rank"] == 1),
-            "second_place_votes": sum(1 for v in votes_by_submission[submission.id] if v["rank"] == 2),
-            "third_place_votes": sum(1 for v in votes_by_submission[submission.id] if v["rank"] == 3)
+            "song_id": song.id,
+            "song_title": song.song_title,
+            "artist_name": song.artist_name,
+            "album_name": song.album_name,
+            "submitter_id": song.submission.user_id,
+            "submitter_name": song.submission.user.name,
+            "total_points": points_by_song[song.id],
+            "votes_received": votes_by_song[song.id],
+            "first_place_votes": sum(1 for v in votes_by_song[song.id] if v["rank"] == 1),
+            "second_place_votes": sum(1 for v in votes_by_song[song.id] if v["rank"] == 2),
+            "third_place_votes": sum(1 for v in votes_by_song[song.id] if v["rank"] == 3)
         })
 
     # Sort by total points descending

@@ -27,9 +27,9 @@ const LeaguesPage: React.FC = () => {
     }
   };
 
-  const handleCreateLeague = async (name: string, description: string) => {
+  const handleCreateLeague = async (name: string, description: string, songsPerRound: number) => {
     try {
-      await leaguesApi.create({ name, description });
+      await leaguesApi.create({ name, description, songs_per_round: songsPerRound });
       setShowCreateModal(false);
       loadLeagues();
     } catch (err: any) {
@@ -114,14 +114,15 @@ const LeaguesPage: React.FC = () => {
 // Create League Modal
 const CreateLeagueModal: React.FC<{
   onClose: () => void;
-  onCreate: (name: string, description: string) => void;
+  onCreate: (name: string, description: string, songsPerRound: number) => void;
 }> = ({ onClose, onCreate }) => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [songsPerRound, setSongsPerRound] = useState(1);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onCreate(name, description);
+    onCreate(name, description, songsPerRound);
   };
 
   return (
@@ -130,7 +131,7 @@ const CreateLeagueModal: React.FC<{
         <h2>Create New League</h2>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label htmlFor="name">League Name</label>
+            <label htmlFor="name">League Name *</label>
             <input
               id="name"
               type="text"
@@ -150,6 +151,25 @@ const CreateLeagueModal: React.FC<{
               placeholder="What's this league about?"
               rows={3}
             />
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="songsPerRound">Songs Per Round</label>
+            <select
+              id="songsPerRound"
+              value={songsPerRound}
+              onChange={(e) => setSongsPerRound(parseInt(e.target.value))}
+              className="form-control"
+            >
+              <option value="1">1 song per submission</option>
+              <option value="2">2 songs per submission</option>
+              <option value="3">3 songs per submission</option>
+              <option value="4">4 songs per submission</option>
+              <option value="5">5 songs per submission</option>
+            </select>
+            <p className="help-text">
+              Choose how many songs each member must submit per round. This setting applies to all rounds in this league.
+            </p>
           </div>
 
           <div className="modal-actions">

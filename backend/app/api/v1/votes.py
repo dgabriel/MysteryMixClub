@@ -26,7 +26,7 @@ def cast_votes(
 
     return UserVotesResponse(
         round_id=vote_data.round_id,
-        ranked_submissions=vote_data.ranked_submissions,
+        ranked_songs=vote_data.ranked_songs,
         voted_at=votes[0].voted_at
     )
 
@@ -58,7 +58,7 @@ def update_votes(
 
     return UserVotesResponse(
         round_id=round_id,
-        ranked_submissions=vote_data.ranked_submissions,
+        ranked_songs=vote_data.ranked_songs,
         voted_at=votes[0].voted_at
     )
 

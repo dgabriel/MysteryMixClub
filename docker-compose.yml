@@ -34,7 +34,7 @@ services:
       SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
       FROM_EMAIL: ${FROM_EMAIL:-noreply@mysterymixclub.com}
       FRONTEND_URL: http://localhost:3000
-      ALLOWED_ORIGINS: '["http://localhost:3000","http://localhost:5173"]'
+      ALLOWED_ORIGINS: '["http://localhost:3000","http://localhost:5173","http://localhost:5174","http://localhost:5175"]'
     ports:
       - "8000:8000"
     volumes:

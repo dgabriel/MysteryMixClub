@@ -11,6 +11,9 @@ from app.core.database import Base
 
 # Import all models so Alembic can detect them
 from app.models.user import User  # noqa
+from app.models.league import League, LeagueMember  # noqa
+from app.models.round import Round, Submission, Vote  # noqa
+from app.models.song import Song  # noqa
 
 # this is the Alembic Config object
 config = context.config

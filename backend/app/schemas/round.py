@@ -2,6 +2,7 @@ from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 from app.models.round import RoundStatus
+from app.schemas.song import SongCreate, SongResponse
 
 
 class RoundBase(BaseModel):
@@ -24,6 +25,7 @@ class RoundUpdate(BaseModel):
 class RoundResponse(RoundBase):
     id: int
     league_id: int
+    league_name: Optional[str] = None
     order: int
     status: RoundStatus
 
@@ -37,44 +39,26 @@ class RoundResponse(RoundBase):
     created_at: datetime
     submission_count: Optional[int] = None
     user_has_submitted: Optional[bool] = None
+    user_has_voted: Optional[bool] = None
     is_admin: Optional[bool] = None
+    songs_per_round: Optional[int] = None  # From league settings
 
     model_config = ConfigDict(from_attributes=True)
 
 
-class SubmissionBase(BaseModel):
-    song_title: str
-    artist_name: str
-    album_name: Optional[str] = None
-    songlink_url: str
-    spotify_url: Optional[str] = None
-    apple_music_url: Optional[str] = None
-    youtube_url: Optional[str] = None
-    artwork_url: Optional[str] = None
-
-
-class SubmissionCreate(SubmissionBase):
+class SubmissionCreate(BaseModel):
     round_id: int
+    songs: List[SongCreate]
 
 
-class SubmissionUpdate(BaseModel):
-    song_title: Optional[str] = None
-    artist_name: Optional[str] = None
-    album_name: Optional[str] = None
-    songlink_url: Optional[str] = None
-    spotify_url: Optional[str] = None
-    apple_music_url: Optional[str] = None
-    youtube_url: Optional[str] = None
-    artwork_url: Optional[str] = None
-
-
-class SubmissionResponse(SubmissionBase):
+class SubmissionResponse(BaseModel):
     id: int
     round_id: int
     user_id: int
     submitted_at: datetime
+    songs: List[SongResponse] = []
     user_name: Optional[str] = None  # Only shown after voting
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 

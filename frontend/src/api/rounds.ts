@@ -1,5 +1,5 @@
 import apiClient from './client';
-import { Round, RoundDetail, RoundCreate, RoundUpdate, RoundReorderItem, Submission, SubmissionCreate, SubmissionUpdate } from '../types/round';
+import { Round, RoundDetail, RoundCreate, RoundUpdate, RoundReorderItem, Submission, SubmissionCreate } from '../types/round';
 import { RoundResults } from '../types/results';
 
 export const roundsApi = {
@@ -56,11 +56,6 @@ export const roundsApi = {
 
   getMySubmission: async (roundId: number): Promise<Submission> => {
     const response = await apiClient.get(`/submissions/round/${roundId}/my-submission`);
-    return response.data;
-  },
-
-  updateSubmission: async (submissionId: number, data: SubmissionUpdate): Promise<Submission> => {
-    const response = await apiClient.put(`/submissions/${submissionId}`, data);
     return response.data;
   },
 

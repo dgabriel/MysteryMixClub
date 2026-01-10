@@ -6,12 +6,13 @@ from app.core.database import Base
 
 class League(Base):
     __tablename__ = "leagues"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)
     description = Column(Text, nullable=True)
     invite_code = Column(String(8), unique=True, nullable=False, index=True)
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    songs_per_round = Column(Integer, nullable=False, default=1)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     

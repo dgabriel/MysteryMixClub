@@ -81,9 +81,9 @@ const LeagueDetailPage: React.FC = () => {
     }
   };
 
-  const handleUpdate = async (name: string, description: string) => {
+  const handleUpdate = async (name: string, description: string, songsPerRound: number) => {
     try {
-      await leaguesApi.update(Number(leagueId), { name, description });
+      await leaguesApi.update(Number(leagueId), { name, description, songs_per_round: songsPerRound });
       setShowEditModal(false);
       loadLeague();
     } catch (err: any) {
@@ -164,15 +164,28 @@ const LeagueDetailPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="invite-section">
-        <h3>Invite Code</h3>
-        <div className="invite-code-box">
-          <code>{league.invite_code}</code>
-          <button onClick={copyInviteCode} className="btn-secondary">
-            Copy
-          </button>
+      <div className="league-info-section">
+        <div className="invite-section">
+          <h3>Invite Code</h3>
+          <div className="invite-code-box">
+            <code>{league.invite_code}</code>
+            <button onClick={copyInviteCode} className="btn-secondary">
+              Copy
+            </button>
+          </div>
+          <p className="help-text">Share this code with others to invite them to the league</p>
         </div>
-        <p className="help-text">Share this code with others to invite them to the league</p>
+
+        <div className="league-settings-display">
+          <h3>League Settings</h3>
+          <div className="setting-item">
+            <span className="setting-label">Songs per submission:</span>
+            <span className="setting-value">{league.songs_per_round || 1}</span>
+          </div>
+          <p className="help-text">
+            Each round requires {league.songs_per_round || 1} song{(league.songs_per_round || 1) > 1 ? 's' : ''} per submission
+          </p>
+        </div>
       </div>
 
       <div className="rounds-section">
@@ -304,14 +317,15 @@ const LeagueDetailPage: React.FC = () => {
 const EditLeagueModal: React.FC<{
   league: LeagueDetail;
   onClose: () => void;
-  onUpdate: (name: string, description: string) => void;
+  onUpdate: (name: string, description: string, songsPerRound: number) => void;
 }> = ({ league, onClose, onUpdate }) => {
   const [name, setName] = useState(league.name);
   const [description, setDescription] = useState(league.description || '');
+  const [songsPerRound, setSongsPerRound] = useState(league.songs_per_round || 1);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onUpdate(name, description);
+    onUpdate(name, description, songsPerRound);
   };
 
   return (
@@ -320,7 +334,7 @@ const EditLeagueModal: React.FC<{
         <h2>Edit League</h2>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label htmlFor="name">League Name</label>
+            <label htmlFor="name">League Name *</label>
             <input
               id="name"
               type="text"
@@ -338,6 +352,25 @@ const EditLeagueModal: React.FC<{
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
             />
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="songsPerRound">Songs Per Round</label>
+            <select
+              id="songsPerRound"
+              value={songsPerRound}
+              onChange={(e) => setSongsPerRound(parseInt(e.target.value))}
+              className="form-control"
+            >
+              <option value="1">1 song per submission</option>
+              <option value="2">2 songs per submission</option>
+              <option value="3">3 songs per submission</option>
+              <option value="4">4 songs per submission</option>
+              <option value="5">5 songs per submission</option>
+            </select>
+            <p className="help-text">
+              This setting applies to all future rounds. Existing rounds are not affected.
+            </p>
           </div>
 
           <div className="modal-actions">

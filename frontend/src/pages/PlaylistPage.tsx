@@ -1,7 +1,31 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { roundsApi } from '../api';
-import { RoundDetail, RoundStatus } from '../types';
+import { RoundDetail, RoundStatus, Song } from '../types';
+
+// Fisher-Yates shuffle with seed for consistent randomization per round
+function seededShuffle<T>(array: T[], seed: number): T[] {
+  const shuffled = [...array];
+  let currentIndex = shuffled.length;
+
+  // Simple seeded random number generator
+  const seededRandom = () => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    return seed / 0x7fffffff;
+  };
+
+  while (currentIndex > 0) {
+    const randomIndex = Math.floor(seededRandom() * currentIndex);
+    currentIndex--;
+    [shuffled[currentIndex], shuffled[randomIndex]] = [shuffled[randomIndex], shuffled[currentIndex]];
+  }
+
+  return shuffled;
+}
+
+interface PlaylistSong extends Song {
+  user_name?: string | null;
+}
 
 const PlaylistPage: React.FC = () => {
   const { roundId } = useParams<{ roundId: string }>();
@@ -28,13 +52,35 @@ const PlaylistPage: React.FC = () => {
     }
   };
 
+  // Flatten all songs from submissions and shuffle them
+  const shuffledSongs = useMemo(() => {
+    if (!round) return [];
+
+    // Flatten songs from all submissions, attaching user_name to each song
+    const allSongs: PlaylistSong[] = [];
+    for (const submission of round.submissions) {
+      for (const song of submission.songs) {
+        allSongs.push({
+          ...song,
+          user_name: submission.user_name
+        });
+      }
+    }
+
+    // Use round ID as seed for consistent shuffle per round
+    return seededShuffle(allSongs, round.id);
+  }, [round]);
+
+  // Determine if we should show submitter names
+  const showSubmitters = round?.status === RoundStatus.COMPLETED || round?.user_has_voted;
+
   const copyPlaylistText = () => {
     if (!round) return;
 
-    const playlistText = round.submissions
-      .map((sub, index) => {
-        const submitter = round.status === RoundStatus.COMPLETED ? ` (submitted by ${sub.user_name})` : '';
-        return `${index + 1}. ${sub.song_title} - ${sub.artist_name}${submitter}`;
+    const playlistText = shuffledSongs
+      .map((song, index) => {
+        const submitter = showSubmitters && song.user_name ? ` (submitted by ${song.user_name})` : '';
+        return `${index + 1}. ${song.song_title} - ${song.artist_name}${submitter}`;
       })
       .join('\n');
 
@@ -47,23 +93,23 @@ const PlaylistPage: React.FC = () => {
     if (!round) return;
 
     const headers = ['Position', 'Song Title', 'Artist', 'Album', 'Songlink', 'Spotify', 'Apple Music', 'YouTube'];
-    if (round.status === RoundStatus.COMPLETED) {
+    if (showSubmitters) {
       headers.push('Submitted By');
     }
 
-    const rows = round.submissions.map((sub, index) => {
+    const rows = shuffledSongs.map((song, index) => {
       const row = [
         String(index + 1),
-        sub.song_title,
-        sub.artist_name,
-        sub.album_name || '',
-        sub.songlink_url,
-        sub.spotify_url || '',
-        sub.apple_music_url || '',
-        sub.youtube_url || ''
+        song.song_title,
+        song.artist_name,
+        song.album_name || '',
+        song.songlink_url || '',
+        song.spotify_url || '',
+        song.apple_music_url || '',
+        song.youtube_url || ''
       ];
-      if (round.status === RoundStatus.COMPLETED) {
-        row.push(sub.user_name || '');
+      if (showSubmitters) {
+        row.push(song.user_name || '');
       }
       return row;
     });
@@ -100,79 +146,92 @@ const PlaylistPage: React.FC = () => {
 
   return (
     <div className="playlist-container">
+      {round.league_name && (
+        <Link to={`/leagues/${round.league_id}`} className="league-banner">
+          {round.league_name}
+        </Link>
+      )}
       <div className="playlist-header">
         <div>
           <button onClick={() => navigate(`/rounds/${roundId}`)} className="btn-secondary">
             ← Back to Round
           </button>
-          <h1>🎵 {round.theme}</h1>
+          <h1>{round.theme}</h1>
           <p className="playlist-subtitle">
-            {round.submissions.length} song{round.submissions.length !== 1 ? 's' : ''} in this playlist
+            {shuffledSongs.length} song{shuffledSongs.length !== 1 ? 's' : ''} in this playlist
+            {!showSubmitters && ' • Vote to reveal who submitted each song'}
           </p>
         </div>
         <div className="playlist-actions">
           <button onClick={copyPlaylistText} className="btn-secondary">
-            📋 Copy Playlist
+            Copy Playlist
           </button>
           <button onClick={exportToCSV} className="btn-secondary">
-            📥 Export CSV
+            Export CSV
           </button>
         </div>
       </div>
 
       <div className="playlist-list">
-        {round.submissions.map((submission, index) => (
-          <div key={submission.id} className="playlist-item">
+        {shuffledSongs.map((song, index) => (
+          <div key={song.id} className="playlist-item">
             <div className="playlist-number">
               <span>{index + 1}</span>
             </div>
+            {song.artwork_url && (
+              <img
+                src={song.artwork_url}
+                alt={`${song.song_title} artwork`}
+                className="playlist-artwork"
+              />
+            )}
             <div className="playlist-info">
-              <h3>{submission.song_title}</h3>
-              <p className="artist">{submission.artist_name}</p>
-              {submission.album_name && <p className="album">{submission.album_name}</p>}
-              {round.status === RoundStatus.COMPLETED && submission.user_name && (
-                <p className="submitter">Submitted by: {submission.user_name}</p>
+              <h3>{song.song_title}</h3>
+              <p className="artist">{song.artist_name}</p>
+              {song.album_name && <p className="album">{song.album_name}</p>}
+              {showSubmitters && song.user_name && (
+                <p className="submitter">Submitted by: {song.user_name}</p>
               )}
             </div>
             <div className="playlist-links">
-              {submission.songlink_url && (
+              {song.songlink_url && (
                 <a
-                  href={submission.songlink_url}
+                  href={song.songlink_url}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="link-btn"
                 >
-                  🔗 Song.link
+                  Song.link
                 </a>
               )}
-              {submission.spotify_url && (
+              {song.spotify_url && (
                 <a
-                  href={submission.spotify_url}
+                  href={song.spotify_url}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="link-btn spotify"
                 >
-                  🎵 Spotify
+                  Spotify
                 </a>
               )}
-              {submission.apple_music_url && (
+              {song.apple_music_url && (
                 <a
-                  href={submission.apple_music_url}
+                  href={song.apple_music_url}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="link-btn apple"
                 >
-                  🍎 Apple Music
+                  Apple Music
                 </a>
               )}
-              {submission.youtube_url && (
+              {song.youtube_url && (
                 <a
-                  href={submission.youtube_url}
+                  href={song.youtube_url}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="link-btn youtube"
                 >
-                  ▶️ YouTube
+                  YouTube
                 </a>
               )}
             </div>
@@ -180,7 +239,7 @@ const PlaylistPage: React.FC = () => {
         ))}
       </div>
 
-      {round.submissions.length === 0 && (
+      {shuffledSongs.length === 0 && (
         <div className="empty-state">
           <p>No songs in this playlist yet.</p>
         </div>

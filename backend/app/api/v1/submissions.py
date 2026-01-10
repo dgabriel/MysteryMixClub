@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from app.api import deps
 from app.models.user import User
-from app.schemas.round import SubmissionCreate, SubmissionUpdate, SubmissionResponse
+from app.schemas.round import SubmissionCreate, SubmissionResponse
 from app.services import submission_service, round_service
 
 router = APIRouter()
@@ -39,17 +39,6 @@ def get_my_submission(
             detail="No submission found for this round"
         )
     return submission
-
-
-@router.put("/{submission_id}", response_model=SubmissionResponse)
-def update_submission(
-    submission_id: int,
-    submission_data: SubmissionUpdate,
-    db: Session = Depends(deps.get_db),
-    current_user: User = Depends(deps.get_current_user)
-):
-    """Update a submission (before deadline)"""
-    return submission_service.update_submission(db, submission_id, submission_data, current_user.id)
 
 
 @router.delete("/{submission_id}", status_code=status.HTTP_204_NO_CONTENT)

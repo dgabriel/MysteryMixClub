@@ -63,8 +63,13 @@ def get_round(
 ):
     """Get round details with submissions"""
     from app.services import league_service
+    from app.models.round import RoundStatus
 
     round_obj = round_service.get_round_by_id(db, round_id)
+
+    # Check if current user has voted in this round
+    user_votes = vote_service.get_user_votes(db, round_id, current_user.id)
+    user_has_voted = user_votes is not None
     if not round_obj:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -73,10 +78,14 @@ def get_round(
 
     submissions = round_service.get_round_submissions(db, round_id)
 
+    # Get league to fetch songs_per_round
+    league = league_service.get_league_by_id(db, round_obj.league_id)
+
     # Build response
     round_dict = {
         "id": round_obj.id,
         "league_id": round_obj.league_id,
+        "league_name": league.name if league else None,
         "theme": round_obj.theme,
         "description": round_obj.description,
         "order": round_obj.order,
@@ -89,26 +98,43 @@ def get_round(
         "created_at": round_obj.created_at,
         "submission_count": len(submissions),
         "user_has_submitted": round_service.user_has_submitted(db, round_id, current_user.id),
+        "user_has_voted": user_has_voted,
         "is_admin": league_service.is_league_admin(db, round_obj.league_id, current_user.id),
+        "songs_per_round": league.songs_per_round if league else 1,
         "submissions": []
     }
 
-    # Add submissions (anonymize if in voting phase)
-    from app.models.round import RoundStatus
+    # Add submissions with songs
     for sub in submissions:
+        # Build songs list
+        songs_list = []
+        for song in sub.songs:
+            song_dict = {
+                "id": song.id,
+                "submission_id": song.submission_id,
+                "song_title": song.song_title,
+                "artist_name": song.artist_name,
+                "album_name": song.album_name,
+                "songlink_url": song.songlink_url,
+                "spotify_url": song.spotify_url,
+                "apple_music_url": song.apple_music_url,
+                "youtube_url": song.youtube_url,
+                "amazon_music_url": song.amazon_music_url,
+                "tidal_url": song.tidal_url,
+                "youtube_music_url": song.youtube_music_url,
+                "deezer_url": song.deezer_url,
+                "artwork_url": song.artwork_url,
+                "order": song.order,
+                "created_at": song.created_at
+            }
+            songs_list.append(song_dict)
+
         sub_dict = {
             "id": sub.id,
             "round_id": sub.round_id,
             "user_id": sub.user_id,
-            "song_title": sub.song_title,
-            "artist_name": sub.artist_name,
-            "album_name": sub.album_name,
-            "songlink_url": sub.songlink_url,
-            "spotify_url": sub.spotify_url,
-            "apple_music_url": sub.apple_music_url,
-            "youtube_url": sub.youtube_url,
-            "artwork_url": sub.artwork_url,
             "submitted_at": sub.submitted_at,
+            "songs": songs_list,
             "user_name": None  # Will be shown after voting
         }
 

@@ -3,3 +3,4 @@ export * from './auth';
 export * from './leagues';
 export * from './rounds';
 export * from './votes';
+export * from './music';

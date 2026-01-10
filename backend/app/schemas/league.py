@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List
 from datetime import datetime
 
@@ -27,6 +27,7 @@ class LeagueMemberResponse(LeagueMemberBase):
 class LeagueBase(BaseModel):
     name: str
     description: Optional[str] = None
+    songs_per_round: int = Field(default=1, ge=1, le=5)
 
 
 class LeagueCreate(LeagueBase):
@@ -36,6 +37,7 @@ class LeagueCreate(LeagueBase):
 class LeagueUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    songs_per_round: Optional[int] = Field(None, ge=1, le=5)
 
 
 class LeagueResponse(LeagueBase):

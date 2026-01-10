@@ -25,8 +25,17 @@ class Settings(BaseSettings):
     SENDGRID_API_KEY: str = ""
     FROM_EMAIL: str = "noreply@mysterymixclub.com"
 
+    # Music Search Provider
+    # Options: "itunes", "spotify", "deezer"
+    # Default: "itunes" (free, no API key required)
+    MUSIC_SEARCH_PROVIDER: str = "itunes"
+
+    # Spotify API (only needed if MUSIC_SEARCH_PROVIDER="spotify")
+    SPOTIFY_CLIENT_ID: str = ""
+    SPOTIFY_CLIENT_SECRET: str = ""
+
     # Songlink API
-    SONGLINK_API_URL: str = "https://api.song.link/v1-alpha.1"
+    SONGLINK_API_URL: str = "https://api.song.link/v1-alpha.1/links"
 
     # Frontend
     FRONTEND_URL: str = "http://localhost:3000"

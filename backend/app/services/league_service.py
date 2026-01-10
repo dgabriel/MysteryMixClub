@@ -18,6 +18,7 @@ def create_league(db: Session, league_data: LeagueCreate, user_id: int) -> Leagu
     league = League(
         name=league_data.name,
         description=league_data.description,
+        songs_per_round=league_data.songs_per_round or 1,
         invite_code=invite_code,
         created_by_id=user_id
     )
@@ -134,6 +135,8 @@ def update_league(db: Session, league_id: int, league_data: LeagueUpdate, user_i
         league.name = league_data.name
     if league_data.description is not None:
         league.description = league_data.description
+    if league_data.songs_per_round is not None:
+        league.songs_per_round = league_data.songs_per_round
     
     db.commit()
     db.refresh(league)

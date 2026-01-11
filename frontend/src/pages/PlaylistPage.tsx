@@ -4,6 +4,26 @@ import { roundsApi } from '../api';
 import { RoundDetail, RoundStatus, Song } from '../types';
 import TrackCard from '../components/TrackCard';
 
+// Extract YouTube video ID from various URL formats
+function extractYouTubeVideoId(url: string): string | null {
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
+    /^([a-zA-Z0-9_-]{11})$/ // Just the ID itself
+  ];
+
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match) return match[1];
+  }
+  return null;
+}
+
+// Generate YouTube playlist URL from video IDs with optional title
+function generateYouTubePlaylistUrl(videoIds: string[], title?: string): string {
+  const baseUrl = `https://www.youtube.com/watch_videos?video_ids=${videoIds.join(',')}`;
+  return title ? `${baseUrl}&title=${encodeURIComponent(title)}` : baseUrl;
+}
+
 // Fisher-Yates shuffle with seed for consistent randomization per round
 function seededShuffle<T>(array: T[], seed: number): T[] {
   const shuffled = [...array];
@@ -74,6 +94,23 @@ const PlaylistPage: React.FC = () => {
 
   // Determine if we should show submitter names
   const showSubmitters = round?.status === RoundStatus.COMPLETED || round?.user_has_voted;
+
+  // Generate YouTube playlist URL from songs that have YouTube links
+  const youtubePlaylistUrl = useMemo(() => {
+    if (!round) return null;
+
+    const videoIds = shuffledSongs
+      .map(song => song.youtube_url ? extractYouTubeVideoId(song.youtube_url) : null)
+      .filter((id): id is string => id !== null);
+
+    if (videoIds.length === 0) return null;
+
+    const playlistTitle = round.league_name
+      ? `${round.league_name}: ${round.theme}`
+      : round.theme;
+
+    return generateYouTubePlaylistUrl(videoIds, playlistTitle);
+  }, [shuffledSongs, round]);
 
   const copyPlaylistText = () => {
     if (!round) return;
@@ -164,6 +201,16 @@ const PlaylistPage: React.FC = () => {
           </p>
         </div>
         <div className="playlist-actions">
+          {youtubePlaylistUrl && (
+            <a
+              href={youtubePlaylistUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-primary"
+            >
+              ▶ Play All on YouTube
+            </a>
+          )}
           <button onClick={copyPlaylistText} className="btn-secondary">
             Copy Playlist
           </button>

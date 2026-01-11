@@ -127,6 +127,20 @@ const PlaylistPage: React.FC = () => {
     alert('Playlist copied to clipboard!');
   };
 
+  const copySpotifyLinks = () => {
+    const spotifyUrls = shuffledSongs
+      .map(song => song.spotify_url)
+      .filter((url): url is string => url !== null && url !== undefined);
+
+    if (spotifyUrls.length === 0) {
+      alert('No Spotify links available for this playlist.');
+      return;
+    }
+
+    navigator.clipboard.writeText(spotifyUrls.join('\n'));
+    alert(`${spotifyUrls.length} Spotify link${spotifyUrls.length !== 1 ? 's' : ''} copied! Paste into a Spotify playlist.`);
+  };
+
   const exportToCSV = () => {
     if (!round) return;
 
@@ -211,6 +225,9 @@ const PlaylistPage: React.FC = () => {
               ▶ Play All on YouTube
             </a>
           )}
+          <button onClick={copySpotifyLinks} className="btn-primary">
+            Copy for Spotify
+          </button>
           <button onClick={copyPlaylistText} className="btn-secondary">
             Copy Playlist
           </button>

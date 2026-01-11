@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { SongInput as SongInputType } from '../types';
 import { musicApi } from '../api';
-import StreamingLinks from './StreamingLinks';
+import TrackCard from './TrackCard';
 
 interface SongInputProps {
   value: SongInputType;
@@ -148,40 +148,25 @@ const SongInput: React.FC<SongInputProps> = ({ value, onChange, onRemove, showRe
       ) : (
         <div className="song-preview">
           <h5>Song Found!</h5>
-          {value.artwork_url && (
-            <img
-              src={value.artwork_url}
-              alt={`${value.song_title} artwork`}
-              className="song-artwork"
-              style={{ maxWidth: '200px', borderRadius: '8px', marginBottom: '10px' }}
-            />
-          )}
-
-          <div className="song-info" style={{ marginBottom: '15px' }}>
-            <p><strong>Title:</strong> {value.song_title}</p>
-            <p><strong>Artist:</strong> {value.artist_name}</p>
-            {value.album_name && <p><strong>Album:</strong> {value.album_name}</p>}
-          </div>
-
-          <StreamingLinks song={value} />
-
-          <button
-            type="button"
-            onClick={() => {
-              // Clear the song data to allow re-entry
-              onChange({
-                song_title: '',
-                artist_name: '',
-                album_name: '',
-                songlink_url: '',
-                order: value.order
-              });
-            }}
-            className="btn btn-secondary btn-sm"
-            style={{ marginTop: '15px' }}
-          >
-            Change Song
-          </button>
+          <TrackCard song={value} variant="compact">
+            <button
+              type="button"
+              onClick={() => {
+                // Clear the song data to allow re-entry
+                onChange({
+                  song_title: '',
+                  artist_name: '',
+                  album_name: '',
+                  songlink_url: '',
+                  order: value.order
+                });
+              }}
+              className="btn btn-secondary btn-sm"
+              style={{ marginTop: '15px' }}
+            >
+              Change Song
+            </button>
+          </TrackCard>
         </div>
       )}
     </div>

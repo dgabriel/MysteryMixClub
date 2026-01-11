@@ -7,6 +7,7 @@ import { RoundResults } from '../types/results';
 import { SongInput as SongInputType, createEmptySongInput } from '../types';
 import SongInput from '../components/SongInput';
 import StreamingLinks from '../components/StreamingLinks';
+import TrackCard from '../components/TrackCard';
 
 const RoundDetailPage: React.FC = () => {
   const { roundId } = useParams<{ roundId: string }>();
@@ -372,17 +373,11 @@ const RoundDetailPage: React.FC = () => {
           </div>
           <div className="my-submission-songs">
             {mySubmission.songs.map((song) => (
-              <div key={song.id} className="submission-card my-submission">
-                {song.artwork_url && (
-                  <img src={song.artwork_url} alt={song.song_title} className="song-artwork" />
-                )}
-                <div className="submission-info">
-                  <h4>{song.song_title}</h4>
-                  <p>{song.artist_name}</p>
-                  {song.album_name && <p className="album-name">{song.album_name}</p>}
-                </div>
-                <StreamingLinks song={song} />
-              </div>
+              <TrackCard
+                key={song.id}
+                song={song}
+                highlighted={true}
+              />
             ))}
           </div>
         </div>
@@ -533,26 +528,13 @@ const RoundDetailPage: React.FC = () => {
                       const canVoteForThis = canVote() && !isMySubmission;
 
                       return (
-                        <div
+                        <TrackCard
                           key={song.id}
-                          className={`submission-card ${isRanked ? 'ranked' : ''} ${canVoteForThis ? 'votable' : ''}`}
-                          onClick={() => canVoteForThis && handleToggleVote(song.id)}
-                        >
-                          {canVote() && isRanked && !isMySubmission && (
-                            <span className="rank-badge-small">{rankIndex + 1}</span>
-                          )}
-                          {song.artwork_url && (
-                            <img src={song.artwork_url} alt={song.song_title} className="song-artwork" />
-                          )}
-                          <div className="submission-info">
-                            <h4>{song.song_title}</h4>
-                            <p>{song.artist_name}</p>
-                            {song.album_name && <p className="album-name">{song.album_name}</p>}
-                          </div>
-                          <div onClick={(e) => e.stopPropagation()}>
-                            <StreamingLinks song={song} />
-                          </div>
-                        </div>
+                          song={song}
+                          rankBadge={canVote() && isRanked && !isMySubmission ? rankIndex + 1 : undefined}
+                          className={`${isRanked ? 'ranked' : ''} ${canVoteForThis ? 'votable' : ''}`}
+                          onClick={canVoteForThis ? () => handleToggleVote(song.id) : undefined}
+                        />
                       );
                     })}
                   </div>

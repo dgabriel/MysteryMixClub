@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { roundsApi } from '../api';
 import { RoundDetail, RoundStatus, Song } from '../types';
+import TrackCard from '../components/TrackCard';
 
 // Fisher-Yates shuffle with seed for consistent randomization per round
 function seededShuffle<T>(array: T[], seed: number): T[] {
@@ -174,68 +175,14 @@ const PlaylistPage: React.FC = () => {
 
       <div className="playlist-list">
         {shuffledSongs.map((song, index) => (
-          <div key={song.id} className="playlist-item">
-            <div className="playlist-number">
-              <span>{index + 1}</span>
-            </div>
-            {song.artwork_url && (
-              <img
-                src={song.artwork_url}
-                alt={`${song.song_title} artwork`}
-                className="playlist-artwork"
-              />
-            )}
-            <div className="playlist-info">
-              <h3>{song.song_title}</h3>
-              <p className="artist">{song.artist_name}</p>
-              {song.album_name && <p className="album">{song.album_name}</p>}
-              {showSubmitters && song.user_name && (
-                <p className="submitter">Submitted by: {song.user_name}</p>
-              )}
-            </div>
-            <div className="playlist-links">
-              {song.songlink_url && (
-                <a
-                  href={song.songlink_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="link-btn"
-                >
-                  Song.link
-                </a>
-              )}
-              {song.spotify_url && (
-                <a
-                  href={song.spotify_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="link-btn spotify"
-                >
-                  Spotify
-                </a>
-              )}
-              {song.apple_music_url && (
-                <a
-                  href={song.apple_music_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="link-btn apple"
-                >
-                  Apple Music
-                </a>
-              )}
-              {song.youtube_url && (
-                <a
-                  href={song.youtube_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="link-btn youtube"
-                >
-                  YouTube
-                </a>
-              )}
-            </div>
-          </div>
+          <TrackCard
+            key={song.id}
+            song={song}
+            variant="playlist"
+            position={index + 1}
+            submitterName={song.user_name}
+            showSubmitter={showSubmitters}
+          />
         ))}
       </div>
 

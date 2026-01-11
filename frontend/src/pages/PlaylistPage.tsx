@@ -127,19 +127,29 @@ const PlaylistPage: React.FC = () => {
     alert('Playlist copied to clipboard!');
   };
 
-  const copySpotifyLinks = () => {
-    const spotifyUrls = shuffledSongs
-      .map(song => song.spotify_url)
-      .filter((url): url is string => url !== null && url !== undefined);
+  const copyPlatformLinks = (platform: string, urlKey: keyof PlaylistSong) => {
+    const urls = shuffledSongs
+      .map(song => song[urlKey])
+      .filter((url): url is string => url !== null && url !== undefined && url !== '');
 
-    if (spotifyUrls.length === 0) {
-      alert('No Spotify links available for this playlist.');
+    if (urls.length === 0) {
+      alert(`No ${platform} links available for this playlist.`);
       return;
     }
 
-    navigator.clipboard.writeText(spotifyUrls.join('\n'));
-    alert(`${spotifyUrls.length} Spotify link${spotifyUrls.length !== 1 ? 's' : ''} copied! Paste into a Spotify playlist.`);
+    navigator.clipboard.writeText(urls.join('\n'));
+    alert(`${urls.length} ${platform} link${urls.length !== 1 ? 's' : ''} copied! Paste into ${platform}.`);
   };
+
+  // Check which platforms have links available
+  const platformCounts = useMemo(() => ({
+    spotify: shuffledSongs.filter(s => s.spotify_url).length,
+    appleMusic: shuffledSongs.filter(s => s.apple_music_url).length,
+    amazonMusic: shuffledSongs.filter(s => s.amazon_music_url).length,
+    tidal: shuffledSongs.filter(s => s.tidal_url).length,
+    deezer: shuffledSongs.filter(s => s.deezer_url).length,
+    youtubeMusic: shuffledSongs.filter(s => s.youtube_music_url).length,
+  }), [shuffledSongs]);
 
   const exportToCSV = () => {
     if (!round) return;
@@ -225,9 +235,36 @@ const PlaylistPage: React.FC = () => {
               ▶ Play All on YouTube
             </a>
           )}
-          <button onClick={copySpotifyLinks} className="btn-primary">
-            Copy for Spotify
-          </button>
+          {platformCounts.spotify > 0 && (
+            <button onClick={() => copyPlatformLinks('Spotify', 'spotify_url')} className="btn-primary">
+              Copy for Spotify
+            </button>
+          )}
+          {platformCounts.appleMusic > 0 && (
+            <button onClick={() => copyPlatformLinks('Apple Music', 'apple_music_url')} className="btn-primary">
+              Copy for Apple Music
+            </button>
+          )}
+          {platformCounts.amazonMusic > 0 && (
+            <button onClick={() => copyPlatformLinks('Amazon Music', 'amazon_music_url')} className="btn-secondary">
+              Copy for Amazon
+            </button>
+          )}
+          {platformCounts.tidal > 0 && (
+            <button onClick={() => copyPlatformLinks('Tidal', 'tidal_url')} className="btn-secondary">
+              Copy for Tidal
+            </button>
+          )}
+          {platformCounts.deezer > 0 && (
+            <button onClick={() => copyPlatformLinks('Deezer', 'deezer_url')} className="btn-secondary">
+              Copy for Deezer
+            </button>
+          )}
+          {platformCounts.youtubeMusic > 0 && (
+            <button onClick={() => copyPlatformLinks('YouTube Music', 'youtube_music_url')} className="btn-secondary">
+              Copy for YT Music
+            </button>
+          )}
           <button onClick={copyPlaylistText} className="btn-secondary">
             Copy Playlist
           </button>

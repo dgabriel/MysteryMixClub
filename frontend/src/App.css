@@ -1380,3 +1380,58 @@
     width: 100%;
   }
 }
+
+/* Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.modal-content {
+  background-color: #1a1a2e;
+  border-radius: 12px;
+  padding: 2rem;
+  max-width: 500px;
+  width: 100%;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(97, 218, 251, 0.2);
+}
+
+.modal-content h2 {
+  color: #61dafb;
+  margin-bottom: 0.5rem;
+  font-size: 1.5rem;
+}
+
+.modal-subtitle {
+  color: #aaa;
+  margin-bottom: 1.5rem;
+}
+
+.copy-guide-steps {
+  text-align: left;
+  padding-left: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.copy-guide-steps li {
+  color: #fff;
+  margin-bottom: 0.75rem;
+  line-height: 1.5;
+}
+
+.copy-guide-modal .btn-primary {
+  width: 100%;
+  padding: 0.75rem;
+  font-size: 1.1rem;
+}
+

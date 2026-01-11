@@ -48,12 +48,19 @@ interface PlaylistSong extends Song {
   user_name?: string | null;
 }
 
+interface CopyGuide {
+  platform: string;
+  linkCount: number;
+  steps: string[];
+}
+
 const PlaylistPage: React.FC = () => {
   const { roundId } = useParams<{ roundId: string }>();
   const navigate = useNavigate();
   const [round, setRound] = useState<RoundDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [copyGuide, setCopyGuide] = useState<CopyGuide | null>(null);
 
   useEffect(() => {
     if (roundId) {
@@ -127,6 +134,53 @@ const PlaylistPage: React.FC = () => {
     alert('Playlist copied to clipboard!');
   };
 
+  const getPlatformGuide = (platform: string): string[] => {
+    switch (platform) {
+      case 'Spotify':
+        return [
+          'Open the Spotify app (desktop or mobile)',
+          'Create a new playlist or open an existing one',
+          'Click inside the playlist area',
+          'Paste (Ctrl+V / Cmd+V) - all songs will be added automatically',
+        ];
+      case 'Apple Music':
+        return [
+          'Unfortunately, Apple Music doesn\'t support bulk playlist import',
+          'You\'ll need to open each link one at a time:',
+          '1. Paste a link into your browser',
+          '2. Click "Open in Apple Music" on the page',
+          '3. Add the song to your playlist',
+          'Tip: The "Play All on YouTube" button may be easier for listening',
+        ];
+      case 'Amazon Music':
+        return [
+          'Open Amazon Music app or website',
+          'Create a new playlist',
+          'Paste each link in the search bar to find and add songs',
+        ];
+      case 'Tidal':
+        return [
+          'Open the Tidal app',
+          'Create a new playlist or open an existing one',
+          'Paste links in the search bar to find and add songs',
+        ];
+      case 'Deezer':
+        return [
+          'Open Deezer app or website',
+          'Create a new playlist',
+          'Paste each link in the search bar to find and add songs',
+        ];
+      case 'YouTube Music':
+        return [
+          'Open YouTube Music app or website',
+          'Create a new playlist',
+          'Paste each link in the search bar to find and add songs',
+        ];
+      default:
+        return ['Paste the copied links into your music app'];
+    }
+  };
+
   const copyPlatformLinks = (platform: string, urlKey: keyof PlaylistSong) => {
     const urls = shuffledSongs
       .map(song => song[urlKey])
@@ -138,7 +192,11 @@ const PlaylistPage: React.FC = () => {
     }
 
     navigator.clipboard.writeText(urls.join('\n'));
-    alert(`${urls.length} ${platform} link${urls.length !== 1 ? 's' : ''} copied! Paste into ${platform}.`);
+    setCopyGuide({
+      platform,
+      linkCount: urls.length,
+      steps: getPlatformGuide(platform),
+    });
   };
 
   // Check which platforms have links available
@@ -290,6 +348,24 @@ const PlaylistPage: React.FC = () => {
       {shuffledSongs.length === 0 && (
         <div className="empty-state">
           <p>No songs in this playlist yet.</p>
+        </div>
+      )}
+
+      {/* Copy Guide Modal */}
+      {copyGuide && (
+        <div className="modal-overlay" onClick={() => setCopyGuide(null)}>
+          <div className="modal-content copy-guide-modal" onClick={(e) => e.stopPropagation()}>
+            <h2>{copyGuide.linkCount} {copyGuide.platform} link{copyGuide.linkCount !== 1 ? 's' : ''} copied!</h2>
+            <p className="modal-subtitle">Follow these steps to add them to your playlist:</p>
+            <ol className="copy-guide-steps">
+              {copyGuide.steps.map((step, index) => (
+                <li key={index}>{step}</li>
+              ))}
+            </ol>
+            <button className="btn-primary" onClick={() => setCopyGuide(null)}>
+              Got it!
+            </button>
+          </div>
         </div>
       )}
     </div>

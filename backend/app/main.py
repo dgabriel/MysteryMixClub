@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
-from app.api.v1 import auth, leagues, rounds, submissions, votes, music
+from app.api.v1 import auth, leagues, rounds, submissions, votes, music, tidal
 
 app = FastAPI(
     title="MysteryMixClub API",
@@ -25,6 +25,7 @@ app.include_router(rounds.router, prefix="/api/v1/rounds", tags=["rounds"])
 app.include_router(submissions.router, prefix="/api/v1/submissions", tags=["submissions"])
 app.include_router(votes.router, prefix="/api/v1/votes", tags=["votes"])
 app.include_router(music.router, prefix="/api/v1/music", tags=["music"])
+app.include_router(tidal.router, prefix="/api/v1/tidal", tags=["tidal"])
 
 
 @app.get("/")

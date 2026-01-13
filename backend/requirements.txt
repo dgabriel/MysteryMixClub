@@ -22,6 +22,9 @@ python-multipart==0.0.6
 # HTTP Client for external APIs
 httpx==0.25.1
 
+# Tidal API (unofficial - beta support)
+tidalapi>=0.8.0
+
 # Email
 sendgrid==6.11.0
 

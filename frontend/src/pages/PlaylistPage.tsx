@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { roundsApi } from '../api';
+import { roundsApi, tidalApi } from '../api';
 import { RoundDetail, RoundStatus, Song } from '../types';
 import TrackCard from '../components/TrackCard';
+import TidalAuthModal from '../components/TidalAuthModal';
 
 // Extract YouTube video ID from various URL formats
 function extractYouTubeVideoId(url: string): string | null {
@@ -62,11 +63,27 @@ const PlaylistPage: React.FC = () => {
   const [error, setError] = useState('');
   const [copyGuide, setCopyGuide] = useState<CopyGuide | null>(null);
 
+  // Tidal integration state
+  const [showTidalAuth, setShowTidalAuth] = useState(false);
+  const [tidalConnected, setTidalConnected] = useState(false);
+  const [tidalLoading, setTidalLoading] = useState(false);
+  const [tidalResult, setTidalResult] = useState<{ success: boolean; url?: string; message?: string } | null>(null);
+
   useEffect(() => {
     if (roundId) {
       loadRound();
     }
+    checkTidalStatus();
   }, [roundId]);
+
+  const checkTidalStatus = async () => {
+    try {
+      const status = await tidalApi.getStatus();
+      setTidalConnected(status.connected);
+    } catch {
+      // Ignore errors - user might not be logged in
+    }
+  };
 
   const loadRound = async () => {
     try {
@@ -209,6 +226,64 @@ const PlaylistPage: React.FC = () => {
     youtubeMusic: shuffledSongs.filter(s => s.youtube_music_url).length,
   }), [shuffledSongs]);
 
+  // Tidal playlist creation
+  const handleTidalClick = () => {
+    if (!tidalConnected) {
+      setShowTidalAuth(true);
+    } else {
+      createTidalPlaylist();
+    }
+  };
+
+  const handleTidalAuthSuccess = () => {
+    setTidalConnected(true);
+    createTidalPlaylist();
+  };
+
+  const createTidalPlaylist = async () => {
+    if (!round) return;
+
+    const tidalUrls = shuffledSongs
+      .map(song => song.tidal_url)
+      .filter((url): url is string => url !== null && url !== undefined && url !== '');
+
+    if (tidalUrls.length === 0) {
+      setTidalResult({ success: false, message: 'No Tidal links available for this playlist.' });
+      return;
+    }
+
+    setTidalLoading(true);
+    setTidalResult(null);
+
+    try {
+      const playlistName = round.league_name
+        ? `${round.league_name}: ${round.theme}`
+        : round.theme;
+
+      const result = await tidalApi.createPlaylist({
+        name: playlistName,
+        description: 'Created by MysteryMixClub',
+        tidal_urls: tidalUrls,
+      });
+
+      setTidalResult({
+        success: true,
+        url: result.playlist_url,
+        message: `Playlist created with ${result.track_count} tracks!`,
+      });
+    } catch (err: any) {
+      const message = err.response?.data?.detail || 'Failed to create Tidal playlist';
+      setTidalResult({ success: false, message });
+
+      // If session expired, reset connection status
+      if (err.response?.status === 401) {
+        setTidalConnected(false);
+      }
+    } finally {
+      setTidalLoading(false);
+    }
+  };
+
   const exportToCSV = () => {
     if (!round) return;
 
@@ -309,9 +384,18 @@ const PlaylistPage: React.FC = () => {
             </button>
           )}
           {platformCounts.tidal > 0 && (
-            <button onClick={() => copyPlatformLinks('Tidal', 'tidal_url')} className="btn-secondary">
-              Copy for Tidal
-            </button>
+            <>
+              <button
+                onClick={handleTidalClick}
+                className="btn-primary"
+                disabled={tidalLoading}
+              >
+                {tidalLoading ? 'Creating...' : 'Add to Tidal (Beta)'}
+              </button>
+              <button onClick={() => copyPlatformLinks('Tidal', 'tidal_url')} className="btn-secondary">
+                Copy for Tidal
+              </button>
+            </>
           )}
           {platformCounts.deezer > 0 && (
             <button onClick={() => copyPlatformLinks('Deezer', 'deezer_url')} className="btn-secondary">
@@ -364,6 +448,42 @@ const PlaylistPage: React.FC = () => {
             </ol>
             <button className="btn-primary" onClick={() => setCopyGuide(null)}>
               Got it!
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Tidal Auth Modal */}
+      <TidalAuthModal
+        isOpen={showTidalAuth}
+        onClose={() => setShowTidalAuth(false)}
+        onSuccess={handleTidalAuthSuccess}
+      />
+
+      {/* Tidal Result Modal */}
+      {tidalResult && (
+        <div className="modal-overlay" onClick={() => setTidalResult(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h2>{tidalResult.success ? 'Playlist Created!' : 'Error'}</h2>
+            <p>{tidalResult.message}</p>
+            {tidalResult.success && tidalResult.url && (
+              <a
+                href={tidalResult.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-primary"
+                style={{ display: 'block', marginBottom: '1rem', textAlign: 'center' }}
+              >
+                Open in Tidal
+              </a>
+            )}
+            {tidalResult.success && (
+              <p className="beta-reminder" style={{ fontSize: '0.9rem', color: '#888', marginBottom: '1rem' }}>
+                Note: This is a beta feature using an unofficial API.
+              </p>
+            )}
+            <button className="btn-secondary" onClick={() => setTidalResult(null)} style={{ width: '100%' }}>
+              Close
             </button>
           </div>
         </div>

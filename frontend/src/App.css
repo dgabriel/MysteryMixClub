@@ -1435,3 +1435,75 @@
   font-size: 1.1rem;
 }
 
+
+/* Tidal Auth Modal */
+.tidal-auth-modal {
+  max-width: 450px;
+}
+
+.beta-warning {
+  background-color: rgba(255, 193, 7, 0.1);
+  border: 1px solid rgba(255, 193, 7, 0.3);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.beta-warning p {
+  margin: 0.5rem 0;
+  color: #ffc107;
+}
+
+.modal-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.modal-actions button {
+  width: 100%;
+}
+
+.auth-code-display {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 1rem;
+  margin: 1rem 0;
+  text-align: center;
+}
+
+.auth-link {
+  color: #61dafb;
+  word-break: break-all;
+}
+
+.waiting-text {
+  color: #888;
+  font-style: italic;
+  margin: 1rem 0;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(97, 218, 251, 0.2);
+  border-top-color: #61dafb;
+  border-radius: 50%;
+  margin: 1rem auto;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.error-message {
+  color: #f44336;
+  margin: 1rem 0;
+}
+
+.beta-reminder {
+  font-style: italic;
+}
+

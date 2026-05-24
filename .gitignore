@@ -1,0 +1,13 @@
+# macOS
+.DS_Store
+
+# Editor
+.idea/
+
+# Swap files
+*.swp
+*.swo
+
+# Token / secrets
+.token-temp.txt
+*.token

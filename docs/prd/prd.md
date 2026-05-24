@@ -252,7 +252,7 @@ These need resolution before or during build:
 | Notification delivery method | Technical | Email for v1? Push notifications fast follow? |
 | Odesli rate limits | Technical | Free tier limits need validation against expected usage |
 | Tie-breaking for Most Noted | Product | Current spec: both songs recognized. Confirm. |
-| Leaderboard scope | Product | Per-round only, or cumulative season? Both? |
+| Leaderboard scope | Product | Per-league |
 | Ad provider | Product | Must vet for political content policy before launch |
 
 ---

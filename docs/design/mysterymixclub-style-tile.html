@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MysteryMixClub — Style Tile</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --cream:      #F0EDE6;
+      --sage:       #7A9E82;
+      --sage-light: #A8C4AD;
+      --sage-pale:  #D4E3D7;
+      --rust:       #B5533C;
+      --ink:        #2E2B27;
+      --muted:      #8A8680;
+      --border:     #D6D2CA;
+    }
+
+    body {
+      background: var(--cream);
+      font-family: 'DM Mono', monospace;
+      color: var(--ink);
+      padding: 48px 32px;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    /* ── Header ── */
+    .tile-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 16px;
+      margin-bottom: 48px;
+    }
+    .tile-header h1 {
+      font-family: 'DM Serif Display', serif;
+      font-size: 13px;
+      font-weight: 400;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .tile-header span {
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.05em;
+    }
+
+    /* ── Section label ── */
+    .label {
+      font-size: 9px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+
+    section {
+      margin-bottom: 48px;
+    }
+
+    /* ── Color palette ── */
+    .palette {
+      display: flex;
+      gap: 12px;
+      align-items: flex-end;
+    }
+    .swatch {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+    .swatch-block {
+      border-radius: 2px;
+      width: 72px;
+    }
+    .swatch span {
+      font-size: 9px;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      text-align: center;
+    }
+
+    /* ── Typography ── */
+    .type-sample {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .type-row {
+      display: flex;
+      align-items: baseline;
+      gap: 24px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 16px;
+    }
+    .type-meta {
+      font-size: 9px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      min-width: 90px;
+      padding-top: 4px;
+    }
+    .t-display {
+      font-family: 'DM Serif Display', serif;
+      font-size: 38px;
+      line-height: 1;
+      color: var(--ink);
+    }
+    .t-display-italic {
+      font-family: 'DM Serif Display', serif;
+      font-style: italic;
+      font-size: 28px;
+      line-height: 1;
+      color: var(--sage);
+    }
+    .t-body {
+      font-family: 'DM Mono', monospace;
+      font-size: 13px;
+      line-height: 1.65;
+      color: var(--ink);
+      font-weight: 300;
+    }
+    .t-label {
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .t-accent {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      color: var(--rust);
+      letter-spacing: 0.08em;
+    }
+
+    /* ── UI Elements ── */
+    .elements {
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+      align-items: flex-start;
+    }
+
+    /* Button */
+    .btn-primary {
+      background: var(--sage);
+      color: var(--cream);
+      border: none;
+      padding: 10px 22px;
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      border-radius: 2px;
+      cursor: pointer;
+    }
+    .btn-ghost {
+      background: transparent;
+      color: var(--ink);
+      border: 1px solid var(--border);
+      padding: 10px 22px;
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      border-radius: 2px;
+      cursor: pointer;
+    }
+    .btn-text {
+      background: transparent;
+      color: var(--rust);
+      border: none;
+      padding: 10px 0;
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      cursor: pointer;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+
+    /* Input */
+    .input-demo {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .input-demo label {
+      font-size: 9px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .input-demo input {
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid var(--ink);
+      padding: 8px 0;
+      font-family: 'DM Mono', monospace;
+      font-size: 13px;
+      color: var(--ink);
+      width: 200px;
+      outline: none;
+    }
+    .input-demo input::placeholder {
+      color: var(--muted);
+    }
+
+    /* Badge */
+    .badge {
+      display: inline-block;
+      background: var(--sage-pale);
+      color: var(--sage);
+      font-size: 9px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border-radius: 1px;
+    }
+    .badge-rust {
+      background: transparent;
+      border: 1px solid var(--rust);
+      color: var(--rust);
+      font-size: 9px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border-radius: 1px;
+    }
+
+    /* ── Card sample ── */
+    .card-sample {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 20px 24px;
+      max-width: 320px;
+      position: relative;
+    }
+    .card-sample .card-eyebrow {
+      font-size: 9px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+    .card-sample .card-title {
+      font-family: 'DM Serif Display', serif;
+      font-size: 20px;
+      color: var(--ink);
+      margin-bottom: 4px;
+    }
+    .card-sample .card-sub {
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 16px;
+      font-weight: 300;
+    }
+    .card-divider {
+      height: 1px;
+      background: var(--border);
+      margin-bottom: 16px;
+    }
+    .card-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .card-stat {
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 300;
+    }
+    .card-stat strong {
+      font-weight: 500;
+      color: var(--ink);
+    }
+    .card-accent-line {
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 3px;
+      background: var(--rust);
+      border-radius: 3px 0 0 3px;
+    }
+
+    /* ── Motif ── */
+    .motif-section {
+      display: flex;
+      gap: 32px;
+      align-items: center;
+    }
+    .concentric {
+      position: relative;
+      width: 120px;
+      height: 120px;
+      flex-shrink: 0;
+    }
+    .concentric svg {
+      width: 100%;
+      height: 100%;
+    }
+    .motif-note {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.7;
+      font-weight: 300;
+      max-width: 340px;
+    }
+    .motif-note em {
+      color: var(--ink);
+      font-style: normal;
+      font-weight: 500;
+    }
+
+  </style>
+</head>
+<body>
+
+  <header class="tile-header">
+    <h1>MysteryMixClub — Style Tile</h1>
+    <span>v1 · inspired by Duchamp Rotorelief</span>
+  </header>
+
+  <!-- COLOR -->
+  <section>
+    <p class="label">Color</p>
+    <div class="palette">
+      <div class="swatch">
+        <div class="swatch-block" style="height:64px; background:#F0EDE6; border:1px solid #D6D2CA;"></div>
+        <span>#F0EDE6<br>Cream</span>
+      </div>
+      <div class="swatch">
+        <div class="swatch-block" style="height:64px; background:#7A9E82;"></div>
+        <span>#7A9E82<br>Sage</span>
+      </div>
+      <div class="swatch">
+        <div class="swatch-block" style="height:64px; background:#A8C4AD;"></div>
+        <span>#A8C4AD<br>Sage Light</span>
+      </div>
+      <div class="swatch">
+        <div class="swatch-block" style="height:64px; background:#D4E3D7;"></div>
+        <span>#D4E3D7<br>Sage Pale</span>
+      </div>
+      <div class="swatch">
+        <div class="swatch-block" style="height:64px; background:#B5533C;"></div>
+        <span>#B5533C<br>Rust</span>
+      </div>
+      <div class="swatch">
+        <div class="swatch-block" style="height:64px; background:#2E2B27;"></div>
+        <span>#2E2B27<br>Ink</span>
+      </div>
+      <div class="swatch">
+        <div class="swatch-block" style="height:64px; background:#8A8680;"></div>
+        <span>#8A8680<br>Muted</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- TYPOGRAPHY -->
+  <section>
+    <p class="label">Typography</p>
+    <div class="type-sample">
+      <div class="type-row">
+        <span class="type-meta">Display</span>
+        <span class="t-display">Round 04</span>
+      </div>
+      <div class="type-row">
+        <span class="type-meta">Display Italic</span>
+        <span class="t-display-italic">The one that got away</span>
+      </div>
+      <div class="type-row">
+        <span class="type-meta">Body</span>
+        <span class="t-body">Submit one track that no one expects.<br>Voting opens Friday at midnight.</span>
+      </div>
+      <div class="type-row">
+        <span class="type-meta">Label</span>
+        <span class="t-label">Submissions · 6 of 8</span>
+      </div>
+      <div class="type-row">
+        <span class="type-meta">Accent</span>
+        <span class="t-accent">→ View results</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- UI ELEMENTS -->
+  <section>
+    <p class="label">UI Elements</p>
+    <div class="elements">
+      <button class="btn-primary">Submit track</button>
+      <button class="btn-ghost">View round</button>
+      <button class="btn-text">→ Skip</button>
+      <div class="input-demo">
+        <label>Song link</label>
+        <input type="text" placeholder="paste any streaming link" />
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <span class="badge">Open</span>
+        <span class="badge-rust">Voting</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- CARD -->
+  <section>
+    <p class="label">Card</p>
+    <div class="card-sample">
+      <div class="card-accent-line"></div>
+      <div class="card-eyebrow">Round 04 · Open</div>
+      <div class="card-title">Late Summer Feels</div>
+      <div class="card-sub">Closes Aug 14 · 8 members</div>
+      <div class="card-divider"></div>
+      <div class="card-meta">
+        <span class="card-stat"><strong>6</strong> submitted</span>
+        <span class="card-stat"><strong>2</strong> remaining</span>
+        <span class="badge">Your pick: in</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- MOTIF -->
+  <section>
+    <p class="label">Motif</p>
+    <div class="motif-section">
+      <div class="concentric">
+        <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="60" cy="60" r="58" stroke="#D4E3D7" stroke-width="1"/>
+          <circle cx="60" cy="60" r="46" stroke="#A8C4AD" stroke-width="1"/>
+          <circle cx="60" cy="60" r="34" stroke="#7A9E82" stroke-width="1.5"/>
+          <circle cx="60" cy="60" r="22" stroke="#7A9E82" stroke-width="1"/>
+          <ellipse cx="68" cy="74" rx="9" ry="3.5" fill="#B5533C" transform="rotate(-20 68 74)"/>
+        </svg>
+      </div>
+      <p class="motif-note">
+        Concentric rings echo the <em>Rotorelief</em> — and suit a music app naturally: rounds within leagues within time. The <em>rust accent</em> appears once, like the fish, as a signal rather than a pattern.
+      </p>
+    </div>
+  </section>
+
+</body>
+</html>

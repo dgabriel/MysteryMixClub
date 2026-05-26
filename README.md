@@ -47,7 +47,7 @@ A web app where a friend group can run music league rounds across Spotify, YouTu
 
 ---
 
-## Tech Stack *(to be confirmed in technical-design.md)*
+## Tech Stack
 
 - Frontend: React / TypeScript
 - Backend: Python / FastAPI
@@ -58,4 +58,4 @@ A web app where a friend group can run music league rounds across Spotify, YouTu
 
 ## Status
 
-Currently in PDLC, Definition phase. Discovery complete. PRD complete. Technical design in progress.
+Currently in PDLC, Definition phase. Discovery complete. PRD complete. Technical design complete.  MVP build in progress

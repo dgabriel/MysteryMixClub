@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     odesli_api_key: str = Field(default="")
     allowed_origins: str = Field(default="")
     environment: Literal["development", "production"] = "development"
+    app_base_url: str = Field(default="https://mysterymixclub.com")
 
     @property
     def cors_origins(self) -> list[str]:

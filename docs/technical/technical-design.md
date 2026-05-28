@@ -393,6 +393,7 @@ RESEND_API_KEY
 ODESLI_API_KEY
 ALLOWED_ORIGINS             (CORS)
 ENVIRONMENT                 (development | production)
+APP_BASE_URL                (base URL used to build magic-link URLs in emails)
 
 # Frontend
 VITE_API_BASE_URL

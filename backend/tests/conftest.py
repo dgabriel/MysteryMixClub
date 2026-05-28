@@ -29,9 +29,14 @@ from app.main import create_app
 from app.services.email import EmailSender, get_email_sender
 
 # Import models so they register on Base.metadata before create_all.
-from app.models.magic_link_token import MagicLinkToken  # noqa: F401
+from app.models import MagicLinkToken, Session, User  # noqa: F401
 
 TEST_ASYNC_DATABASE_URL = "postgresql+asyncpg://mmc:mmc@localhost:5432/mysterymixclub_test"
+
+# Tables truncated before and after each test for isolation. ``sessions``
+# references ``users``; CASCADE on the TRUNCATE handles the FK, and
+# magic_link_tokens is independent. Listed together so one statement covers all.
+_TRUNCATE_TABLES = "magic_link_tokens, sessions, users"
 
 
 @dataclass
@@ -71,10 +76,10 @@ async def engine(_schema) -> AsyncGenerator:
     eng = create_async_engine(TEST_ASYNC_DATABASE_URL, future=True)
     # Clean slate before the test.
     async with eng.begin() as conn:
-        await conn.execute(text("TRUNCATE TABLE magic_link_tokens"))
+        await conn.execute(text(f"TRUNCATE TABLE {_TRUNCATE_TABLES} CASCADE"))
     yield eng
     async with eng.begin() as conn:
-        await conn.execute(text("TRUNCATE TABLE magic_link_tokens"))
+        await conn.execute(text(f"TRUNCATE TABLE {_TRUNCATE_TABLES} CASCADE"))
     await eng.dispose()
 
 

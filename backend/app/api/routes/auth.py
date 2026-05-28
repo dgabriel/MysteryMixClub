@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Response, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,11 +22,15 @@ _TOKEN_TTL = timedelta(minutes=15)
 
 _REFRESH_COOKIE_NAME = "refresh_token"
 _REFRESH_COOKIE_PATH = "/api/v1/auth"
-_REFRESH_TOKEN_MAX_AGE = int(timedelta(days=30).total_seconds())
+# Single source of truth for the 30-day refresh window: the cookie max-age and
+# the server-side expiry check both derive from this so they can never drift.
+_REFRESH_TOKEN_TTL = timedelta(days=30)
+_REFRESH_TOKEN_MAX_AGE = int(_REFRESH_TOKEN_TTL.total_seconds())
 _DEVICE_HINT_MAX_LENGTH = 255
 
 _NEUTRAL_MESSAGE = "If that email is registered, a sign-in link is on its way."
 _INVALID_LINK_MESSAGE = "invalid or expired link"
+_INVALID_SESSION_MESSAGE = "invalid or expired session"
 
 
 class MagicLinkRequest(BaseModel):
@@ -145,5 +149,42 @@ async def verify_magic_link(
         samesite="strict",
         secure=(settings.environment == "production"),
     )
+
+    return VerifyResponse(access_token=access_token)
+
+
+@router.post("/refresh", response_model=VerifyResponse)
+async def refresh_access_token(
+    refresh_token: str | None = Cookie(default=None, alias=_REFRESH_COOKIE_NAME),
+    db: AsyncSession = Depends(get_db),
+) -> VerifyResponse:
+    now = datetime.now(timezone.utc)
+
+    if refresh_token is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=_INVALID_SESSION_MESSAGE,
+        )
+
+    session = await db.scalar(
+        select(Session).where(Session.refresh_token_hash == hash_token(refresh_token))
+    )
+
+    # Neutral 401 for any failure mode (no session / logged out / expired) so the
+    # caller can't distinguish the reasons (TD 5). Expiry derives from created_at
+    # since the sessions table has no expires_at column.
+    if (
+        session is None
+        or session.invalidated_at is not None
+        or session.created_at <= now - _REFRESH_TOKEN_TTL
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=_INVALID_SESSION_MESSAGE,
+        )
+
+    session.last_used_at = now
+    access_token = create_access_token(session.user_id)
+    await db.commit()
 
     return VerifyResponse(access_token=access_token)

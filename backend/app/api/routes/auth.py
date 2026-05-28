@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Response, status
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.jwt import create_access_token
@@ -44,6 +44,10 @@ class MagicLinkResponse(BaseModel):
 class VerifyResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+class LogoutResponse(BaseModel):
+    message: str
 
 
 @router.post("/request", response_model=MagicLinkResponse)
@@ -188,3 +192,82 @@ async def refresh_access_token(
     await db.commit()
 
     return VerifyResponse(access_token=access_token)
+
+
+def _clear_refresh_cookie(response: Response, settings: Settings) -> None:
+    """Clear the refresh cookie, matching the name, path, and security
+    attributes used when it was set in /auth/verify. A cookie only clears when
+    its name and path match the original."""
+    response.delete_cookie(
+        key=_REFRESH_COOKIE_NAME,
+        path=_REFRESH_COOKIE_PATH,
+        httponly=True,
+        samesite="strict",
+        secure=(settings.environment == "production"),
+    )
+
+
+@router.post("/logout", response_model=LogoutResponse)
+async def logout(
+    response: Response,
+    refresh_token: str | None = Cookie(default=None, alias=_REFRESH_COOKIE_NAME),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> LogoutResponse:
+    # Logout is idempotent: always clear the cookie and return 200, whether the
+    # cookie is missing, unmatched, or already invalidated (TD 5). Only an
+    # active session for the presented token is invalidated.
+    if refresh_token is not None:
+        session = await db.scalar(
+            select(Session).where(
+                Session.refresh_token_hash == hash_token(refresh_token)
+            )
+        )
+        if session is not None and session.invalidated_at is None:
+            session.invalidated_at = datetime.now(timezone.utc)
+            await db.commit()
+
+    _clear_refresh_cookie(response, settings)
+    return LogoutResponse(message="logged out")
+
+
+@router.post("/logout-all", response_model=LogoutResponse)
+async def logout_all(
+    response: Response,
+    refresh_token: str | None = Cookie(default=None, alias=_REFRESH_COOKIE_NAME),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> LogoutResponse:
+    # The presenting session identifies the user regardless of its own
+    # invalidated_at state, so an already-invalidated cookie can still log out
+    # the user's other devices. No identifiable session => 401 (no user to act
+    # on), using the same neutral detail as /auth/refresh (TD 5).
+    session = (
+        await db.scalar(
+            select(Session).where(
+                Session.refresh_token_hash == hash_token(refresh_token)
+            )
+        )
+        if refresh_token is not None
+        else None
+    )
+    if session is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=_INVALID_SESSION_MESSAGE,
+        )
+
+    # Invalidate every currently-active session for this user only; other users'
+    # sessions and already-invalidated rows are untouched (TD 5, security 9).
+    await db.execute(
+        update(Session)
+        .where(
+            Session.user_id == session.user_id,
+            Session.invalidated_at.is_(None),
+        )
+        .values(invalidated_at=datetime.now(timezone.utc))
+    )
+    await db.commit()
+
+    _clear_refresh_cookie(response, settings)
+    return LogoutResponse(message="logged out of all devices")

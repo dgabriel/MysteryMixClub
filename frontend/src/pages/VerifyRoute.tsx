@@ -28,21 +28,19 @@ export function VerifyRoute() {
       return;
     }
 
-    let active = true;
+    // The token is single-use, so we verify exactly once (guarded by didRun
+    // above). The result must always be applied — we deliberately do NOT gate it
+    // on an effect-cleanup flag, because StrictMode runs cleanup before this one
+    // call resolves, which would otherwise discard the only result.
     void (async () => {
       try {
         const { access_token } = await verifyToken(token);
-        if (!active) return;
         setAccessToken(access_token);
         navigate("/home", { replace: true });
       } catch {
-        if (active) setState("error");
+        setState("error");
       }
     })();
-
-    return () => {
-      active = false;
-    };
   }, [searchParams, navigate, setAccessToken]);
 
   return (

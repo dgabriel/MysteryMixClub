@@ -66,10 +66,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (didInit.current) return;
     didInit.current = true;
 
-    let active = true;
+    // We refresh exactly once (guarded by didInit above). The result must always
+    // be applied so status resolves away from "loading" — we deliberately do NOT
+    // gate it on an effect-cleanup flag, because StrictMode runs cleanup before
+    // this one call resolves, which would otherwise leave status stuck loading.
     void (async () => {
       const result = await apiRefresh();
-      if (!active) return;
       if (result) {
         setStoredAccessToken(result.access_token);
         setToken(result.access_token);
@@ -80,10 +82,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setStatus("unauthenticated");
       }
     })();
-
-    return () => {
-      active = false;
-    };
   }, []);
 
   const logout = useCallback(async () => {

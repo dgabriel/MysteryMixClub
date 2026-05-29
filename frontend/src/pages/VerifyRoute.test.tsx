@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -29,6 +30,25 @@ function renderAt(initialEntry: string) {
         <Route path="/login" element={<div>LOGIN CONTENT</div>} />
       </Routes>
     </MemoryRouter>,
+  );
+}
+
+// Same as renderAt, but wrapped in <StrictMode> so React 18 double-invokes the
+// effect (mount → cleanup → mount) in development. This reproduces the exact
+// condition that previously stranded the magic-link flow on VERIFYING: an
+// effect-cleanup discard flag would cancel the only verify result. RTL's render
+// does NOT add StrictMode on its own, so the explicit wrap is required.
+function renderAtStrict(initialEntry: string) {
+  return render(
+    <StrictMode>
+      <MemoryRouter initialEntries={[initialEntry]}>
+        <Routes>
+          <Route path="/auth/verify" element={<VerifyRoute />} />
+          <Route path="/home" element={<div>HOME CONTENT</div>} />
+          <Route path="/login" element={<div>LOGIN CONTENT</div>} />
+        </Routes>
+      </MemoryRouter>
+    </StrictMode>,
   );
 }
 
@@ -79,6 +99,38 @@ describe("VerifyRoute", () => {
     expect(await screen.findByText(/that link didn.?t work/i)).toBeInTheDocument();
     expect(mockVerifyToken).not.toHaveBeenCalled();
     expect(setAccessToken).not.toHaveBeenCalled();
+  });
+
+  // --- Regression: StrictMode double-invoke (MYS-10) ---------------------
+  // The bug: under StrictMode the effect ran mount → cleanup → mount; a flag
+  // cleared in cleanup discarded the single verify result, so the screen stayed
+  // on VERIFYING forever even though the backend returned 200. These lock that
+  // down by rendering inside <StrictMode>.
+
+  it("StrictMode: applies the verify result and navigates to /home (does NOT stay on VERIFYING)", async () => {
+    mockVerifyToken.mockResolvedValue({ access_token: "tok-strict" });
+
+    renderAtStrict("/auth/verify?token=good");
+
+    // The result IS applied: we reach /home rather than getting stranded.
+    expect(await screen.findByText("HOME CONTENT")).toBeInTheDocument();
+    expect(screen.queryByText(/verifying/i)).not.toBeInTheDocument();
+    expect(setAccessToken).toHaveBeenCalledWith("tok-strict");
+  });
+
+  it("StrictMode: verifyToken is called exactly once (single-use token not double-spent)", async () => {
+    mockVerifyToken.mockResolvedValue({ access_token: "tok-strict" });
+
+    renderAtStrict("/auth/verify?token=good");
+
+    // Wait until the flow has fully resolved before counting calls, so a late
+    // second invocation from the StrictMode remount cannot slip past.
+    expect(await screen.findByText("HOME CONTENT")).toBeInTheDocument();
+    await waitFor(() => expect(setAccessToken).toHaveBeenCalled());
+
+    expect(mockVerifyToken).toHaveBeenCalledTimes(1);
+    expect(mockVerifyToken).toHaveBeenCalledWith("good");
+    expect(setAccessToken).toHaveBeenCalledTimes(1);
   });
 
   it("shows the verifying state before resolution", async () => {

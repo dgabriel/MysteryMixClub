@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -44,6 +45,21 @@ function renderWithProvider() {
     <AuthProvider>
       <Probe />
     </AuthProvider>,
+  );
+}
+
+// Same as renderWithProvider, but wrapped in <StrictMode> so React 18
+// double-invokes the on-mount effect (mount → cleanup → mount) in development.
+// This reproduces the condition that previously stranded `status` on "loading":
+// an effect-cleanup discard flag would drop the single refresh result. RTL's
+// render does NOT add StrictMode on its own, so the explicit wrap is required.
+function renderWithProviderStrict() {
+  return render(
+    <StrictMode>
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>
+    </StrictMode>,
   );
 }
 
@@ -153,6 +169,44 @@ describe("AuthProvider / useAuth", () => {
       expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated"),
     );
     expect(mockLogoutAll).toHaveBeenCalledTimes(1);
+  });
+
+  // --- Regression: StrictMode double-invoke (MYS-10) ---------------------
+  // The bug: under StrictMode the on-mount effect ran mount → cleanup → mount;
+  // a flag cleared in cleanup discarded the single refresh result, so `status`
+  // stayed "loading" forever. These lock that down by rendering inside
+  // <StrictMode> and proving status always resolves away from "loading".
+
+  it("StrictMode: refresh success resolves status to authenticated (never stuck loading)", async () => {
+    mockRefresh.mockResolvedValue({ access_token: "restored-token" });
+    renderWithProviderStrict();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("status")).toHaveTextContent("authenticated"),
+    );
+    expect(screen.getByTestId("status")).not.toHaveTextContent("loading");
+    expect(mockSetStored).toHaveBeenCalledWith("restored-token");
+  });
+
+  it("StrictMode: refresh returning null resolves status to unauthenticated (never stuck loading)", async () => {
+    mockRefresh.mockResolvedValue(null);
+    renderWithProviderStrict();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated"),
+    );
+    expect(screen.getByTestId("status")).not.toHaveTextContent("loading");
+    expect(mockSetStored).toHaveBeenCalledWith(null);
+  });
+
+  it("StrictMode: refresh is called exactly once despite the double-invoke", async () => {
+    mockRefresh.mockResolvedValue({ access_token: "restored-token" });
+    renderWithProviderStrict();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("status")).toHaveTextContent("authenticated"),
+    );
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
   });
 
   it("useAuth throws when used outside an AuthProvider", () => {

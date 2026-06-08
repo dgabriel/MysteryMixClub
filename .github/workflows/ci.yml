@@ -46,6 +46,27 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    # app.db.session builds the engine at import from DATABASE_URL, and the test
+    # suite (tests/conftest.py) runs against a real Postgres at this URL. SECRET_KEY
+    # is needed so JWT signing/verification works in the auth tests. These are
+    # throwaway CI values — not real secrets.
+    env:
+      DATABASE_URL: postgresql+asyncpg://mmc:mmc@localhost:5432/mysterymixclub_test
+      SECRET_KEY: ci-test-secret-not-for-production
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: mmc
+          POSTGRES_PASSWORD: mmc
+          POSTGRES_DB: mysterymixclub_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mmc -d mysterymixclub_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 

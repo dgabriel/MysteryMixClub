@@ -96,9 +96,7 @@ def _assert_cookie_cleared(resp) -> None:
 # --------------------------------------------------------------------------- #
 
 
-async def test_logout_invalidates_session_and_clears_cookie(
-    client, email_spy, db_session
-):
+async def test_logout_invalidates_session_and_clears_cookie(client, email_spy, db_session):
     raw_cookie = await _establish_session(client, email_spy, "alice@example.com")
 
     before = await _session_for_cookie(db_session, raw_cookie)
@@ -117,18 +115,14 @@ async def test_logout_invalidates_session_and_clears_cookie(
     _assert_cookie_cleared(resp)
 
 
-async def test_logout_then_refresh_with_same_token_returns_401(
-    client, email_spy, db_session
-):
+async def test_logout_then_refresh_with_same_token_returns_401(client, email_spy, db_session):
     raw_cookie = await _establish_session(client, email_spy, "alice@example.com")
 
     logout_resp = await client.post(LOGOUT_URL, cookies={"refresh_token": raw_cookie})
     assert logout_resp.status_code == 200, logout_resp.text
 
     # The now-invalidated session can no longer mint access tokens.
-    refresh_resp = await client.post(
-        REFRESH_URL, cookies={"refresh_token": raw_cookie}
-    )
+    refresh_resp = await client.post(REFRESH_URL, cookies={"refresh_token": raw_cookie})
     assert refresh_resp.status_code == 401, refresh_resp.text
     assert refresh_resp.json()["detail"] == _NEUTRAL_SESSION_DETAIL
 
@@ -157,9 +151,7 @@ async def test_logout_garbage_cookie_returns_200(client):
     _assert_cookie_cleared(resp)
 
 
-async def test_logout_already_invalidated_cookie_returns_200(
-    client, email_spy, db_session
-):
+async def test_logout_already_invalidated_cookie_returns_200(client, email_spy, db_session):
     raw_cookie = await _establish_session(client, email_spy, "alice@example.com")
 
     session = await _session_for_cookie(db_session, raw_cookie)
@@ -184,9 +176,7 @@ async def test_logout_already_invalidated_cookie_returns_200(
 # --------------------------------------------------------------------------- #
 
 
-async def test_logout_all_invalidates_all_user_sessions_only(
-    client, email_spy, db_session
-):
+async def test_logout_all_invalidates_all_user_sessions_only(client, email_spy, db_session):
     # Two sessions for the same user.
     raw_a1 = await _establish_session(client, email_spy, "user1@example.com")
     raw_a2 = await _establish_session(client, email_spy, "user1@example.com")
@@ -242,22 +232,16 @@ async def test_logout_all_then_refresh_with_other_session_returns_401(
     raw_a1 = await _establish_session(client, email_spy, "user1@example.com")
     raw_a2 = await _establish_session(client, email_spy, "user1@example.com")
 
-    logout_resp = await client.post(
-        LOGOUT_ALL_URL, cookies={"refresh_token": raw_a1}
-    )
+    logout_resp = await client.post(LOGOUT_ALL_URL, cookies={"refresh_token": raw_a1})
     assert logout_resp.status_code == 200, logout_resp.text
 
     # The OTHER (not-presented) session can no longer refresh.
-    refresh_resp = await client.post(
-        REFRESH_URL, cookies={"refresh_token": raw_a2}
-    )
+    refresh_resp = await client.post(REFRESH_URL, cookies={"refresh_token": raw_a2})
     assert refresh_resp.status_code == 401, refresh_resp.text
     assert refresh_resp.json()["detail"] == _NEUTRAL_SESSION_DETAIL
 
 
-async def test_logout_all_with_already_invalidated_presenting_cookie(
-    client, email_spy, db_session
-):
+async def test_logout_all_with_already_invalidated_presenting_cookie(client, email_spy, db_session):
     raw_a1 = await _establish_session(client, email_spy, "user1@example.com")
     raw_a2 = await _establish_session(client, email_spy, "user1@example.com")
 
@@ -277,8 +261,7 @@ async def test_logout_all_with_already_invalidated_presenting_cookie(
     after_a2 = await _session_for_cookie(db_session, raw_a2)
     assert after_a2 is not None
     assert after_a2.invalidated_at is not None, (
-        "other active session not invalidated when presenting an "
-        "already-invalidated cookie"
+        "other active session not invalidated when presenting an already-invalidated cookie"
     )
 
     _assert_cookie_cleared(resp)
@@ -297,9 +280,7 @@ async def test_logout_all_no_cookie_returns_401(client, db_session):
 
 
 async def test_logout_all_garbage_cookie_returns_401(client, db_session):
-    resp = await client.post(
-        LOGOUT_ALL_URL, cookies={"refresh_token": "no-such-session"}
-    )
+    resp = await client.post(LOGOUT_ALL_URL, cookies={"refresh_token": "no-such-session"})
 
     assert resp.status_code == 401, resp.text
     assert resp.json()["detail"] == _NEUTRAL_SESSION_DETAIL

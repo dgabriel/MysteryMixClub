@@ -43,9 +43,7 @@ async def test_valid_email_inserts_exactly_one_row(client, db_session):
     assert await _count_rows(db_session) == 1
 
 
-async def test_stored_token_hash_is_sha256_and_raw_not_stored(
-    client, db_session, email_spy
-):
+async def test_stored_token_hash_is_sha256_and_raw_not_stored(client, db_session, email_spy):
     await client.post(REQUEST_URL, json={"email": "alice@example.com"})
 
     row = (await db_session.execute(select(MagicLinkToken))).scalar_one()

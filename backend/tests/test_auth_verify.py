@@ -62,9 +62,7 @@ async def test_verify_returns_200_with_bearer_token(client, email_spy):
     assert isinstance(body["access_token"], str) and body["access_token"]
 
 
-async def test_jwt_decodes_with_correct_claims_and_60_min_ttl(
-    client, email_spy, db_session
-):
+async def test_jwt_decodes_with_correct_claims_and_60_min_ttl(client, email_spy, db_session):
     settings = get_settings()
     raw = await _request_link(client, email_spy, "alice@example.com")
 
@@ -129,9 +127,7 @@ async def test_refresh_cookie_attributes(client, email_spy):
     assert "secure" not in lowered, set_cookie
 
 
-async def test_magic_link_token_deleted_after_successful_verify(
-    client, email_spy, db_session
-):
+async def test_magic_link_token_deleted_after_successful_verify(client, email_spy, db_session):
     raw = await _request_link(client, email_spy, "alice@example.com")
     assert await _count(db_session, MagicLinkToken) == 1
 
@@ -147,9 +143,7 @@ async def test_magic_link_token_deleted_after_successful_verify(
 # --------------------------------------------------------------------------- #
 
 
-async def test_second_login_same_email_one_user_two_sessions(
-    client, email_spy, db_session
-):
+async def test_second_login_same_email_one_user_two_sessions(client, email_spy, db_session):
     email = "repeat@example.com"
 
     raw1 = await _request_link(client, email_spy, email)
@@ -196,9 +190,7 @@ async def test_expired_token_returns_401_and_is_deleted(client, db_session):
 # --------------------------------------------------------------------------- #
 
 
-async def test_reusing_token_second_call_401_no_extra_session(
-    client, email_spy, db_session
-):
+async def test_reusing_token_second_call_401_no_extra_session(client, email_spy, db_session):
     raw = await _request_link(client, email_spy, "alice@example.com")
 
     first = await client.get(VERIFY_URL, params={"token": raw})

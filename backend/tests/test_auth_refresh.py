@@ -90,9 +90,7 @@ async def test_refresh_jwt_decodes_with_correct_claims_and_60_min_ttl(
     assert resp.status_code == 200, resp.text
     access_token = resp.json()["access_token"]
 
-    claims = jwt.decode(
-        access_token, settings.secret_key, algorithms=[_JWT_ALGORITHM]
-    )
+    claims = jwt.decode(access_token, settings.secret_key, algorithms=[_JWT_ALGORITHM])
 
     session = await _session_for_cookie(db_session, raw_cookie)
     assert session is not None
@@ -113,14 +111,11 @@ async def test_refresh_advances_last_used_at(client, email_spy, db_session):
     after = await _session_for_cookie(db_session, raw_cookie)
     assert after is not None
     assert after.last_used_at > last_used_after_verify, (
-        f"last_used_at not advanced: verify={last_used_after_verify} "
-        f"refresh={after.last_used_at}"
+        f"last_used_at not advanced: verify={last_used_after_verify} refresh={after.last_used_at}"
     )
 
 
-async def test_refresh_token_not_rotated_same_cookie_works_twice(
-    client, email_spy, db_session
-):
+async def test_refresh_token_not_rotated_same_cookie_works_twice(client, email_spy, db_session):
     raw_cookie = await _establish_session(client, email_spy, "alice@example.com")
 
     first = await client.post(REFRESH_URL)
@@ -187,34 +182,26 @@ async def test_expired_session_returns_401(client, email_spy, db_session):
     assert resp.json()["detail"] == _NEUTRAL_SESSION_DETAIL
 
 
-async def test_401_detail_is_neutral_across_all_failure_modes(
-    client, email_spy, db_session
-):
+async def test_401_detail_is_neutral_across_all_failure_modes(client, email_spy, db_session):
     # No cookie.
     no_cookie = await client.post(REFRESH_URL)
 
     # Unknown cookie.
-    garbage = await client.post(
-        REFRESH_URL, cookies={"refresh_token": "no-such-session"}
-    )
+    garbage = await client.post(REFRESH_URL, cookies={"refresh_token": "no-such-session"})
 
     # Invalidated session.
     raw_inv = await _establish_session(client, email_spy, "inv@example.com")
     sess_inv = await _session_for_cookie(db_session, raw_inv)
     sess_inv.invalidated_at = datetime.now(timezone.utc)
     await db_session.commit()
-    invalidated = await client.post(
-        REFRESH_URL, cookies={"refresh_token": raw_inv}
-    )
+    invalidated = await client.post(REFRESH_URL, cookies={"refresh_token": raw_inv})
 
     # Expired session.
     raw_exp = await _establish_session(client, email_spy, "exp@example.com")
     sess_exp = await _session_for_cookie(db_session, raw_exp)
     sess_exp.created_at = datetime.now(timezone.utc) - timedelta(days=31)
     await db_session.commit()
-    expired = await client.post(
-        REFRESH_URL, cookies={"refresh_token": raw_exp}
-    )
+    expired = await client.post(REFRESH_URL, cookies={"refresh_token": raw_exp})
 
     details = {
         no_cookie.json()["detail"],

@@ -119,9 +119,7 @@ async def verify_magic_link(
 
     email = token_row.email
 
-    user = await db.scalar(
-        select(User).where(User.email == email, User.deleted_at.is_(None))
-    )
+    user = await db.scalar(select(User).where(User.email == email, User.deleted_at.is_(None)))
     if user is None:
         user = User(email=email, display_name="", default_vibe_mode=False)
         db.add(user)
@@ -219,9 +217,7 @@ async def logout(
     # active session for the presented token is invalidated.
     if refresh_token is not None:
         session = await db.scalar(
-            select(Session).where(
-                Session.refresh_token_hash == hash_token(refresh_token)
-            )
+            select(Session).where(Session.refresh_token_hash == hash_token(refresh_token))
         )
         if session is not None and session.invalidated_at is None:
             session.invalidated_at = datetime.now(timezone.utc)
@@ -244,9 +240,7 @@ async def logout_all(
     # on), using the same neutral detail as /auth/refresh (TD 5).
     session = (
         await db.scalar(
-            select(Session).where(
-                Session.refresh_token_hash == hash_token(refresh_token)
-            )
+            select(Session).where(Session.refresh_token_hash == hash_token(refresh_token))
         )
         if refresh_token is not None
         else None

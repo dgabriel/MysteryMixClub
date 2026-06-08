@@ -1,3 +1,6 @@
+import logging
+import sys
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -5,8 +8,28 @@ from app.api.routes import auth, health
 from app.config import get_settings
 
 
+def _configure_dev_logging() -> None:
+    """Surface ``app.*`` logs on stdout in development.
+
+    Without this, uvicorn's default logging config swallows INFO records from
+    the application loggers, so the console magic-link sender's output is never
+    shown. Magic-link tokens are stored hashed, so that log line is the only
+    way to obtain a sign-in link locally. Idempotent and dev-only.
+    """
+    logger = logging.getLogger("app")
+    if logger.handlers:
+        return
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s:%(message)s"))
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
+    if settings.environment == "development":
+        _configure_dev_logging()
     app = FastAPI(title="MysteryMixClub API", version="0.0.0")
 
     app.add_middleware(

@@ -3,13 +3,16 @@ import {
   ApiError,
   authenticatedRequest,
   getAccessToken,
+  getMe,
   logout,
   logoutAll,
   refresh,
   requestMagicLink,
   setStoredAccessToken,
+  updateDisplayName,
   verifyToken,
 } from "./api";
+import type { UserProfile } from "./api";
 
 const API_BASE = "http://localhost:8000";
 const AUTH_BASE = `${API_BASE}/api/v1/auth`;
@@ -278,6 +281,103 @@ describe("api.ts", () => {
       const res = await authenticatedRequest("/api/v1/users/me");
       expect(res.status).toBe(500);
       expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("getMe", () => {
+    const profile: UserProfile = {
+      display_name: "Ada",
+      email: "ada@example.com",
+      preferred_service: "spotify",
+      default_vibe_mode: false,
+    };
+
+    it("GETs /api/v1/users/me (Bearer + credentials) and resolves the parsed profile on 200", async () => {
+      setStoredAccessToken("my-token");
+      const fetchMock = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(jsonResponse(200, profile));
+
+      await expect(getMe()).resolves.toEqual(profile);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(`${API_BASE}/api/v1/users/me`);
+      expect(init?.credentials).toBe("include");
+      const headers = new Headers(init?.headers);
+      expect(headers.get("Authorization")).toBe("Bearer my-token");
+    });
+
+    it("resolves the empty-string display_name sentinel verbatim (not-yet-onboarded)", async () => {
+      setStoredAccessToken("my-token");
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse(200, { ...profile, display_name: "" }),
+      );
+
+      await expect(getMe()).resolves.toMatchObject({ display_name: "" });
+    });
+
+    it("throws ApiError with the backend detail on a non-2xx response", async () => {
+      setStoredAccessToken("my-token");
+      // 401 then a failed refresh so authenticatedRequest surfaces the 401.
+      vi.spyOn(globalThis, "fetch")
+        .mockResolvedValueOnce(jsonResponse(401, { detail: "not authenticated" }))
+        .mockResolvedValueOnce(emptyResponse(401));
+
+      const err = await getMe().catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err).toMatchObject({ status: 401, message: "not authenticated" });
+    });
+
+    it("throws ApiError with a generic message when the error body is not JSON", async () => {
+      setStoredAccessToken("my-token");
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response("nope", { status: 500 }),
+      );
+
+      await expect(getMe()).rejects.toMatchObject({
+        status: 500,
+        message: "request failed (500)",
+      });
+    });
+  });
+
+  describe("updateDisplayName", () => {
+    const profile: UserProfile = {
+      display_name: "Alice",
+      email: "alice@example.com",
+      preferred_service: null,
+      default_vibe_mode: false,
+    };
+
+    it("PATCHes /api/v1/users/me with a JSON body and returns the parsed profile on 200", async () => {
+      setStoredAccessToken("my-token");
+      const fetchMock = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(jsonResponse(200, profile));
+
+      await expect(updateDisplayName("Alice")).resolves.toEqual(profile);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(`${API_BASE}/api/v1/users/me`);
+      expect(init?.method).toBe("PATCH");
+      expect(init?.credentials).toBe("include");
+      expect(init?.body).toBe(JSON.stringify({ display_name: "Alice" }));
+      const headers = new Headers(init?.headers);
+      expect(headers.get("Content-Type")).toBe("application/json");
+      expect(headers.get("Authorization")).toBe("Bearer my-token");
+    });
+
+    it("throws ApiError with the backend detail on a 422 validation failure", async () => {
+      setStoredAccessToken("my-token");
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse(422, { detail: "display name too long" }),
+      );
+
+      const err = await updateDisplayName("x".repeat(100)).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err).toMatchObject({ status: 422, message: "display name too long" });
     });
   });
 });

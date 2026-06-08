@@ -30,6 +30,16 @@ type TokenResponse = {
   token_type: string;
 };
 
+/** Current user profile (GET /api/v1/users/me). A non-empty `display_name`
+ *  means the user has completed onboarding; "" is the not-yet-onboarded
+ *  sentinel. */
+export type UserProfile = {
+  display_name: string;
+  email: string;
+  preferred_service: string | null;
+  default_vibe_mode: boolean;
+};
+
 class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -167,6 +177,29 @@ export async function authenticatedRequest(
     credentials: "include",
     headers: buildHeaders(),
   });
+}
+
+/** Fetch the current user's profile. Bearer-auth via authenticatedRequest. */
+export async function getMe(): Promise<UserProfile> {
+  const res = await authenticatedRequest("/api/v1/users/me");
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as UserProfile;
+}
+
+/** Set the current user's display name (1–50 chars, trimmed server-side).
+ *  Returns the updated profile. */
+export async function updateDisplayName(displayName: string): Promise<UserProfile> {
+  const res = await authenticatedRequest("/api/v1/users/me", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ display_name: displayName }),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as UserProfile;
 }
 
 export { ApiError };

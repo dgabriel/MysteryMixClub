@@ -62,6 +62,10 @@ describe("VerifyRoute", () => {
       clear: vi.fn(),
       logout: vi.fn(),
       logoutAll: vi.fn(),
+      displayName: null,
+      profileStatus: "idle",
+      needsOnboarding: false,
+      applyDisplayName: vi.fn(),
     });
   });
 

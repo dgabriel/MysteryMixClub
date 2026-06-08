@@ -36,6 +36,10 @@ describe("HomeRoute", () => {
       clear: vi.fn(),
       logout,
       logoutAll,
+      displayName: "ada",
+      profileStatus: "ready",
+      needsOnboarding: false,
+      applyDisplayName: vi.fn(),
     });
   });
 

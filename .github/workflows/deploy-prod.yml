@@ -1,0 +1,32 @@
+name: Deploy Production
+
+on:
+  push:
+    branches:
+      - main
+
+# Never run two production deploys concurrently.
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to DO App Platform (production)
+    runs-on: ubuntu-latest
+    # The `production` environment gates this job behind a manual approval.
+    # Configure required reviewers under Settings → Environments → production.
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      # The deploy action reads the spec from `.do/app.yaml`; stage the
+      # production-specific spec into that path.
+      - name: Stage production app spec
+        run: cp .do/app.prod.yaml .do/app.yaml
+
+      - name: Deploy to DigitalOcean App Platform
+        uses: digitalocean/app_action/deploy@v2
+        with:
+          app_name: mysterymixclub-prod
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}

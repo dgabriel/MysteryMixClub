@@ -1,0 +1,30 @@
+name: Deploy Staging
+
+on:
+  push:
+    branches:
+      - develop
+
+# Never run two staging deploys concurrently; let the newest win.
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to DO App Platform (staging)
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      # The deploy action reads the spec from `.do/app.yaml`; stage the
+      # staging-specific spec into that path.
+      - name: Stage staging app spec
+        run: cp .do/app.staging.yaml .do/app.yaml
+
+      - name: Deploy to DigitalOcean App Platform
+        uses: digitalocean/app_action/deploy@v2
+        with:
+          app_name: mysterymixclub-staging
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}

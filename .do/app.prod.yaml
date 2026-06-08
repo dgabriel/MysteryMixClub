@@ -1,0 +1,68 @@
+# DigitalOcean App Platform spec — PRODUCTION (mysterymixclub-prod).
+#
+# Source of truth for the prod app (configuration as code). Deploys are driven
+# by GitHub Actions (.github/workflows/deploy-prod.yml), NOT DO auto-deploy —
+# hence `deploy_on_push: false` on every component. Tracks the `main` branch.
+#
+# Apply manually with:  doctl apps update <prod-app-id> --spec .do/app.prod.yaml
+# Secret values (SECRET_KEY, DATABASE_URL) are filled in via the DO dashboard or
+# `doctl` — never commit real values here.
+
+name: mysterymixclub-prod
+region: nyc
+
+services:
+  - name: api
+    source_dir: backend
+    github:
+      repo: dgabriel/MysteryMixClub
+      branch: main
+      deploy_on_push: false
+    environment_slug: python
+    run_command: uvicorn app.main:app --host 0.0.0.0 --port 8080
+    http_port: 8080
+    instance_size_slug: basic-xxs
+    instance_count: 1
+    health_check:
+      # The FastAPI health route is mounted at /api/v1/healthz (see backend/app/main.py).
+      http_path: /api/v1/healthz
+      initial_delay_seconds: 10
+      period_seconds: 10
+    envs:
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+        # Bound to the managed database component defined below.
+        value: ${db.DATABASE_URL}
+      - key: SECRET_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: ENVIRONMENT
+        scope: RUN_TIME
+        type: GENERAL
+        value: production
+
+static_sites:
+  # The frontend is a Vite SPA, so on App Platform it is a static site
+  # (build → `dist/`) rather than a long-running service.
+  - name: frontend
+    source_dir: frontend
+    github:
+      repo: dgabriel/MysteryMixClub
+      branch: main
+      deploy_on_push: false
+    environment_slug: node-js
+    build_command: npm ci && npm run build
+    output_dir: dist
+    catchall_document: index.html
+    envs:
+      - key: VITE_API_BASE_URL
+        scope: BUILD_TIME
+        type: GENERAL
+        value: ${api.PUBLIC_URL}
+
+databases:
+  - name: db
+    engine: PG
+    version: "15"
+    production: true

@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+
+# Frontend type safety
+npm --prefix frontend run typecheck
+
+# Backend test suite (requires the backend virtualenv to be active / deps installed)
+( cd backend && python -m pytest -q )

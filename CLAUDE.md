@@ -83,6 +83,50 @@ unless you flag it first.
 
 ---
 
+## CI/CD
+
+Full spec: `docs/ci-cd.md`
+
+**Branch model**
+
+| Branch        | Deploys to                 | How                                  |
+|---------------|----------------------------|--------------------------------------|
+| `main`        | **production** (`mysterymixclub-prod`)    | push → `deploy-prod.yml` (manual approval gate) |
+| `develop`     | **staging** (`mysterymixclub-staging`)    | push → `deploy-staging.yml` (auto)   |
+| `feature/*`   | nothing — open a PR        | PR → `develop` runs `ci.yml`         |
+
+Flow: branch `feature/*` off `develop` → PR into `develop` (CI must pass) →
+merge deploys to staging → PR `develop` → `main` → approve → deploys to prod.
+
+**Local hook chain** (Husky v9, `core.hooksPath=.husky/_`)
+
+- `pre-commit` → `lint-staged`: ESLint `--fix` + Prettier on staged `*.ts/tsx`;
+  `ruff check --fix` + `ruff format` on staged `*.py`.
+- `commit-msg` → `commitlint` enforces Conventional Commits (`.commitlintrc.json`).
+- `pre-push` → frontend `typecheck` + backend `pytest`.
+
+Re-install hooks after a fresh clone with `npm install` (runs `prepare` → `husky`).
+
+**Config as code**
+
+- `.github/workflows/` — `ci.yml`, `deploy-staging.yml`, `deploy-prod.yml`.
+- `.do/app.staging.yaml` / `.do/app.prod.yaml` — per-environment DO App Platform
+  specs (api service + frontend static site + managed Postgres 15). Each deploy
+  workflow stages its spec into `.do/app.yaml` (gitignored) before deploying.
+  `deploy_on_push: false` — Actions own deploys.
+
+**Adding a new secret**
+
+1. Add the key to `.env.example` (no value) so the contract is documented.
+2. GitHub → Settings → Secrets and variables → Actions → add the repo/environment secret.
+3. If the app needs it at runtime, add an `envs:` entry in **both**
+   `.do/app.staging.yaml` and `.do/app.prod.yaml` (`type: SECRET`) and set its
+   value in the DO dashboard or via `doctl apps update`.
+4. Never commit real secret values. The only pipeline secret today is
+   `DIGITALOCEAN_ACCESS_TOKEN`.
+
+---
+
 ## Docs Map
 
 ```
@@ -94,6 +138,7 @@ docs/
     technical-design.md     ← Read before ANY backend/arch work
   prd/                      ← Product requirements
   discovery/                ← Research and early decisions
+  ci-cd.md                  ← Pipeline, branch model, onboarding secrets
 ```
 
 ---

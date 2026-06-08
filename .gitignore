@@ -44,3 +44,6 @@ htmlcov/
 # Build
 build/
 *.tsbuildinfo
+
+# Generated at deploy time from .do/app.{staging,prod}.yaml
+.do/app.yaml

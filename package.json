@@ -9,15 +9,5 @@
   },
   "scripts": {
     "prepare": "husky"
-  },
-  "lint-staged": {
-    "frontend/**/*.{ts,tsx}": [
-      "eslint --fix",
-      "prettier --write"
-    ],
-    "backend/**/*.py": [
-      "ruff check --fix",
-      "ruff format"
-    ]
   }
 }

@@ -1,0 +1,111 @@
+import type { League } from "../services/api";
+import { Button } from "../components/Button";
+import { Badge } from "../components/Badge";
+import { Card } from "../components/Card";
+import { ConcentricRings } from "../components/ConcentricRings";
+
+type MyLeaguesScreenProps = {
+  displayName: string | null;
+  leagues: League[];
+  loading: boolean;
+  error?: string | null;
+  onCreateLeague: () => void;
+  onOpenLeague: (id: string) => void;
+  onLogout: () => void;
+  loggingOut: boolean;
+};
+
+export function MyLeaguesScreen({
+  displayName,
+  leagues,
+  loading,
+  error,
+  onCreateLeague,
+  onOpenLeague,
+  onLogout,
+  loggingOut,
+}: MyLeaguesScreenProps) {
+  return (
+    <div className="min-h-screen flex flex-col">
+      <header className="flex items-center justify-between px-4 py-4 sm:px-8">
+        <span className="font-serif lowercase text-[20px] text-ink">my leagues</span>
+        <Button variant="ghost" type="button" onClick={onLogout} disabled={loggingOut}>
+          {loggingOut ? "logging out…" : "logout"}
+        </Button>
+      </header>
+
+      <main className="flex flex-1 flex-col px-4 py-8 sm:px-8">
+        {loading ? (
+          <div className="flex flex-1 items-center justify-center">
+            {/* Loading motif — no Rust dot. */}
+            <ConcentricRings size={88} spinning className="mx-auto" />
+          </div>
+        ) : leagues.length === 0 ? (
+          <div className="flex flex-1 flex-col items-center justify-center text-center">
+            {/* Empty state — the screen's one Rust use is the off-center ring dot. */}
+            <ConcentricRings size={88} accent className="mx-auto" />
+            <p className="mt-8 font-mono text-[13px] font-light text-muted">no leagues yet</p>
+            <div className="mt-6">
+              <Button type="button" onClick={onCreateLeague}>
+                create a league
+              </Button>
+            </div>
+            {error ? (
+              <p role="alert" className="mt-6 font-mono text-[11px] text-ink">
+                {error}
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <div className="mx-auto w-full max-w-lg">
+            {displayName ? (
+              <p className="font-mono uppercase tracking-label text-[9px] text-muted">
+                {displayName}
+              </p>
+            ) : null}
+
+            <div className="mt-4">
+              <Button type="button" onClick={onCreateLeague}>
+                create a league
+              </Button>
+            </div>
+
+            {error ? (
+              <p role="alert" className="mt-6 font-mono text-[11px] text-ink">
+                {error}
+              </p>
+            ) : null}
+
+            <ul className="mt-8 space-y-4">
+              {leagues.map((league) => (
+                <li key={league.id}>
+                  {/* Default (Sage) badge only — no Rust on populated cards. */}
+                  <Card className="transition-colors duration-150 hover:bg-sage-pale">
+                    <button
+                      type="button"
+                      onClick={() => onOpenLeague(league.id)}
+                      className="block w-full text-left"
+                    >
+                      <span className="font-mono uppercase tracking-label text-[9px] text-muted">
+                        league
+                      </span>
+                      <h2 className="mt-1 font-serif text-[20px] leading-tight text-ink">
+                        {league.name}
+                      </h2>
+                      <div className="mt-3 flex items-center justify-between">
+                        <span className="font-mono text-[11px] font-light text-muted">
+                          round {league.current_round} of {league.total_rounds}
+                        </span>
+                        <Badge>{league.state}</Badge>
+                      </div>
+                    </button>
+                  </Card>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}

@@ -43,6 +43,9 @@ type AuthContextValue = {
   logoutAll: () => Promise<void>;
   /** Current user's display name once the profile loads; null while unloaded. */
   displayName: string | null;
+  /** Current user's id once the profile loads; null while unloaded. League
+   *  routes compare it against league.organizer_id to gate organizer controls. */
+  userId: string | null;
   /** Lifecycle of the profile fetch that follows authentication. */
   profileStatus: ProfileStatus;
   /** True only when authenticated, profile loaded, and the name is the
@@ -59,6 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [displayName, setDisplayName] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [profileStatus, setProfileStatus] = useState<ProfileStatus>("idle");
   const didInit = useRef(false);
   const didLoadProfile = useRef(false);
@@ -74,6 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(null);
     setStatus("unauthenticated");
     setDisplayName(null);
+    setUserId(null);
     setProfileStatus("idle");
   }, []);
 
@@ -122,6 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const profile = await getMe();
         setDisplayName(profile.display_name);
+        setUserId(profile.id);
         setProfileStatus("ready");
       } catch {
         didLoadProfile.current = false;
@@ -158,6 +164,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       logoutAll,
       displayName,
+      userId,
       profileStatus,
       needsOnboarding,
       applyDisplayName,
@@ -170,6 +177,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       logoutAll,
       displayName,
+      userId,
       profileStatus,
       needsOnboarding,
       applyDisplayName,

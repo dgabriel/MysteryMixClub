@@ -203,4 +203,150 @@ export async function updateDisplayName(displayName: string): Promise<UserProfil
   return (await res.json()) as UserProfile;
 }
 
+/** A league as returned by the backend (GET/POST /api/v1/leagues). */
+export type League = {
+  id: string;
+  name: string;
+  description: string | null;
+  organizer_id: string;
+  total_rounds: number;
+  votes_per_player: number;
+  current_round: number;
+  state: string;
+  created_at: string;
+  completed_at: string | null;
+};
+
+/** A member of a league (GET /api/v1/leagues/:id/members). */
+export type LeagueMember = {
+  user_id: string;
+  display_name: string;
+  joined_at: string;
+  is_organizer: boolean;
+};
+
+/** An invite to a league (POST /api/v1/leagues/:id/invites). */
+export type Invite = {
+  id: string;
+  league_id: string;
+  token: string;
+  created_by: string;
+  created_at: string;
+  expires_at: string | null;
+};
+
+/** Public preview of a league shown before joining (GET /api/v1/invites/:token). */
+export type InvitePreview = {
+  league_name: string;
+  member_count: number;
+};
+
+/** Create a new league. Returns the created League on 201. Only the provided
+ *  fields are serialized; JSON.stringify drops undefined optional keys. */
+export async function createLeague(input: {
+  name: string;
+  total_rounds: number;
+  votes_per_player?: number;
+  description?: string;
+}): Promise<League> {
+  const res = await authenticatedRequest("/api/v1/leagues", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as League;
+}
+
+/** Get all leagues for the current user. */
+export async function getLeagues(): Promise<League[]> {
+  const res = await authenticatedRequest("/api/v1/leagues");
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as League[];
+}
+
+/** Get a single league by id. */
+export async function getLeague(id: string): Promise<League> {
+  const res = await authenticatedRequest(`/api/v1/leagues/${id}`);
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as League;
+}
+
+/** Get the members of a league. */
+export async function getLeagueMembers(id: string): Promise<LeagueMember[]> {
+  const res = await authenticatedRequest(`/api/v1/leagues/${id}/members`);
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as LeagueMember[];
+}
+
+/** Update a league (organizer only). An explicit null description is sent as-is;
+ *  only undefined keys are dropped by JSON.stringify. Returns the updated League. */
+export async function updateLeague(
+  id: string,
+  input: { name?: string; description?: string | null; total_rounds?: number },
+): Promise<League> {
+  const res = await authenticatedRequest(`/api/v1/leagues/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as League;
+}
+
+/** Remove a member from a league (organizer only). Resolves on 204. */
+export async function removeMember(leagueId: string, userId: string): Promise<void> {
+  const res = await authenticatedRequest(
+    `/api/v1/leagues/${leagueId}/members/${userId}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+}
+
+/** Generate an invite link for a league (organizer or member). Returns the Invite. */
+export async function createInvite(leagueId: string): Promise<Invite> {
+  const res = await authenticatedRequest(`/api/v1/leagues/${leagueId}/invites`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as Invite;
+}
+
+/** Validate an invite token and return a public league preview. Unauthenticated:
+ *  a plain fetch with no Authorization header, since anyone with the link may
+ *  view the preview before joining. */
+export async function getInvitePreview(token: string): Promise<InvitePreview> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/invites/${encodeURIComponent(token)}`);
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as InvitePreview;
+}
+
+/** Join a league via invite token. Returns the joined League on 200. */
+export async function acceptInvite(token: string): Promise<League> {
+  const res = await authenticatedRequest(
+    `/api/v1/invites/${encodeURIComponent(token)}/accept`,
+    { method: "POST" },
+  );
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as League;
+}
+
 export { ApiError };

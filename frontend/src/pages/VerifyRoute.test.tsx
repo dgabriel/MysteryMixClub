@@ -63,6 +63,7 @@ describe("VerifyRoute", () => {
       logout: vi.fn(),
       logoutAll: vi.fn(),
       displayName: null,
+      userId: null,
       profileStatus: "idle",
       needsOnboarding: false,
       applyDisplayName: vi.fn(),

@@ -99,6 +99,25 @@ def _to_response(league: League) -> LeagueResponse:
     )
 
 
+class MemberResponse(BaseModel):
+    # Privacy-safe member shape: no email is exposed to fellow members.
+    user_id: str
+    display_name: str
+    joined_at: datetime
+    is_organizer: bool
+
+
+def _to_member_response(
+    member: LeagueMember, user: User, organizer_id: uuid.UUID
+) -> MemberResponse:
+    return MemberResponse(
+        user_id=str(member.user_id),
+        display_name=user.display_name,
+        joined_at=member.joined_at,
+        is_organizer=member.user_id == organizer_id,
+    )
+
+
 @router.post("", status_code=201, response_model=LeagueResponse)
 async def create_league(
     payload: LeagueCreate,
@@ -125,6 +144,25 @@ async def create_league(
     return _to_response(league)
 
 
+@router.get("", response_model=list[LeagueResponse])
+async def list_leagues(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[LeagueResponse]:
+    # Every league the caller is an active member of. The organizer holds such
+    # a row from league creation, so organized leagues are included naturally.
+    leagues = await db.scalars(
+        select(League)
+        .join(LeagueMember, LeagueMember.league_id == League.id)
+        .where(
+            LeagueMember.user_id == current_user.id,
+            LeagueMember.removed_at.is_(None),
+        )
+        .order_by(League.created_at.desc())
+    )
+    return [_to_response(league) for league in leagues]
+
+
 async def _load_league_as_organizer(
     league_id: uuid.UUID, current_user: User, db: AsyncSession, forbidden_detail: str
 ) -> League:
@@ -135,6 +173,58 @@ async def _load_league_as_organizer(
     if league.organizer_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=forbidden_detail)
     return league
+
+
+async def _load_league_as_member(
+    league_id: uuid.UUID, current_user: User, db: AsyncSession
+) -> League:
+    """Load a league or 404, then require the caller to be an active member or 403."""
+    league = await db.scalar(select(League).where(League.id == league_id))
+    if league is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="league not found")
+    membership = await db.scalar(
+        select(LeagueMember).where(
+            LeagueMember.league_id == league_id,
+            LeagueMember.user_id == current_user.id,
+            LeagueMember.removed_at.is_(None),
+        )
+    )
+    if membership is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="you are not a member of this league",
+        )
+    return league
+
+
+@router.get("/{league_id}", response_model=LeagueResponse)
+async def get_league(
+    league_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> LeagueResponse:
+    league = await _load_league_as_member(league_id, current_user, db)
+    return _to_response(league)
+
+
+@router.get("/{league_id}/members", response_model=list[MemberResponse])
+async def list_league_members(
+    league_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[MemberResponse]:
+    league = await _load_league_as_member(league_id, current_user, db)
+    # Active members joined to their users in one query to avoid an N+1.
+    rows = await db.execute(
+        select(LeagueMember, User)
+        .join(User, User.id == LeagueMember.user_id)
+        .where(
+            LeagueMember.league_id == league_id,
+            LeagueMember.removed_at.is_(None),
+        )
+        .order_by(LeagueMember.joined_at.asc())
+    )
+    return [_to_member_response(member, user, league.organizer_id) for member, user in rows.all()]
 
 
 @router.patch("/{league_id}", response_model=LeagueResponse)

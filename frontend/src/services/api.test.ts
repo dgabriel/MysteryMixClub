@@ -285,7 +285,13 @@ describe("api.ts", () => {
   });
 
   describe("getMe", () => {
+    // MYS-35: UserProfile must carry `id`. Annotating the fixture as UserProfile
+    // means this object literal only typechecks once UserProfile gains `id`
+    // (TS reports excess-property TS2353 until then). That compile error is the
+    // RED for the frontend contract — getMe() passes JSON through unchanged at
+    // runtime, so vitest alone cannot detect the missing type field.
     const profile: UserProfile = {
+      id: "11111111-1111-1111-1111-111111111111",
       display_name: "Ada",
       email: "ada@example.com",
       preferred_service: "spotify",
@@ -298,7 +304,12 @@ describe("api.ts", () => {
         .spyOn(globalThis, "fetch")
         .mockResolvedValue(jsonResponse(200, profile));
 
-      await expect(getMe()).resolves.toEqual(profile);
+      const resolved = await getMe();
+      expect(resolved).toEqual(profile);
+      // MYS-35: the user id is carried through the parsed profile verbatim. The
+      // typed read below fails to compile until UserProfile declares `id`.
+      const id: string = resolved.id;
+      expect(id).toBe("11111111-1111-1111-1111-111111111111");
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0];
@@ -343,7 +354,10 @@ describe("api.ts", () => {
   });
 
   describe("updateDisplayName", () => {
+    // See the getMe fixture note above: annotated UserProfile so the `id`
+    // property only typechecks once the type gains it (MYS-35).
     const profile: UserProfile = {
+      id: "11111111-1111-1111-1111-111111111111",
       display_name: "Alice",
       email: "alice@example.com",
       preferred_service: null,

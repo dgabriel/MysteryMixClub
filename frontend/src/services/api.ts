@@ -34,6 +34,7 @@ type TokenResponse = {
  *  means the user has completed onboarding; "" is the not-yet-onboarded
  *  sentinel. */
 export type UserProfile = {
+  id: string;
   display_name: string;
   email: string;
   preferred_service: string | null;

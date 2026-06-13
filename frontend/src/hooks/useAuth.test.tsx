@@ -28,6 +28,7 @@ const mockSetStored = vi.mocked(setStoredAccessToken);
 
 function profileWith(displayName: string): UserProfile {
   return {
+    id: "11111111-1111-1111-1111-111111111111",
     display_name: displayName,
     email: "u@example.com",
     preferred_service: null,

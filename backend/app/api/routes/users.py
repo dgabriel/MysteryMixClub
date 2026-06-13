@@ -16,6 +16,7 @@ DisplayName = Annotated[str, StringConstraints(strip_whitespace=True, min_length
 
 
 class UserProfileResponse(BaseModel):
+    id: str
     display_name: str
     email: str
     preferred_service: str | None
@@ -43,6 +44,7 @@ class UserProfileUpdate(BaseModel):
 
 def _to_profile(user: User) -> UserProfileResponse:
     return UserProfileResponse(
+        id=str(user.id),
         display_name=user.display_name,
         email=user.email,
         preferred_service=user.preferred_service,

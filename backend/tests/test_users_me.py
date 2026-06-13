@@ -130,20 +130,38 @@ async def test_get_me_returns_exact_profile_shape(client, db_session):
         default_vibe_mode=True,
     )
 
-    resp = await client.get(ME_URL, headers=_auth_header(user.id))
+    user_id = user.id
+
+    resp = await client.get(ME_URL, headers=_auth_header(user_id))
 
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert set(body.keys()) == {
+        "id",
         "display_name",
         "email",
         "preferred_service",
         "default_vibe_mode",
     }
+    assert body["id"] == str(user_id)
     assert body["display_name"] == "Bob"
     assert body["email"] == "bob@example.com"
     assert body["preferred_service"] is None
     assert body["default_vibe_mode"] is True
+
+
+async def test_get_me_includes_user_id(client, db_session):
+    """MYS-35: GET /users/me surfaces the user's id, serialized as a string."""
+    user = await _seed_user(db_session, email="carol@example.com", display_name="Carol")
+    user_id = user.id
+
+    resp = await client.get(ME_URL, headers=_auth_header(user_id))
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["id"] == str(user_id)
+    assert isinstance(body["id"], str)
+    assert body["id"] != ""
 
 
 # --------------------------------------------------------------------------- #
@@ -211,6 +229,46 @@ async def test_patch_partial_leaves_omitted_fields_untouched(client, db_session)
     assert fresh.display_name == "New Name"
     assert fresh.preferred_service == "deezer"
     assert fresh.default_vibe_mode is True
+
+
+# --------------------------------------------------------------------------- #
+# PATCH /users/me — id is read-only / not client-writable (MYS-35)
+# --------------------------------------------------------------------------- #
+
+
+async def test_patch_cannot_change_id(client, db_session):
+    """A client-supplied `id` must not mutate the user's primary key.
+
+    UserProfileUpdate is a plain Pydantic model with no extra-field config, so
+    Pydantic silently IGNORES the unknown `id` field (no 422) and it is never
+    applied. The endpoint returns 200 with the original id, and the persisted
+    id is unchanged.
+    """
+    user = await _seed_user(db_session)
+    original_id = user.id
+    other_id = uuid.uuid4()
+    assert other_id != original_id
+
+    resp = await client.patch(
+        ME_URL,
+        headers=_auth_header(original_id),
+        json={"id": str(other_id)},
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    # Response surfaces the unchanged id, not the attacker-supplied one.
+    assert body["id"] == str(original_id)
+    assert body["id"] != str(other_id)
+
+    # Persisted id is untouched.
+    db_session.expire_all()
+    fresh = await db_session.scalar(select(User).where(User.id == original_id))
+    assert fresh is not None
+    assert fresh.id == original_id
+
+    # The other id never came into existence.
+    assert await db_session.scalar(select(User).where(User.id == other_id)) is None
 
 
 # --------------------------------------------------------------------------- #

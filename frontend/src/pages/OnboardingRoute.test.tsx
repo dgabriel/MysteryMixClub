@@ -44,6 +44,7 @@ function setAuth(
     logout: vi.fn(),
     logoutAll: vi.fn(),
     displayName: overrides.needsOnboarding ? "" : "ada",
+    userId: status === "authenticated" ? "11111111-1111-1111-1111-111111111111" : null,
     profileStatus,
     needsOnboarding: overrides.needsOnboarding ?? false,
     applyDisplayName,

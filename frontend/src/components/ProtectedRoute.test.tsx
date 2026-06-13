@@ -27,6 +27,7 @@ function setStatus(
     logout: vi.fn(),
     logoutAll: vi.fn(),
     displayName: status === "authenticated" ? "ada" : null,
+    userId: status === "authenticated" ? "11111111-1111-1111-1111-111111111111" : null,
     profileStatus,
     needsOnboarding: overrides.needsOnboarding ?? false,
     applyDisplayName: vi.fn(),

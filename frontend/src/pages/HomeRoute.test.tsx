@@ -1,17 +1,47 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { HomeRoute } from "./HomeRoute";
+import { ApiError, getLeagues } from "../services/api";
+import type { League } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 
+// Mock the API module (no network). Keep ApiError real so instanceof / status work.
+vi.mock("../services/api", async () => {
+  const actual = await vi.importActual<typeof import("../services/api")>(
+    "../services/api",
+  );
+  return {
+    ...actual,
+    getLeagues: vi.fn(),
+  };
+});
+
+// Mock useAuth so we drive displayName / logout directly.
 vi.mock("../hooks/useAuth", () => ({
   useAuth: vi.fn(),
 }));
 
+const mockGetLeagues = vi.mocked(getLeagues);
 const mockUseAuth = vi.mocked(useAuth);
 const logout = vi.fn();
-const logoutAll = vi.fn();
+
+function leagueWith(overrides: Partial<League> = {}): League {
+  return {
+    id: "league-1",
+    name: "Friday Mixtape",
+    description: null,
+    organizer_id: "22222222-2222-2222-2222-222222222222",
+    total_rounds: 6,
+    votes_per_player: 3,
+    current_round: 2,
+    state: "active",
+    created_at: "2026-01-01T00:00:00Z",
+    completed_at: null,
+    ...overrides,
+  };
+}
 
 function renderHome() {
   return render(
@@ -19,80 +49,95 @@ function renderHome() {
       <Routes>
         <Route path="/home" element={<HomeRoute />} />
         <Route path="/login" element={<div>LOGIN CONTENT</div>} />
+        <Route path="/leagues/new" element={<div>NEW LEAGUE CONTENT</div>} />
+        <Route path="/leagues/:id" element={<div>LEAGUE DETAIL CONTENT</div>} />
+        <Route path="/join/:token" element={<div>JOIN CONTENT</div>} />
       </Routes>
     </MemoryRouter>,
   );
 }
 
-describe("HomeRoute", () => {
+describe("HomeRoute (My Leagues)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     logout.mockResolvedValue(undefined);
-    logoutAll.mockResolvedValue(undefined);
+    mockGetLeagues.mockResolvedValue([leagueWith()]);
     mockUseAuth.mockReturnValue({
       status: "authenticated",
       isAuthenticated: true,
       setAccessToken: vi.fn(),
       clear: vi.fn(),
       logout,
-      logoutAll,
+      logoutAll: vi.fn(),
       displayName: "ada",
+      userId: "11111111-1111-1111-1111-111111111111",
       profileStatus: "ready",
       needsOnboarding: false,
       applyDisplayName: vi.fn(),
     });
   });
 
-  it("renders the signed-in shell", () => {
-    renderHome();
-    expect(screen.getByText("you’re in")).toBeInTheDocument();
+  afterEach(() => {
+    localStorage.clear();
   });
 
-  it("logout action invokes useAuth().logout and navigates to /login", async () => {
+  it("happy path: calls getLeagues on mount and renders the league name", async () => {
+    renderHome();
+
+    expect(await screen.findByText("Friday Mixtape")).toBeInTheDocument();
+    expect(mockGetLeagues).toHaveBeenCalledTimes(1);
+  });
+
+  it("empty list: renders the empty-state copy", async () => {
+    mockGetLeagues.mockResolvedValue([]);
+    renderHome();
+
+    expect(await screen.findByText("no leagues yet")).toBeInTheDocument();
+  });
+
+  it("error: getLeagues rejecting surfaces a calm error via the error prop", async () => {
+    mockGetLeagues.mockRejectedValue(new ApiError(500, "boom"));
+    renderHome();
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+  });
+
+  it("create: the create-a-league action navigates to /leagues/new", async () => {
+    mockGetLeagues.mockResolvedValue([]);
     const user = userEvent.setup();
     renderHome();
 
+    await user.click(await screen.findByRole("button", { name: /create a league/i }));
+
+    expect(await screen.findByText("NEW LEAGUE CONTENT")).toBeInTheDocument();
+  });
+
+  it("open: clicking a league navigates to /leagues/{id}", async () => {
+    const user = userEvent.setup();
+    renderHome();
+
+    await user.click(await screen.findByText("Friday Mixtape"));
+
+    expect(await screen.findByText("LEAGUE DETAIL CONTENT")).toBeInTheDocument();
+  });
+
+  it("logout: invokes useAuth().logout and navigates to /login", async () => {
+    const user = userEvent.setup();
+    renderHome();
+
+    await screen.findByText("Friday Mixtape");
     await user.click(screen.getByRole("button", { name: /^logout$/i }));
 
     expect(logout).toHaveBeenCalledTimes(1);
-    expect(logoutAll).not.toHaveBeenCalled();
     expect(await screen.findByText("LOGIN CONTENT")).toBeInTheDocument();
   });
 
-  it("log-out-all action invokes useAuth().logoutAll and navigates to /login", async () => {
-    const user = userEvent.setup();
+  it("pending invite: a stored pendingInvitePath redirects there and clears the key", async () => {
+    localStorage.setItem("pendingInvitePath", "/join/abc");
     renderHome();
 
-    await user.click(screen.getByRole("button", { name: /log out of all devices/i }));
-
-    expect(logoutAll).toHaveBeenCalledTimes(1);
-    expect(logout).not.toHaveBeenCalled();
-    expect(await screen.findByText("LOGIN CONTENT")).toBeInTheDocument();
-  });
-
-  it("disables both actions while a logout call is in flight (busy)", async () => {
-    // Keep logout pending to observe the busy state.
-    let resolve!: () => void;
-    logout.mockReturnValue(
-      new Promise<void>((r) => {
-        resolve = r;
-      }),
-    );
-    const user = userEvent.setup();
-    renderHome();
-
-    await user.click(screen.getByRole("button", { name: /^logout$/i }));
-
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: /^logout$/i })).toBeDisabled(),
-    );
-    expect(
-      screen.getByRole("button", { name: /log out of all devices/i }),
-    ).toBeDisabled();
-
-    // Resolve the pending logout and wait for navigation so the trailing
-    // setBusy(false) state update is flushed inside act().
-    resolve();
-    expect(await screen.findByText("LOGIN CONTENT")).toBeInTheDocument();
+    expect(await screen.findByText("JOIN CONTENT")).toBeInTheDocument();
+    expect(localStorage.getItem("pendingInvitePath")).toBeNull();
   });
 });

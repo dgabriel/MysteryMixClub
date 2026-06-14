@@ -30,8 +30,9 @@ Production still deploys via App Platform — see [`ci-cd.md`](ci-cd.md).
 
 1. A **$6/mo Ubuntu 24.04 Droplet** created in DigitalOcean; note its public IP.
 2. Your **SSH key** added to the Droplet (you can `ssh root@<ip>`).
-3. Either a DNS record (e.g. `staging.mysterymixclub.com` → Droplet IP) **or**
-   plan to use the raw IP over HTTP for now (skip Certbot).
+3. No domain required for now — staging runs HTTPS on the raw IP with a
+   self-signed cert (step 4). Add a domain later to switch to Let's Encrypt
+   (step 5).
 
 ---
 
@@ -108,9 +109,16 @@ curl -s http://127.0.0.1:8000/api/v1/healthz   # -> {"status":"ok"}
 
 ---
 
-## 4. Install the Nginx site + basic auth
+## 4. TLS cert + Nginx site + basic auth
+
+The site serves HTTPS. With no domain yet, generate a **self-signed** cert (the
+Nginx config references `/etc/ssl/mmc-staging/`); testers click through a browser
+warning. Then install the site.
 
 ```bash
+# Self-signed cert for the raw IP (CN defaults to 67.207.81.183).
+sudo bash /home/mysterymixclub/app/scripts/generate-self-signed-cert.sh
+
 # Basic-auth file (username mmctest). Choose a password to share with testers.
 sudo htpasswd -bc /etc/nginx/.htpasswd-mmc-staging mmctest 'choose-a-test-password'
 
@@ -122,26 +130,25 @@ sudo rm -f /etc/nginx/sites-enabled/default      # drop the default site
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-Edit `server_name` in the site file to match your domain (or set it to `_` if
-using the raw IP).
+Staging is now at `https://<DROPLET_IP>/` behind basic auth (with a cert warning).
+
+> Note: `ENVIRONMENT=staging` means auth cookies are **not** marked `Secure`.
+> That's fine here; sign-in still works over the self-signed HTTPS connection.
 
 ---
 
-## 5. SSL with Certbot (or skip for now)
+## 5. Later: swap self-signed for a real Let's Encrypt cert
 
-**With a domain:**
+Once a domain (e.g. `staging.mysterymixclub.com`) points at the Droplet:
 
 ```bash
+# Update server_name in the site file to the domain first, then:
 sudo certbot --nginx -d staging.mysterymixclub.com
 ```
 
-Certbot rewrites the site file to add the HTTPS server block and an HTTP→HTTPS
-redirect, and installs an auto-renew timer.
-
-**Without a domain (raw IP, HTTP only):** skip Certbot. The site is reachable at
-`http://<DROPLET_IP>/` behind basic auth. Note browsers will treat it as
-insecure and `ENVIRONMENT=staging` means auth cookies are not marked `Secure`,
-which is fine over plain HTTP.
+Certbot takes over the `ssl_certificate` directives and installs an auto-renew
+timer — no more browser warning. Also update `ALLOWED_ORIGINS` / `APP_BASE_URL`
+in `staging.env` to the new domain and restart the service.
 
 ---
 

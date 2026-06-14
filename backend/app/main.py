@@ -4,7 +4,7 @@ import sys
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import auth, health, invites, leagues, users
+from app.api.routes import auth, health, invites, leagues, rounds, users
 from app.config import get_settings
 from app.routers import songs
 
@@ -46,6 +46,7 @@ def create_app() -> FastAPI:
     app.include_router(users.router, prefix="/api/v1")
     app.include_router(leagues.router, prefix="/api/v1")
     app.include_router(invites.router, prefix="/api/v1")
+    app.include_router(rounds.router, prefix="/api/v1")
     app.include_router(songs.router, prefix="/api/v1")
 
     return app

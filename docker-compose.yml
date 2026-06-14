@@ -1,3 +1,5 @@
+# Local development stack. Brings up Postgres for the FastAPI backend.
+# Usage: docker compose up -d   (then run the backend/frontend on the host)
 services:
   db:
     image: postgres:16-alpine
@@ -10,6 +12,8 @@ services:
       - "5432:5432"
     volumes:
       - mmc-pgdata:/var/lib/postgresql/data
+      # Creates the app DB (via POSTGRES_DB) plus mysterymixclub_test on first init.
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U mmc -d mysterymixclub"]
       interval: 5s

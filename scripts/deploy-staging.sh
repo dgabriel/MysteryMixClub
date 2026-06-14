@@ -48,6 +48,9 @@ npm ci
 # host like http://localhost:8000 would resolve against the visitor's browser.)
 # Honors VITE_API_BASE_URL from the sourced env if it is set there.
 VITE_API_BASE_URL="${VITE_API_BASE_URL-}" npm run build
+# Replace the web root contents rather than overlaying — Vite emits content-hashed
+# asset names, so a plain copy would leave stale bundles behind to accumulate.
+find "${WEB_ROOT}" -mindepth 1 -delete
 cp -r dist/* "${WEB_ROOT}/"
 
 echo "==> Deploy complete"

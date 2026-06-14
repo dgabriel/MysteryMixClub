@@ -40,8 +40,16 @@ apt-get install -y \
   python3-pip python3-venv \
   postgresql postgresql-contrib \
   certbot python3-certbot-nginx \
-  nodejs npm \
-  git apache2-utils   # apache2-utils provides htpasswd for the staging basic-auth file
+  git apache2-utils curl ca-certificates   # apache2-utils provides htpasswd for basic auth
+
+# Node.js 20 from NodeSource. Ubuntu 24.04's apt ships Node 18, but the frontend
+# requires Node 20+ — building the SPA on 18 silently produces a broken bundle
+# (e.g. VITE_API_BASE_URL handling differs). Guarded so re-runs are no-ops.
+if ! node --version 2>/dev/null | grep -q '^v20\.'; then
+  echo "==> Installing Node.js 20 (NodeSource)"
+  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+  apt-get install -y nodejs
+fi
 
 echo "==> Creating system user '${APP_USER}'"
 if id -u "${APP_USER}" >/dev/null 2>&1; then

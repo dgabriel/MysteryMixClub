@@ -91,12 +91,17 @@ Full spec: `docs/ci-cd.md`
 
 | Branch        | Deploys to                 | How                                  |
 |---------------|----------------------------|--------------------------------------|
-| `main`        | **production** (`mysterymixclub-prod`)    | push → `deploy-prod.yml` (manual approval gate) |
-| `develop`     | **staging** (`mysterymixclub-staging`)    | push → `deploy-staging.yml` (auto)   |
+| `main`        | **production** (`mysterymixclub-prod`, DO App Platform) | push → `deploy-prod.yml` (manual approval gate) |
+| `develop`     | **staging** (DO **Droplet**, IaaS) | push → `deploy-staging.yml` SSHes in and runs `scripts/deploy-staging.sh` |
 | `feature/*`   | nothing — open a PR        | PR → `develop` runs `ci.yml`         |
 
 Flow: branch `feature/*` off `develop` → PR into `develop` (CI must pass) →
 merge deploys to staging → PR `develop` → `main` → approve → deploys to prod.
+
+> **Note — environments diverge.** Staging runs on a self-managed Ubuntu Droplet
+> (Nginx + systemd + local Postgres); production still runs on DO App Platform.
+> Staging setup/runbook: `docs/staging-setup.md`. The `.do/app.staging.yaml` spec
+> is retained for reference but is **not** used by the staging deploy.
 
 **Local hook chain** (Husky v9, `core.hooksPath=.husky/_`)
 
@@ -110,10 +115,17 @@ Re-install hooks after a fresh clone with `npm install` (runs `prepare` → `hus
 **Config as code**
 
 - `.github/workflows/` — `ci.yml`, `deploy-staging.yml`, `deploy-prod.yml`.
-- `.do/app.staging.yaml` / `.do/app.prod.yaml` — per-environment DO App Platform
-  specs (api service + frontend static site + managed Postgres 15). Each deploy
-  workflow stages its spec into `.do/app.yaml` (gitignored) before deploying.
-  `deploy_on_push: false` — Actions own deploys.
+- **Staging (Droplet):** `scripts/bootstrap-droplet.sh` (one-time provision),
+  `scripts/deploy-staging.sh` (deploy), `scripts/mysterymixclub-api.service`
+  (systemd), `scripts/nginx-mysterymixclub-staging.conf` (Nginx),
+  `scripts/staging.env.example` (runtime env template). Runbook in
+  `docs/staging-setup.md`. Deploy needs GitHub secrets `STAGING_HOST`,
+  `STAGING_SSH_USER`, `STAGING_SSH_KEY`.
+- **Prod (App Platform):** `.do/app.prod.yaml` — DO App Platform spec (api
+  service + frontend static site + managed Postgres 15). `deploy-prod.yml` stages
+  it into `.do/app.yaml` (gitignored) before deploying; needs
+  `DIGITALOCEAN_ACCESS_TOKEN`. `.do/app.staging.yaml` is retained for reference
+  only (staging moved to the Droplet).
 
 **Adding a new secret**
 

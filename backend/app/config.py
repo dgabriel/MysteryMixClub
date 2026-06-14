@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     resend_api_key: str = Field(default="")
     odesli_api_key: str = Field(default="")
     allowed_origins: str = Field(default="")
-    environment: Literal["development", "production"] = "development"
+    environment: Literal["development", "staging", "production"] = "development"
     app_base_url: str = Field(default="https://mysterymixclub.com")
 
     @field_validator("database_url")

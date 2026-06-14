@@ -27,8 +27,8 @@ hand except secrets and branch-protection rules (documented below).
    └─────────────────────────────────────────────────────────┘
         │ merge
         ▼
-   push to develop ─► deploy-staging.yml ─► app_action/deploy
-                                              └─► mysterymixclub-staging
+   push to develop ─► deploy-staging.yml ─► ssh ─► scripts/deploy-staging.sh
+                                              └─► staging Droplet (Nginx + systemd)
         │ PR develop → main, merge
         ▼
    push to main ───► deploy-prod.yml ─► [environment: production]
@@ -42,9 +42,15 @@ hand except secrets and branch-protection rules (documented below).
 
 | Branch        | Purpose            | Deploys to    | Trigger                          |
 |---------------|--------------------|---------------|----------------------------------|
-| `main`        | production-ready   | `mysterymixclub-prod`    | push → `deploy-prod.yml` (gated) |
-| `develop`     | integration        | `mysterymixclub-staging` | push → `deploy-staging.yml`      |
+| `main`        | production-ready   | `mysterymixclub-prod` (DO App Platform) | push → `deploy-prod.yml` (gated) |
+| `develop`     | integration        | staging **Droplet** (IaaS) | push → `deploy-staging.yml` (SSH) |
 | `feature/*`   | one unit of work   | —             | PR → `develop` runs `ci.yml`     |
+
+> **Staging and prod use different infrastructure.** Staging is a self-managed
+> Ubuntu Droplet (Nginx + systemd + local Postgres); production is DO App
+> Platform. Staging provisioning and the deploy contract are documented in
+> [`staging-setup.md`](staging-setup.md). `.do/app.staging.yaml` is kept for
+> reference but no longer drives the staging deploy.
 
 Lifecycle: `feature/*` off `develop` → PR into `develop` (CI green required) →
 merge auto-deploys staging → smoke-test staging → PR `develop` → `main` →
@@ -57,10 +63,11 @@ approve the `production` environment → prod deploy.
 | File                              | On                        | Does                                                        |
 |-----------------------------------|---------------------------|-------------------------------------------------------------|
 | `.github/workflows/ci.yml`        | PR → `main` or `develop`  | Frontend lint/typecheck/test; backend ruff/mypy/pytest+cov  |
-| `.github/workflows/deploy-staging.yml` | push → `develop`     | stage `app.staging.yaml` → `digitalocean/app_action/deploy@v2` → `mysterymixclub-staging` |
-| `.github/workflows/deploy-prod.yml`    | push → `main`        | `environment: production` approval gate → stage `app.prod.yaml` → `mysterymixclub-prod` |
+| `.github/workflows/deploy-staging.yml` | push → `develop`     | SSH to the staging Droplet → run `scripts/deploy-staging.sh` (`STAGING_HOST`/`STAGING_SSH_USER`/`STAGING_SSH_KEY`) |
+| `.github/workflows/deploy-prod.yml`    | push → `main`        | `environment: production` approval gate → stage `app.prod.yaml` → `mysterymixclub-prod` (`DIGITALOCEAN_ACCESS_TOKEN`) |
 
-Both deploy jobs use `secrets.DIGITALOCEAN_ACCESS_TOKEN`.
+The prod deploy uses `secrets.DIGITALOCEAN_ACCESS_TOKEN`; the staging deploy uses
+the `STAGING_*` SSH secrets (see [`staging-setup.md`](staging-setup.md)).
 
 ---
 
@@ -121,7 +128,10 @@ GitHub → Settings → Secrets and variables → Actions:
 
 | Secret                       | Used by                          | Where to get it                              |
 |------------------------------|----------------------------------|----------------------------------------------|
-| `DIGITALOCEAN_ACCESS_TOKEN`  | both deploy workflows            | DO → API → Tokens (write scope)              |
+| `DIGITALOCEAN_ACCESS_TOKEN`  | `deploy-prod.yml`                | DO → API → Tokens (write scope)              |
+| `STAGING_HOST`               | `deploy-staging.yml`             | staging Droplet public IP / hostname         |
+| `STAGING_SSH_USER`           | `deploy-staging.yml`             | `mysterymixclub`                             |
+| `STAGING_SSH_KEY`            | `deploy-staging.yml`             | private deploy key for the Droplet (see `staging-setup.md`) |
 
 ### DigitalOcean app secrets
 

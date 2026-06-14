@@ -157,13 +157,14 @@ in `staging.env` to the new domain and restart the service.
 The `Deploy Staging` workflow (`.github/workflows/deploy-staging.yml`) SSHes into
 the Droplet on every push to `develop` and runs `scripts/deploy-staging.sh`.
 
-**Sudoers** — the SSH user runs `systemctl restart` and `cp` to the web root via
-sudo. Grant passwordless sudo for just those commands:
+**Sudoers** — the deploy script restarts the service via sudo (the web root is
+owned by the deploy user, so the frontend publish needs no sudo). Grant
+passwordless sudo for just that one command:
 
 ```bash
 # on the Droplet, as root
 cat >/etc/sudoers.d/mysterymixclub-deploy <<'EOF'
-mysterymixclub ALL=(root) NOPASSWD: /bin/systemctl restart mysterymixclub-api, /bin/cp -r /home/mysterymixclub/app/frontend/dist/* /var/www/mysterymixclub/
+mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl restart mysterymixclub-api
 EOF
 chmod 440 /etc/sudoers.d/mysterymixclub-deploy
 ```

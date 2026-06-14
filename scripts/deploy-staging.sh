@@ -6,8 +6,8 @@
 #
 # Requires the invoking user to have passwordless sudo for:
 #   systemctl restart mysterymixclub-api
-#   cp -r .../dist/* /var/www/mysterymixclub/
-# (see docs/staging-setup.md).
+# The web root is owned by the deploy user (see bootstrap-droplet.sh), so the
+# frontend publish step needs no sudo. (See docs/staging-setup.md.)
 set -euo pipefail
 
 ENV_FILE="${ENV_FILE:-/etc/mysterymixclub/staging.env}"
@@ -40,6 +40,6 @@ echo "==> Building and publishing the frontend"
 cd ../frontend
 npm ci
 npm run build
-sudo cp -r dist/* "${WEB_ROOT}/"
+cp -r dist/* "${WEB_ROOT}/"
 
 echo "==> Deploy complete"

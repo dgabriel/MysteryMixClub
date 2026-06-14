@@ -97,7 +97,7 @@ uvicorn app.main:app --reload
 
 - API: <http://localhost:8000>
 - Interactive docs: <http://localhost:8000/docs>
-- Health check: <http://localhost:8000/api/v1/health>
+- Health check: <http://localhost:8000/api/v1/healthz>
 
 > Sign-in is magic-link based. In development no email is sent — the link is
 > printed to the **uvicorn console**. Watch the backend logs to grab it.

@@ -146,7 +146,7 @@ class DeezerSearchClient:
         if cached is not None:
             return cached
 
-        params = {"q": _build_query(title, artist), "limit": _RESULT_LIMIT}
+        params: dict[str, str | int] = {"q": _build_query(title, artist), "limit": _RESULT_LIMIT}
         try:
             async with self._client_factory() as client:
                 response = await client.get(_SEARCH_URL, params=params)

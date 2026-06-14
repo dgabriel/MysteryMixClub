@@ -33,8 +33,8 @@ from app.services.odesli import (
     get_odesli_client,
 )
 
-RESOLVE_URL = "/api/songs/resolve"
-SEARCH_URL = "/api/songs/search"
+RESOLVE_URL = "/api/v1/songs/resolve"
+SEARCH_URL = "/api/v1/songs/search"
 
 
 class _FakeOdesli:
@@ -119,7 +119,7 @@ async def test_search_requires_auth(session_factory):
 
 
 # --------------------------------------------------------------------------- #
-# POST /api/songs/resolve
+# POST /api/v1/songs/resolve
 # --------------------------------------------------------------------------- #
 
 
@@ -164,7 +164,7 @@ async def test_resolve_maps_service_errors(session_factory, db_session, error, e
 
 
 # --------------------------------------------------------------------------- #
-# GET /api/songs/search
+# GET /api/v1/songs/search
 # --------------------------------------------------------------------------- #
 
 

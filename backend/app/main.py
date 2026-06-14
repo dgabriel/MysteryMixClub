@@ -46,9 +46,7 @@ def create_app() -> FastAPI:
     app.include_router(users.router, prefix="/api/v1")
     app.include_router(leagues.router, prefix="/api/v1")
     app.include_router(invites.router, prefix="/api/v1")
-    # Song search PoC (MYS-44) mounts at /api/songs/* per the ticket spec, a
-    # deliberate exception to the /api/v1 prefix used by the rest of the API.
-    app.include_router(songs.router, prefix="/api")
+    app.include_router(songs.router, prefix="/api/v1")
 
     return app
 

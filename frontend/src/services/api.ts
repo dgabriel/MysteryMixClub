@@ -353,9 +353,8 @@ export async function acceptInvite(token: string): Promise<League> {
 }
 
 // --------------------------------------------------------------------------- //
-// Song search & resolution (MYS-44). These hit /api/songs/* (not /api/v1), the
-// dedicated prefix the Song Search PoC mounts under. Search is powered by
-// Deezer (keyless), and selecting a result resolves its URL via Odesli.
+// Song search & resolution (MYS-44 / MYS-17). Search is powered by Deezer
+// (keyless); selecting a result resolves its URL via Odesli.
 // --------------------------------------------------------------------------- //
 
 /** Streaming platforms the app surfaces, matching the backend's normalized keys. */
@@ -372,8 +371,8 @@ export type ResolvedSong = {
   platforms: Partial<Record<PlatformKey, string>>;
 };
 
-/** A single search hit (GET /api/songs/search). `resolve_url` is the platform
- *  URL handed back to POST /api/songs/resolve when the user picks this track. */
+/** A single search hit (GET /api/v1/songs/search). `resolve_url` is the platform
+ *  URL handed back to POST /api/v1/songs/resolve when the user picks this track. */
 export type SongSearchTrack = {
   id: string;
   title: string;
@@ -393,7 +392,7 @@ export type SongSearchResults = {
 
 /** Resolve a pasted Spotify/YouTube link to its canonical cross-platform song. */
 export async function resolveSong(url: string): Promise<ResolvedSong> {
-  const res = await authenticatedRequest("/api/songs/resolve", {
+  const res = await authenticatedRequest("/api/v1/songs/resolve", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ url }),
@@ -410,7 +409,7 @@ export async function searchSongs(q: string, artist?: string): Promise<SongSearc
   if (artist && artist.trim()) {
     params.set("artist", artist.trim());
   }
-  const res = await authenticatedRequest(`/api/songs/search?${params.toString()}`);
+  const res = await authenticatedRequest(`/api/v1/songs/search?${params.toString()}`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }

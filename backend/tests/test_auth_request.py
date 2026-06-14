@@ -34,7 +34,45 @@ async def test_valid_email_returns_200_neutral_message(client, email_spy):
     resp = await client.post(REQUEST_URL, json={"email": "alice@example.com"})
 
     assert resp.status_code == 200
-    assert resp.json() == {"message": NEUTRAL_MESSAGE}
+    assert resp.json()["message"] == NEUTRAL_MESSAGE
+
+
+async def test_dev_token_returned_outside_production(client, email_spy):
+    # Tests run with environment != "production", so the raw token is handed back
+    # for dev/staging UIs. It must match the link the email sender received.
+    resp = await client.post(REQUEST_URL, json={"email": "alice@example.com"})
+
+    assert resp.status_code == 200
+    dev_token = resp.json()["dev_token"]
+    assert dev_token
+    assert email_spy.calls[0][1].endswith(f"/auth/verify?token={dev_token}")
+
+
+async def test_dev_token_absent_in_production(session_factory, email_spy):
+    # In production the token must never be exposed in the response body.
+    from httpx import ASGITransport, AsyncClient
+
+    from app.config import Settings, get_settings
+    from app.db.session import get_db
+    from app.main import create_app
+    from app.services.email import get_email_sender
+
+    app = create_app()
+
+    async def _override_db():
+        async with session_factory() as session:
+            yield session
+
+    app.dependency_overrides[get_db] = _override_db
+    app.dependency_overrides[get_email_sender] = lambda: email_spy
+    app.dependency_overrides[get_settings] = lambda: Settings(environment="production")
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        resp = await ac.post(REQUEST_URL, json={"email": "alice@example.com"})
+
+    assert resp.status_code == 200
+    assert "dev_token" not in resp.json()
 
 
 async def test_valid_email_inserts_exactly_one_row(client, db_session):

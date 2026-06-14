@@ -81,12 +81,14 @@ describe("api.ts", () => {
   });
 
   describe("requestMagicLink", () => {
-    it("POSTs the email to /auth/request and resolves on 200", async () => {
+    it("POSTs the email to /auth/request and resolves with a null devToken on 200", async () => {
       const fetchMock = vi
         .spyOn(globalThis, "fetch")
         .mockResolvedValue(jsonResponse(200, { message: "ok" }));
 
-      await expect(requestMagicLink("user@example.com")).resolves.toBeUndefined();
+      await expect(requestMagicLink("user@example.com")).resolves.toEqual({
+        devToken: null,
+      });
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0];
@@ -96,6 +98,16 @@ describe("api.ts", () => {
       expect((init?.headers as Record<string, string>)["Content-Type"]).toBe(
         "application/json",
       );
+    });
+
+    it("returns the dev_token from the body when present (dev/staging)", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse(200, { message: "ok", dev_token: "tok-xyz" }),
+      );
+
+      await expect(requestMagicLink("user@example.com")).resolves.toEqual({
+        devToken: "tok-xyz",
+      });
     });
 
     it("throws ApiError with the backend detail on a non-2xx response", async () => {

@@ -7,9 +7,16 @@ type EmailEntryScreenProps = {
   onSubmit: (email: string) => void;
   submitting: boolean;
   error?: string | null;
+  /** Dev/staging only: a relative sign-in link to show below the button. */
+  devLink?: string | null;
 };
 
-export function EmailEntryScreen({ onSubmit, submitting, error }: EmailEntryScreenProps) {
+export function EmailEntryScreen({
+  onSubmit,
+  submitting,
+  error,
+  devLink,
+}: EmailEntryScreenProps) {
   const [email, setEmail] = useState("");
 
   function handleSubmit(e: FormEvent) {
@@ -57,6 +64,23 @@ export function EmailEntryScreen({ onSubmit, submitting, error }: EmailEntryScre
             {submitting ? "sending…" : "send sign-in link"}
           </Button>
         </form>
+
+        {/* Dev/staging convenience: a clickable sign-in link so testers don't
+            need a delivered email. Styled understated (ink, not Rust — the
+            screen's single Rust use is the ring dot above). */}
+        {devLink ? (
+          <div className="mt-8 border-t border-border pt-6">
+            <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
+              dev · staging only
+            </p>
+            <a
+              href={devLink}
+              className="mt-3 inline-block font-mono text-[13px] font-light text-ink underline underline-offset-[3px] break-all"
+            >
+              sign in with this link
+            </a>
+          </div>
+        ) : null}
       </div>
     </main>
   );

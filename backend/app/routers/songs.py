@@ -2,8 +2,8 @@
 
 Two endpoints back the home-screen Song Search card:
 
-* ``POST /api/songs/resolve`` — paste a link, get the canonical cross-platform song
-* ``GET  /api/songs/search``  — search Deezer by title (+ optional artist)
+* ``POST /api/v1/songs/resolve`` — paste a link, get the canonical cross-platform song
+* ``GET  /api/v1/songs/search``  — search Deezer by title (+ optional artist)
 
 Both are authenticated. All upstream knowledge lives in the service layer
 (:mod:`app.services.odesli`, :mod:`app.services.deezer_search`); this router only

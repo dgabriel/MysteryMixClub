@@ -1,0 +1,214 @@
+"""Round flow endpoints (MYS-18).
+
+Round lifecycle and the create/read/update surface for a league's rounds:
+
+* ``POST  /api/v1/leagues/:id/rounds`` — organizer creates the next round
+* ``GET   /api/v1/leagues/:id/rounds`` — members list a league's rounds
+* ``GET   /api/v1/rounds/:id``         — members read a round
+* ``PATCH /api/v1/rounds/:id``         — organizer edits fields / advances state
+
+State machine is forward-only: ``open_submission -> open_voting -> closed``.
+Playlist generation (``GET /rounds/:id/playlist``) is the second MYS-18 slice and
+lands once submissions exist (MYS-51). Membership/organizer checks reuse the
+helpers in :mod:`app.api.routes.leagues`.
+"""
+
+import uuid
+from datetime import datetime
+from typing import Annotated, Literal
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field, StringConstraints, model_validator
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.routes.leagues import _load_league_as_member, _load_league_as_organizer
+from app.auth.deps import get_current_user
+from app.db.session import get_db
+from app.models.round import Round
+from app.models.user import User
+
+router = APIRouter(tags=["rounds"])
+
+RoundTheme = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+
+# Forward-only lifecycle: each state's single permitted successor.
+_NEXT_STATE = {"open_submission": "open_voting", "open_voting": "closed"}
+
+
+class RoundCreate(BaseModel):
+    theme: RoundTheme
+    submission_deadline: datetime | None = None
+    voting_deadline: datetime | None = None
+    # Defaults to the league's votes_per_player when omitted.
+    votes_per_player: int | None = Field(default=None, ge=1)
+
+
+class RoundUpdate(BaseModel):
+    # All optional: only provided fields are applied. `state` advances the machine.
+    theme: RoundTheme | None = None
+    submission_deadline: datetime | None = None
+    voting_deadline: datetime | None = None
+    state: Literal["open_submission", "open_voting", "closed"] | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_explicit_null_theme(cls, data):
+        # theme maps to a NOT NULL column: allow omission, reject explicit null.
+        if isinstance(data, dict) and "theme" in data and data["theme"] is None:
+            raise ValueError("theme may not be null")
+        return data
+
+
+class RoundResponse(BaseModel):
+    id: str
+    league_id: str
+    round_number: int
+    theme: str
+    state: str
+    submission_deadline: datetime | None
+    voting_deadline: datetime | None
+    votes_per_player: int
+    created_at: datetime
+    closed_at: datetime | None
+
+
+def _to_response(r: Round) -> RoundResponse:
+    return RoundResponse(
+        id=str(r.id),
+        league_id=str(r.league_id),
+        round_number=r.round_number,
+        theme=r.theme,
+        state=r.state,
+        submission_deadline=r.submission_deadline,
+        voting_deadline=r.voting_deadline,
+        votes_per_player=r.votes_per_player,
+        created_at=r.created_at,
+        closed_at=r.closed_at,
+    )
+
+
+async def _load_round(round_id: uuid.UUID, db: AsyncSession) -> Round:
+    round_ = await db.scalar(select(Round).where(Round.id == round_id))
+    if round_ is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="round not found")
+    return round_
+
+
+@router.post("/leagues/{league_id}/rounds", status_code=201, response_model=RoundResponse)
+async def create_round(
+    league_id: uuid.UUID,
+    payload: RoundCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> RoundResponse:
+    league = await _load_league_as_organizer(
+        league_id, current_user, db, "only the organizer can create rounds"
+    )
+    if league.state == "complete":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="league is complete")
+
+    # Rounds are strictly sequential: the current one must close first.
+    open_round = await db.scalar(
+        select(Round).where(Round.league_id == league_id, Round.state != "closed").limit(1)
+    )
+    if open_round is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="the current round must be closed before starting a new one",
+        )
+
+    existing = await db.scalar(
+        select(func.count()).select_from(Round).where(Round.league_id == league_id)
+    )
+    next_number = (existing or 0) + 1
+    if next_number > league.total_rounds:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="all rounds for this league have already been created",
+        )
+
+    round_ = Round(
+        league_id=league_id,
+        round_number=next_number,
+        theme=payload.theme,
+        submission_deadline=payload.submission_deadline,
+        voting_deadline=payload.voting_deadline,
+        votes_per_player=(
+            payload.votes_per_player
+            if payload.votes_per_player is not None
+            else league.votes_per_player
+        ),
+    )
+    db.add(round_)
+    # The newly opened round becomes the league's active round. The
+    # (league_id, round_number) unique constraint guards integrity if two
+    # creates ever race.
+    league.current_round = next_number
+    await db.commit()
+    await db.refresh(round_)
+    return _to_response(round_)
+
+
+@router.get("/leagues/{league_id}/rounds", response_model=list[RoundResponse])
+async def list_rounds(
+    league_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[RoundResponse]:
+    await _load_league_as_member(league_id, current_user, db)
+    rounds = await db.scalars(
+        select(Round).where(Round.league_id == league_id).order_by(Round.round_number.asc())
+    )
+    return [_to_response(r) for r in rounds]
+
+
+@router.get("/rounds/{round_id}", response_model=RoundResponse)
+async def get_round(
+    round_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> RoundResponse:
+    round_ = await _load_round(round_id, db)
+    await _load_league_as_member(round_.league_id, current_user, db)
+    return _to_response(round_)
+
+
+@router.patch("/rounds/{round_id}", response_model=RoundResponse)
+async def update_round(
+    round_id: uuid.UUID,
+    payload: RoundUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> RoundResponse:
+    round_ = await _load_round(round_id, db)
+    league = await _load_league_as_organizer(
+        round_.league_id, current_user, db, "only the organizer can update rounds"
+    )
+
+    updates = payload.model_dump(exclude_unset=True)
+    new_state = updates.pop("state", None)
+
+    # Field edits (theme, deadlines) are frozen once the round is closed.
+    if updates and round_.state == "closed":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="round is closed")
+    for field, value in updates.items():
+        setattr(round_, field, value)
+
+    if new_state is not None and new_state != round_.state:
+        if new_state != _NEXT_STATE.get(round_.state):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"cannot move round from {round_.state} to {new_state}",
+            )
+        round_.state = new_state
+        if new_state == "closed":
+            round_.closed_at = func.now()
+            # Closing the final round completes the league.
+            if round_.round_number >= league.total_rounds:
+                league.state = "complete"
+                league.completed_at = func.now()
+
+    await db.commit()
+    await db.refresh(round_)
+    return _to_response(round_)

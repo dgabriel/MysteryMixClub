@@ -87,6 +87,19 @@ jobs:
       - name: Mypy
         run: mypy app
 
+      # Guards against "model added but migration missing": prove the migrations
+      # apply cleanly (and reverse) against a fresh DB on every PR. Uses a separate
+      # throwaway database so it never collides with the schema pytest's conftest
+      # builds via create_all on mysterymixclub_test.
+      - name: Alembic migrations apply
+        run: |
+          PGPASSWORD=mmc psql -h localhost -U mmc -d mysterymixclub_test \
+            -c "CREATE DATABASE mmc_migrate_check;"
+          export DATABASE_URL=postgresql+asyncpg://mmc:mmc@localhost:5432/mmc_migrate_check
+          alembic upgrade head
+          alembic downgrade base
+          alembic upgrade head
+
       - name: Pytest (with coverage)
         run: pytest --cov=app --cov-report=term-missing --cov-report=xml
 

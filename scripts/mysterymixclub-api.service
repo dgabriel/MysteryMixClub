@@ -1,0 +1,22 @@
+# MysteryMixClub FastAPI backend — staging.
+# Install on the Droplet:
+#   sudo cp scripts/mysterymixclub-api.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now mysterymixclub-api
+[Unit]
+Description=MysteryMixClub FastAPI (staging)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=mysterymixclub
+Group=mysterymixclub
+WorkingDirectory=/home/mysterymixclub/app/backend
+EnvironmentFile=/etc/mysterymixclub/staging.env
+ExecStart=/home/mysterymixclub/app/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

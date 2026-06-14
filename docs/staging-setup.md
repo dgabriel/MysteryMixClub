@@ -77,6 +77,10 @@ Fill in at least:
 - `RESEND_API_KEY` — set this so magic-link emails are actually sent. If left
   empty, links are only written to the service journal (see Troubleshooting).
 - `ALLOWED_ORIGINS` / `APP_BASE_URL` — your staging URL.
+- `VITE_API_BASE_URL` — leave **empty**. The SPA then calls the API same-origin
+  (relative `/api/v1/...`), which nginx proxies to the backend. An absolute host
+  here (e.g. `http://localhost:8000`) would resolve against the visitor's own
+  browser and fail.
 
 Lock it down:
 

@@ -35,7 +35,8 @@ function searchResults(overrides: Partial<SongSearchResults> = {}): SongSearchRe
         artist: "Billie Eilish",
         album: "When We All Fall Asleep",
         thumbnail_url: "https://img/s.jpg",
-        spotify_url: "https://open.spotify.com/track/id0",
+        isrc: "USUM71900764",
+        resolve_url: "https://www.deezer.com/track/id0",
       },
     ],
     too_many_results: false,
@@ -119,8 +120,8 @@ describe("SongSearchCard", () => {
     await user.click(row);
 
     expect(await screen.findByRole("heading", { name: "bad guy" })).toBeInTheDocument();
-    // Selection resolves via the track's Spotify URL for cross-platform links.
-    expect(mockResolve).toHaveBeenCalledWith("https://open.spotify.com/track/id0");
+    // Selection resolves via the track's URL for cross-platform links.
+    expect(mockResolve).toHaveBeenCalledWith("https://www.deezer.com/track/id0");
   });
 
   it("surfaces the too-many-matches nudge", async () => {

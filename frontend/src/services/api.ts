@@ -354,7 +354,8 @@ export async function acceptInvite(token: string): Promise<League> {
 
 // --------------------------------------------------------------------------- //
 // Song search & resolution (MYS-44). These hit /api/songs/* (not /api/v1), the
-// dedicated prefix the Song Search PoC mounts under.
+// dedicated prefix the Song Search PoC mounts under. Search is powered by
+// Deezer (keyless), and selecting a result resolves its URL via Odesli.
 // --------------------------------------------------------------------------- //
 
 /** Streaming platforms the app surfaces, matching the backend's normalized keys. */
@@ -371,14 +372,16 @@ export type ResolvedSong = {
   platforms: Partial<Record<PlatformKey, string>>;
 };
 
-/** A single Spotify search hit (GET /api/songs/search). */
+/** A single search hit (GET /api/songs/search). `resolve_url` is the platform
+ *  URL handed back to POST /api/songs/resolve when the user picks this track. */
 export type SongSearchTrack = {
   id: string;
   title: string;
   artist: string | null;
   album: string | null;
   thumbnail_url: string | null;
-  spotify_url: string | null;
+  isrc: string | null;
+  resolve_url: string | null;
 };
 
 /** Search response: up to 10 tracks, plus a flag asking the user to add an

@@ -12,8 +12,6 @@ class Settings(BaseSettings):
     secret_key: str = Field(default="")
     resend_api_key: str = Field(default="")
     odesli_api_key: str = Field(default="")
-    spotify_client_id: str = Field(default="")
-    spotify_client_secret: str = Field(default="")
     allowed_origins: str = Field(default="")
     environment: Literal["development", "staging", "production"] = "development"
     app_base_url: str = Field(default="https://mysterymixclub.com")

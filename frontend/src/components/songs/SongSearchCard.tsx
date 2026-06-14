@@ -144,16 +144,16 @@ export function SongSearchCard() {
     setLoadingLabel("resolving song");
     setError(null);
     try {
-      // Resolve via the Spotify URL for cross-platform links, but keep the
-      // richer Spotify metadata (album, art) for display.
-      const base: ResolvedSong = track.spotify_url
-        ? await resolveSong(track.spotify_url)
+      // Resolve the picked track's URL for cross-platform links, but keep the
+      // richer search metadata (album, art, ISRC) from Deezer for display.
+      const base: ResolvedSong = track.resolve_url
+        ? await resolveSong(track.resolve_url)
         : {
             title: track.title,
             artist: track.artist,
             album: track.album,
             thumbnail_url: track.thumbnail_url,
-            isrc: null,
+            isrc: track.isrc,
             platforms: {},
           };
       setResolved({
@@ -162,6 +162,8 @@ export function SongSearchCard() {
         artist: track.artist ?? base.artist,
         album: track.album ?? base.album,
         thumbnail_url: track.thumbnail_url ?? base.thumbnail_url,
+        // Keyless Odesli omits ISRC; fall back to the Deezer search result's.
+        isrc: base.isrc ?? track.isrc,
       });
     } catch {
       setError(LINK_ERROR);

@@ -17,8 +17,12 @@ WEB_ROOT="${WEB_ROOT:-/var/www/mysterymixclub}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${REPO_ROOT}"
 
-echo "==> Pulling latest develop"
-git pull origin develop
+echo "==> Syncing to origin/develop"
+# Force the checkout to exactly match origin/develop, regardless of the current
+# branch or any local drift — a deploy target carries no local commits. This
+# keeps the deploy idempotent and safe to re-run.
+git fetch --prune origin
+git checkout -f -B develop origin/develop
 
 echo "==> Installing backend dependencies and running migrations"
 cd backend

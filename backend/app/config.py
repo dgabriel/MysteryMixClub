@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,6 +15,22 @@ class Settings(BaseSettings):
     allowed_origins: str = Field(default="")
     environment: Literal["development", "production"] = "development"
     app_base_url: str = Field(default="https://mysterymixclub.com")
+
+    @field_validator("database_url")
+    @classmethod
+    def _normalize_async_driver(cls, value: str) -> str:
+        # DO managed Postgres emits a bare postgresql:// (or postgres://) URL, but
+        # the app and alembic use async engines that require the +asyncpg driver.
+        # Prefix swap only; the rest (userinfo/host/port/path/query) is preserved
+        # verbatim. Note: asyncpg ignores libpq's sslmode= param; rewriting it to
+        # asyncpg's ssl= form is tracked separately and intentionally not done here.
+        if value.startswith("postgresql+"):
+            return value
+        if value.startswith("postgresql://"):
+            return "postgresql+asyncpg://" + value[len("postgresql://") :]
+        if value.startswith("postgres://"):
+            return "postgresql+asyncpg://" + value[len("postgres://") :]
+        return value
 
     @property
     def cors_origins(self) -> list[str]:

@@ -43,7 +43,11 @@ sudo systemctl restart mysterymixclub-api
 echo "==> Building and publishing the frontend"
 cd ../frontend
 npm ci
-npm run build
+# Build the SPA to call the API same-origin: an empty base yields relative
+# /api/v1/... URLs, which nginx proxies to the backend. (A baked-in absolute
+# host like http://localhost:8000 would resolve against the visitor's browser.)
+# Honors VITE_API_BASE_URL from the sourced env if it is set there.
+VITE_API_BASE_URL="${VITE_API_BASE_URL-}" npm run build
 cp -r dist/* "${WEB_ROOT}/"
 
 echo "==> Deploy complete"

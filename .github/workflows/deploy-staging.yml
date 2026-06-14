@@ -27,6 +27,11 @@ jobs:
           script_stop: true
           script: |
             cd /home/mysterymixclub/app
+            # Sync the checkout (including deploy-staging.sh itself) to
+            # origin/develop BEFORE invoking it, so a deploy never executes a
+            # stale copy of the script that then changes underneath it.
+            git fetch --prune origin
+            git checkout -f -B develop origin/develop
             ./scripts/deploy-staging.sh
 
       # Simple pass/fail notification (Actions log only, for now).

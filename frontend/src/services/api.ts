@@ -311,10 +311,9 @@ export async function updateLeague(
 
 /** Remove a member from a league (organizer only). Resolves on 204. */
 export async function removeMember(leagueId: string, userId: string): Promise<void> {
-  const res = await authenticatedRequest(
-    `/api/v1/leagues/${leagueId}/members/${userId}`,
-    { method: "DELETE" },
-  );
+  const res = await authenticatedRequest(`/api/v1/leagues/${leagueId}/members/${userId}`, {
+    method: "DELETE",
+  });
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
@@ -344,14 +343,75 @@ export async function getInvitePreview(token: string): Promise<InvitePreview> {
 
 /** Join a league via invite token. Returns the joined League on 200. */
 export async function acceptInvite(token: string): Promise<League> {
-  const res = await authenticatedRequest(
-    `/api/v1/invites/${encodeURIComponent(token)}/accept`,
-    { method: "POST" },
-  );
+  const res = await authenticatedRequest(`/api/v1/invites/${encodeURIComponent(token)}/accept`, {
+    method: "POST",
+  });
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
   return (await res.json()) as League;
+}
+
+// --------------------------------------------------------------------------- //
+// Song search & resolution (MYS-44). These hit /api/songs/* (not /api/v1), the
+// dedicated prefix the Song Search PoC mounts under.
+// --------------------------------------------------------------------------- //
+
+/** Streaming platforms the app surfaces, matching the backend's normalized keys. */
+export type PlatformKey = "spotify" | "youtube" | "deezer" | "appleMusic";
+
+/** A canonical, platform-agnostic song resolved from a link or a search pick.
+ *  `platforms` only contains the platforms that actually have a link. */
+export type ResolvedSong = {
+  title: string;
+  artist: string | null;
+  album: string | null;
+  thumbnail_url: string | null;
+  isrc: string | null;
+  platforms: Partial<Record<PlatformKey, string>>;
+};
+
+/** A single Spotify search hit (GET /api/songs/search). */
+export type SongSearchTrack = {
+  id: string;
+  title: string;
+  artist: string | null;
+  album: string | null;
+  thumbnail_url: string | null;
+  spotify_url: string | null;
+};
+
+/** Search response: up to 10 tracks, plus a flag asking the user to add an
+ *  artist when the title alone was too ambiguous. */
+export type SongSearchResults = {
+  results: SongSearchTrack[];
+  too_many_results: boolean;
+};
+
+/** Resolve a pasted Spotify/YouTube link to its canonical cross-platform song. */
+export async function resolveSong(url: string): Promise<ResolvedSong> {
+  const res = await authenticatedRequest("/api/songs/resolve", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as ResolvedSong;
+}
+
+/** Search Spotify by title, optionally narrowed by artist. */
+export async function searchSongs(q: string, artist?: string): Promise<SongSearchResults> {
+  const params = new URLSearchParams({ q });
+  if (artist && artist.trim()) {
+    params.set("artist", artist.trim());
+  }
+  const res = await authenticatedRequest(`/api/songs/search?${params.toString()}`);
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as SongSearchResults;
 }
 
 export { ApiError };

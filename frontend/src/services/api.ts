@@ -63,8 +63,11 @@ async function readErrorMessage(res: Response): Promise<string> {
 /**
  * Request a magic link. Returns a neutral result regardless of whether the
  * email is registered — the backend responds 200 with a neutral message.
+ *
+ * Outside production the backend also returns `dev_token` so the UI can show a
+ * clickable sign-in link for testing; it is absent in production.
  */
-export async function requestMagicLink(email: string): Promise<void> {
+export async function requestMagicLink(email: string): Promise<{ devToken: string | null }> {
   const res = await fetch(`${AUTH_BASE}/request`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -73,6 +76,8 @@ export async function requestMagicLink(email: string): Promise<void> {
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
+  const data = (await res.json()) as { dev_token?: string | null };
+  return { devToken: data.dev_token ?? null };
 }
 
 /**

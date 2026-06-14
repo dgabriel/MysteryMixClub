@@ -17,7 +17,7 @@ describe("LoginRoute", () => {
   });
 
   it("happy path: submits a trimmed email and shows CheckEmail with that email", async () => {
-    mockRequestMagicLink.mockResolvedValue(undefined);
+    mockRequestMagicLink.mockResolvedValue({ devToken: null });
     const user = userEvent.setup();
 
     render(<LoginRoute />);
@@ -84,8 +84,23 @@ describe("LoginRoute", () => {
     expect(screen.queryByText("check your email")).not.toBeInTheDocument();
   });
 
+  it("dev/staging: when a dev token is returned, shows a relative sign-in link and NOT CheckEmail", async () => {
+    mockRequestMagicLink.mockResolvedValue({ devToken: "tok-123" });
+    const user = userEvent.setup();
+
+    render(<LoginRoute />);
+
+    await user.type(screen.getByLabelText(/email/i), "user@example.com");
+    await user.click(screen.getByRole("button", { name: /send sign-in link/i }));
+
+    const link = await screen.findByRole("link", { name: /sign in with this link/i });
+    expect(link).toHaveAttribute("href", "/auth/verify?token=tok-123");
+    // The "check your email" screen is not shown when the dev link is available.
+    expect(screen.queryByText("check your email")).not.toBeInTheDocument();
+  });
+
   it("back affordance on CheckEmail returns to the email entry form", async () => {
-    mockRequestMagicLink.mockResolvedValue(undefined);
+    mockRequestMagicLink.mockResolvedValue({ devToken: null });
     const user = userEvent.setup();
 
     render(<LoginRoute />);

@@ -39,6 +39,11 @@ class MagicLinkRequest(BaseModel):
 
 class MagicLinkResponse(BaseModel):
     message: str = _NEUTRAL_MESSAGE
+    # Dev/staging only: the raw magic-link token, so non-production UIs can show a
+    # clickable sign-in link for testing. Omitted entirely in production (the
+    # route uses response_model_exclude_none, and it is only set when
+    # environment != "production").
+    dev_token: str | None = None
 
 
 class VerifyResponse(BaseModel):
@@ -50,7 +55,7 @@ class LogoutResponse(BaseModel):
     message: str
 
 
-@router.post("/request", response_model=MagicLinkResponse)
+@router.post("/request", response_model=MagicLinkResponse, response_model_exclude_none=True)
 async def request_magic_link(
     payload: MagicLinkRequest,
     db: AsyncSession = Depends(get_db),
@@ -88,7 +93,12 @@ async def request_magic_link(
     link = f"{settings.app_base_url.rstrip('/')}/auth/verify?token={raw_token}"
     email_sender.send_magic_link(email, link)
 
-    return MagicLinkResponse()
+    response = MagicLinkResponse()
+    # Outside production, also hand the token back so dev/staging UIs can render a
+    # clickable sign-in link (email isn't always deliverable there). Never in prod.
+    if settings.environment != "production":
+        response.dev_token = raw_token
+    return response
 
 
 @router.get("/verify", response_model=VerifyResponse)

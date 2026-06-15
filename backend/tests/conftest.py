@@ -36,7 +36,9 @@ TEST_ASYNC_DATABASE_URL = "postgresql+asyncpg://mmc:mmc@localhost:5432/mysterymi
 # Tables truncated before and after each test for isolation. ``sessions``
 # references ``users``; CASCADE on the TRUNCATE handles the FK, and
 # magic_link_tokens is independent. Listed together so one statement covers all.
-_TRUNCATE_TABLES = "magic_link_tokens, sessions, invites, rounds, leagues, league_members, users"
+_TRUNCATE_TABLES = (
+    "magic_link_tokens, sessions, invites, submissions, rounds, leagues, league_members, users"
+)
 
 
 @dataclass

@@ -4,6 +4,16 @@ from app.models.league_member import LeagueMember
 from app.models.magic_link_token import MagicLinkToken
 from app.models.round import Round
 from app.models.session import Session
+from app.models.submission import Submission
 from app.models.user import User
 
-__all__ = ["Invite", "League", "LeagueMember", "MagicLinkToken", "Round", "Session", "User"]
+__all__ = [
+    "Invite",
+    "League",
+    "LeagueMember",
+    "MagicLinkToken",
+    "Round",
+    "Session",
+    "Submission",
+    "User",
+]

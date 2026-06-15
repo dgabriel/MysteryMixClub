@@ -8,6 +8,7 @@ import {
   createInvite,
   getLeague,
   getLeagueMembers,
+  getRounds,
   removeMember,
   updateLeague,
 } from "../services/api";
@@ -16,13 +17,13 @@ import { useAuth } from "../hooks/useAuth";
 
 // Mock the API module (no network). Keep ApiError real.
 vi.mock("../services/api", async () => {
-  const actual = await vi.importActual<typeof import("../services/api")>(
-    "../services/api",
-  );
+  const actual = await vi.importActual<typeof import("../services/api")>("../services/api");
   return {
     ...actual,
     getLeague: vi.fn(),
     getLeagueMembers: vi.fn(),
+    getRounds: vi.fn(),
+    createRound: vi.fn(),
     updateLeague: vi.fn(),
     removeMember: vi.fn(),
     createInvite: vi.fn(),
@@ -36,6 +37,7 @@ vi.mock("../hooks/useAuth", () => ({
 
 const mockGetLeague = vi.mocked(getLeague);
 const mockGetLeagueMembers = vi.mocked(getLeagueMembers);
+const mockGetRounds = vi.mocked(getRounds);
 const mockUpdateLeague = vi.mocked(updateLeague);
 const mockRemoveMember = vi.mocked(removeMember);
 const mockCreateInvite = vi.mocked(createInvite);
@@ -120,6 +122,7 @@ describe("LeagueHomeRoute", () => {
     vi.clearAllMocks();
     mockGetLeague.mockResolvedValue(leagueWith());
     mockGetLeagueMembers.mockResolvedValue(members());
+    mockGetRounds.mockResolvedValue([]);
     setAuth(ORGANIZER_ID);
   });
 

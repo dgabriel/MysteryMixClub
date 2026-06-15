@@ -7,6 +7,7 @@ import { HomeRoute } from "./pages/HomeRoute";
 import { OnboardingRoute } from "./pages/OnboardingRoute";
 import { CreateLeagueRoute } from "./pages/CreateLeagueRoute";
 import { LeagueHomeRoute } from "./pages/LeagueHomeRoute";
+import { RoundDetailRoute } from "./pages/RoundDetailRoute";
 import { JoinLeagueRoute } from "./pages/JoinLeagueRoute";
 
 /**
@@ -18,7 +19,8 @@ import { JoinLeagueRoute } from "./pages/JoinLeagueRoute";
  *                    unauthenticated → /login, already-onboarded → /home)
  *   /home          → protected; My Leagues landing
  *   /leagues/new   → protected; create a league
- *   /leagues/:id   → protected; league home (members, invite, organizer edit)
+ *   /leagues/:id   → protected; league home (rounds, members, invite, organizer edit)
+ *   /rounds/:id    → protected; round detail (submit / playlist / reveal)
  *   /join/:token   → public; invite preview + join (self-guards the
  *                    unauthenticated case via stored pendingInvitePath)
  *   *              → redirect to /login
@@ -53,6 +55,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <LeagueHomeRoute />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/rounds/:id"
+            element={
+              <ProtectedRoute>
+                <RoundDetailRoute />
               </ProtectedRoute>
             }
           />

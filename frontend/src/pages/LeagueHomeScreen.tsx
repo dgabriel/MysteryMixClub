@@ -1,17 +1,28 @@
 import { type FormEvent, useEffect, useState } from "react";
-import type { League, LeagueMember } from "../services/api";
+import type { League, LeagueMember, Round, RoundState } from "../services/api";
 import { Button } from "../components/Button";
 import { Badge } from "../components/Badge";
 import { TextField } from "../components/TextField";
 import { ConcentricRings } from "../components/ConcentricRings";
 
+const ROUND_STATE_LABEL: Record<RoundState, string> = {
+  open_submission: "submissions open",
+  open_voting: "voting open",
+  closed: "closed",
+};
+
 type LeagueHomeScreenProps = {
   league: League;
   members: LeagueMember[];
+  rounds: Round[];
   isOrganizer: boolean;
   loading: boolean;
   error?: string | null;
   onBack: () => void;
+  onOpenRound: (roundId: string) => void;
+  onCreateRound: (theme: string, votesPerPlayer?: number) => void;
+  creatingRound: boolean;
+  createRoundError?: string | null;
   inviteUrl: string | null;
   onGenerateInvite: () => void;
   generatingInvite: boolean;
@@ -31,10 +42,15 @@ type LeagueHomeScreenProps = {
 export function LeagueHomeScreen({
   league,
   members,
+  rounds,
   isOrganizer,
   loading,
   error,
   onBack,
+  onOpenRound,
+  onCreateRound,
+  creatingRound,
+  createRoundError,
   inviteUrl,
   onGenerateInvite,
   generatingInvite,
@@ -102,6 +118,17 @@ export function LeagueHomeScreen({
           />
         ) : null}
 
+        {/* Rounds */}
+        <RoundsSection
+          rounds={rounds}
+          isOrganizer={isOrganizer}
+          canCreate={league.state !== "complete"}
+          onOpenRound={onOpenRound}
+          onCreateRound={onCreateRound}
+          creatingRound={creatingRound}
+          createRoundError={createRoundError}
+        />
+
         {/* Members */}
         <section className="mt-12">
           <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
@@ -111,14 +138,9 @@ export function LeagueHomeScreen({
             {members.map((member) => {
               const showRemove = isOrganizer && !member.is_organizer;
               return (
-                <li
-                  key={member.user_id}
-                  className="flex items-center justify-between gap-4 py-3"
-                >
+                <li key={member.user_id} className="flex items-center justify-between gap-4 py-3">
                   <span className="flex items-center gap-3">
-                    <span className="font-mono text-[13px] text-ink">
-                      {member.display_name}
-                    </span>
+                    <span className="font-mono text-[13px] text-ink">{member.display_name}</span>
                     {member.is_organizer ? <Badge>organizer</Badge> : null}
                   </span>
                   {showRemove ? (
@@ -162,6 +184,118 @@ export function LeagueHomeScreen({
         </section>
       </main>
     </div>
+  );
+}
+
+function RoundsSection({
+  rounds,
+  isOrganizer,
+  canCreate,
+  onOpenRound,
+  onCreateRound,
+  creatingRound,
+  createRoundError,
+}: {
+  rounds: Round[];
+  isOrganizer: boolean;
+  canCreate: boolean;
+  onOpenRound: (roundId: string) => void;
+  onCreateRound: (theme: string, votesPerPlayer?: number) => void;
+  creatingRound: boolean;
+  createRoundError?: string | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const [theme, setTheme] = useState("");
+
+  function handleCreate(e: FormEvent) {
+    e.preventDefault();
+    const trimmed = theme.trim();
+    if (!trimmed) return;
+    onCreateRound(trimmed);
+    setTheme("");
+    setOpen(false);
+  }
+
+  return (
+    <section className="mt-12">
+      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
+        rounds ({rounds.length})
+      </h2>
+
+      {rounds.length === 0 ? (
+        <p className="mt-4 font-mono text-[13px] font-light text-muted">no rounds yet</p>
+      ) : (
+        <ul className="mt-4 divide-y divide-border border-t border-border">
+          {rounds.map((round) => (
+            <li key={round.id}>
+              <button
+                type="button"
+                onClick={() => onOpenRound(round.id)}
+                className="flex w-full items-center justify-between gap-4 py-3 text-left transition-colors duration-150 hover:bg-sage-pale"
+              >
+                <span className="min-w-0">
+                  <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
+                    round {round.round_number}
+                  </span>
+                  <span className="mt-0.5 block truncate font-serif text-[16px] text-ink">
+                    {round.theme}
+                  </span>
+                </span>
+                <Badge>{ROUND_STATE_LABEL[round.state]}</Badge>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {isOrganizer && canCreate ? (
+        open ? (
+          <form onSubmit={handleCreate} className="mt-4 space-y-5">
+            <TextField
+              id="new-round-theme"
+              label="round theme"
+              name="theme"
+              placeholder="late summer feels"
+              value={theme}
+              onChange={(e) => setTheme(e.target.value)}
+              disabled={creatingRound}
+              autoComplete="off"
+              required
+            />
+            {createRoundError ? (
+              <p role="alert" className="font-mono text-[11px] text-ink">
+                {createRoundError}
+              </p>
+            ) : null}
+            <div className="flex items-center gap-4">
+              <Button type="submit" disabled={creatingRound || !theme.trim()}>
+                {creatingRound ? "creating…" : "create round"}
+              </Button>
+              <Button
+                variant="ghost"
+                type="button"
+                onClick={() => setOpen(false)}
+                disabled={creatingRound}
+              >
+                cancel
+              </Button>
+            </div>
+          </form>
+        ) : (
+          <div className="mt-4">
+            <Button variant="ghost" type="button" onClick={() => setOpen(true)}>
+              new round
+            </Button>
+          </div>
+        )
+      ) : null}
+
+      {createRoundError && !open ? (
+        <p role="alert" className="mt-3 font-mono text-[11px] text-ink">
+          {createRoundError}
+        </p>
+      ) : null}
+    </section>
   );
 }
 

@@ -69,7 +69,21 @@ function Loader({ label }: { label: string }) {
   );
 }
 
-export function SongSearchCard() {
+type SongSearchCardProps = {
+  /** When provided, the resolved result card shows a submit affordance (e.g.
+   *  "submit to this round") that calls back with the resolved song. */
+  onSubmit?: (song: ResolvedSong) => void;
+  submitting?: boolean;
+  eyebrow?: string;
+  heading?: string;
+};
+
+export function SongSearchCard({
+  onSubmit,
+  submitting = false,
+  eyebrow = "song search",
+  heading = "find a song",
+}: SongSearchCardProps = {}) {
   const [mode, setMode] = useState<Mode>("link");
 
   // link mode
@@ -164,11 +178,11 @@ export function SongSearchCard() {
 
   return (
     <Card>
-      <span className="font-mono uppercase tracking-label text-[9px] text-muted">song search</span>
-      <h2 className="mt-1 font-serif text-[20px] leading-tight text-ink">find a song</h2>
+      <span className="font-mono uppercase tracking-label text-[9px] text-muted">{eyebrow}</span>
+      <h2 className="mt-1 font-serif text-[20px] leading-tight text-ink">{heading}</h2>
 
       {resolved ? (
-        <ResultView song={resolved} onReset={reset} />
+        <ResultView song={resolved} onReset={reset} onSubmit={onSubmit} submitting={submitting} />
       ) : (
         <>
           {/* Mode toggle */}
@@ -306,7 +320,17 @@ function ResultRow({ track, onSelect }: { track: SongSearchTrack; onSelect: () =
   );
 }
 
-function ResultView({ song, onReset }: { song: ResolvedSong; onReset: () => void }) {
+function ResultView({
+  song,
+  onReset,
+  onSubmit,
+  submitting,
+}: {
+  song: ResolvedSong;
+  onReset: () => void;
+  onSubmit?: (song: ResolvedSong) => void;
+  submitting?: boolean;
+}) {
   const available = PLATFORMS.filter((p) => song.platforms[p.key]);
   return (
     <div className="mt-5">
@@ -355,13 +379,21 @@ function ResultView({ song, onReset }: { song: ResolvedSong; onReset: () => void
         </p>
       )}
 
-      <button
-        type="button"
-        onClick={onReset}
-        className="mt-6 font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink"
-      >
-        search again
-      </button>
+      <div className="mt-6 flex items-center gap-5">
+        {onSubmit ? (
+          <Button type="button" onClick={() => onSubmit(song)} disabled={submitting}>
+            {submitting ? "submitting…" : "submit this song"}
+          </Button>
+        ) : null}
+        <button
+          type="button"
+          onClick={onReset}
+          disabled={submitting}
+          className="font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink disabled:opacity-50"
+        >
+          search again
+        </button>
+      </div>
     </div>
   );
 }

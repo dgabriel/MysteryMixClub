@@ -3,6 +3,7 @@ import {
   ApiError,
   acceptInvite,
   authenticatedRequest,
+  castVotes,
   createInvite,
   createLeague,
   getAccessToken,
@@ -11,6 +12,7 @@ import {
   getLeagueMembers,
   getLeagues,
   getMe,
+  getMyVotes,
   logout,
   logoutAll,
   refresh,
@@ -21,13 +23,7 @@ import {
   updateLeague,
   verifyToken,
 } from "./api";
-import type {
-  Invite,
-  InvitePreview,
-  League,
-  LeagueMember,
-  UserProfile,
-} from "./api";
+import type { Invite, InvitePreview, League, LeagueMember, UserProfile, Votes } from "./api";
 
 const API_BASE = "http://localhost:8000";
 const AUTH_BASE = `${API_BASE}/api/v1/auth`;
@@ -95,9 +91,7 @@ describe("api.ts", () => {
       expect(url).toBe(`${AUTH_BASE}/request`);
       expect(init?.method).toBe("POST");
       expect(init?.body).toBe(JSON.stringify({ email: "user@example.com" }));
-      expect((init?.headers as Record<string, string>)["Content-Type"]).toBe(
-        "application/json",
-      );
+      expect((init?.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
     });
 
     it("returns the dev_token from the body when present (dev/staging)", async () => {
@@ -123,9 +117,7 @@ describe("api.ts", () => {
     });
 
     it("throws ApiError with a generic message when the error body is not JSON", async () => {
-      vi.spyOn(globalThis, "fetch").mockResolvedValue(
-        new Response("nope", { status: 500 }),
-      );
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("nope", { status: 500 }));
 
       await expect(requestMagicLink("user@example.com")).rejects.toMatchObject({
         status: 500,
@@ -197,9 +189,7 @@ describe("api.ts", () => {
 
   describe("logout / logoutAll", () => {
     it("logout POSTs to /auth/logout with credentials include", async () => {
-      const fetchMock = vi
-        .spyOn(globalThis, "fetch")
-        .mockResolvedValue(emptyResponse(204));
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(emptyResponse(204));
 
       await logout();
       const [url, init] = fetchMock.mock.calls[0];
@@ -209,9 +199,7 @@ describe("api.ts", () => {
     });
 
     it("logoutAll POSTs to /auth/logout-all with credentials include", async () => {
-      const fetchMock = vi
-        .spyOn(globalThis, "fetch")
-        .mockResolvedValue(emptyResponse(204));
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(emptyResponse(204));
 
       await logoutAll();
       const [url, init] = fetchMock.mock.calls[0];
@@ -300,9 +288,7 @@ describe("api.ts", () => {
 
     it("does not attempt a refresh when retryOnUnauthorized is false", async () => {
       setStoredAccessToken("stale-token");
-      const fetchMock = vi
-        .spyOn(globalThis, "fetch")
-        .mockResolvedValueOnce(emptyResponse(401));
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(emptyResponse(401));
 
       const res = await authenticatedRequest("/api/v1/users/me", {
         retryOnUnauthorized: false,
@@ -342,9 +328,7 @@ describe("api.ts", () => {
 
     it("GETs /api/v1/users/me (Bearer + credentials) and resolves the parsed profile on 200", async () => {
       setStoredAccessToken("my-token");
-      const fetchMock = vi
-        .spyOn(globalThis, "fetch")
-        .mockResolvedValue(jsonResponse(200, profile));
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, profile));
 
       const resolved = await getMe();
       expect(resolved).toEqual(profile);
@@ -384,9 +368,7 @@ describe("api.ts", () => {
 
     it("throws ApiError with a generic message when the error body is not JSON", async () => {
       setStoredAccessToken("my-token");
-      vi.spyOn(globalThis, "fetch").mockResolvedValue(
-        new Response("nope", { status: 500 }),
-      );
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("nope", { status: 500 }));
 
       await expect(getMe()).rejects.toMatchObject({
         status: 500,
@@ -408,9 +390,7 @@ describe("api.ts", () => {
 
     it("PATCHes /api/v1/users/me with a JSON body and returns the parsed profile on 200", async () => {
       setStoredAccessToken("my-token");
-      const fetchMock = vi
-        .spyOn(globalThis, "fetch")
-        .mockResolvedValue(jsonResponse(200, profile));
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, profile));
 
       await expect(updateDisplayName("Alice")).resolves.toEqual(profile);
 
@@ -493,9 +473,7 @@ describe("api.ts", () => {
 
     it("throws ApiError with a generic message when the error body is not JSON", async () => {
       setStoredAccessToken("my-token");
-      vi.spyOn(globalThis, "fetch").mockResolvedValue(
-        new Response("nope", { status: 500 }),
-      );
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("nope", { status: 500 }));
 
       await expect(createLeague(input)).rejects.toMatchObject({
         status: 500,
@@ -531,9 +509,7 @@ describe("api.ts", () => {
 
     it("throws ApiError with the backend detail on a non-2xx response", async () => {
       setStoredAccessToken("my-token");
-      vi.spyOn(globalThis, "fetch").mockResolvedValue(
-        jsonResponse(500, { detail: "boom" }),
-      );
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(500, { detail: "boom" }));
 
       const err = await getLeagues().catch((e: unknown) => e);
       expect(err).toBeInstanceOf(ApiError);
@@ -603,9 +579,7 @@ describe("api.ts", () => {
 
     it("GETs /api/v1/leagues/{id}/members (Bearer + credentials) and resolves the array on 200", async () => {
       setStoredAccessToken("my-token");
-      const fetchMock = vi
-        .spyOn(globalThis, "fetch")
-        .mockResolvedValue(jsonResponse(200, members));
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, members));
 
       await expect(getLeagueMembers("league-1")).resolves.toEqual(members);
 
@@ -637,9 +611,7 @@ describe("api.ts", () => {
     it("PATCHes /api/v1/leagues/{id} with a JSON body (Bearer + credentials) and resolves the League on 200", async () => {
       setStoredAccessToken("my-token");
       const updated: League = { ...sampleLeague, name: "Saturday Mixers" };
-      const fetchMock = vi
-        .spyOn(globalThis, "fetch")
-        .mockResolvedValue(jsonResponse(200, updated));
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, updated));
 
       const input = { name: "Saturday Mixers" };
       await expect(updateLeague("league-1", input)).resolves.toEqual(updated);
@@ -674,9 +646,7 @@ describe("api.ts", () => {
         jsonResponse(409, { detail: "total_rounds cannot be below current_round" }),
       );
 
-      const err = await updateLeague("league-1", { total_rounds: 1 }).catch(
-        (e: unknown) => e,
-      );
+      const err = await updateLeague("league-1", { total_rounds: 1 }).catch((e: unknown) => e);
       expect(err).toBeInstanceOf(ApiError);
       expect(err).toMatchObject({
         status: 409,
@@ -688,9 +658,7 @@ describe("api.ts", () => {
   describe("removeMember", () => {
     it("DELETEs /api/v1/leagues/{leagueId}/members/{userId} (Bearer + credentials) and resolves undefined on 204", async () => {
       setStoredAccessToken("my-token");
-      const fetchMock = vi
-        .spyOn(globalThis, "fetch")
-        .mockResolvedValue(emptyResponse(204));
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(emptyResponse(204));
 
       await expect(removeMember("league-1", "user-2")).resolves.toBeUndefined();
 
@@ -741,9 +709,7 @@ describe("api.ts", () => {
 
     it("POSTs /api/v1/leagues/{leagueId}/invites (Bearer + credentials) and resolves the Invite on 201", async () => {
       setStoredAccessToken("my-token");
-      const fetchMock = vi
-        .spyOn(globalThis, "fetch")
-        .mockResolvedValue(jsonResponse(201, invite));
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(201, invite));
 
       await expect(createInvite("league-1")).resolves.toEqual(invite);
 
@@ -779,9 +745,7 @@ describe("api.ts", () => {
 
     it("GETs /api/v1/invites/{token} UNAUTHENTICATED (no Authorization header) and resolves the preview on 200", async () => {
       // Deliberately no token set: the preview is a public, unauthenticated read.
-      const fetchMock = vi
-        .spyOn(globalThis, "fetch")
-        .mockResolvedValue(jsonResponse(200, preview));
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, preview));
 
       await expect(getInvitePreview("plain-token")).resolves.toEqual(preview);
 
@@ -795,9 +759,7 @@ describe("api.ts", () => {
 
     it("does NOT attach an Authorization header even when an access token is set", async () => {
       setStoredAccessToken("my-token");
-      const fetchMock = vi
-        .spyOn(globalThis, "fetch")
-        .mockResolvedValue(jsonResponse(200, preview));
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, preview));
 
       await getInvitePreview("plain-token");
 
@@ -807,9 +769,7 @@ describe("api.ts", () => {
     });
 
     it("URL-encodes the token in the path", async () => {
-      const fetchMock = vi
-        .spyOn(globalThis, "fetch")
-        .mockResolvedValue(jsonResponse(200, preview));
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, preview));
 
       const token = "weird/ token";
       await getInvitePreview(token);
@@ -881,6 +841,121 @@ describe("api.ts", () => {
       const err = await acceptInvite("plain-token").catch((e: unknown) => e);
       expect(err).toBeInstanceOf(ApiError);
       expect(err).toMatchObject({ status: 401, message: "not authenticated" });
+    });
+  });
+
+  describe("castVotes", () => {
+    const votes: Votes = {
+      round_id: "r1",
+      submission_ids: ["s1", "s2"],
+      count: 2,
+      votes_per_player: 3,
+    };
+
+    it("POSTs /api/v1/rounds/{id}/votes with the submission_ids body (Bearer + credentials) and resolves the Votes on 200", async () => {
+      setStoredAccessToken("my-token");
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, votes));
+
+      await expect(castVotes("r1", ["s1", "s2"])).resolves.toEqual(votes);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(`${V1_BASE}/rounds/r1/votes`);
+      expect(init?.method).toBe("POST");
+      expect(init?.credentials).toBe("include");
+      expect(init?.body).toBe(JSON.stringify({ submission_ids: ["s1", "s2"] }));
+      const headers = new Headers(init?.headers);
+      expect(headers.get("Content-Type")).toBe("application/json");
+      expect(headers.get("Authorization")).toBe("Bearer my-token");
+    });
+
+    it("throws ApiError(409) when casting an empty set", async () => {
+      setStoredAccessToken("my-token");
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse(409, { detail: "you must vote for at least one song" }),
+      );
+
+      const err = await castVotes("r1", []).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err).toMatchObject({
+        status: 409,
+        message: "you must vote for at least one song",
+      });
+    });
+
+    it("throws ApiError(403) when voting for your own song", async () => {
+      setStoredAccessToken("my-token");
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse(403, { detail: "you can't vote for your own song" }),
+      );
+
+      const err = await castVotes("r1", ["mine"]).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err).toMatchObject({
+        status: 403,
+        message: "you can't vote for your own song",
+      });
+    });
+
+    it("throws ApiError with a generic message when the error body is not JSON", async () => {
+      setStoredAccessToken("my-token");
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("nope", { status: 500 }));
+
+      await expect(castVotes("r1", ["s1"])).rejects.toMatchObject({
+        status: 500,
+        message: "request failed (500)",
+      });
+    });
+  });
+
+  describe("getMyVotes", () => {
+    const votes: Votes = {
+      round_id: "r1",
+      submission_ids: ["s1"],
+      count: 1,
+      votes_per_player: 3,
+    };
+
+    it("GETs /api/v1/rounds/{id}/votes/mine (Bearer + credentials) and resolves the Votes on 200", async () => {
+      setStoredAccessToken("my-token");
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, votes));
+
+      await expect(getMyVotes("r1")).resolves.toEqual(votes);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(`${V1_BASE}/rounds/r1/votes/mine`);
+      expect(init?.method ?? "GET").toBe("GET");
+      expect(init?.credentials).toBe("include");
+      const headers = new Headers(init?.headers);
+      expect(headers.get("Authorization")).toBe("Bearer my-token");
+    });
+
+    it("resolves the empty-set case when nothing has been cast", async () => {
+      setStoredAccessToken("my-token");
+      const empty: Votes = {
+        round_id: "r1",
+        submission_ids: [],
+        count: 0,
+        votes_per_player: 3,
+      };
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, empty));
+
+      await expect(getMyVotes("r1")).resolves.toEqual(empty);
+    });
+
+    it("throws ApiError with the backend detail on a non-2xx response", async () => {
+      setStoredAccessToken("my-token");
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse(403, { detail: "not a member of this league" }),
+      );
+
+      const err = await getMyVotes("r1").catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err).toMatchObject({
+        status: 403,
+        message: "not a member of this league",
+      });
     });
   });
 });

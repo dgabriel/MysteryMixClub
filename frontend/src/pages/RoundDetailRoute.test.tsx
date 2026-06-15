@@ -4,9 +4,11 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { RoundDetailRoute } from "./RoundDetailRoute";
 import {
+  castVotes,
   getLeague,
   getLeagueMembers,
   getMySubmission,
+  getMyVotes,
   getPlaylist,
   getRound,
   getRoundSubmissions,
@@ -27,6 +29,8 @@ vi.mock("../services/api", async () => {
     getLeagueMembers: vi.fn(),
     updateRound: vi.fn(),
     submitSong: vi.fn(),
+    getMyVotes: vi.fn(),
+    castVotes: vi.fn(),
   };
 });
 vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
@@ -38,6 +42,8 @@ const mockGetPlaylist = vi.mocked(getPlaylist);
 const mockGetReveal = vi.mocked(getRoundSubmissions);
 const mockGetMembers = vi.mocked(getLeagueMembers);
 const mockUpdateRound = vi.mocked(updateRound);
+const mockGetMyVotes = vi.mocked(getMyVotes);
+const mockCastVotes = vi.mocked(castVotes);
 const mockUseAuth = vi.mocked(useAuth);
 
 const ORGANIZER = "org-1";
@@ -71,6 +77,38 @@ function league(): League {
     state: "active",
     created_at: "2026-01-01T00:00:00Z",
     completed_at: null,
+  };
+}
+
+function entry(overrides: Partial<PlaylistEntry> = {}): PlaylistEntry {
+  return {
+    submission_id: "p1",
+    isrc: "I1",
+    title: "Debaser",
+    artist: "Pixies",
+    album: null,
+    album_art_url: null,
+    participation_mode: "playing",
+    platforms: { spotify: "https://s" },
+    preferred_url: "https://s",
+    ...overrides,
+  };
+}
+
+function mine(overrides: Partial<SubmissionResult> = {}): SubmissionResult {
+  return {
+    id: "s-mine",
+    round_id: "r1",
+    user_id: ORGANIZER,
+    isrc: "IM",
+    title: "My Song",
+    artist: "Me",
+    album: null,
+    album_art_url: null,
+    note: null,
+    participation_mode: "playing",
+    created_at: "2026-01-01T00:00:00Z",
+    ...overrides,
   };
 }
 
@@ -116,6 +154,18 @@ describe("RoundDetailRoute", () => {
     });
     mockGetReveal.mockResolvedValue([]);
     mockGetMembers.mockResolvedValue([]);
+    mockGetMyVotes.mockResolvedValue({
+      round_id: "r1",
+      submission_ids: [],
+      count: 0,
+      votes_per_player: 3,
+    });
+    mockCastVotes.mockResolvedValue({
+      round_id: "r1",
+      submission_ids: [],
+      count: 0,
+      votes_per_player: 3,
+    });
     setAuth(ORGANIZER);
   });
 
@@ -212,5 +262,198 @@ describe("RoundDetailRoute", () => {
     expect(await screen.findByText("Bad Guy")).toBeInTheDocument();
     expect(screen.getByText("Bob")).toBeInTheDocument();
     expect(screen.getByText(/a banger/)).toBeInTheDocument();
+  });
+
+  describe("open_voting voting UX (MYS-20)", () => {
+    /** Put the round into open_voting with the given playlist entries, and a
+     *  caller submission (so participation_mode is known) defaulting to playing. */
+    function setupVoting(opts: {
+      entries: PlaylistEntry[];
+      votesPerPlayer?: number;
+      myVotes?: string[];
+      mine?: SubmissionResult | null;
+    }) {
+      const vpp = opts.votesPerPlayer ?? 3;
+      mockGetRound.mockResolvedValue(round({ state: "open_voting", votes_per_player: vpp }));
+      mockGetPlaylist.mockResolvedValue({
+        round_id: "r1",
+        round_number: 1,
+        theme: "t",
+        state: "open_voting",
+        entries: opts.entries,
+      });
+      mockGetMyVotes.mockResolvedValue({
+        round_id: "r1",
+        submission_ids: opts.myVotes ?? [],
+        count: (opts.myVotes ?? []).length,
+        votes_per_player: vpp,
+      });
+      // Default: a playing submission so the caller is a voter.
+      mockGetMine.mockResolvedValue(opts.mine === undefined ? mine() : opts.mine);
+    }
+
+    it("playing voter sees votable entries as toggles, a counter, and pre-selection from getMyVotes", async () => {
+      setupVoting({
+        entries: [
+          entry({ submission_id: "p1", title: "Debaser" }),
+          entry({ submission_id: "p2", title: "Hey", artist: "Pixies" }),
+        ],
+        myVotes: ["p1"],
+      });
+      renderRound();
+
+      const debaser = await screen.findByRole("button", { name: /Debaser/i });
+      const hey = screen.getByRole("button", { name: /Hey/i });
+      // pre-selected from getMyVotes
+      expect(debaser).toHaveAttribute("aria-pressed", "true");
+      expect(hey).toHaveAttribute("aria-pressed", "false");
+      // live counter reflects the seeded selection
+      expect(screen.getByText("1 / 3 selected")).toBeInTheDocument();
+    });
+
+    it("toggling selects/deselects and updates the counter", async () => {
+      const user = userEvent.setup();
+      setupVoting({
+        entries: [
+          entry({ submission_id: "p1", title: "Debaser" }),
+          entry({ submission_id: "p2", title: "Hey" }),
+        ],
+        myVotes: [],
+      });
+      renderRound();
+
+      const debaser = await screen.findByRole("button", { name: /Debaser/i });
+      expect(screen.getByText("0 / 3 selected")).toBeInTheDocument();
+
+      await user.click(debaser);
+      expect(debaser).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByText("1 / 3 selected")).toBeInTheDocument();
+
+      await user.click(debaser);
+      expect(debaser).toHaveAttribute("aria-pressed", "false");
+      expect(screen.getByText("0 / 3 selected")).toBeInTheDocument();
+    });
+
+    it("at the votes_per_player limit, unselected toggles are disabled but deselect still works", async () => {
+      const user = userEvent.setup();
+      setupVoting({
+        entries: [
+          entry({ submission_id: "p1", title: "Debaser" }),
+          entry({ submission_id: "p2", title: "Hey" }),
+        ],
+        votesPerPlayer: 1,
+        myVotes: ["p1"],
+      });
+      renderRound();
+
+      const debaser = await screen.findByRole("button", { name: /Debaser/i });
+      const hey = screen.getByRole("button", { name: /Hey/i });
+      expect(screen.getByText("1 / 1 selected")).toBeInTheDocument();
+      // at limit: the unselected entry is disabled
+      expect(hey).toBeDisabled();
+      // the selected entry can still be deselected
+      expect(debaser).not.toBeDisabled();
+
+      await user.click(debaser);
+      expect(debaser).toHaveAttribute("aria-pressed", "false");
+      expect(screen.getByText("0 / 1 selected")).toBeInTheDocument();
+      // now under the limit, the previously-disabled toggle is enabled again
+      expect(hey).not.toBeDisabled();
+    });
+
+    it("cast votes calls castVotes with the selected submission_ids and shows the confirmation", async () => {
+      const user = userEvent.setup();
+      setupVoting({
+        entries: [
+          entry({ submission_id: "p1", title: "Debaser" }),
+          entry({ submission_id: "p2", title: "Hey" }),
+        ],
+        myVotes: [],
+      });
+      mockCastVotes.mockResolvedValue({
+        round_id: "r1",
+        submission_ids: ["p1"],
+        count: 1,
+        votes_per_player: 3,
+      });
+      renderRound();
+
+      const debaser = await screen.findByRole("button", { name: /Debaser/i });
+      await user.click(debaser);
+      await user.click(screen.getByRole("button", { name: /cast votes/i }));
+
+      expect(mockCastVotes).toHaveBeenCalledWith("r1", ["p1"]);
+      expect(await screen.findByText(/votes saved/i)).toBeInTheDocument();
+    });
+
+    it("cast votes button is disabled when nothing is selected", async () => {
+      setupVoting({
+        entries: [entry({ submission_id: "p1", title: "Debaser" })],
+        myVotes: [],
+      });
+      renderRound();
+
+      await screen.findByRole("button", { name: /Debaser/i });
+      expect(screen.getByRole("button", { name: /cast votes/i })).toBeDisabled();
+    });
+
+    it("vibing entries appear in the just-vibing section, are not toggles, and show the warm copy", async () => {
+      setupVoting({
+        entries: [
+          entry({ submission_id: "p1", title: "Debaser" }),
+          entry({
+            submission_id: "v1",
+            title: "Ambient Drift",
+            participation_mode: "vibing",
+          }),
+        ],
+        myVotes: [],
+      });
+      renderRound();
+
+      // the vibing track is rendered, but NOT as a toggle button
+      await screen.findByRole("button", { name: /Debaser/i });
+      expect(screen.getByText("Ambient Drift")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Ambient Drift/i })).not.toBeInTheDocument();
+      // the warm helper copy + section heading ("just vibing" also appears as a
+      // badge on the entry, so target the section heading specifically)
+      expect(screen.getByRole("heading", { name: /just vibing/i })).toBeInTheDocument();
+      expect(screen.getByText(/along for the ride/i)).toBeInTheDocument();
+    });
+
+    it("a caller who is themselves vibing sees no vote controls, a sit-out message, and still the playlist", async () => {
+      setupVoting({
+        entries: [entry({ submission_id: "p1", title: "Debaser" })],
+        myVotes: [],
+        mine: mine({ participation_mode: "vibing" }),
+      });
+      renderRound();
+
+      expect(await screen.findByText(/you sit voting out/i)).toBeInTheDocument();
+      // no vote controls
+      expect(screen.queryByRole("button", { name: /cast votes/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Debaser/i })).not.toBeInTheDocument();
+      // playlist still visible
+      expect(screen.getByText("Debaser")).toBeInTheDocument();
+    });
+
+    it("a castVotes ApiError surfaces in the actionError region", async () => {
+      const user = userEvent.setup();
+      const { ApiError } =
+        await vi.importActual<typeof import("../services/api")>("../services/api");
+      setupVoting({
+        entries: [entry({ submission_id: "p1", title: "Debaser" })],
+        myVotes: [],
+      });
+      mockCastVotes.mockRejectedValue(new ApiError(403, "you can't vote for your own song"));
+      renderRound();
+
+      const debaser = await screen.findByRole("button", { name: /Debaser/i });
+      await user.click(debaser);
+      await user.click(screen.getByRole("button", { name: /cast votes/i }));
+
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent(/you can't vote for your own song/i);
+    });
   });
 });

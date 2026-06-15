@@ -6,13 +6,15 @@ Round lifecycle and the create/read/update surface for a league's rounds:
 * ``GET   /api/v1/leagues/:id/rounds`` — members list a league's rounds
 * ``GET   /api/v1/rounds/:id``         — members read a round
 * ``PATCH /api/v1/rounds/:id``         — organizer edits fields / advances state
+* ``GET   /api/v1/rounds/:id/playlist``— members get the anonymous voting playlist
 
-State machine is forward-only: ``open_submission -> open_voting -> closed``.
-Playlist generation (``GET /rounds/:id/playlist``) is the second MYS-18 slice and
-lands once submissions exist (MYS-51). Membership/organizer checks reuse the
-helpers in :mod:`app.api.routes.leagues`.
+State machine is forward-only: ``open_submission -> open_voting -> closed``. The
+playlist surfaces each submission resolved to the viewer's preferred service (it
+reads the stored ``odesli_data``). Membership/organizer checks reuse the helpers
+in :mod:`app.api.routes.leagues`.
 """
 
+import random
 import uuid
 from datetime import datetime
 from typing import Annotated, Literal
@@ -26,7 +28,9 @@ from app.api.routes.leagues import _load_league_as_member, _load_league_as_organ
 from app.auth.deps import get_current_user
 from app.db.session import get_db
 from app.models.round import Round
+from app.models.submission import Submission
 from app.models.user import User
+from app.services.odesli import platforms_from_payload
 
 router = APIRouter(tags=["rounds"])
 
@@ -212,3 +216,85 @@ async def update_round(
     await db.commit()
     await db.refresh(round_)
     return _to_response(round_)
+
+
+# --------------------------------------------------------------------------- #
+# Playlist (MYS-18 slice B)
+# --------------------------------------------------------------------------- #
+
+
+class PlaylistEntry(BaseModel):
+    submission_id: str
+    isrc: str
+    title: str
+    artist: str
+    album: str | None
+    album_art_url: str | None
+    participation_mode: str
+    # Platform links resolved from the stored Odesli payload (may be empty if
+    # the upstream lookup failed at submission time).
+    platforms: dict[str, str]
+    # The single link to surface by default: the viewer's preferred service,
+    # else YouTube as the universal fallback, else any available platform.
+    preferred_url: str | None
+
+
+class PlaylistResponse(BaseModel):
+    round_id: str
+    round_number: int
+    theme: str
+    state: str
+    entries: list[PlaylistEntry]
+
+
+def _preferred_url(platforms: dict[str, str], preferred_service: str | None) -> str | None:
+    if preferred_service and preferred_service in platforms:
+        return platforms[preferred_service]
+    if "youtube" in platforms:  # universal fallback (technical-design §8)
+        return platforms["youtube"]
+    return next(iter(platforms.values()), None)
+
+
+@router.get("/rounds/{round_id}/playlist", response_model=PlaylistResponse)
+async def get_round_playlist(
+    round_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> PlaylistResponse:
+    round_ = await _load_round(round_id, db)
+    await _load_league_as_member(round_.league_id, current_user, db)
+    # The playlist is the voting surface; it opens once submissions are locked.
+    if round_.state == "open_submission":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="the playlist is available once voting opens",
+        )
+
+    submissions = list(await db.scalars(select(Submission).where(Submission.round_id == round_id)))
+    # Anonymous + shuffled (technical-design §8). Seed the shuffle on the round id
+    # so the order is stable per round but hides submission/creation order.
+    random.Random(round_id.int).shuffle(submissions)
+
+    entries = []
+    for s in submissions:
+        platforms = platforms_from_payload(s.odesli_data)
+        entries.append(
+            PlaylistEntry(
+                submission_id=str(s.id),
+                isrc=s.isrc,
+                title=s.title,
+                artist=s.artist,
+                album=s.album,
+                album_art_url=s.album_art_url,
+                participation_mode=s.participation_mode,
+                platforms=platforms,
+                preferred_url=_preferred_url(platforms, current_user.preferred_service),
+            )
+        )
+    return PlaylistResponse(
+        round_id=str(round_.id),
+        round_number=round_.round_number,
+        theme=round_.theme,
+        state=round_.state,
+        entries=entries,
+    )

@@ -2,6 +2,7 @@ from app.models.invite import Invite
 from app.models.league import League
 from app.models.league_member import LeagueMember
 from app.models.magic_link_token import MagicLinkToken
+from app.models.note import Note
 from app.models.round import Round
 from app.models.session import Session
 from app.models.submission import Submission
@@ -13,6 +14,7 @@ __all__ = [
     "League",
     "LeagueMember",
     "MagicLinkToken",
+    "Note",
     "Round",
     "Session",
     "Submission",

@@ -2,9 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ApiError,
+  castVotes,
   getLeague,
   getLeagueMembers,
   getMySubmission,
+  getMyVotes,
   getPlaylist,
   getRound,
   getRoundSubmissions,
@@ -55,6 +57,7 @@ export function RoundDetailRoute() {
   const [league, setLeague] = useState<League | null>(null);
   const [mine, setMine] = useState<SubmissionResult | null>(null);
   const [playlist, setPlaylist] = useState<PlaylistEntry[]>([]);
+  const [myVotes, setMyVotes] = useState<string[]>([]);
   const [reveal, setReveal] = useState<SubmissionResult[]>([]);
   const [members, setMembers] = useState<LeagueMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,6 +66,8 @@ export function RoundDetailRoute() {
   const [submitting, setSubmitting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [advancing, setAdvancing] = useState(false);
+  const [casting, setCasting] = useState(false);
+  const [votesSaved, setVotesSaved] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -77,7 +82,14 @@ export function RoundDetailRoute() {
       if (loadedRound.state === "open_submission") {
         setMine(await getMySubmission(id));
       } else if (loadedRound.state === "open_voting") {
-        setPlaylist((await getPlaylist(id)).entries);
+        const [loadedPlaylist, loadedVotes, loadedMine] = await Promise.all([
+          getPlaylist(id),
+          getMyVotes(id),
+          getMySubmission(id),
+        ]);
+        setPlaylist(loadedPlaylist.entries);
+        setMyVotes(loadedVotes.submission_ids);
+        setMine(loadedMine);
       } else {
         const [subs, mems] = await Promise.all([
           getRoundSubmissions(id),
@@ -119,6 +131,24 @@ export function RoundDetailRoute() {
       setActionError(err instanceof ApiError ? err.message : "couldn't submit. try again.");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleCastVotes(selected: string[]) {
+    if (!id || selected.length === 0) return;
+    setCasting(true);
+    setActionError(null);
+    setVotesSaved(false);
+    try {
+      const result = await castVotes(id, selected);
+      setMyVotes(result.submission_ids);
+      setVotesSaved(true);
+    } catch (err) {
+      setActionError(
+        err instanceof ApiError ? err.message : "couldn't save your votes. try again.",
+      );
+    } finally {
+      setCasting(false);
     }
   }
 
@@ -199,7 +229,18 @@ export function RoundDetailRoute() {
               onChange={() => setMine(null)}
             />
           ) : round.state === "open_voting" ? (
-            <PlaylistSection entries={playlist} />
+            <VotingSection
+              // Remount to re-seed the selection whenever the saved votes change.
+              key={myVotes.join(",")}
+              entries={playlist}
+              votesPerPlayer={round.votes_per_player}
+              myVotes={myVotes}
+              isVibingParticipant={mine?.participation_mode === "vibing"}
+              casting={casting}
+              votesSaved={votesSaved}
+              onCast={handleCastVotes}
+              onSelectionChange={() => setVotesSaved(false)}
+            />
           ) : (
             <RevealSection submissions={reveal} members={members} userId={userId} />
           )}
@@ -297,28 +338,176 @@ function PlatformLinks({ entry }: { entry: PlaylistEntry }) {
   );
 }
 
-function PlaylistSection({ entries }: { entries: PlaylistEntry[] }) {
+function VotingSection({
+  entries,
+  votesPerPlayer,
+  myVotes,
+  isVibingParticipant,
+  casting,
+  votesSaved,
+  onCast,
+  onSelectionChange,
+}: {
+  entries: PlaylistEntry[];
+  votesPerPlayer: number;
+  myVotes: string[];
+  isVibingParticipant: boolean;
+  casting: boolean;
+  votesSaved: boolean;
+  onCast: (selected: string[]) => void;
+  onSelectionChange: () => void;
+}) {
+  // Seeded from the caller's saved votes; the parent remounts this component
+  // (via key) whenever the saved set changes, re-seeding the selection.
+  const [selected, setSelected] = useState<string[]>(myVotes);
+
   if (entries.length === 0) {
     return <p className="font-mono text-[13px] font-light text-muted">no submissions yet</p>;
   }
+
+  const votable = entries.filter((e) => e.participation_mode !== "vibing");
+  const vibing = entries.filter((e) => e.participation_mode === "vibing");
+
+  function toggle(id: string) {
+    onSelectionChange();
+    setSelected((current) =>
+      current.includes(id)
+        ? current.filter((x) => x !== id)
+        : current.length >= votesPerPlayer
+          ? current
+          : [...current, id],
+    );
+  }
+
+  const atLimit = selected.length >= votesPerPlayer;
+
+  // Vibing participants sit voting out — show the playlist, no controls.
+  if (isVibingParticipant) {
+    return (
+      <>
+        <p className="font-mono text-[13px] font-light text-muted">
+          you&apos;re just vibing this round, so you sit voting out — settle in and enjoy the mix.
+        </p>
+        <h2 className="mt-8 font-mono uppercase tracking-label text-[9px] text-muted">
+          playlist ({entries.length})
+        </h2>
+        <ul className="mt-4 space-y-4">
+          {entries.map((entry) => (
+            <li key={entry.submission_id}>
+              <Card>
+                <div className="flex items-start justify-between gap-3">
+                  <h3 className="font-serif text-[18px] leading-tight text-ink">{entry.title}</h3>
+                  {entry.participation_mode === "vibing" ? (
+                    <span className="shrink-0">
+                      <Badge>just vibing</Badge>
+                    </span>
+                  ) : null}
+                </div>
+                {entry.artist ? (
+                  <p className="mt-1 font-mono text-[11px] font-light text-muted">{entry.artist}</p>
+                ) : null}
+                <PlatformLinks entry={entry} />
+              </Card>
+            </li>
+          ))}
+        </ul>
+      </>
+    );
+  }
+
   return (
     <>
-      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
-        playlist ({entries.length})
-      </h2>
+      <div className="flex items-baseline justify-between gap-4">
+        <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
+          cast your votes
+        </h2>
+        <span
+          aria-live="polite"
+          className="font-mono uppercase tracking-label text-[9px] text-muted"
+        >
+          {selected.length} / {votesPerPlayer} selected
+        </span>
+      </div>
+
       <ul className="mt-4 space-y-4">
-        {entries.map((entry) => (
-          <li key={entry.submission_id}>
-            <Card>
-              <h3 className="font-serif text-[18px] leading-tight text-ink">{entry.title}</h3>
-              {entry.artist ? (
-                <p className="mt-1 font-mono text-[11px] font-light text-muted">{entry.artist}</p>
-              ) : null}
+        {votable.map((entry) => {
+          const isSelected = selected.includes(entry.submission_id);
+          const disabled = !isSelected && atLimit;
+          return (
+            <li key={entry.submission_id}>
+              <button
+                type="button"
+                aria-pressed={isSelected}
+                disabled={disabled}
+                onClick={() => toggle(entry.submission_id)}
+                className={[
+                  "block w-full rounded-[3px] border bg-white px-6 py-5 text-left transition-colors duration-150",
+                  isSelected ? "border-sage bg-sage-pale" : "border-border hover:bg-sage-pale/60",
+                  disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
+                ].join(" ")}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <h3 className="font-serif text-[18px] leading-tight text-ink">{entry.title}</h3>
+                  <span className="shrink-0 pt-1 font-mono uppercase tracking-label text-[9px] text-sage">
+                    {isSelected ? "voted" : ""}
+                  </span>
+                </div>
+                {entry.artist ? (
+                  <p className="mt-1 font-mono text-[11px] font-light text-muted">{entry.artist}</p>
+                ) : null}
+              </button>
               <PlatformLinks entry={entry} />
-            </Card>
-          </li>
-        ))}
+            </li>
+          );
+        })}
       </ul>
+
+      <div className="mt-6 border-t border-border pt-6">
+        <Button
+          type="button"
+          onClick={() => onCast(selected)}
+          disabled={casting || selected.length === 0}
+        >
+          {casting ? "…" : "cast votes"}
+        </Button>
+        {votesSaved ? (
+          <p
+            aria-live="polite"
+            className="mt-3 font-mono uppercase tracking-label text-[9px] text-sage"
+          >
+            votes saved
+          </p>
+        ) : null}
+      </div>
+
+      {vibing.length > 0 ? (
+        <section className="mt-12">
+          <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">just vibing</h2>
+          <p className="mt-2 font-mono text-[13px] font-light text-muted">
+            these picks are along for the ride — outside voting, just good listening.
+          </p>
+          <ul className="mt-4 space-y-4">
+            {vibing.map((entry) => (
+              <li key={entry.submission_id}>
+                <Card>
+                  <div className="flex items-start justify-between gap-3">
+                    <h3 className="font-serif text-[18px] leading-tight text-ink">{entry.title}</h3>
+                    <span className="shrink-0">
+                      <Badge>just vibing</Badge>
+                    </span>
+                  </div>
+                  {entry.artist ? (
+                    <p className="mt-1 font-mono text-[11px] font-light text-muted">
+                      {entry.artist}
+                    </p>
+                  ) : null}
+                  <PlatformLinks entry={entry} />
+                </Card>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </>
   );
 }

@@ -599,4 +599,40 @@ export async function getRoundSubmissions(roundId: string): Promise<SubmissionRe
   return (await res.json()) as SubmissionResult[];
 }
 
+// --------------------------------------------------------------------------- //
+// Votes (MYS-20).
+// --------------------------------------------------------------------------- //
+
+/** The caller's votes for a round (POST/GET .../votes). `submission_ids` is the
+ *  full set the caller has cast; `count` mirrors its length. */
+export type Votes = {
+  round_id: string;
+  submission_ids: string[];
+  count: number;
+  votes_per_player: number;
+};
+
+/** Replace the caller's votes for a round with `submissionIds` (idempotent).
+ *  Round must be open_voting. Backend rejects an empty set (409). */
+export async function castVotes(roundId: string, submissionIds: string[]): Promise<Votes> {
+  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/votes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ submission_ids: submissionIds }),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as Votes;
+}
+
+/** Get the caller's current votes for a round (empty when nothing is cast). */
+export async function getMyVotes(roundId: string): Promise<Votes> {
+  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/votes/mine`);
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as Votes;
+}
+
 export { ApiError };

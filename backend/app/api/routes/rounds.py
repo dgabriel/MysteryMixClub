@@ -27,9 +27,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.routes.leagues import _load_league_as_member, _load_league_as_organizer
 from app.auth.deps import get_current_user
 from app.db.session import get_db
+from app.models.note import Note
 from app.models.round import Round
 from app.models.submission import Submission
 from app.models.user import User
+from app.models.vote import Vote
+from app.services.most_noted import compute_most_noted
 
 router = APIRouter(tags=["rounds"])
 
@@ -296,4 +299,185 @@ async def get_round_playlist(
         theme=round_.theme,
         state=round_.state,
         entries=entries,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Results (MYS-23)
+# --------------------------------------------------------------------------- #
+
+
+class ResultNote(BaseModel):
+    body: str
+    author_display_name: str
+    created_at: datetime
+
+
+class ResultSubmission(BaseModel):
+    submission_id: str
+    user_id: str
+    submitter_display_name: str
+    isrc: str
+    title: str
+    artist: str
+    album: str | None
+    album_art_url: str | None
+    participation_mode: str
+    # The submitter's own optional note attached at submission time.
+    submitter_note: str | None
+    vote_count: int
+    # Notes others left on this submission, oldest first.
+    notes: list[ResultNote]
+
+
+class LeaderboardEntry(BaseModel):
+    user_id: str
+    display_name: str
+    vote_count: int
+    rank: int
+
+
+class MostNotedWinner(BaseModel):
+    submission_id: str
+    title: str
+    artist: str
+    note_count: int
+    notes: list[ResultNote]
+
+
+class MostNotedResult(BaseModel):
+    note_count: int
+    winners: list[MostNotedWinner]
+
+
+class ResultsResponse(BaseModel):
+    round_id: str
+    round_number: int
+    theme: str
+    state: str
+    submissions: list[ResultSubmission]
+    leaderboard: list[LeaderboardEntry]
+    most_noted: MostNotedResult
+
+
+@router.get("/rounds/{round_id}/results", response_model=ResultsResponse)
+async def get_round_results(
+    round_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ResultsResponse:
+    round_ = await _load_round(round_id, db)
+    await _load_league_as_member(round_.league_id, current_user, db)
+    # Results are the reveal: submitters and vote tallies stay hidden until close.
+    if round_.state != "closed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="results are available once the round closes",
+        )
+
+    # Submissions joined to their submitter (revealed now the round is closed).
+    submission_rows = (
+        await db.execute(
+            select(Submission, User.display_name)
+            .join(User, User.id == Submission.user_id)
+            .where(Submission.round_id == round_id)
+        )
+    ).all()
+
+    # Vote tallies in one pass; submissions with no votes are simply absent here
+    # and default to 0 below.
+    vote_count_rows = (
+        await db.execute(
+            select(Vote.submission_id, func.count())
+            .where(Vote.round_id == round_id)
+            .group_by(Vote.submission_id)
+        )
+    ).all()
+    votes_by_submission: dict[uuid.UUID, int] = {sid: count for sid, count in vote_count_rows}
+
+    # All notes for the round, joined to author display names, grouped in Python.
+    note_rows = (
+        await db.execute(
+            select(Note, User.display_name)
+            .join(User, User.id == Note.author_id)
+            .where(Note.round_id == round_id)
+            .order_by(Note.created_at.asc())
+        )
+    ).all()
+    notes_by_submission: dict[uuid.UUID, list[ResultNote]] = {}
+    for note, display_name in note_rows:
+        notes_by_submission.setdefault(note.submission_id, []).append(
+            ResultNote(
+                body=note.body,
+                author_display_name=display_name,
+                created_at=note.created_at,
+            )
+        )
+
+    submissions = [
+        ResultSubmission(
+            submission_id=str(s.id),
+            user_id=str(s.user_id),
+            submitter_display_name=display_name,
+            isrc=s.isrc,
+            title=s.title,
+            artist=s.artist,
+            album=s.album,
+            album_art_url=s.album_art_url,
+            participation_mode=s.participation_mode,
+            submitter_note=s.note,
+            vote_count=votes_by_submission.get(s.id, 0),
+            notes=notes_by_submission.get(s.id, []),
+        )
+        for s, display_name in submission_rows
+    ]
+    # Deterministic order: most-voted first, then title A->Z as a stable tiebreak.
+    submissions.sort(key=lambda s: (-s.vote_count, s.title))
+
+    # Leaderboard: playing submitters only (vibing are excluded). Ranked by votes
+    # received desc, display_name asc as the tiebreak. Rank is 1-based position
+    # (ties take sequential positions, not shared rank). Zero-vote players still
+    # appear, ranked last.
+    playing = [s for s in submissions if s.participation_mode == "playing"]
+    playing.sort(key=lambda s: (-s.vote_count, s.submitter_display_name))
+    leaderboard = [
+        LeaderboardEntry(
+            user_id=s.user_id,
+            display_name=s.submitter_display_name,
+            vote_count=s.vote_count,
+            rank=i + 1,
+        )
+        for i, s in enumerate(playing)
+    ]
+
+    most_noted = await compute_most_noted(round_id, db)
+    most_noted_result = MostNotedResult(
+        note_count=most_noted.note_count,
+        winners=[
+            MostNotedWinner(
+                submission_id=str(w.submission_id),
+                title=w.title,
+                artist=w.artist,
+                note_count=w.note_count,
+                notes=[
+                    ResultNote(
+                        body=n.body,
+                        author_display_name=n.author_display_name,
+                        created_at=n.created_at,
+                    )
+                    for n in w.notes
+                ],
+            )
+            for w in most_noted.winners
+        ],
+    )
+
+    return ResultsResponse(
+        round_id=str(round_.id),
+        round_number=round_.round_number,
+        theme=round_.theme,
+        state=round_.state,
+        submissions=submissions,
+        leaderboard=leaderboard,
+        most_noted=most_noted_result,
     )

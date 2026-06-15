@@ -97,9 +97,23 @@ def _extract_isrc(entities: dict[str, dict]) -> str | None:
     return None
 
 
+def platforms_from_payload(payload: dict | None) -> dict[str, str]:
+    """Extract the known-platform link map from a raw Odesli payload (e.g. a
+    stored ``submissions.odesli_data``). Only platforms with a usable URL are
+    included; returns ``{}`` for a missing/empty payload."""
+    links = (payload or {}).get("linksByPlatform") or {}
+    platforms: dict[str, str] = {}
+    for odesli_key, out_key in _PLATFORMS.items():
+        entry = links.get(odesli_key)
+        if isinstance(entry, dict):
+            url = entry.get("url")
+            if isinstance(url, str) and url:
+                platforms[out_key] = url
+    return platforms
+
+
 def _normalize(payload: dict) -> ResolvedSong:
     entities: dict[str, dict] = payload.get("entitiesByUniqueId") or {}
-    links: dict[str, dict] = payload.get("linksByPlatform") or {}
 
     primary_id = payload.get("entityUniqueId")
     primary = entities.get(primary_id) if isinstance(primary_id, str) else None
@@ -112,14 +126,6 @@ def _normalize(payload: dict) -> ResolvedSong:
     if not isinstance(title, str) or not title:
         raise SongNotFoundError("Odesli response had no song title")
 
-    platforms: dict[str, str] = {}
-    for odesli_key, out_key in _PLATFORMS.items():
-        entry = links.get(odesli_key)
-        if isinstance(entry, dict):
-            url = entry.get("url")
-            if isinstance(url, str) and url:
-                platforms[out_key] = url
-
     return ResolvedSong(
         title=title,
         artist=primary.get("artistName") or None,
@@ -127,7 +133,7 @@ def _normalize(payload: dict) -> ResolvedSong:
         album=primary.get("album") or primary.get("albumName") or None,
         thumbnail_url=primary.get("thumbnailUrl") or None,
         isrc=_extract_isrc(entities),
-        platforms=platforms,
+        platforms=platforms_from_payload(payload),
     )
 
 

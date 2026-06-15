@@ -635,4 +635,43 @@ export async function getMyVotes(roundId: string): Promise<Votes> {
   return (await res.json()) as Votes;
 }
 
+// --------------------------------------------------------------------------- //
+// Notes (MYS-21).
+// --------------------------------------------------------------------------- //
+
+/** A note left on a submission during voting (POST/GET .../notes). Allowed only
+ *  while the round is open_voting; eligible on any song (playing or vibing). */
+export type Note = {
+  id: string;
+  submission_id: string;
+  round_id: string;
+  author_id: string;
+  author_display_name: string;
+  body: string;
+  created_at: string;
+};
+
+/** Leave a note on a submission (body 1–280 chars). Round must be open_voting
+ *  (backend returns 409 otherwise). Returns the created Note. */
+export async function addNote(submissionId: string, body: string): Promise<Note> {
+  const res = await authenticatedRequest(`/api/v1/submissions/${submissionId}/notes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ body }),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as Note;
+}
+
+/** Get the notes left on a submission, ordered oldest-first. */
+export async function getNotes(submissionId: string): Promise<Note[]> {
+  const res = await authenticatedRequest(`/api/v1/submissions/${submissionId}/notes`);
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as Note[];
+}
+
 export { ApiError };

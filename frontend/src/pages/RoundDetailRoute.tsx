@@ -2,11 +2,13 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ApiError,
+  addNote,
   castVotes,
   getLeague,
   getLeagueMembers,
   getMySubmission,
   getMyVotes,
+  getNotes,
   getPlaylist,
   getRound,
   getRoundSubmissions,
@@ -14,6 +16,7 @@ import {
   updateRound,
   type League,
   type LeagueMember,
+  type Note,
   type PlaylistEntry,
   type ResolvedSong,
   type Round,
@@ -240,6 +243,7 @@ export function RoundDetailRoute() {
               votesSaved={votesSaved}
               onCast={handleCastVotes}
               onSelectionChange={() => setVotesSaved(false)}
+              onActionError={setActionError}
             />
           ) : (
             <RevealSection submissions={reveal} members={members} userId={userId} />
@@ -347,6 +351,7 @@ function VotingSection({
   votesSaved,
   onCast,
   onSelectionChange,
+  onActionError,
 }: {
   entries: PlaylistEntry[];
   votesPerPlayer: number;
@@ -356,6 +361,7 @@ function VotingSection({
   votesSaved: boolean;
   onCast: (selected: string[]) => void;
   onSelectionChange: () => void;
+  onActionError: (message: string | null) => void;
 }) {
   // Seeded from the caller's saved votes; the parent remounts this component
   // (via key) whenever the saved set changes, re-seeding the selection.
@@ -457,6 +463,7 @@ function VotingSection({
                 ) : null}
               </button>
               <PlatformLinks entry={entry} />
+              <SongNotes submissionId={entry.submission_id} onActionError={onActionError} />
             </li>
           );
         })}
@@ -502,6 +509,11 @@ function VotingSection({
                     </p>
                   ) : null}
                   <PlatformLinks entry={entry} />
+                  <SongNotes
+                    submissionId={entry.submission_id}
+                    onActionError={onActionError}
+                    composerHint="can't vote on this one — leave a note instead"
+                  />
                 </Card>
               </li>
             ))}
@@ -509,6 +521,160 @@ function VotingSection({
         </section>
       ) : null}
     </>
+  );
+}
+
+const NOTE_MAX = 280;
+
+/**
+ * Per-song notes affordance for the open_voting playlist. Lazily loads the
+ * notes for a submission when first revealed, lists them, and offers an
+ * expandable inline composer (underline-style textarea + live N/280 counter).
+ * Eligible on every song; the vibing placement passes the calmer composerHint.
+ * Errors are surfaced through the page-level actionError region.
+ */
+function SongNotes({
+  submissionId,
+  onActionError,
+  composerHint,
+}: {
+  submissionId: string;
+  onActionError: (message: string | null) => void;
+  composerHint?: string;
+}) {
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [composing, setComposing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [posting, setPosting] = useState(false);
+
+  const reveal = useCallback(async () => {
+    const next = !open;
+    setOpen(next);
+    if (next && !loaded) {
+      try {
+        setNotes(await getNotes(submissionId));
+        setLoaded(true);
+      } catch (err) {
+        onActionError(err instanceof ApiError ? err.message : "couldn't load notes.");
+      }
+    }
+  }, [open, loaded, submissionId, onActionError]);
+
+  async function submit() {
+    const body = draft.trim();
+    if (!body || body.length > NOTE_MAX || posting) return;
+    setPosting(true);
+    onActionError(null);
+    try {
+      const created = await addNote(submissionId, body);
+      setNotes((current) => [...current, created]);
+      setLoaded(true);
+      setDraft("");
+      setComposing(false);
+      setOpen(true);
+    } catch (err) {
+      onActionError(err instanceof ApiError ? err.message : "couldn't leave your note. try again.");
+    } finally {
+      setPosting(false);
+    }
+  }
+
+  const count = draft.trim().length;
+  const submitDisabled = posting || count === 0 || count > NOTE_MAX;
+
+  return (
+    <div className="mt-3">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+        <button
+          type="button"
+          onClick={() => void reveal()}
+          aria-expanded={open}
+          className="font-mono uppercase tracking-ui text-[11px] text-muted underline underline-offset-[3px] transition-colors duration-150 hover:text-ink"
+        >
+          notes{loaded ? ` (${notes.length})` : ""}
+        </button>
+        {!composing ? (
+          <button
+            type="button"
+            onClick={() => {
+              setComposing(true);
+              setOpen(true);
+            }}
+            className="font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink"
+          >
+            leave a note
+          </button>
+        ) : null}
+      </div>
+
+      {open ? (
+        <>
+          {composing ? (
+            <div className="mt-4">
+              {composerHint ? (
+                <p className="font-mono text-[11px] font-light text-muted">{composerHint}</p>
+              ) : null}
+              <label className="mt-2 block">
+                <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
+                  your note
+                </span>
+                <textarea
+                  value={draft}
+                  maxLength={NOTE_MAX}
+                  rows={2}
+                  onChange={(e) => setDraft(e.target.value)}
+                  className="mt-2 w-full resize-none rounded-none border-0 border-b border-ink bg-transparent px-0 py-1 font-mono text-[13px] font-light text-ink placeholder:text-muted focus:border-sage focus:outline-none"
+                />
+              </label>
+              <div className="mt-2 flex items-center justify-between gap-4">
+                <span
+                  aria-live="polite"
+                  className="font-mono uppercase tracking-label text-[9px] text-muted"
+                >
+                  {count} / {NOTE_MAX}
+                </span>
+                <div className="flex items-center gap-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setComposing(false);
+                      setDraft("");
+                    }}
+                    className="font-mono uppercase tracking-ui text-[11px] text-muted underline underline-offset-[3px] transition-colors duration-150 hover:text-ink"
+                  >
+                    cancel
+                  </button>
+                  <Button type="button" onClick={() => void submit()} disabled={submitDisabled}>
+                    {posting ? "…" : "leave note"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {loaded && notes.length > 0 ? (
+            <ul className="mt-4 space-y-3 border-t border-border pt-4">
+              {notes.map((note) => (
+                <li key={note.id}>
+                  <p className="font-mono text-[13px] font-light leading-relaxed text-ink">
+                    {note.body}
+                  </p>
+                  <span className="mt-1 block font-mono uppercase tracking-label text-[9px] text-muted">
+                    {note.author_display_name}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+
+          {loaded && notes.length === 0 && !composing ? (
+            <p className="mt-3 font-mono text-[11px] font-light text-muted">no notes yet</p>
+          ) : null}
+        </>
+      ) : null}
+    </div>
   );
 }
 

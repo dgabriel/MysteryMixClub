@@ -12,8 +12,10 @@ identity only — not its link resolution). This router only maps service errors
 onto HTTP status codes.
 """
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, StringConstraints, model_validator
 
 from app.auth.deps import get_current_user
 from app.models.user import User
@@ -40,16 +42,23 @@ from app.services.song_links import SongLinkAssembler, get_link_assembler
 
 router = APIRouter(prefix="/songs", tags=["songs"])
 
+# Bound user-supplied free-text inputs (MYS-49). Length-bound everything; trim
+# human text, leave URLs untrimmed. Submission persistence re-validates these on
+# POST /submissions — this hardens the search/resolve surface itself.
+ShortText = Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)]
+Isrc = Annotated[str, StringConstraints(strip_whitespace=True, max_length=32)]
+Url = Annotated[str, StringConstraints(max_length=2048)]
+
 
 class ResolveRequest(BaseModel):
     # Either a pasted platform URL, or a known song identity (from a search
     # result). Identity is preferred — it skips the URL-identification step.
-    url: str | None = None
-    title: str | None = None
-    artist: str | None = None
-    isrc: str | None = None
-    album: str | None = None
-    thumbnail_url: str | None = None
+    url: Url | None = None
+    title: ShortText | None = None
+    artist: ShortText | None = None
+    isrc: Isrc | None = None
+    album: ShortText | None = None
+    thumbnail_url: Url | None = None
 
     @model_validator(mode="after")
     def _need_url_or_title(self) -> "ResolveRequest":
@@ -107,8 +116,10 @@ async def resolve_song(
 
 @router.get("/search", response_model=SongSearchResult)
 async def search_songs(
-    q: str = Query(min_length=1, description="Song title to search for"),
-    artist: str | None = Query(default=None, description="Optional artist to narrow results"),
+    q: str = Query(min_length=1, max_length=200, description="Song title to search for"),
+    artist: str | None = Query(
+        default=None, max_length=200, description="Optional artist to narrow results"
+    ),
     _user: User = Depends(get_current_user),
     deezer: DeezerSearchClient = Depends(get_deezer_client),
 ) -> SongSearchResult:

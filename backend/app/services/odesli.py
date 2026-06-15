@@ -149,8 +149,8 @@ class OdesliClient:
         self._timeout = timeout
         self._client_factory = client_factory or (lambda: httpx.AsyncClient(timeout=timeout))
 
-    async def resolve(self, url: str) -> ResolvedSong:
-        """Resolve a platform URL to a normalized song. Raises an
+    async def _fetch_raw(self, url: str) -> dict:
+        """Call Odesli and return the raw JSON payload. Raises an
         :class:`OdesliError` subclass on any failure."""
         if not isinstance(url, str) or not _looks_like_url(url):
             raise InvalidSongURLError("a valid http(s) URL is required")
@@ -178,11 +178,20 @@ class OdesliClient:
             raise OdesliUnavailableError(f"unexpected Odesli status {response.status_code}")
 
         try:
-            payload = response.json()
+            return response.json()
         except ValueError as exc:
             raise OdesliUnavailableError("Odesli returned a non-JSON body") from exc
 
-        return _normalize(payload)
+    async def resolve(self, url: str) -> ResolvedSong:
+        """Resolve a platform URL to a normalized song."""
+        return _normalize(await self._fetch_raw(url))
+
+    async def resolve_with_raw(self, url: str) -> tuple[ResolvedSong, dict]:
+        """Like :meth:`resolve`, but also return the raw Odesli payload for
+        server-side storage (``submissions.odesli_data``). The raw shape stays
+        internal — only callers that persist it should use this."""
+        payload = await self._fetch_raw(url)
+        return _normalize(payload), payload
 
 
 def build_odesli_client(settings: Settings) -> OdesliClient:

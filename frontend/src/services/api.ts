@@ -600,6 +600,73 @@ export async function getRoundSubmissions(roundId: string): Promise<SubmissionRe
 }
 
 // --------------------------------------------------------------------------- //
+// Round results / reveal (MYS-23 / MYS-24). Available only once a round is
+// closed (GET /rounds/:id/results → 409 while still open).
+// --------------------------------------------------------------------------- //
+
+/** A note shown in the reveal — body + author, no edit affordances. */
+export type ResultNote = {
+  body: string;
+  author_display_name: string;
+  created_at: string;
+};
+
+/** A revealed submission: submitter named, vote total, and the notes it drew. */
+export type ResultSubmission = {
+  submission_id: string;
+  user_id: string;
+  submitter_display_name: string;
+  isrc: string;
+  title: string;
+  artist: string;
+  album: string | null;
+  album_art_url: string | null;
+  participation_mode: string;
+  submitter_note: string | null;
+  vote_count: number;
+  notes: ResultNote[];
+};
+
+/** One ranked, Playing-only player on the leaderboard (vibing excluded). */
+export type LeaderboardEntry = {
+  user_id: string;
+  display_name: string;
+  vote_count: number;
+  rank: number;
+};
+
+/** A submission that drew the most notes this round (ties yield several). */
+export type MostNotedWinner = {
+  submission_id: string;
+  title: string;
+  artist: string;
+  note_count: number;
+  notes: ResultNote[];
+};
+
+/** A closed round's full results (GET /rounds/:id/results). `most_noted.winners`
+ *  is empty when the round drew no notes. */
+export type RoundResults = {
+  round_id: string;
+  round_number: number;
+  theme: string;
+  state: RoundState;
+  submissions: ResultSubmission[];
+  leaderboard: LeaderboardEntry[];
+  most_noted: { note_count: number; winners: MostNotedWinner[] };
+};
+
+/** Get a closed round's reveal results. Backend returns 409 while the round is
+ *  still open, surfaced here as an ApiError. */
+export async function getResults(roundId: string): Promise<RoundResults> {
+  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/results`);
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as RoundResults;
+}
+
+// --------------------------------------------------------------------------- //
 // Votes (MYS-20).
 // --------------------------------------------------------------------------- //
 

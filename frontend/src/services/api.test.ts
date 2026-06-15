@@ -15,6 +15,7 @@ import {
   getMe,
   getMyVotes,
   getNotes,
+  getResults,
   logout,
   logoutAll,
   refresh,
@@ -25,7 +26,16 @@ import {
   updateLeague,
   verifyToken,
 } from "./api";
-import type { Invite, InvitePreview, League, LeagueMember, Note, UserProfile, Votes } from "./api";
+import type {
+  Invite,
+  InvitePreview,
+  League,
+  LeagueMember,
+  Note,
+  RoundResults,
+  UserProfile,
+  Votes,
+} from "./api";
 
 const API_BASE = "http://localhost:8000";
 const AUTH_BASE = `${API_BASE}/api/v1/auth`;
@@ -1069,6 +1079,85 @@ describe("api.ts", () => {
       expect(err).toMatchObject({
         status: 403,
         message: "not a member of this league",
+      });
+    });
+  });
+
+  describe("getResults", () => {
+    const sampleResults: RoundResults = {
+      round_id: "r1",
+      round_number: 1,
+      theme: "late summer feels",
+      state: "closed",
+      submissions: [
+        {
+          submission_id: "sub-1",
+          user_id: "user-2",
+          submitter_display_name: "Bo",
+          isrc: "I1",
+          title: "Debaser",
+          artist: "Pixies",
+          album: null,
+          album_art_url: null,
+          participation_mode: "playing",
+          submitter_note: "a banger",
+          vote_count: 3,
+          notes: [{ body: "this slaps", author_display_name: "Ada", created_at: "x" }],
+        },
+      ],
+      leaderboard: [{ user_id: "user-2", display_name: "Bo", vote_count: 3, rank: 1 }],
+      most_noted: {
+        note_count: 1,
+        winners: [
+          {
+            submission_id: "sub-1",
+            title: "Debaser",
+            artist: "Pixies",
+            note_count: 1,
+            notes: [{ body: "this slaps", author_display_name: "Ada", created_at: "x" }],
+          },
+        ],
+      },
+    };
+
+    it("GETs /api/v1/rounds/{id}/results (Bearer + credentials) and resolves the results on 200", async () => {
+      setStoredAccessToken("my-token");
+      const fetchMock = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(jsonResponse(200, sampleResults));
+
+      await expect(getResults("r1")).resolves.toEqual(sampleResults);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(`${V1_BASE}/rounds/r1/results`);
+      expect(init?.method ?? "GET").toBe("GET");
+      expect(init?.credentials).toBe("include");
+      const headers = new Headers(init?.headers);
+      expect(headers.get("Authorization")).toBe("Bearer my-token");
+    });
+
+    it("throws ApiError(409) when the round is not yet closed", async () => {
+      setStoredAccessToken("my-token");
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse(409, { detail: "results are available once the round closes" }),
+      );
+
+      const err = await getResults("r1").catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err).toMatchObject({
+        status: 409,
+        message: "results are available once the round closes",
+      });
+    });
+
+    it("throws ApiError with a generic message when the error body is not JSON", async () => {
+      setStoredAccessToken("my-token");
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("nope", { status: 500 }));
+
+      await expect(getResults("r1")).rejects.toMatchObject({
+        status: 500,
+        message: "request failed (500)",
       });
     });
   });

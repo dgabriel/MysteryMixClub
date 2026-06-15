@@ -5,21 +5,24 @@ import {
   addNote,
   castVotes,
   getLeague,
-  getLeagueMembers,
   getMySubmission,
   getMyVotes,
   getNotes,
   getPlaylist,
+  getResults,
   getRound,
-  getRoundSubmissions,
   submitSong,
   updateRound,
   type League,
-  type LeagueMember,
+  type LeaderboardEntry,
+  type MostNotedWinner,
   type Note,
   type PlaylistEntry,
   type ResolvedSong,
+  type ResultNote,
+  type ResultSubmission,
   type Round,
+  type RoundResults,
   type RoundState,
   type SubmissionResult,
 } from "../services/api";
@@ -61,8 +64,7 @@ export function RoundDetailRoute() {
   const [mine, setMine] = useState<SubmissionResult | null>(null);
   const [playlist, setPlaylist] = useState<PlaylistEntry[]>([]);
   const [myVotes, setMyVotes] = useState<string[]>([]);
-  const [reveal, setReveal] = useState<SubmissionResult[]>([]);
-  const [members, setMembers] = useState<LeagueMember[]>([]);
+  const [results, setResults] = useState<RoundResults | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -94,12 +96,7 @@ export function RoundDetailRoute() {
         setMyVotes(loadedVotes.submission_ids);
         setMine(loadedMine);
       } else {
-        const [subs, mems] = await Promise.all([
-          getRoundSubmissions(id),
-          getLeagueMembers(loadedRound.league_id),
-        ]);
-        setReveal(subs);
-        setMembers(mems);
+        setResults(await getResults(id));
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "couldn't load this round.");
@@ -246,7 +243,7 @@ export function RoundDetailRoute() {
               onActionError={setActionError}
             />
           ) : (
-            <RevealSection submissions={reveal} members={members} userId={userId} />
+            <ResultsSection results={results} userId={userId} />
           )}
         </section>
       </main>
@@ -678,43 +675,160 @@ function SongNotes({
   );
 }
 
-function RevealSection({
-  submissions,
-  members,
+/** A list of reveal notes (body + author), shared by Most Noted and each
+ *  submission card. Calm, read-only — no composer in the closed view. */
+function ResultNoteList({ notes }: { notes: ResultNote[] }) {
+  return (
+    <ul className="space-y-3">
+      {notes.map((note, i) => (
+        <li key={i}>
+          <p className="font-mono text-[13px] font-light leading-relaxed text-ink">{note.body}</p>
+          <span className="mt-1 block font-mono uppercase tracking-label text-[9px] text-muted">
+            {note.author_display_name}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * Closed-round reveal (MYS-24). A static results moment — subtle fade-in only,
+ * no staged animation (deferred to MYS-54). Top to bottom: Most Noted (the one
+ * Rust signal on this screen), the Playing leaderboard, then every submission
+ * with its submitter revealed. Vibing picks are shown fully and equally — a
+ * calm badge, never a score.
+ */
+function ResultsSection({
+  results,
   userId,
 }: {
-  submissions: SubmissionResult[];
-  members: LeagueMember[];
+  results: RoundResults | null;
   userId: string | null;
 }) {
-  if (submissions.length === 0) {
+  if (!results || results.submissions.length === 0) {
     return <p className="font-mono text-[13px] font-light text-muted">no submissions</p>;
   }
-  const nameFor = (id: string) =>
-    id === userId ? "you" : (members.find((m) => m.user_id === id)?.display_name ?? "someone");
+
+  const { submissions, leaderboard, most_noted } = results;
+  const nameFor = (s: ResultSubmission) =>
+    s.user_id === userId ? "you" : (s.submitter_display_name ?? "someone");
+
   return (
-    <>
-      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
-        submissions ({submissions.length})
-      </h2>
+    <div className="animate-fade-in space-y-12">
+      {most_noted.winners.length > 0 ? <MostNotedSection winners={most_noted.winners} /> : null}
+
+      {leaderboard.length > 0 ? <LeaderboardSection entries={leaderboard} /> : null}
+
+      <section>
+        <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
+          the picks ({submissions.length})
+        </h2>
+        <ul className="mt-4 space-y-4">
+          {submissions.map((s) => {
+            const vibing = s.participation_mode === "vibing";
+            return (
+              <li key={s.submission_id}>
+                <Card>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="font-mono uppercase tracking-label text-[9px] text-muted">
+                      {nameFor(s)}
+                    </span>
+                    {vibing ? (
+                      <span className="shrink-0">
+                        <Badge>just vibing</Badge>
+                      </span>
+                    ) : (
+                      <span className="shrink-0 font-mono uppercase tracking-label text-[9px] text-sage">
+                        {s.vote_count} {s.vote_count === 1 ? "vote" : "votes"}
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="mt-1 font-serif text-[18px] leading-tight text-ink">{s.title}</h3>
+                  {s.artist ? (
+                    <p className="mt-1 font-mono text-[11px] font-light text-muted">{s.artist}</p>
+                  ) : null}
+                  {s.submitter_note ? (
+                    <p className="mt-2 font-mono text-[11px] font-light text-ink">
+                      “{s.submitter_note}”
+                    </p>
+                  ) : null}
+                  {s.notes.length > 0 ? (
+                    <div className="mt-4 border-t border-border pt-4">
+                      <ResultNoteList notes={s.notes} />
+                    </div>
+                  ) : null}
+                </Card>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+    </div>
+  );
+}
+
+/**
+ * The single most important element on the reveal — the song(s) that drew the
+ * most notes. This is the screen's one Rust use: the Card's Rust left accent
+ * bar. A tie shows every winner as co-recognized.
+ */
+function MostNotedSection({ winners }: { winners: MostNotedWinner[] }) {
+  const tie = winners.length > 1;
+  return (
+    <section>
+      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">most noted</h2>
+      <p className="mt-2 font-mono text-[13px] font-light text-muted">
+        {tie ? "the picks that got everyone talking" : "the pick that got everyone talking"}
+      </p>
       <ul className="mt-4 space-y-4">
-        {submissions.map((s) => (
-          <li key={s.id}>
-            <Card>
-              <span className="font-mono uppercase tracking-label text-[9px] text-muted">
-                {nameFor(s.user_id)}
-              </span>
-              <h3 className="mt-1 font-serif text-[18px] leading-tight text-ink">{s.title}</h3>
-              {s.artist ? (
-                <p className="mt-1 font-mono text-[11px] font-light text-muted">{s.artist}</p>
+        {winners.map((w) => (
+          <li key={w.submission_id}>
+            {/* Rust accent bar — the one Rust signal on this screen. */}
+            <Card accent>
+              <div className="flex items-start justify-between gap-3">
+                <h3 className="font-serif text-[24px] leading-tight text-ink">{w.title}</h3>
+                <span className="shrink-0 pt-1 font-mono uppercase tracking-label text-[9px] text-muted">
+                  {w.note_count} {w.note_count === 1 ? "note" : "notes"}
+                </span>
+              </div>
+              {w.artist ? (
+                <p className="mt-1 font-mono text-[11px] font-light text-muted">{w.artist}</p>
               ) : null}
-              {s.note ? (
-                <p className="mt-2 font-mono text-[11px] font-light text-ink">“{s.note}”</p>
+              {w.notes.length > 0 ? (
+                <div className="mt-5 border-t border-border pt-5">
+                  <ResultNoteList notes={w.notes} />
+                </div>
               ) : null}
             </Card>
           </li>
         ))}
       </ul>
-    </>
+    </section>
+  );
+}
+
+/** The Playing leaderboard — already ranked, vibing excluded. Calm and compact;
+ *  no Rust (rank #1 included stays in the Sage/Ink family). */
+function LeaderboardSection({ entries }: { entries: LeaderboardEntry[] }) {
+  return (
+    <section>
+      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">leaderboard</h2>
+      <ul className="mt-4 divide-y divide-border border-y border-border">
+        {entries.map((e) => (
+          <li key={e.user_id} className="flex items-baseline justify-between gap-4 py-3">
+            <div className="flex items-baseline gap-4">
+              <span className="w-6 shrink-0 font-mono text-[13px] font-light text-muted">
+                {e.rank}
+              </span>
+              <span className="font-mono text-[13px] font-light text-ink">{e.display_name}</span>
+            </div>
+            <span className="shrink-0 font-mono uppercase tracking-label text-[9px] text-sage">
+              {e.vote_count} {e.vote_count === 1 ? "vote" : "votes"}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

@@ -1,11 +1,15 @@
+from datetime import datetime, timezone
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, StringConstraints, model_validator
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
 from app.db.session import get_db
+from app.models.league import League
+from app.models.session import Session
 from app.models.user import User
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -69,3 +73,46 @@ async def update_me(
         setattr(current_user, field, value)
     await db.commit()
     return _to_profile(current_user)
+
+
+# Calm, actionable detail when the caller still organizes a live league.
+_ACTIVE_LEAGUE_BLOCK = "finish or hand off the leagues you organize before deleting your account"
+
+
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_me(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Soft-delete the caller's account (right to be forgotten, TD 10).
+
+    Blocks while the caller organizes an active league. Otherwise it tombstones
+    the email (freeing it for re-signup and dropping the PII), invalidates every
+    session, and marks the account deleted. Submissions/votes/notes/memberships
+    are left intact for round integrity and are removed by the scheduled hard
+    purge within 30 days (app.jobs.purge_accounts). The existing deleted_at
+    filters in auth already lock the account out of sign-in.
+    """
+    organizes_active = await db.scalar(
+        select(func.count())
+        .select_from(League)
+        .where(League.organizer_id == current_user.id, League.state == "active")
+    )
+    if organizes_active:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=_ACTIVE_LEAGUE_BLOCK,
+        )
+
+    now = datetime.now(timezone.utc)
+    current_user.deleted_at = now
+    current_user.email = f"deleted+{current_user.id}@deleted.invalid"
+
+    # Kill every still-active session so refresh tokens die with the account.
+    await db.execute(
+        update(Session)
+        .where(Session.user_id == current_user.id, Session.invalidated_at.is_(None))
+        .values(invalidated_at=now)
+    )
+
+    await db.commit()

@@ -15,8 +15,10 @@ class League(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    organizer_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+    # Nullable: hard-purging an account (MYS-50) nulls the organizer of any
+    # completed leagues it organized, preserving other members' history.
+    organizer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
     )
     total_rounds: Mapped[int] = mapped_column(Integer, nullable=False)
     votes_per_player: Mapped[int] = mapped_column(

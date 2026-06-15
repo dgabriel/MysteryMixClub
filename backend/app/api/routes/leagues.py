@@ -76,7 +76,8 @@ class LeagueResponse(BaseModel):
     id: str
     name: str
     description: str | None
-    organizer_id: str
+    # Null once the organizing account has been hard-purged (MYS-50).
+    organizer_id: str | None
     total_rounds: int
     votes_per_player: int
     current_round: int
@@ -90,7 +91,7 @@ def _to_response(league: League) -> LeagueResponse:
         id=str(league.id),
         name=league.name,
         description=league.description,
-        organizer_id=str(league.organizer_id),
+        organizer_id=str(league.organizer_id) if league.organizer_id is not None else None,
         total_rounds=league.total_rounds,
         votes_per_player=league.votes_per_player,
         current_round=league.current_round,
@@ -109,7 +110,7 @@ class MemberResponse(BaseModel):
 
 
 def _to_member_response(
-    member: LeagueMember, user: User, organizer_id: uuid.UUID
+    member: LeagueMember, user: User, organizer_id: uuid.UUID | None
 ) -> MemberResponse:
     return MemberResponse(
         user_id=str(member.user_id),

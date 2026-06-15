@@ -34,7 +34,9 @@ router = APIRouter(tags=["submissions"])
 
 ShortText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
 Isrc = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)]
-Note = Annotated[str, StringConstraints(max_length=280)]
+Note = Annotated[str, StringConstraints(strip_whitespace=True, max_length=280)]
+Album = Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)]
+AlbumArtUrl = Annotated[str, StringConstraints(max_length=2048)]
 
 
 class SubmissionCreate(BaseModel):
@@ -43,8 +45,8 @@ class SubmissionCreate(BaseModel):
     isrc: Isrc
     title: ShortText
     artist: ShortText
-    album: str | None = None
-    album_art_url: str | None = None
+    album: Album | None = None
+    album_art_url: AlbumArtUrl | None = None
     note: Note | None = None
     participation_mode: Literal["playing", "vibing"] | None = None
 

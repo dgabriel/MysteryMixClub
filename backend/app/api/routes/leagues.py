@@ -18,19 +18,20 @@ from app.models.user import User
 router = APIRouter(prefix="/leagues", tags=["leagues"])
 
 LeagueName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+LeagueDescription = Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000)]
 
 
 class LeagueCreate(BaseModel):
     name: LeagueName
     total_rounds: int = Field(ge=1)
     votes_per_player: int = Field(default=3, ge=1)
-    description: str | None = None
+    description: LeagueDescription | None = None
 
 
 class LeagueUpdate(BaseModel):
     # All fields optional: only those explicitly provided are applied.
     name: LeagueName | None = None
-    description: str | None = None
+    description: LeagueDescription | None = None
     total_rounds: int | None = Field(default=None, ge=1)
 
     # name and total_rounds map to NOT NULL columns: allow omission (partial

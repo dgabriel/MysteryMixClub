@@ -7,10 +7,10 @@ Puts a song — picked via the search/resolve flow — into a round:
 * ``GET  /api/v1/rounds/:id/submissions``      — all submissions (after close only)
 
 The canonical track fields (isrc/title/artist/album/art) come from the client's
-prior search/resolve call; the server additionally fetches the full Odesli
-payload and persists it as ``submissions.odesli_data`` for playlist/playback
-resolution. That Odesli fetch is best-effort: a transient upstream failure
-stores a null ``odesli_data`` rather than blocking the submission.
+prior search/resolve call; the server additionally assembles cross-service
+platform links (keyless) and persists them as ``submissions.platform_links`` for
+playlist/playback. The assembler always returns at least open-on-service deep
+links, so a transient upstream hiccup never blocks the submission.
 """
 
 import uuid
@@ -28,7 +28,7 @@ from app.auth.deps import get_current_user
 from app.db.session import get_db
 from app.models.submission import Submission
 from app.models.user import User
-from app.services.odesli import OdesliClient, OdesliError, get_odesli_client
+from app.services.song_links import SongLinkAssembler, get_link_assembler
 
 router = APIRouter(tags=["submissions"])
 
@@ -87,7 +87,7 @@ async def submit_song(
     response: Response,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    odesli: OdesliClient = Depends(get_odesli_client),
+    assembler: SongLinkAssembler = Depends(get_link_assembler),
 ) -> SubmissionResponse:
     round_ = await _load_round(round_id, db)
     await _load_league_as_member(round_.league_id, current_user, db)
@@ -96,13 +96,9 @@ async def submit_song(
             status_code=status.HTTP_409_CONFLICT, detail="this round is not accepting submissions"
         )
 
-    # Best-effort: fetch the full Odesli payload for playback resolution. A
-    # transient upstream failure must not block the player from submitting.
-    odesli_data: dict | None = None
-    try:
-        _, odesli_data = await odesli.resolve_with_raw(payload.url)
-    except OdesliError:
-        odesli_data = None
+    # Assemble cross-service playback links keyless from the picked track. Always
+    # returns at least deep links, so this never blocks the submission.
+    platform_links = await assembler.assemble(payload.title, payload.artist, payload.isrc)
 
     mode = payload.participation_mode or ("vibing" if current_user.default_vibe_mode else "playing")
 
@@ -120,7 +116,7 @@ async def submit_song(
             artist=payload.artist,
             album=payload.album,
             album_art_url=payload.album_art_url,
-            odesli_data=odesli_data,
+            platform_links=platform_links,
             note=payload.note,
             participation_mode=mode,
         )
@@ -133,7 +129,7 @@ async def submit_song(
         existing.artist = payload.artist
         existing.album = payload.album
         existing.album_art_url = payload.album_art_url
-        existing.odesli_data = odesli_data
+        existing.platform_links = platform_links
         existing.note = payload.note
         existing.participation_mode = mode
         submission = existing

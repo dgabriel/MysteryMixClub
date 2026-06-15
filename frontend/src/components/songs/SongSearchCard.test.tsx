@@ -88,7 +88,7 @@ describe("SongSearchCard", () => {
     // Only platforms present in the response are shown.
     expect(screen.getByRole("link", { name: /on YouTube/i })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /on Deezer/i })).not.toBeInTheDocument();
-    expect(mockResolve).toHaveBeenCalledWith("https://open.spotify.com/track/2");
+    expect(mockResolve).toHaveBeenCalledWith({ url: "https://open.spotify.com/track/2" });
   });
 
   it("shows a calm inline error when a pasted link can't be resolved", async () => {
@@ -120,8 +120,14 @@ describe("SongSearchCard", () => {
     await user.click(row);
 
     expect(await screen.findByRole("heading", { name: "bad guy" })).toBeInTheDocument();
-    // Selection resolves via the track's URL for cross-platform links.
-    expect(mockResolve).toHaveBeenCalledWith("https://www.deezer.com/track/id0");
+    // Selection resolves by the track's identity (server assembles the links).
+    expect(mockResolve).toHaveBeenCalledWith({
+      title: "bad guy",
+      artist: "Billie Eilish",
+      isrc: "USUM71900764",
+      album: "When We All Fall Asleep",
+      thumbnail_url: "https://img/s.jpg",
+    });
   });
 
   it("surfaces the too-many-matches nudge", async () => {

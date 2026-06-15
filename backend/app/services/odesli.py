@@ -189,15 +189,10 @@ class OdesliClient:
             raise OdesliUnavailableError("Odesli returned a non-JSON body") from exc
 
     async def resolve(self, url: str) -> ResolvedSong:
-        """Resolve a platform URL to a normalized song."""
+        """Resolve a platform URL to a normalized song. Used only to identify a
+        *pasted* link (title/artist/isrc); cross-service links are assembled
+        separately by :mod:`app.services.song_links`."""
         return _normalize(await self._fetch_raw(url))
-
-    async def resolve_with_raw(self, url: str) -> tuple[ResolvedSong, dict]:
-        """Like :meth:`resolve`, but also return the raw Odesli payload for
-        server-side storage (``submissions.odesli_data``). The raw shape stays
-        internal — only callers that persist it should use this."""
-        payload = await self._fetch_raw(url)
-        return _normalize(payload), payload
 
 
 def build_odesli_client(settings: Settings) -> OdesliClient:

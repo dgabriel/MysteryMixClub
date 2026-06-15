@@ -30,7 +30,6 @@ from app.db.session import get_db
 from app.models.round import Round
 from app.models.submission import Submission
 from app.models.user import User
-from app.services.odesli import platforms_from_payload
 
 router = APIRouter(tags=["rounds"])
 
@@ -277,7 +276,7 @@ async def get_round_playlist(
 
     entries = []
     for s in submissions:
-        platforms = platforms_from_payload(s.odesli_data)
+        platforms = s.platform_links or {}
         entries.append(
             PlaylistEntry(
                 submission_id=str(s.id),

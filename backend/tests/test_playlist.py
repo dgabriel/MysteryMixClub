@@ -1,6 +1,6 @@
 """Tests for MYS-18 slice B: GET /rounds/:id/playlist.
 
-The playlist reads each submission's stored odesli_data (no live Odesli), so the
+The playlist reads each submission's stored platform_links (no live Odesli), so the
 shared client fixture is used. Covers auth/membership gates, the open_submission
 gate, anonymity, preferred-service resolution with YouTube fallback, the
 empty-platforms case, and deterministic shuffling.
@@ -16,8 +16,8 @@ from app.models.submission import Submission
 from app.models.user import User
 
 
-def _odesli(*platforms: str) -> dict:
-    return {"linksByPlatform": {p: {"url": f"https://{p}/x"} for p in platforms}}
+def _links(*platforms: str) -> dict:
+    return {p: f"https://{p}/x" for p in platforms}
 
 
 async def _seed_user(db_session, email: str, *, preferred: str | None = None) -> User:
@@ -41,7 +41,7 @@ async def _seed_round(db_session, organizer: User, *, state: str = "open_voting"
 
 
 async def _add_submission(
-    db_session, round_id, user_id, *, title, isrc, odesli_data, mode="playing"
+    db_session, round_id, user_id, *, title, isrc, platform_links, mode="playing"
 ):
     db_session.add(
         Submission(
@@ -50,7 +50,7 @@ async def _add_submission(
             isrc=isrc,
             title=title,
             artist="A",
-            odesli_data=odesli_data,
+            platform_links=platform_links,
             participation_mode=mode,
         )
     )
@@ -106,7 +106,7 @@ async def test_playlist_entries_are_anonymous(client, db_session):
         organizer.id,
         title="bad guy",
         isrc="I1",
-        odesli_data=_odesli("deezer"),
+        platform_links=_links("deezer"),
     )
     resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
     assert resp.status_code == 200, resp.text
@@ -129,7 +129,7 @@ async def test_preferred_service_link_is_chosen(client, db_session):
         organizer.id,
         title="x",
         isrc="I1",
-        odesli_data=_odesli("spotify", "deezer", "youtube"),
+        platform_links=_links("spotify", "deezer", "youtube"),
     )
     resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
     entry = resp.json()["entries"][0]
@@ -146,7 +146,7 @@ async def test_youtube_fallback_when_no_preference(client, db_session):
         organizer.id,
         title="x",
         isrc="I1",
-        odesli_data=_odesli("spotify", "youtube"),
+        platform_links=_links("spotify", "youtube"),
     )
     resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
     assert resp.json()["entries"][0]["preferred_url"] == "https://youtube/x"
@@ -156,7 +156,7 @@ async def test_preferred_url_none_when_no_platforms(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
     round_ = await _seed_round(db_session, organizer)
     await _add_submission(
-        db_session, round_.id, organizer.id, title="x", isrc="I1", odesli_data=None
+        db_session, round_.id, organizer.id, title="x", isrc="I1", platform_links=None
     )
     resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
     entry = resp.json()["entries"][0]
@@ -177,7 +177,7 @@ async def test_playlist_shuffle_is_deterministic(client, db_session):
             u.id,
             title=f"song {i}",
             isrc=f"I{i}",
-            odesli_data=_odesli("youtube"),
+            platform_links=_links("youtube"),
         )
 
     first = await client.get(_url(round_.id), headers=_auth(organizer.id))

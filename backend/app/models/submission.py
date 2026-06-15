@@ -29,8 +29,8 @@ class Submission(Base):
     artist: Mapped[str] = mapped_column(String, nullable=False)
     album: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     album_art_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    # Full Odesli response for platform resolution at playback (best-effort).
-    odesli_data: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    # Assembled cross-service links {platform: url} for playback (best-effort).
+    platform_links: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     note: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     participation_mode: Mapped[str] = mapped_column(
         String, nullable=False, default="playing", server_default=text("'playing'")

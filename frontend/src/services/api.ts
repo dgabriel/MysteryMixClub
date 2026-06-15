@@ -429,4 +429,174 @@ export async function searchSongs(q: string, artist?: string): Promise<SongSearc
   return (await res.json()) as SongSearchResults;
 }
 
+// --------------------------------------------------------------------------- //
+// Rounds, submissions & playlist (MYS-18 / MYS-51 / MYS-53).
+// --------------------------------------------------------------------------- //
+
+/** A round's lifecycle state. */
+export type RoundState = "open_submission" | "open_voting" | "closed";
+
+/** A round within a league. */
+export type Round = {
+  id: string;
+  league_id: string;
+  round_number: number;
+  theme: string;
+  state: RoundState;
+  submission_deadline: string | null;
+  voting_deadline: string | null;
+  votes_per_player: number;
+  created_at: string;
+  closed_at: string | null;
+};
+
+/** A song submitted to a round (GET .../submissions, .../submissions/mine). */
+export type SubmissionResult = {
+  id: string;
+  round_id: string;
+  user_id: string;
+  isrc: string;
+  title: string;
+  artist: string;
+  album: string | null;
+  album_art_url: string | null;
+  note: string | null;
+  participation_mode: string;
+  created_at: string;
+};
+
+/** One anonymous entry in a round's voting playlist. */
+export type PlaylistEntry = {
+  submission_id: string;
+  isrc: string;
+  title: string;
+  artist: string;
+  album: string | null;
+  album_art_url: string | null;
+  participation_mode: string;
+  platforms: Partial<Record<PlatformKey, string>>;
+  preferred_url: string | null;
+};
+
+/** A round's voting playlist (GET /rounds/:id/playlist). */
+export type Playlist = {
+  round_id: string;
+  round_number: number;
+  theme: string;
+  state: RoundState;
+  entries: PlaylistEntry[];
+};
+
+/** Create a round in a league (organizer only). */
+export async function createRound(
+  leagueId: string,
+  input: {
+    theme: string;
+    votes_per_player?: number;
+    submission_deadline?: string | null;
+    voting_deadline?: string | null;
+  },
+): Promise<Round> {
+  const res = await authenticatedRequest(`/api/v1/leagues/${leagueId}/rounds`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as Round;
+}
+
+/** Get all rounds for a league (members). */
+export async function getRounds(leagueId: string): Promise<Round[]> {
+  const res = await authenticatedRequest(`/api/v1/leagues/${leagueId}/rounds`);
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as Round[];
+}
+
+/** Get a single round (members). */
+export async function getRound(roundId: string): Promise<Round> {
+  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}`);
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as Round;
+}
+
+/** Update a round — edit fields or advance its state (organizer only). */
+export async function updateRound(
+  roundId: string,
+  input: {
+    theme?: string;
+    state?: RoundState;
+    submission_deadline?: string | null;
+    voting_deadline?: string | null;
+  },
+): Promise<Round> {
+  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as Round;
+}
+
+/** Submit (or replace) your song for a round. Round must be open_submission. */
+export async function submitSong(
+  roundId: string,
+  input: {
+    title: string;
+    artist: string;
+    isrc: string;
+    album?: string | null;
+    album_art_url?: string | null;
+    note?: string | null;
+    participation_mode?: "playing" | "vibing";
+  },
+): Promise<SubmissionResult> {
+  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/submissions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as SubmissionResult;
+}
+
+/** Get your submission for a round, or null if you haven't submitted yet. */
+export async function getMySubmission(roundId: string): Promise<SubmissionResult | null> {
+  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/submissions/mine`);
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as SubmissionResult;
+}
+
+/** Get a round's anonymous voting playlist (available once voting opens). */
+export async function getPlaylist(roundId: string): Promise<Playlist> {
+  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/playlist`);
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as Playlist;
+}
+
+/** Get all submissions for a round (revealed only after it closes). */
+export async function getRoundSubmissions(roundId: string): Promise<SubmissionResult[]> {
+  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/submissions`);
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as SubmissionResult[];
+}
+
 export { ApiError };

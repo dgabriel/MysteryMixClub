@@ -38,9 +38,8 @@ Note = Annotated[str, StringConstraints(max_length=280)]
 
 
 class SubmissionCreate(BaseModel):
-    # The platform URL fed to Odesli for cross-platform/playback resolution.
-    url: ShortText
-    # Canonical identity + display fields from the search/resolve result.
+    # Canonical identity + display fields from the search/resolve result. The
+    # cross-service links are assembled server-side from title/artist/isrc.
     isrc: Isrc
     title: ShortText
     artist: ShortText

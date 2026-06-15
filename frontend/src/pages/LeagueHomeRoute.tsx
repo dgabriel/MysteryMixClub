@@ -4,12 +4,15 @@ import { LeagueHomeScreen } from "./LeagueHomeScreen";
 import {
   ApiError,
   createInvite,
+  createRound,
   getLeague,
   getLeagueMembers,
+  getRounds,
   removeMember,
   updateLeague,
   type League,
   type LeagueMember,
+  type Round,
 } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 
@@ -27,8 +30,12 @@ export function LeagueHomeRoute() {
 
   const [league, setLeague] = useState<League | null>(null);
   const [members, setMembers] = useState<LeagueMember[]>([]);
+  const [rounds, setRounds] = useState<Round[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [creatingRound, setCreatingRound] = useState(false);
+  const [createRoundError, setCreateRoundError] = useState<string | null>(null);
 
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [generatingInvite, setGeneratingInvite] = useState(false);
@@ -44,16 +51,16 @@ export function LeagueHomeRoute() {
     if (!id) return;
     void (async () => {
       try {
-        const [loadedLeague, loadedMembers] = await Promise.all([
+        const [loadedLeague, loadedMembers, loadedRounds] = await Promise.all([
           getLeague(id),
           getLeagueMembers(id),
+          getRounds(id),
         ]);
         setLeague(loadedLeague);
         setMembers(loadedMembers);
+        setRounds(loadedRounds);
       } catch (err) {
-        setError(
-          err instanceof ApiError ? err.message : "couldn't load this league.",
-        );
+        setError(err instanceof ApiError ? err.message : "couldn't load this league.");
       } finally {
         setLoading(false);
       }
@@ -78,6 +85,25 @@ export function LeagueHomeRoute() {
     }
   }
 
+  async function handleCreateRound(theme: string, votesPerPlayer?: number) {
+    if (!id) return;
+    setCreatingRound(true);
+    setCreateRoundError(null);
+    try {
+      const round = await createRound(id, {
+        theme,
+        ...(votesPerPlayer ? { votes_per_player: votesPerPlayer } : {}),
+      });
+      setRounds((current) => [...current, round]);
+    } catch (err) {
+      setCreateRoundError(
+        err instanceof ApiError ? err.message : "couldn't create the round. try again.",
+      );
+    } finally {
+      setCreatingRound(false);
+    }
+  }
+
   async function handleUpdateLeague(input: {
     name?: string;
     description?: string | null;
@@ -90,9 +116,7 @@ export function LeagueHomeRoute() {
       const updated = await updateLeague(id, input);
       setLeague(updated);
     } catch (err) {
-      setUpdateError(
-        err instanceof ApiError ? err.message : "couldn't save changes. try again.",
-      );
+      setUpdateError(err instanceof ApiError ? err.message : "couldn't save changes. try again.");
     } finally {
       setUpdating(false);
     }
@@ -134,10 +158,15 @@ export function LeagueHomeRoute() {
     <LeagueHomeScreen
       league={league ?? placeholderLeague}
       members={members}
+      rounds={rounds}
       isOrganizer={isOrganizer}
       loading={loading || (!league && !error)}
       error={error}
       onBack={() => navigate("/home")}
+      onOpenRound={(roundId) => navigate(`/rounds/${roundId}`)}
+      onCreateRound={handleCreateRound}
+      creatingRound={creatingRound}
+      createRoundError={createRoundError}
       inviteUrl={inviteUrl}
       onGenerateInvite={handleGenerateInvite}
       generatingInvite={generatingInvite}

@@ -90,7 +90,6 @@ def _auth(user_id: uuid.UUID) -> dict[str, str]:
 
 def _body(**over) -> dict:
     body = {
-        "url": "https://www.deezer.com/track/1",
         "isrc": "USABC1234567",
         "title": "bad guy",
         "artist": "Billie Eilish",

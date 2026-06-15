@@ -26,9 +26,15 @@ export default {
           from: { transform: "rotate(0deg)" },
           to: { transform: "rotate(360deg)" },
         },
+        "fade-in": {
+          from: { opacity: "0" },
+          to: { opacity: "1" },
+        },
       },
       animation: {
         "rotate-rings": "rotate-rings 8s linear infinite",
+        // Subtle page/section fade per the style guide — no staged motion.
+        "fade-in": "fade-in 200ms ease",
       },
     },
   },

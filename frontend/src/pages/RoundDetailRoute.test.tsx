@@ -7,16 +7,15 @@ import {
   addNote,
   castVotes,
   getLeague,
-  getLeagueMembers,
   getMySubmission,
   getMyVotes,
   getNotes,
   getPlaylist,
+  getResults,
   getRound,
-  getRoundSubmissions,
   updateRound,
 } from "../services/api";
-import type { League, PlaylistEntry, Round, SubmissionResult } from "../services/api";
+import type { League, PlaylistEntry, Round, RoundResults, SubmissionResult } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 
 vi.mock("../services/api", async () => {
@@ -27,8 +26,7 @@ vi.mock("../services/api", async () => {
     getLeague: vi.fn(),
     getMySubmission: vi.fn(),
     getPlaylist: vi.fn(),
-    getRoundSubmissions: vi.fn(),
-    getLeagueMembers: vi.fn(),
+    getResults: vi.fn(),
     updateRound: vi.fn(),
     submitSong: vi.fn(),
     getMyVotes: vi.fn(),
@@ -43,8 +41,7 @@ const mockGetRound = vi.mocked(getRound);
 const mockGetLeague = vi.mocked(getLeague);
 const mockGetMine = vi.mocked(getMySubmission);
 const mockGetPlaylist = vi.mocked(getPlaylist);
-const mockGetReveal = vi.mocked(getRoundSubmissions);
-const mockGetMembers = vi.mocked(getLeagueMembers);
+const mockGetResults = vi.mocked(getResults);
 const mockUpdateRound = vi.mocked(updateRound);
 const mockGetMyVotes = vi.mocked(getMyVotes);
 const mockCastVotes = vi.mocked(castVotes);
@@ -118,6 +115,19 @@ function mine(overrides: Partial<SubmissionResult> = {}): SubmissionResult {
   };
 }
 
+function results(overrides: Partial<RoundResults> = {}): RoundResults {
+  return {
+    round_id: "r1",
+    round_number: 1,
+    theme: "late summer feels",
+    state: "closed",
+    submissions: [],
+    leaderboard: [],
+    most_noted: { note_count: 0, winners: [] },
+    ...overrides,
+  };
+}
+
 function setAuth(userId: string) {
   mockUseAuth.mockReturnValue({
     status: "authenticated",
@@ -158,8 +168,7 @@ describe("RoundDetailRoute", () => {
       state: "open_voting",
       entries: [],
     });
-    mockGetReveal.mockResolvedValue([]);
-    mockGetMembers.mockResolvedValue([]);
+    mockGetResults.mockResolvedValue(results());
     mockGetMyVotes.mockResolvedValue({
       round_id: "r1",
       submission_ids: [],
@@ -256,24 +265,26 @@ describe("RoundDetailRoute", () => {
 
   it("closed: reveals submissions with submitter names", async () => {
     mockGetRound.mockResolvedValue(round({ state: "closed" }));
-    mockGetReveal.mockResolvedValue([
-      {
-        id: "s1",
-        round_id: "r1",
-        user_id: OTHER,
-        isrc: "I1",
-        title: "Bad Guy",
-        artist: "Billie Eilish",
-        album: null,
-        album_art_url: null,
-        note: "a banger",
-        participation_mode: "playing",
-        created_at: "2026-01-01T00:00:00Z",
-      },
-    ]);
-    mockGetMembers.mockResolvedValue([
-      { user_id: OTHER, display_name: "Bob", joined_at: "x", is_organizer: false },
-    ]);
+    mockGetResults.mockResolvedValue(
+      results({
+        submissions: [
+          {
+            submission_id: "s1",
+            user_id: OTHER,
+            submitter_display_name: "Bob",
+            isrc: "I1",
+            title: "Bad Guy",
+            artist: "Billie Eilish",
+            album: null,
+            album_art_url: null,
+            participation_mode: "playing",
+            submitter_note: "a banger",
+            vote_count: 2,
+            notes: [],
+          },
+        ],
+      }),
+    );
     renderRound();
     expect(await screen.findByText("Bad Guy")).toBeInTheDocument();
     expect(screen.getByText("Bob")).toBeInTheDocument();
@@ -651,30 +662,370 @@ describe("RoundDetailRoute", () => {
 
     it("notes affordances do NOT appear in the closed/reveal view", async () => {
       mockGetRound.mockResolvedValue(round({ state: "closed" }));
-      mockGetReveal.mockResolvedValue([
-        {
-          id: "s1",
-          round_id: "r1",
-          user_id: OTHER,
-          isrc: "I1",
-          title: "Bad Guy",
-          artist: "Billie Eilish",
-          album: null,
-          album_art_url: null,
-          note: "a banger",
-          participation_mode: "playing",
-          created_at: "2026-01-01T00:00:00Z",
-        },
-      ]);
-      mockGetMembers.mockResolvedValue([
-        { user_id: OTHER, display_name: "Bob", joined_at: "x", is_organizer: false },
-      ]);
+      mockGetResults.mockResolvedValue(
+        results({
+          submissions: [
+            {
+              submission_id: "s1",
+              user_id: OTHER,
+              submitter_display_name: "Bob",
+              isrc: "I1",
+              title: "Bad Guy",
+              artist: "Billie Eilish",
+              album: null,
+              album_art_url: null,
+              participation_mode: "playing",
+              submitter_note: "a banger",
+              vote_count: 2,
+              notes: [],
+            },
+          ],
+        }),
+      );
       renderRound();
 
       await screen.findByText("Bad Guy");
       expect(screen.queryByRole("button", { name: /leave a note/i })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /^notes$/i })).not.toBeInTheDocument();
       expect(mockGetNotes).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("closed reveal / results (MYS-24)", () => {
+    /** A revealed submission fixture. */
+    function sub(
+      overrides: Partial<RoundResults["submissions"][number]> = {},
+    ): RoundResults["submissions"][number] {
+      return {
+        submission_id: "s1",
+        user_id: OTHER,
+        submitter_display_name: "Bob",
+        isrc: "I1",
+        title: "Bad Guy",
+        artist: "Billie Eilish",
+        album: null,
+        album_art_url: null,
+        participation_mode: "playing",
+        submitter_note: null,
+        vote_count: 0,
+        notes: [],
+        ...overrides,
+      };
+    }
+
+    /** Put the round into closed state with the given results payload. */
+    function setupClosed(overrides: Partial<RoundResults> = {}) {
+      mockGetRound.mockResolvedValue(round({ state: "closed" }));
+      mockGetResults.mockResolvedValue(results(overrides));
+    }
+
+    /** The <section> wrapping a heading, by that heading's text. */
+    function sectionFor(headingText: RegExp): HTMLElement {
+      const heading = screen.getByRole("heading", { name: headingText });
+      const section = heading.closest("section");
+      if (!section) throw new Error(`no <section> found for heading ${headingText}`);
+      return section as HTMLElement;
+    }
+
+    /** The <li> card wrapping a submission, located by its song title. */
+    function cardFor(title: string): HTMLElement {
+      const heading = screen.getByText(title);
+      const li = heading.closest("li");
+      if (!li) throw new Error(`no card <li> found for "${title}"`);
+      return li as HTMLElement;
+    }
+
+    // ----- Most Noted ------------------------------------------------------ //
+
+    it("Most Noted: renders winner title/artist, note count, and all its notes", async () => {
+      setupClosed({
+        submissions: [sub({ vote_count: 2, notes: [] })],
+        most_noted: {
+          note_count: 2,
+          winners: [
+            {
+              submission_id: "s1",
+              title: "Bad Guy",
+              artist: "Billie Eilish",
+              note_count: 2,
+              notes: [
+                { body: "an absolute banger", author_display_name: "Ada", created_at: "x" },
+                { body: "haunting bassline", author_display_name: "Cal", created_at: "y" },
+              ],
+            },
+          ],
+        },
+      });
+      renderRound();
+
+      await screen.findByRole("heading", { name: /most noted/i });
+      const section = sectionFor(/most noted/i);
+      // singular framing copy for a single winner
+      expect(within(section).getByText(/the pick that got everyone talking/i)).toBeInTheDocument();
+      expect(within(section).getByText("Bad Guy")).toBeInTheDocument();
+      expect(within(section).getByText("Billie Eilish")).toBeInTheDocument();
+      expect(within(section).getByText("2 notes")).toBeInTheDocument();
+      // ALL notes (body + author) shown within the Most Noted section
+      expect(within(section).getByText("an absolute banger")).toBeInTheDocument();
+      expect(within(section).getByText("Ada")).toBeInTheDocument();
+      expect(within(section).getByText("haunting bassline")).toBeInTheDocument();
+      expect(within(section).getByText("Cal")).toBeInTheDocument();
+    });
+
+    it("Most Noted: a tie renders both winners as co-recognized", async () => {
+      setupClosed({
+        submissions: [
+          sub({ submission_id: "s1", title: "Bad Guy", vote_count: 2 }),
+          sub({ submission_id: "s2", title: "Vienna", artist: "Billy Joel", vote_count: 1 }),
+        ],
+        most_noted: {
+          note_count: 3,
+          winners: [
+            {
+              submission_id: "s1",
+              title: "Bad Guy",
+              artist: "Billie Eilish",
+              note_count: 3,
+              notes: [{ body: "loved it", author_display_name: "Ada", created_at: "x" }],
+            },
+            {
+              submission_id: "s2",
+              title: "Vienna",
+              artist: "Billy Joel",
+              note_count: 3,
+              notes: [{ body: "timeless", author_display_name: "Cal", created_at: "y" }],
+            },
+          ],
+        },
+      });
+      renderRound();
+
+      await screen.findByRole("heading", { name: /most noted/i });
+      const section = sectionFor(/most noted/i);
+      // plural framing copy for a tie
+      expect(within(section).getByText(/the picks that got everyone talking/i)).toBeInTheDocument();
+      // both winners present in the section
+      expect(within(section).getByText("Bad Guy")).toBeInTheDocument();
+      expect(within(section).getByText("Vienna")).toBeInTheDocument();
+      expect(within(section).getByText("loved it")).toBeInTheDocument();
+      expect(within(section).getByText("timeless")).toBeInTheDocument();
+    });
+
+    it("Most Noted: section is omitted entirely when there are no winners", async () => {
+      setupClosed({
+        submissions: [sub({ vote_count: 2 })],
+        most_noted: { note_count: 0, winners: [] },
+      });
+      renderRound();
+
+      // wait for the page to render the picks
+      await screen.findByText("Bad Guy");
+      expect(screen.queryByRole("heading", { name: /most noted/i })).not.toBeInTheDocument();
+      expect(screen.queryByText(/got everyone talking/i)).not.toBeInTheDocument();
+    });
+
+    // ----- Leaderboard ----------------------------------------------------- //
+
+    it("Leaderboard: renders entries in order with rank, name, and vote count", async () => {
+      setupClosed({
+        submissions: [
+          sub({ submission_id: "s1", user_id: "u-bo", title: "Bad Guy", vote_count: 3 }),
+          sub({
+            submission_id: "s2",
+            user_id: "u-cal",
+            submitter_display_name: "Cal",
+            title: "Vienna",
+            artist: "Billy Joel",
+            vote_count: 1,
+          }),
+        ],
+        leaderboard: [
+          { user_id: "u-bo", display_name: "Bo", vote_count: 3, rank: 1 },
+          { user_id: "u-cal", display_name: "Cal", vote_count: 1, rank: 2 },
+        ],
+      });
+      renderRound();
+
+      await screen.findByRole("heading", { name: /leaderboard/i });
+      const section = sectionFor(/leaderboard/i);
+      const rows = within(section).getAllByRole("listitem");
+      expect(rows).toHaveLength(2);
+      // order: rank 1 then rank 2
+      expect(within(rows[0]).getByText("1")).toBeInTheDocument();
+      expect(within(rows[0]).getByText("Bo")).toBeInTheDocument();
+      expect(within(rows[0]).getByText("3 votes")).toBeInTheDocument();
+      expect(within(rows[1]).getByText("2")).toBeInTheDocument();
+      expect(within(rows[1]).getByText("Cal")).toBeInTheDocument();
+      expect(within(rows[1]).getByText("1 vote")).toBeInTheDocument();
+    });
+
+    it("Leaderboard: a vibing submitter (absent from leaderboard) does not appear in it", async () => {
+      setupClosed({
+        submissions: [
+          sub({ submission_id: "s1", user_id: "u-bo", title: "Bad Guy", vote_count: 2 }),
+          sub({
+            submission_id: "s2",
+            user_id: "u-vee",
+            submitter_display_name: "Vee",
+            title: "Ambient Drift",
+            artist: "Brian Eno",
+            participation_mode: "vibing",
+            vote_count: 0,
+          }),
+        ],
+        leaderboard: [{ user_id: "u-bo", display_name: "Bo", vote_count: 2, rank: 1 }],
+      });
+      renderRound();
+
+      await screen.findByRole("heading", { name: /leaderboard/i });
+      const section = sectionFor(/leaderboard/i);
+      expect(within(section).getByText("Bo")).toBeInTheDocument();
+      // the vibing submitter is in the picks but NOT on the leaderboard
+      expect(within(section).queryByText("Vee")).not.toBeInTheDocument();
+      expect(within(section).getAllByRole("listitem")).toHaveLength(1);
+    });
+
+    it("Leaderboard: section is omitted when there are no ranked players", async () => {
+      setupClosed({
+        submissions: [sub({ participation_mode: "vibing", vote_count: 0 })],
+        leaderboard: [],
+      });
+      renderRound();
+
+      await screen.findByText("Bad Guy");
+      expect(screen.queryByRole("heading", { name: /leaderboard/i })).not.toBeInTheDocument();
+    });
+
+    // ----- Submissions ----------------------------------------------------- //
+
+    it("Submissions: shows submitter name, vote count, the submitter note in quotes, and others' notes", async () => {
+      setupClosed({
+        submissions: [
+          sub({
+            submission_id: "s1",
+            user_id: OTHER,
+            submitter_display_name: "Bob",
+            title: "Bad Guy",
+            artist: "Billie Eilish",
+            participation_mode: "playing",
+            submitter_note: "a banger",
+            vote_count: 2,
+            notes: [{ body: "this slaps", author_display_name: "Ada", created_at: "x" }],
+          }),
+        ],
+      });
+      renderRound();
+
+      await screen.findByText("Bad Guy");
+      const card = cardFor("Bad Guy");
+      expect(within(card).getByText("Bob")).toBeInTheDocument();
+      expect(within(card).getByText("2 votes")).toBeInTheDocument();
+      // submitter note is rendered in curly quotes
+      expect(within(card).getByText(/a banger/)).toBeInTheDocument();
+      expect(within(card).getByText(/“a banger”/)).toBeInTheDocument();
+      // others' notes: body + author
+      expect(within(card).getByText("this slaps")).toBeInTheDocument();
+      expect(within(card).getByText("Ada")).toBeInTheDocument();
+    });
+
+    it("Submissions: the caller's own submission is labelled 'you'", async () => {
+      setupClosed({
+        submissions: [
+          sub({
+            submission_id: "s1",
+            user_id: ORGANIZER, // the authed user (setAuth(ORGANIZER) in beforeEach)
+            submitter_display_name: "Bob",
+            title: "Bad Guy",
+            vote_count: 1,
+          }),
+        ],
+      });
+      renderRound();
+
+      await screen.findByText("Bad Guy");
+      const card = cardFor("Bad Guy");
+      expect(within(card).getByText("you")).toBeInTheDocument();
+      // their real display name is not shown for their own pick
+      expect(within(card).queryByText("Bob")).not.toBeInTheDocument();
+    });
+
+    it("Submissions: a single-vote pick reads '1 vote' (singular)", async () => {
+      setupClosed({
+        submissions: [sub({ title: "Bad Guy", participation_mode: "playing", vote_count: 1 })],
+      });
+      renderRound();
+
+      await screen.findByText("Bad Guy");
+      const card = cardFor("Bad Guy");
+      expect(within(card).getByText("1 vote")).toBeInTheDocument();
+    });
+
+    it("Submissions: a vibing pick shows the 'just vibing' badge and NO vote count", async () => {
+      setupClosed({
+        submissions: [
+          sub({
+            submission_id: "v1",
+            title: "Ambient Drift",
+            artist: "Brian Eno",
+            participation_mode: "vibing",
+            vote_count: 0,
+          }),
+        ],
+      });
+      renderRound();
+
+      await screen.findByText("Ambient Drift");
+      const card = cardFor("Ambient Drift");
+      expect(within(card).getByText(/just vibing/i)).toBeInTheDocument();
+      // no score rendered for a vibing pick
+      expect(within(card).queryByText(/\bvotes?\b/i)).not.toBeInTheDocument();
+      expect(within(card).queryByText("0 votes")).not.toBeInTheDocument();
+    });
+
+    it("Submissions: a pick with no submitter note and no notes renders neither", async () => {
+      setupClosed({
+        submissions: [sub({ title: "Bad Guy", submitter_note: null, notes: [], vote_count: 4 })],
+      });
+      renderRound();
+
+      await screen.findByText("Bad Guy");
+      const card = cardFor("Bad Guy");
+      // no curly-quoted note, no note authors
+      expect(within(card).queryByText(/“/)).not.toBeInTheDocument();
+      expect(within(card).getByText("4 votes")).toBeInTheDocument();
+    });
+
+    it("empty results (no submissions) shows the empty state", async () => {
+      setupClosed({ submissions: [], leaderboard: [], most_noted: { note_count: 0, winners: [] } });
+      renderRound();
+
+      expect(await screen.findByText(/no submissions/i)).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: /the picks/i })).not.toBeInTheDocument();
+    });
+
+    // ----- Data loading ---------------------------------------------------- //
+
+    it("calls getResults for a closed round and not the old submissions/members loaders", async () => {
+      setupClosed({ submissions: [sub({ title: "Bad Guy" })] });
+      renderRound();
+
+      await screen.findByText("Bad Guy");
+      expect(mockGetResults).toHaveBeenCalledWith("r1");
+      // closed view no longer uses these
+      expect(mockGetPlaylist).not.toHaveBeenCalled();
+      expect(mockGetMine).not.toHaveBeenCalled();
+    });
+
+    it("when getResults rejects with an ApiError, the page shows its error state", async () => {
+      const { ApiError } =
+        await vi.importActual<typeof import("../services/api")>("../services/api");
+      mockGetRound.mockResolvedValue(round({ state: "closed" }));
+      mockGetResults.mockRejectedValue(new ApiError(409, "results are available once it closes"));
+      renderRound();
+
+      expect(await screen.findByText(/results are available once it closes/i)).toBeInTheDocument();
+      // nothing rendered for the picks
+      expect(screen.queryByRole("heading", { name: /the picks/i })).not.toBeInTheDocument();
     });
   });
 });

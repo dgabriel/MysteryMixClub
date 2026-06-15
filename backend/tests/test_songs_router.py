@@ -32,9 +32,18 @@ from app.services.odesli import (
     SongNotFoundError,
     get_odesli_client,
 )
+from app.services.song_links import get_link_assembler
 
 RESOLVE_URL = "/api/v1/songs/resolve"
 SEARCH_URL = "/api/v1/songs/search"
+
+# What the (faked) link assembler returns for any song.
+_ASSEMBLED = {
+    "spotify": "https://open.spotify.com/search/bad%20guy",
+    "appleMusic": "https://music.apple.com/track/9",
+    "deezer": "https://www.deezer.com/track/2",
+    "youtube": "https://music.youtube.com/search?q=bad%20guy",
+}
 
 
 class _FakeOdesli:
@@ -47,6 +56,14 @@ class _FakeOdesli:
             raise self._error
         assert self._result is not None
         return self._result
+
+
+class _FakeAssembler:
+    def __init__(self, platforms: dict[str, str]):
+        self._platforms = platforms
+
+    async def assemble(self, title, artist=None, isrc=None) -> dict[str, str]:
+        return self._platforms
 
 
 class _FakeDeezer:
@@ -73,7 +90,7 @@ def _auth_header(user_id: uuid.UUID) -> dict[str, str]:
     return {"Authorization": f"Bearer {create_access_token(user_id)}"}
 
 
-def _build_client(session_factory, *, odesli=None, deezer=None) -> AsyncClient:
+def _build_client(session_factory, *, odesli=None, deezer=None, assembler=None) -> AsyncClient:
     app = create_app()
 
     async def override_db() -> AsyncGenerator[AsyncSession, None]:
@@ -85,6 +102,8 @@ def _build_client(session_factory, *, odesli=None, deezer=None) -> AsyncClient:
         app.dependency_overrides[get_odesli_client] = lambda: odesli
     if deezer is not None:
         app.dependency_overrides[get_deezer_client] = lambda: deezer
+    if assembler is not None:
+        app.dependency_overrides[get_link_assembler] = lambda: assembler
 
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
@@ -123,9 +142,12 @@ async def test_search_requires_auth(session_factory):
 # --------------------------------------------------------------------------- #
 
 
-async def test_resolve_happy_path(session_factory, db_session):
+async def test_resolve_by_pasted_url(session_factory, db_session):
+    # Paste flow: Odesli identifies the song, the assembler builds the links.
     user = await _seed_user(db_session)
-    async with _build_client(session_factory, odesli=_FakeOdesli(result=_SONG)) as client:
+    async with _build_client(
+        session_factory, odesli=_FakeOdesli(result=_SONG), assembler=_FakeAssembler(_ASSEMBLED)
+    ) as client:
         resp = await client.post(
             RESOLVE_URL,
             json={"url": "https://open.spotify.com/track/2"},
@@ -135,10 +157,28 @@ async def test_resolve_happy_path(session_factory, db_session):
     body = resp.json()
     assert body["title"] == "bad guy"
     assert body["isrc"] == "USUM71900764"
-    assert set(body["platforms"]) == {"spotify", "youtube"}
+    assert set(body["platforms"]) == {"spotify", "appleMusic", "deezer", "youtube"}
 
 
-async def test_resolve_missing_url_is_422(session_factory, db_session):
+async def test_resolve_by_identity_skips_odesli(session_factory, db_session):
+    # Search-selected flow: identity provided, so Odesli is never called.
+    user = await _seed_user(db_session)
+    boom = _FakeOdesli(error=AssertionError("Odesli must not be called for an identity resolve"))
+    async with _build_client(
+        session_factory, odesli=boom, assembler=_FakeAssembler(_ASSEMBLED)
+    ) as client:
+        resp = await client.post(
+            RESOLVE_URL,
+            json={"title": "bad guy", "artist": "Billie Eilish", "isrc": "USUM71900764"},
+            headers=_auth_header(user.id),
+        )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["title"] == "bad guy"
+    assert set(body["platforms"]) == {"spotify", "appleMusic", "deezer", "youtube"}
+
+
+async def test_resolve_without_url_or_title_is_422(session_factory, db_session):
     user = await _seed_user(db_session)
     async with _build_client(session_factory, odesli=_FakeOdesli(result=_SONG)) as client:
         resp = await client.post(RESOLVE_URL, json={}, headers=_auth_header(user.id))

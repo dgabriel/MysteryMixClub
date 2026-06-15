@@ -111,7 +111,7 @@ export function SongSearchCard() {
     setLoadingLabel("resolving song");
     setError(null);
     try {
-      setResolved(await resolveSong(url.trim()));
+      setResolved(await resolveSong({ url: url.trim() }));
     } catch {
       // Any failure here is the same calm, actionable message to the user.
       setError(LINK_ERROR);
@@ -144,27 +144,17 @@ export function SongSearchCard() {
     setLoadingLabel("resolving song");
     setError(null);
     try {
-      // Resolve the picked track's URL for cross-platform links, but keep the
-      // richer search metadata (album, art, ISRC) from Deezer for display.
-      const base: ResolvedSong = track.resolve_url
-        ? await resolveSong(track.resolve_url)
-        : {
-            title: track.title,
-            artist: track.artist,
-            album: track.album,
-            thumbnail_url: track.thumbnail_url,
-            isrc: track.isrc,
-            platforms: {},
-          };
-      setResolved({
-        ...base,
-        title: track.title,
-        artist: track.artist ?? base.artist,
-        album: track.album ?? base.album,
-        thumbnail_url: track.thumbnail_url ?? base.thumbnail_url,
-        // Keyless Odesli omits ISRC; fall back to the Deezer search result's.
-        isrc: base.isrc ?? track.isrc,
-      });
+      // Resolve by the picked track's identity — the server assembles the
+      // cross-service links and echoes back the song fields.
+      setResolved(
+        await resolveSong({
+          title: track.title,
+          artist: track.artist,
+          isrc: track.isrc,
+          album: track.album,
+          thumbnail_url: track.thumbnail_url,
+        }),
+      );
     } catch {
       setError(LINK_ERROR);
     } finally {

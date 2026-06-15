@@ -390,12 +390,25 @@ export type SongSearchResults = {
   too_many_results: boolean;
 };
 
-/** Resolve a pasted Spotify/YouTube link to its canonical cross-platform song. */
-export async function resolveSong(url: string): Promise<ResolvedSong> {
+/** Resolve input: either a pasted platform URL, or a known song identity from a
+ *  search result (skips the URL-identification step on the server). */
+export type ResolveInput =
+  | { url: string }
+  | {
+      title: string;
+      artist?: string | null;
+      isrc?: string | null;
+      album?: string | null;
+      thumbnail_url?: string | null;
+    };
+
+/** Resolve a song to its cross-service platform links. Pass a pasted link
+ *  (`{ url }`) or a picked search result's identity. */
+export async function resolveSong(input: ResolveInput): Promise<ResolvedSong> {
   const res = await authenticatedRequest("/api/v1/songs/resolve", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url }),
+    body: JSON.stringify(input),
   });
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
@@ -403,7 +416,7 @@ export async function resolveSong(url: string): Promise<ResolvedSong> {
   return (await res.json()) as ResolvedSong;
 }
 
-/** Search Spotify by title, optionally narrowed by artist. */
+/** Search Deezer by title, optionally narrowed by artist. */
 export async function searchSongs(q: string, artist?: string): Promise<SongSearchResults> {
   const params = new URLSearchParams({ q });
   if (artist && artist.trim()) {

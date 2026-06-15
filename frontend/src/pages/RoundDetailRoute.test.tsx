@@ -1,14 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { RoundDetailRoute } from "./RoundDetailRoute";
 import {
+  addNote,
   castVotes,
   getLeague,
   getLeagueMembers,
   getMySubmission,
   getMyVotes,
+  getNotes,
   getPlaylist,
   getRound,
   getRoundSubmissions,
@@ -31,6 +33,8 @@ vi.mock("../services/api", async () => {
     submitSong: vi.fn(),
     getMyVotes: vi.fn(),
     castVotes: vi.fn(),
+    getNotes: vi.fn(),
+    addNote: vi.fn(),
   };
 });
 vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
@@ -44,6 +48,8 @@ const mockGetMembers = vi.mocked(getLeagueMembers);
 const mockUpdateRound = vi.mocked(updateRound);
 const mockGetMyVotes = vi.mocked(getMyVotes);
 const mockCastVotes = vi.mocked(castVotes);
+const mockGetNotes = vi.mocked(getNotes);
+const mockAddNote = vi.mocked(addNote);
 const mockUseAuth = vi.mocked(useAuth);
 
 const ORGANIZER = "org-1";
@@ -165,6 +171,16 @@ describe("RoundDetailRoute", () => {
       submission_ids: [],
       count: 0,
       votes_per_player: 3,
+    });
+    mockGetNotes.mockResolvedValue([]);
+    mockAddNote.mockResolvedValue({
+      id: "n1",
+      submission_id: "p1",
+      round_id: "r1",
+      author_id: OTHER,
+      author_display_name: "Bob",
+      body: "lovely pick",
+      created_at: "2026-01-01T00:00:00Z",
     });
     setAuth(ORGANIZER);
   });
@@ -454,6 +470,211 @@ describe("RoundDetailRoute", () => {
 
       const alert = await screen.findByRole("alert");
       expect(alert).toHaveTextContent(/you can't vote for your own song/i);
+    });
+  });
+
+  describe("open_voting notes UX (MYS-21)", () => {
+    function setupVoting(opts: { entries: PlaylistEntry[]; mine?: SubmissionResult | null }) {
+      mockGetRound.mockResolvedValue(round({ state: "open_voting" }));
+      mockGetPlaylist.mockResolvedValue({
+        round_id: "r1",
+        round_number: 1,
+        theme: "t",
+        state: "open_voting",
+        entries: opts.entries,
+      });
+      mockGetMyVotes.mockResolvedValue({
+        round_id: "r1",
+        submission_ids: [],
+        count: 0,
+        votes_per_player: 3,
+      });
+      mockGetMine.mockResolvedValue(opts.mine === undefined ? mine() : opts.mine);
+    }
+
+    /** The <li> that wraps a single playlist card, located by its song title. */
+    function cardFor(title: string): HTMLElement {
+      const heading = screen.getByText(title);
+      const li = heading.closest("li");
+      if (!li) throw new Error(`no card <li> found for "${title}"`);
+      return li as HTMLElement;
+    }
+
+    it("a just-vibing card shows the leave-a-note affordance and the calm framing", async () => {
+      const user = userEvent.setup();
+      setupVoting({
+        entries: [
+          entry({ submission_id: "p1", title: "Debaser" }),
+          entry({
+            submission_id: "v1",
+            title: "Ambient Drift",
+            participation_mode: "vibing",
+          }),
+        ],
+      });
+      renderRound();
+
+      await screen.findByRole("button", { name: /Debaser/i });
+      const vibingCard = cardFor("Ambient Drift");
+
+      // affordance present on the vibing card
+      const leaveNote = within(vibingCard).getByRole("button", { name: /leave a note/i });
+      expect(leaveNote).toBeInTheDocument();
+
+      // the calm hint only appears once the composer is opened
+      expect(
+        within(vibingCard).queryByText(/can't vote on this one — leave a note instead/i),
+      ).not.toBeInTheDocument();
+      await user.click(leaveNote);
+      expect(
+        within(vibingCard).getByText(/can't vote on this one — leave a note instead/i),
+      ).toBeInTheDocument();
+    });
+
+    it("revealing notes calls getNotes for that submission and renders body + author", async () => {
+      const user = userEvent.setup();
+      setupVoting({ entries: [entry({ submission_id: "p1", title: "Debaser" })] });
+      mockGetNotes.mockResolvedValue([
+        {
+          id: "n1",
+          submission_id: "p1",
+          round_id: "r1",
+          author_id: OTHER,
+          author_display_name: "Bob",
+          body: "this slaps",
+          created_at: "2026-01-01T00:00:00Z",
+        },
+      ]);
+      renderRound();
+
+      await screen.findByRole("button", { name: /Debaser/i });
+      const card = cardFor("Debaser");
+      await user.click(within(card).getByRole("button", { name: /^notes$/i }));
+
+      expect(mockGetNotes).toHaveBeenCalledWith("p1");
+      expect(await within(card).findByText("this slaps")).toBeInTheDocument();
+      expect(within(card).getByText("Bob")).toBeInTheDocument();
+    });
+
+    it("revealing a submission with no notes shows the empty state", async () => {
+      const user = userEvent.setup();
+      setupVoting({ entries: [entry({ submission_id: "p1", title: "Debaser" })] });
+      mockGetNotes.mockResolvedValue([]);
+      renderRound();
+
+      await screen.findByRole("button", { name: /Debaser/i });
+      const card = cardFor("Debaser");
+      await user.click(within(card).getByRole("button", { name: /^notes$/i }));
+
+      expect(mockGetNotes).toHaveBeenCalledWith("p1");
+      expect(await within(card).findByText(/no notes yet/i)).toBeInTheDocument();
+    });
+
+    it("composer: typing updates the N/280 counter, submit disabled when empty, then addNote appends and collapses", async () => {
+      const user = userEvent.setup();
+      setupVoting({ entries: [entry({ submission_id: "p1", title: "Debaser" })] });
+      mockGetNotes.mockResolvedValue([]);
+      mockAddNote.mockResolvedValue({
+        id: "n1",
+        submission_id: "p1",
+        round_id: "r1",
+        author_id: OTHER,
+        author_display_name: "Bob",
+        body: "great taste",
+        created_at: "2026-01-01T00:00:00Z",
+      });
+      renderRound();
+
+      await screen.findByRole("button", { name: /Debaser/i });
+      const card = cardFor("Debaser");
+      await user.click(within(card).getByRole("button", { name: /leave a note/i }));
+
+      // empty draft → counter 0/280, submit disabled
+      expect(within(card).getByText("0 / 280")).toBeInTheDocument();
+      const leaveNoteBtn = within(card).getByRole("button", { name: /leave note/i });
+      expect(leaveNoteBtn).toBeDisabled();
+
+      const textarea = within(card).getByRole("textbox");
+      await user.type(textarea, "great taste");
+      expect(within(card).getByText("11 / 280")).toBeInTheDocument();
+      expect(leaveNoteBtn).not.toBeDisabled();
+
+      await user.click(leaveNoteBtn);
+
+      expect(mockAddNote).toHaveBeenCalledWith("p1", "great taste");
+      // the new note appears
+      expect(await within(card).findByText("great taste")).toBeInTheDocument();
+      expect(within(card).getByText("Bob")).toBeInTheDocument();
+      // composer collapsed: textarea gone, leave-a-note affordance back
+      expect(within(card).queryByRole("textbox")).not.toBeInTheDocument();
+      expect(within(card).getByRole("button", { name: /leave a note/i })).toBeInTheDocument();
+    });
+
+    it("an addNote ApiError surfaces in the actionError alert region", async () => {
+      const user = userEvent.setup();
+      const { ApiError } =
+        await vi.importActual<typeof import("../services/api")>("../services/api");
+      setupVoting({ entries: [entry({ submission_id: "p1", title: "Debaser" })] });
+      mockGetNotes.mockResolvedValue([]);
+      mockAddNote.mockRejectedValue(
+        new ApiError(409, "notes are only allowed while voting is open"),
+      );
+      renderRound();
+
+      await screen.findByRole("button", { name: /Debaser/i });
+      const card = cardFor("Debaser");
+      await user.click(within(card).getByRole("button", { name: /leave a note/i }));
+      await user.type(within(card).getByRole("textbox"), "nope");
+      await user.click(within(card).getByRole("button", { name: /leave note/i }));
+
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent(/notes are only allowed while voting is open/i);
+    });
+
+    it("a votable (playing) card exposes the notes affordance without losing its vote toggle", async () => {
+      const user = userEvent.setup();
+      setupVoting({ entries: [entry({ submission_id: "p1", title: "Debaser" })] });
+      mockGetNotes.mockResolvedValue([]);
+      renderRound();
+
+      // the vote toggle still works
+      const toggle = await screen.findByRole("button", { name: /Debaser/i });
+      expect(toggle).toHaveAttribute("aria-pressed", "false");
+      await user.click(toggle);
+      expect(toggle).toHaveAttribute("aria-pressed", "true");
+
+      // and the same card exposes a notes affordance
+      const card = cardFor("Debaser");
+      expect(within(card).getByRole("button", { name: /^notes$/i })).toBeInTheDocument();
+      expect(within(card).getByRole("button", { name: /leave a note/i })).toBeInTheDocument();
+    });
+
+    it("notes affordances do NOT appear in the closed/reveal view", async () => {
+      mockGetRound.mockResolvedValue(round({ state: "closed" }));
+      mockGetReveal.mockResolvedValue([
+        {
+          id: "s1",
+          round_id: "r1",
+          user_id: OTHER,
+          isrc: "I1",
+          title: "Bad Guy",
+          artist: "Billie Eilish",
+          album: null,
+          album_art_url: null,
+          note: "a banger",
+          participation_mode: "playing",
+          created_at: "2026-01-01T00:00:00Z",
+        },
+      ]);
+      mockGetMembers.mockResolvedValue([
+        { user_id: OTHER, display_name: "Bob", joined_at: "x", is_organizer: false },
+      ]);
+      renderRound();
+
+      await screen.findByText("Bad Guy");
+      expect(screen.queryByRole("button", { name: /leave a note/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^notes$/i })).not.toBeInTheDocument();
+      expect(mockGetNotes).not.toHaveBeenCalled();
     });
   });
 });

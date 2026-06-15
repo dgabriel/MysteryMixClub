@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
   acceptInvite,
+  addNote,
   authenticatedRequest,
   castVotes,
   createInvite,
@@ -13,6 +14,7 @@ import {
   getLeagues,
   getMe,
   getMyVotes,
+  getNotes,
   logout,
   logoutAll,
   refresh,
@@ -23,7 +25,7 @@ import {
   updateLeague,
   verifyToken,
 } from "./api";
-import type { Invite, InvitePreview, League, LeagueMember, UserProfile, Votes } from "./api";
+import type { Invite, InvitePreview, League, LeagueMember, Note, UserProfile, Votes } from "./api";
 
 const API_BASE = "http://localhost:8000";
 const AUTH_BASE = `${API_BASE}/api/v1/auth`;
@@ -951,6 +953,118 @@ describe("api.ts", () => {
       );
 
       const err = await getMyVotes("r1").catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err).toMatchObject({
+        status: 403,
+        message: "not a member of this league",
+      });
+    });
+  });
+
+  describe("addNote", () => {
+    const note: Note = {
+      id: "n1",
+      submission_id: "sub-1",
+      round_id: "r1",
+      author_id: "user-1",
+      author_display_name: "Ada",
+      body: "lovely pick",
+      created_at: "2026-06-04T00:00:00Z",
+    };
+
+    it("POSTs /api/v1/submissions/{id}/notes with the body (Bearer + credentials) and resolves the Note on 201", async () => {
+      setStoredAccessToken("my-token");
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(201, note));
+
+      await expect(addNote("sub-1", "lovely pick")).resolves.toEqual(note);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(`${V1_BASE}/submissions/sub-1/notes`);
+      expect(init?.method).toBe("POST");
+      expect(init?.credentials).toBe("include");
+      expect(init?.body).toBe(JSON.stringify({ body: "lovely pick" }));
+      const headers = new Headers(init?.headers);
+      expect(headers.get("Content-Type")).toBe("application/json");
+      expect(headers.get("Authorization")).toBe("Bearer my-token");
+    });
+
+    it("throws ApiError(409) when the round is not open for voting", async () => {
+      setStoredAccessToken("my-token");
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse(409, { detail: "notes are only allowed while voting is open" }),
+      );
+
+      const err = await addNote("sub-1", "lovely pick").catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err).toMatchObject({
+        status: 409,
+        message: "notes are only allowed while voting is open",
+      });
+    });
+
+    it("throws ApiError with a generic message when the error body is not JSON", async () => {
+      setStoredAccessToken("my-token");
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("nope", { status: 500 }));
+
+      await expect(addNote("sub-1", "lovely pick")).rejects.toMatchObject({
+        status: 500,
+        message: "request failed (500)",
+      });
+    });
+  });
+
+  describe("getNotes", () => {
+    const notes: Note[] = [
+      {
+        id: "n1",
+        submission_id: "sub-1",
+        round_id: "r1",
+        author_id: "user-1",
+        author_display_name: "Ada",
+        body: "lovely pick",
+        created_at: "2026-06-04T00:00:00Z",
+      },
+      {
+        id: "n2",
+        submission_id: "sub-1",
+        round_id: "r1",
+        author_id: "user-2",
+        author_display_name: "Bo",
+        body: "this slaps",
+        created_at: "2026-06-04T01:00:00Z",
+      },
+    ];
+
+    it("GETs /api/v1/submissions/{id}/notes (Bearer + credentials) and resolves the array on 200", async () => {
+      setStoredAccessToken("my-token");
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, notes));
+
+      await expect(getNotes("sub-1")).resolves.toEqual(notes);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(`${V1_BASE}/submissions/sub-1/notes`);
+      expect(init?.method ?? "GET").toBe("GET");
+      expect(init?.credentials).toBe("include");
+      const headers = new Headers(init?.headers);
+      expect(headers.get("Authorization")).toBe("Bearer my-token");
+    });
+
+    it("resolves an empty array when the submission has no notes", async () => {
+      setStoredAccessToken("my-token");
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, []));
+
+      await expect(getNotes("sub-1")).resolves.toEqual([]);
+    });
+
+    it("throws ApiError with the backend detail on a non-2xx response", async () => {
+      setStoredAccessToken("my-token");
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse(403, { detail: "not a member of this league" }),
+      );
+
+      const err = await getNotes("sub-1").catch((e: unknown) => e);
       expect(err).toBeInstanceOf(ApiError);
       expect(err).toMatchObject({
         status: 403,

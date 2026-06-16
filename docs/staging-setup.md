@@ -136,6 +136,10 @@ sudo nginx -t && sudo systemctl reload nginx
 
 Staging is now at `https://<DROPLET_IP>/` behind basic auth (with a cert warning).
 
+> Whenever you edit the site conf afterwards (e.g. to add the HSTS header),
+> re-copy it to `/etc/nginx/sites-available/` and apply with
+> `sudo nginx -t && sudo systemctl reload nginx`.
+
 > Note: `ENVIRONMENT=staging` means auth cookies are **not** marked `Secure`.
 > That's fine here; sign-in still works over the self-signed HTTPS connection.
 

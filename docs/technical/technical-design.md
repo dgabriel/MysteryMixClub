@@ -359,7 +359,7 @@ These are non-negotiable requirements, not suggestions.
 - [ ] Access tokens: never stored in localStorage or DOM
 - [ ] Refresh tokens: HttpOnly Secure SameSite=Strict cookie only
 - [ ] Rate limiting on magic link requests
-- [ ] Row-level security on PostgreSQL — players can only access their own league data
+- [x] Tenant isolation — players can only access their own league data. Enforced at the **application layer** (authorization checks + cross-tenant isolation tests, MYS-48), not Postgres row-level security. True PG RLS remains an optional future defense-in-depth layer, not a launch requirement.
 - [ ] Input sanitization on all text fields (submission notes, display names)
 - [ ] Account deletion cascades to all personal data — no orphaned records
 - [ ] "Log out of all devices" invalidates all refresh tokens

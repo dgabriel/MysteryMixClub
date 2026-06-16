@@ -16,6 +16,7 @@ from app.api.routes import (
     votes,
 )
 from app.config import get_settings
+from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.routers import songs
 
 
@@ -42,6 +43,8 @@ def create_app() -> FastAPI:
     if settings.environment == "development":
         _configure_dev_logging()
     app = FastAPI(title="MysteryMixClub API", version="0.0.0")
+
+    app.add_middleware(SecurityHeadersMiddleware)
 
     app.add_middleware(
         CORSMiddleware,

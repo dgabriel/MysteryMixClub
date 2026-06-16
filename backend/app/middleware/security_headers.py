@@ -20,9 +20,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
 
-        # HSTS is production-only: asserting it forces HTTPS for the host, which
-        # would break local dev served over plain HTTP. Same gating idiom as the
-        # refresh-cookie `secure` flag in app/api/routes/auth.py.
+        # HSTS is production-only: asserting it pins the host to HTTPS, which would
+        # break local dev served over plain HTTP. Staging is deliberately excluded
+        # here — it already gets HSTS at the nginx edge (MYS-58), so an API-level
+        # header would be redundant. (This is a narrower gate than the cookie
+        # `secure` flag in auth.py, which is on for every non-development env.)
         if get_settings().environment == "production":
             response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
 

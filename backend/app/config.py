@@ -36,6 +36,12 @@ class Settings(BaseSettings):
     def cors_origins(self) -> list[str]:
         return [origin.strip() for origin in self.allowed_origins.split(",") if origin.strip()]
 
+    @property
+    def secure_cookies(self) -> bool:
+        """Set the Secure flag on auth cookies in every HTTPS environment.
+        Local development is the only environment served over plain HTTP."""
+        return self.environment != "development"
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -159,7 +159,7 @@ async def verify_magic_link(
         path=_REFRESH_COOKIE_PATH,
         httponly=True,
         samesite="strict",
-        secure=(settings.environment == "production"),
+        secure=settings.secure_cookies,
     )
 
     return VerifyResponse(access_token=access_token)
@@ -211,7 +211,7 @@ def _clear_refresh_cookie(response: Response, settings: Settings) -> None:
         path=_REFRESH_COOKIE_PATH,
         httponly=True,
         samesite="strict",
-        secure=(settings.environment == "production"),
+        secure=settings.secure_cookies,
     )
 
 

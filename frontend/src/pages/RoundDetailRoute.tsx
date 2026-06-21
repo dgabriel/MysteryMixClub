@@ -320,10 +320,11 @@ function OrganizerControls({
       : state === "open_submission"
         ? "open voting"
         : "close round";
+  const busyLabel = next === "closed" ? "closing…" : "opening…";
   return (
     <div className="mt-6 border-t border-border pt-6">
       <Button type="button" onClick={() => onAdvance(next)} disabled={advancing}>
-        {advancing ? "…" : label}
+        {advancing ? busyLabel : label}
       </Button>
     </div>
   );
@@ -658,7 +659,7 @@ function VotingSection({
           onClick={() => onCast(selected)}
           disabled={casting || selected.length === 0}
         >
-          {casting ? "…" : "cast votes"}
+          {casting ? "casting…" : "cast votes"}
         </Button>
         {votesSaved ? (
           <p
@@ -830,7 +831,7 @@ function SongNotes({
                     cancel
                   </button>
                   <Button type="button" onClick={() => void submit()} disabled={submitDisabled}>
-                    {posting ? "…" : "leave note"}
+                    {posting ? "posting…" : "leave note"}
                   </Button>
                 </div>
               </div>

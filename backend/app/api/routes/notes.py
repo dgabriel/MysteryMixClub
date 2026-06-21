@@ -6,6 +6,9 @@ Leaving and reading free-form appreciation notes on a submission:
 * ``GET  /api/v1/submissions/:id/notes`` — read the notes on a submission
 
 Notes may be left only while the round is in ``open_voting`` (frozen at close).
+Reading is gated by round state: while voting is open a member sees only their
+own notes (others' stay hidden so notes can't sway votes, MYS-67); the full set
+is revealed once the round is closed.
 Self-notes are allowed, and every submission is eligible regardless of its
 ``participation_mode`` (playing or vibing) — a vibing player who can't vote
 leaves notes instead. There is no per-author cap: multiple notes per author per
@@ -107,10 +110,17 @@ async def list_notes(
     round_ = await _load_round(submission.round_id, db)
     await _load_league_as_member(round_.league_id, current_user, db)
 
-    rows = await db.execute(
+    stmt = (
         select(Note, User.display_name)
         .join(User, User.id == Note.author_id)
         .where(Note.submission_id == submission_id)
         .order_by(Note.created_at.asc())
     )
+    # Until the round closes, a member sees only their own notes — everyone
+    # else's stay hidden during voting so notes can't sway votes (MYS-67). The
+    # full set is revealed once the round is closed (the reveal).
+    if round_.state != "closed":
+        stmt = stmt.where(Note.author_id == current_user.id)
+
+    rows = await db.execute(stmt)
     return [_to_response(note, display_name) for note, display_name in rows.all()]

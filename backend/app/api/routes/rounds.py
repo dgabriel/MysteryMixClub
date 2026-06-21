@@ -239,6 +239,10 @@ class PlaylistEntry(BaseModel):
     # The single link to surface by default: the viewer's preferred service,
     # else YouTube as the universal fallback, else any available platform.
     preferred_url: str | None
+    # True for the caller's own submission. The playlist stays anonymous for
+    # everyone else — this only lets the UI mark/lock the viewer's own pick
+    # (they can't vote for it) without revealing any other submitter.
+    is_own: bool
 
 
 class PlaylistResponse(BaseModel):
@@ -291,6 +295,7 @@ async def get_round_playlist(
                 participation_mode=s.participation_mode,
                 platforms=platforms,
                 preferred_url=_preferred_url(platforms, current_user.preferred_service),
+                is_own=s.user_id == current_user.id,
             )
         )
     return PlaylistResponse(

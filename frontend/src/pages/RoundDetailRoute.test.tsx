@@ -94,6 +94,7 @@ function entry(overrides: Partial<PlaylistEntry> = {}): PlaylistEntry {
     participation_mode: "playing",
     platforms: { spotify: "https://s" },
     preferred_url: "https://s",
+    is_own: false,
     ...overrides,
   };
 }
@@ -248,6 +249,7 @@ describe("RoundDetailRoute", () => {
         participation_mode: "playing",
         platforms: { spotify: "https://s", deezer: "https://d" },
         preferred_url: "https://s",
+        is_own: false,
       },
     ];
     mockGetPlaylist.mockResolvedValue({

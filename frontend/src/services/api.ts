@@ -467,7 +467,9 @@ export type SubmissionResult = {
   created_at: string;
 };
 
-/** One anonymous entry in a round's voting playlist. */
+/** One entry in a round's voting playlist. Anonymous for everyone but the
+ *  caller: `is_own` is true for the viewer's own submission (which they can't
+ *  vote for), and never reveals any other submitter. */
 export type PlaylistEntry = {
   submission_id: string;
   isrc: string;
@@ -478,6 +480,7 @@ export type PlaylistEntry = {
   participation_mode: string;
   platforms: Partial<Record<PlatformKey, string>>;
   preferred_url: string | null;
+  is_own: boolean;
 };
 
 /** A round's voting playlist (GET /rounds/:id/playlist). */

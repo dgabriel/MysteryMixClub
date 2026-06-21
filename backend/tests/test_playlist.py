@@ -120,6 +120,33 @@ async def test_playlist_entries_are_anonymous(client, db_session):
     assert "submitter" not in entry
 
 
+async def test_playlist_marks_callers_own_submission(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    other = await _seed_user(db_session, "x@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    db_session.add(LeagueMember(league_id=round_.league_id, user_id=other.id))
+    await db_session.commit()
+    await _add_submission(
+        db_session,
+        round_.id,
+        organizer.id,
+        title="mine",
+        isrc="I1",
+        platform_links=_links("deezer"),
+    )
+    await _add_submission(
+        db_session, round_.id, other.id, title="theirs", isrc="I2", platform_links=_links("deezer")
+    )
+
+    resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+    assert resp.status_code == 200, resp.text
+    by_title = {e["title"]: e for e in resp.json()["entries"]}
+    # Only the caller's own pick is flagged; no other submitter is revealed.
+    assert by_title["mine"]["is_own"] is True
+    assert by_title["theirs"]["is_own"] is False
+    assert "user_id" not in by_title["theirs"]
+
+
 async def test_preferred_service_link_is_chosen(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com", preferred="deezer")
     round_ = await _seed_round(db_session, organizer)

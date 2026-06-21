@@ -628,13 +628,16 @@ function VotingSection({
                 onClick={() => toggle(entry.submission_id)}
                 className={[
                   "block w-full rounded-[3px] border bg-white px-6 py-5 text-left transition-colors duration-150",
-                  isSelected ? "border-sage bg-sage-pale" : "border-border hover:bg-sage-pale/60",
+                  // A selected song wears the screen's one Rust signal: a Rust
+                  // outline marks the picks you've chosen to vote for. No other
+                  // element on the voting screen uses Rust.
+                  isSelected ? "border-rust" : "border-border hover:bg-sage-pale/60",
                   disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
                 ].join(" ")}
               >
                 <div className="flex items-start justify-between gap-3">
                   <h3 className="font-serif text-[18px] leading-tight text-ink">{entry.title}</h3>
-                  <span className="shrink-0 pt-1 font-mono uppercase tracking-label text-[9px] text-sage">
+                  <span className="shrink-0 pt-1 font-mono uppercase tracking-label text-[9px] text-rust">
                     {isSelected ? "voted" : ""}
                   </span>
                 </div>

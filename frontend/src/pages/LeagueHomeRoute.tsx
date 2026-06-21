@@ -4,7 +4,7 @@ import { LeagueHomeScreen } from "./LeagueHomeScreen";
 import {
   ApiError,
   createInvite,
-  createRound,
+  createRoundsBatch,
   getLeague,
   getLeagueMembers,
   getRounds,
@@ -13,6 +13,7 @@ import {
   type League,
   type LeagueMember,
   type Round,
+  type RoundBatchItem,
 } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 
@@ -34,8 +35,8 @@ export function LeagueHomeRoute() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [creatingRound, setCreatingRound] = useState(false);
-  const [createRoundError, setCreateRoundError] = useState<string | null>(null);
+  const [creatingRounds, setCreatingRounds] = useState(false);
+  const [createRoundsError, setCreateRoundsError] = useState<string | null>(null);
 
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [generatingInvite, setGeneratingInvite] = useState(false);
@@ -85,22 +86,25 @@ export function LeagueHomeRoute() {
     }
   }
 
-  async function handleCreateRound(theme: string, votesPerPlayer?: number) {
-    if (!id) return;
-    setCreatingRound(true);
-    setCreateRoundError(null);
+  async function handleCreateRounds(newRounds: RoundBatchItem[]) {
+    if (!id || newRounds.length === 0) return;
+    setCreatingRounds(true);
+    setCreateRoundsError(null);
     try {
-      const round = await createRound(id, {
-        theme,
-        ...(votesPerPlayer ? { votes_per_player: votesPerPlayer } : {}),
-      });
-      setRounds((current) => [...current, round]);
+      const created = await createRoundsBatch(id, newRounds);
+      setRounds(created);
+      // The batch sets the league's total_rounds; refresh so the header matches.
+      try {
+        setLeague(await getLeague(id));
+      } catch {
+        // Non-fatal — the rounds list is already current.
+      }
     } catch (err) {
-      setCreateRoundError(
-        err instanceof ApiError ? err.message : "couldn't create the round. try again.",
+      setCreateRoundsError(
+        err instanceof ApiError ? err.message : "couldn't create the rounds. try again.",
       );
     } finally {
-      setCreatingRound(false);
+      setCreatingRounds(false);
     }
   }
 
@@ -164,9 +168,9 @@ export function LeagueHomeRoute() {
       error={error}
       onBack={() => navigate("/home")}
       onOpenRound={(roundId) => navigate(`/rounds/${roundId}`)}
-      onCreateRound={handleCreateRound}
-      creatingRound={creatingRound}
-      createRoundError={createRoundError}
+      onCreateRounds={handleCreateRounds}
+      creatingRounds={creatingRounds}
+      createRoundsError={createRoundsError}
       inviteUrl={inviteUrl}
       onGenerateInvite={handleGenerateInvite}
       generatingInvite={generatingInvite}

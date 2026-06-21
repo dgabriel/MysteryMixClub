@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ApiError,
@@ -30,10 +30,12 @@ import { useAuth } from "../hooks/useAuth";
 import { Button } from "../components/Button";
 import { Badge } from "../components/Badge";
 import { Card } from "../components/Card";
+import { TextField } from "../components/TextField";
 import { ConcentricRings } from "../components/ConcentricRings";
 import { SongSearchCard } from "../components/songs/SongSearchCard";
 
 const STATE_LABEL: Record<RoundState, string> = {
+  pending: "upcoming",
   open_submission: "submissions open",
   open_voting: "voting open",
   closed: "closed",
@@ -71,6 +73,8 @@ export function RoundDetailRoute() {
   const [submitting, setSubmitting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [advancing, setAdvancing] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
   const [casting, setCasting] = useState(false);
   const [votesSaved, setVotesSaved] = useState(false);
 
@@ -84,7 +88,10 @@ export function RoundDetailRoute() {
       setRound(loadedRound);
       setLeague(loadedLeague);
 
-      if (loadedRound.state === "open_submission") {
+      if (loadedRound.state === "pending") {
+        // Nothing to load yet — the round isn't open. The organizer can edit it
+        // (theme/description/deadlines) and open it from here.
+      } else if (loadedRound.state === "open_submission") {
         setMine(await getMySubmission(id));
       } else if (loadedRound.state === "open_voting") {
         const [loadedPlaylist, loadedVotes, loadedMine] = await Promise.all([
@@ -152,6 +159,27 @@ export function RoundDetailRoute() {
     }
   }
 
+  async function handleEditRound(input: {
+    theme?: string;
+    description?: string | null;
+    submission_deadline?: string | null;
+    voting_deadline?: string | null;
+  }) {
+    if (!id) return;
+    setSavingEdit(true);
+    setEditError(null);
+    try {
+      const updated = await updateRound(id, input);
+      setRound(updated);
+      return true;
+    } catch (err) {
+      setEditError(err instanceof ApiError ? err.message : "couldn't save the round. try again.");
+      return false;
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
   async function handleAdvance(next: RoundState) {
     if (!id) return;
     setAdvancing(true);
@@ -209,9 +237,27 @@ export function RoundDetailRoute() {
             <Badge>{STATE_LABEL[round.state]}</Badge>
           </div>
         </div>
+        {round.description ? (
+          <p className="mt-3 font-mono text-[13px] font-light leading-relaxed text-muted">
+            {round.description}
+          </p>
+        ) : null}
 
         {isOrganizer ? (
-          <OrganizerControls state={round.state} advancing={advancing} onAdvance={handleAdvance} />
+          <>
+            <OrganizerControls
+              state={round.state}
+              advancing={advancing}
+              onAdvance={handleAdvance}
+            />
+            <EditRoundForm
+              round={round}
+              saving={savingEdit}
+              error={editError}
+              onSave={handleEditRound}
+              onDismissError={() => setEditError(null)}
+            />
+          </>
         ) : null}
 
         {actionError ? (
@@ -221,7 +267,11 @@ export function RoundDetailRoute() {
         ) : null}
 
         <section className="mt-10">
-          {round.state === "open_submission" ? (
+          {round.state === "pending" ? (
+            <p className="font-mono text-[13px] font-light text-muted">
+              this round hasn&apos;t opened yet — it&apos;s up next in the queue.
+            </p>
+          ) : round.state === "open_submission" ? (
             <SubmissionSection
               mine={mine}
               submitting={submitting}
@@ -261,14 +311,210 @@ function OrganizerControls({
   onAdvance: (next: RoundState) => void;
 }) {
   if (state === "closed") return null;
-  const next: RoundState = state === "open_submission" ? "open_voting" : "closed";
-  const label = state === "open_submission" ? "open voting" : "close round";
+  const next: RoundState =
+    state === "pending"
+      ? "open_submission"
+      : state === "open_submission"
+        ? "open_voting"
+        : "closed";
+  const label =
+    state === "pending"
+      ? "open round"
+      : state === "open_submission"
+        ? "open voting"
+        : "close round";
   return (
     <div className="mt-6 border-t border-border pt-6">
       <Button type="button" onClick={() => onAdvance(next)} disabled={advancing}>
         {advancing ? "…" : label}
       </Button>
     </div>
+  );
+}
+
+/** ISO datetime → a value the datetime-local input understands ("YYYY-MM-DDTHH:mm"),
+ *  in the viewer's local time. Empty string when there's no deadline. */
+function isoToLocalInput(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** Local datetime-local value → ISO (UTC), or null when blank. */
+function localInputToIso(local: string): string | null {
+  if (!local.trim()) return null;
+  const d = new Date(local);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+/**
+ * Organizer round editor. Theme and description are the round's identity — the
+ * API allows editing them ONLY while the round is `pending` (409 otherwise), so
+ * once the round opens those two fields lock (disabled, with a calm note) while
+ * the deadlines stay editable. Reflecting the lock here keeps the organizer from
+ * hitting a surprise 409.
+ *
+ * No Rust on this screen: the single Rust signal is reserved elsewhere (the
+ * closed-round reveal). The lock note stays in Muted.
+ */
+function EditRoundForm({
+  round,
+  saving,
+  error,
+  onSave,
+  onDismissError,
+}: {
+  round: Round;
+  saving: boolean;
+  error?: string | null;
+  onSave: (input: {
+    theme?: string;
+    description?: string | null;
+    submission_deadline?: string | null;
+    voting_deadline?: string | null;
+  }) => Promise<boolean | undefined>;
+  onDismissError: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [theme, setTheme] = useState(round.theme);
+  const [description, setDescription] = useState(round.description ?? "");
+  const [submissionDeadline, setSubmissionDeadline] = useState(
+    isoToLocalInput(round.submission_deadline),
+  );
+  const [votingDeadline, setVotingDeadline] = useState(isoToLocalInput(round.voting_deadline));
+
+  // Theme/description are locked once the round leaves `pending`.
+  const identityLocked = round.state !== "pending";
+
+  function openForm() {
+    setTheme(round.theme);
+    setDescription(round.description ?? "");
+    setSubmissionDeadline(isoToLocalInput(round.submission_deadline));
+    setVotingDeadline(isoToLocalInput(round.voting_deadline));
+    onDismissError();
+    setOpen(true);
+  }
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    const input: {
+      theme?: string;
+      description?: string | null;
+      submission_deadline?: string | null;
+      voting_deadline?: string | null;
+    } = {};
+
+    // Theme/description only when still editable, and only if changed.
+    if (!identityLocked) {
+      const trimmedTheme = theme.trim();
+      if (trimmedTheme && trimmedTheme !== round.theme) input.theme = trimmedTheme;
+
+      const trimmedDescription = description.trim();
+      const currentDescription = round.description ?? "";
+      if (trimmedDescription !== currentDescription) {
+        input.description = trimmedDescription ? trimmedDescription : null;
+      }
+    }
+
+    // Compare at the minute-precision input level (what the organizer actually
+    // edits) so a stored ISO carrying seconds doesn't read as a spurious change.
+    if (submissionDeadline !== isoToLocalInput(round.submission_deadline)) {
+      input.submission_deadline = localInputToIso(submissionDeadline);
+    }
+    if (votingDeadline !== isoToLocalInput(round.voting_deadline)) {
+      input.voting_deadline = localInputToIso(votingDeadline);
+    }
+
+    if (Object.keys(input).length === 0) {
+      setOpen(false);
+      return;
+    }
+
+    const ok = await onSave(input);
+    if (ok) setOpen(false);
+  }
+
+  if (!open) {
+    return (
+      <div className="mt-4">
+        <Button variant="ghost" type="button" onClick={openForm}>
+          edit round
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="mt-6 space-y-6 border-t border-border pt-6">
+      <div>
+        <TextField
+          id="edit-round-theme"
+          label="theme"
+          name="theme"
+          value={theme}
+          onChange={(e) => setTheme(e.target.value)}
+          disabled={saving || identityLocked}
+          autoComplete="off"
+        />
+        {identityLocked ? (
+          <p className="mt-2 font-mono text-[11px] font-light text-muted">
+            theme and description lock once a round opens. deadlines stay editable.
+          </p>
+        ) : null}
+      </div>
+
+      <label htmlFor="edit-round-description" className="block">
+        <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
+          description
+        </span>
+        <textarea
+          id="edit-round-description"
+          rows={2}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          disabled={saving || identityLocked}
+          className="mt-2 w-full resize-none rounded-none border-0 border-b border-ink bg-transparent px-0 py-1 font-mono text-[13px] font-light text-ink placeholder:text-muted focus:border-sage focus:outline-none disabled:opacity-50"
+        />
+      </label>
+
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+        <TextField
+          id="edit-round-submission"
+          label="submissions close"
+          name="submission_deadline"
+          type="datetime-local"
+          value={submissionDeadline}
+          onChange={(e) => setSubmissionDeadline(e.target.value)}
+          disabled={saving}
+        />
+        <TextField
+          id="edit-round-voting"
+          label="voting closes"
+          name="voting_deadline"
+          type="datetime-local"
+          value={votingDeadline}
+          onChange={(e) => setVotingDeadline(e.target.value)}
+          disabled={saving}
+        />
+      </div>
+
+      {error ? (
+        <p role="alert" className="font-mono text-[11px] text-ink">
+          {error}
+        </p>
+      ) : null}
+
+      <div className="flex items-center gap-4">
+        <Button type="submit" disabled={saving}>
+          {saving ? "saving…" : "save"}
+        </Button>
+        <Button variant="ghost" type="button" onClick={() => setOpen(false)} disabled={saving}>
+          cancel
+        </Button>
+      </div>
+    </form>
   );
 }
 

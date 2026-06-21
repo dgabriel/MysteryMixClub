@@ -1,15 +1,21 @@
 import { type FormEvent, useEffect, useState } from "react";
-import type { League, LeagueMember, Round, RoundState } from "../services/api";
+import type { League, LeagueMember, Round, RoundBatchItem, RoundState } from "../services/api";
 import { Button } from "../components/Button";
 import { Badge } from "../components/Badge";
 import { TextField } from "../components/TextField";
 import { ConcentricRings } from "../components/ConcentricRings";
 
 const ROUND_STATE_LABEL: Record<RoundState, string> = {
+  pending: "upcoming",
   open_submission: "submissions open",
   open_voting: "voting open",
   closed: "closed",
 };
+
+/** A round is "active" when members can act on it right now. */
+function isActiveRound(state: RoundState): boolean {
+  return state === "open_submission" || state === "open_voting";
+}
 
 type LeagueHomeScreenProps = {
   league: League;
@@ -20,9 +26,9 @@ type LeagueHomeScreenProps = {
   error?: string | null;
   onBack: () => void;
   onOpenRound: (roundId: string) => void;
-  onCreateRound: (theme: string, votesPerPlayer?: number) => void;
-  creatingRound: boolean;
-  createRoundError?: string | null;
+  onCreateRounds: (rounds: RoundBatchItem[]) => void;
+  creatingRounds: boolean;
+  createRoundsError?: string | null;
   inviteUrl: string | null;
   onGenerateInvite: () => void;
   generatingInvite: boolean;
@@ -48,9 +54,9 @@ export function LeagueHomeScreen({
   error,
   onBack,
   onOpenRound,
-  onCreateRound,
-  creatingRound,
-  createRoundError,
+  onCreateRounds,
+  creatingRounds,
+  createRoundsError,
   inviteUrl,
   onGenerateInvite,
   generatingInvite,
@@ -124,9 +130,9 @@ export function LeagueHomeScreen({
           isOrganizer={isOrganizer}
           canCreate={league.state !== "complete"}
           onOpenRound={onOpenRound}
-          onCreateRound={onCreateRound}
-          creatingRound={creatingRound}
-          createRoundError={createRoundError}
+          onCreateRounds={onCreateRounds}
+          creatingRounds={creatingRounds}
+          createRoundsError={createRoundsError}
         />
 
         {/* Members */}
@@ -192,29 +198,21 @@ function RoundsSection({
   isOrganizer,
   canCreate,
   onOpenRound,
-  onCreateRound,
-  creatingRound,
-  createRoundError,
+  onCreateRounds,
+  creatingRounds,
+  createRoundsError,
 }: {
   rounds: Round[];
   isOrganizer: boolean;
   canCreate: boolean;
   onOpenRound: (roundId: string) => void;
-  onCreateRound: (theme: string, votesPerPlayer?: number) => void;
-  creatingRound: boolean;
-  createRoundError?: string | null;
+  onCreateRounds: (rounds: RoundBatchItem[]) => void;
+  creatingRounds: boolean;
+  createRoundsError?: string | null;
 }) {
-  const [open, setOpen] = useState(false);
-  const [theme, setTheme] = useState("");
-
-  function handleCreate(e: FormEvent) {
-    e.preventDefault();
-    const trimmed = theme.trim();
-    if (!trimmed) return;
-    onCreateRound(trimmed);
-    setTheme("");
-    setOpen(false);
-  }
+  // The batch pre-create form is only available before any rounds exist — the
+  // backend guards POST :batch the same way (409 once a league has rounds).
+  const canBulkCreate = isOrganizer && canCreate && rounds.length === 0;
 
   return (
     <section className="mt-12">
@@ -223,79 +221,273 @@ function RoundsSection({
       </h2>
 
       {rounds.length === 0 ? (
-        <p className="mt-4 font-mono text-[13px] font-light text-muted">no rounds yet</p>
+        canBulkCreate ? null : (
+          <p className="mt-4 font-mono text-[13px] font-light text-muted">no rounds yet</p>
+        )
       ) : (
-        <ul className="mt-4 divide-y divide-border border-t border-border">
+        <ul className="mt-4 space-y-3">
           {rounds.map((round) => (
             <li key={round.id}>
-              <button
-                type="button"
-                onClick={() => onOpenRound(round.id)}
-                className="flex w-full items-center justify-between gap-4 py-3 text-left transition-colors duration-150 hover:bg-sage-pale"
-              >
-                <span className="min-w-0">
-                  <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
-                    round {round.round_number}
-                  </span>
-                  <span className="mt-0.5 block truncate font-serif text-[16px] text-ink">
-                    {round.theme}
-                  </span>
-                </span>
-                <Badge>{ROUND_STATE_LABEL[round.state]}</Badge>
-              </button>
+              <RoundRow round={round} onOpen={() => onOpenRound(round.id)} />
             </li>
           ))}
         </ul>
       )}
 
-      {isOrganizer && canCreate ? (
-        open ? (
-          <form onSubmit={handleCreate} className="mt-4 space-y-5">
-            <TextField
-              id="new-round-theme"
-              label="round theme"
-              name="theme"
-              placeholder="late summer feels"
-              value={theme}
-              onChange={(e) => setTheme(e.target.value)}
-              disabled={creatingRound}
-              autoComplete="off"
-              required
-            />
-            {createRoundError ? (
-              <p role="alert" className="font-mono text-[11px] text-ink">
-                {createRoundError}
-              </p>
-            ) : null}
-            <div className="flex items-center gap-4">
-              <Button type="submit" disabled={creatingRound || !theme.trim()}>
-                {creatingRound ? "creating…" : "create round"}
-              </Button>
-              <Button
-                variant="ghost"
-                type="button"
-                onClick={() => setOpen(false)}
-                disabled={creatingRound}
-              >
-                cancel
-              </Button>
-            </div>
-          </form>
-        ) : (
-          <div className="mt-4">
-            <Button variant="ghost" type="button" onClick={() => setOpen(true)}>
-              new round
-            </Button>
-          </div>
-        )
-      ) : null}
-
-      {createRoundError && !open ? (
-        <p role="alert" className="mt-3 font-mono text-[11px] text-ink">
-          {createRoundError}
-        </p>
+      {canBulkCreate ? (
+        <BulkCreateRounds
+          onCreateRounds={onCreateRounds}
+          creating={creatingRounds}
+          error={createRoundsError}
+        />
       ) : null}
     </section>
+  );
+}
+
+/**
+ * One round in the "upcoming rounds" list. State drives the visual weight,
+ * within the Sage/Ink family only — no Rust here (the screen reserves its single
+ * Rust use for the league-complete badge above):
+ *  - active round (open submission/voting) → Sage-pale fill, the eye lands here
+ *  - upcoming (pending) → muted theme, quiet
+ *  - closed → plain
+ * Theme + description (the organizer's color) are shown for every state.
+ */
+function RoundRow({ round, onOpen }: { round: Round; onOpen: () => void }) {
+  const active = isActiveRound(round.state);
+  const pending = round.state === "pending";
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={[
+        "block w-full rounded-[3px] border px-5 py-4 text-left transition-colors duration-150",
+        active
+          ? "border-sage bg-sage-pale"
+          : "border-border bg-white hover:bg-sage-pale/60",
+      ].join(" ")}
+    >
+      <div className="flex items-start justify-between gap-4">
+        <span className="min-w-0">
+          <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
+            round {round.round_number}
+          </span>
+          <span
+            className={[
+              "mt-0.5 block truncate font-serif text-[16px]",
+              pending ? "text-muted" : "text-ink",
+            ].join(" ")}
+          >
+            {round.theme}
+          </span>
+        </span>
+        <span className="shrink-0">
+          <Badge>{ROUND_STATE_LABEL[round.state]}</Badge>
+        </span>
+      </div>
+      {round.description ? (
+        <p className="mt-2 font-mono text-[11px] font-light leading-relaxed text-muted">
+          {round.description}
+        </p>
+      ) : null}
+    </button>
+  );
+}
+
+/** A single editable row in the bulk pre-create form (client-side only). */
+type DraftRound = {
+  theme: string;
+  description: string;
+  submissionDeadline: string;
+  votingDeadline: string;
+};
+
+function emptyDraft(): DraftRound {
+  return { theme: "", description: "", submissionDeadline: "", votingDeadline: "" };
+}
+
+/** Convert a datetime-local value ("2026-07-01T18:00") to an ISO string, or null
+ *  when blank. The browser supplies local time; new Date(...).toISOString()
+ *  normalizes it to UTC for the API. */
+function toIsoOrNull(local: string): string | null {
+  if (!local.trim()) return null;
+  const parsed = new Date(local);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
+/**
+ * Organizer-only bulk pre-create form. A dynamic list of round rows — add or
+ * remove a row — each with a required theme, an optional multi-line description
+ * (the organizer's space to add color), and optional submission/voting
+ * deadlines. Submits every non-empty row to POST :batch in one call.
+ *
+ * Style notes: inputs are underline-only (TextField + an underline textarea).
+ * Each row is a plain bordered card; no Rust — this screen's single Rust use is
+ * the league-complete badge. Add/remove are tertiary text actions in Sage.
+ */
+function BulkCreateRounds({
+  onCreateRounds,
+  creating,
+  error,
+}: {
+  onCreateRounds: (rounds: RoundBatchItem[]) => void;
+  creating: boolean;
+  error?: string | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const [drafts, setDrafts] = useState<DraftRound[]>([emptyDraft()]);
+
+  function update(index: number, patch: Partial<DraftRound>) {
+    setDrafts((current) => current.map((d, i) => (i === index ? { ...d, ...patch } : d)));
+  }
+
+  function addRow() {
+    setDrafts((current) => [...current, emptyDraft()]);
+  }
+
+  function removeRow(index: number) {
+    setDrafts((current) => current.filter((_, i) => i !== index));
+  }
+
+  const filled = drafts.filter((d) => d.theme.trim());
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (filled.length === 0) return;
+    const payload: RoundBatchItem[] = filled.map((d) => {
+      const item: RoundBatchItem = { theme: d.theme.trim() };
+      const description = d.description.trim();
+      if (description) item.description = description;
+      const submission = toIsoOrNull(d.submissionDeadline);
+      if (submission) item.submission_deadline = submission;
+      const voting = toIsoOrNull(d.votingDeadline);
+      if (voting) item.voting_deadline = voting;
+      return item;
+    });
+    onCreateRounds(payload);
+  }
+
+  if (!open) {
+    return (
+      <div className="mt-4">
+        <Button variant="ghost" type="button" onClick={() => setOpen(true)}>
+          plan rounds
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="mt-6 space-y-6 border-t border-border pt-6">
+      <p className="font-mono text-[13px] font-light text-muted">
+        set up every round at once. you can fine-tune each one later, while it&apos;s still
+        upcoming.
+      </p>
+
+      <ol className="space-y-6">
+        {drafts.map((draft, index) => (
+          <li key={index} className="rounded-[3px] border border-border bg-white px-5 py-5">
+            <div className="flex items-center justify-between gap-4">
+              <span className="font-mono uppercase tracking-label text-[9px] text-muted">
+                round {index + 1}
+              </span>
+              {drafts.length > 1 ? (
+                <button
+                  type="button"
+                  onClick={() => removeRow(index)}
+                  disabled={creating}
+                  className="font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  remove
+                </button>
+              ) : null}
+            </div>
+
+            <div className="mt-4 space-y-5">
+              <TextField
+                id={`round-theme-${index}`}
+                label="theme"
+                name={`theme-${index}`}
+                placeholder="late summer feels"
+                value={draft.theme}
+                onChange={(e) => update(index, { theme: e.target.value })}
+                disabled={creating}
+                autoComplete="off"
+              />
+
+              <label htmlFor={`round-description-${index}`} className="block">
+                <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
+                  description
+                </span>
+                <textarea
+                  id={`round-description-${index}`}
+                  rows={2}
+                  placeholder="a line or two of color for this round"
+                  value={draft.description}
+                  onChange={(e) => update(index, { description: e.target.value })}
+                  disabled={creating}
+                  className="mt-2 w-full resize-none rounded-none border-0 border-b border-ink bg-transparent px-0 py-1 font-mono text-[13px] font-light text-ink placeholder:text-muted focus:border-sage focus:outline-none disabled:opacity-50"
+                />
+              </label>
+
+              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                <TextField
+                  id={`round-submission-${index}`}
+                  label="submissions close"
+                  name={`submission-${index}`}
+                  type="datetime-local"
+                  value={draft.submissionDeadline}
+                  onChange={(e) => update(index, { submissionDeadline: e.target.value })}
+                  disabled={creating}
+                />
+                <TextField
+                  id={`round-voting-${index}`}
+                  label="voting closes"
+                  name={`voting-${index}`}
+                  type="datetime-local"
+                  value={draft.votingDeadline}
+                  onChange={(e) => update(index, { votingDeadline: e.target.value })}
+                  disabled={creating}
+                />
+              </div>
+            </div>
+          </li>
+        ))}
+      </ol>
+
+      <button
+        type="button"
+        onClick={addRow}
+        disabled={creating}
+        className="font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        add a round
+      </button>
+
+      {error ? (
+        <p role="alert" className="font-mono text-[11px] text-ink">
+          {error}
+        </p>
+      ) : null}
+
+      <div className="flex items-center gap-4">
+        <Button type="submit" disabled={creating || filled.length === 0}>
+          {creating
+            ? "creating…"
+            : `create ${filled.length || ""} ${filled.length === 1 ? "round" : "rounds"}`.trim()}
+        </Button>
+        <Button
+          variant="ghost"
+          type="button"
+          onClick={() => setOpen(false)}
+          disabled={creating}
+        >
+          cancel
+        </Button>
+      </div>
+    </form>
   );
 }
 

@@ -991,6 +991,7 @@ describe("RoundDetailRoute", () => {
       });
       renderRound();
 
+      const user = userEvent.setup();
       await screen.findByRole("heading", { name: /the picks/i });
       const card = cardFor("Bad Guy");
       expect(within(card).getByText("Bob")).toBeInTheDocument();
@@ -998,9 +999,44 @@ describe("RoundDetailRoute", () => {
       // submitter note is rendered in curly quotes
       expect(within(card).getByText(/a banger/)).toBeInTheDocument();
       expect(within(card).getByText(/“a banger”/)).toBeInTheDocument();
-      // others' notes: body + author
+      // others' notes are collapsed by default — expand to read them
+      await user.click(within(card).getByRole("button", { name: /show 1 note/i }));
       expect(within(card).getByText("this slaps")).toBeInTheDocument();
       expect(within(card).getByText("Ada")).toBeInTheDocument();
+    });
+
+    it("Submissions: notes are collapsed by default and toggle open/closed (MYS-72)", async () => {
+      const user = userEvent.setup();
+      setupClosed({
+        submissions: [
+          sub({
+            title: "Bad Guy",
+            vote_count: 1,
+            notes: [
+              { body: "this slaps", author_display_name: "Ada", created_at: "x" },
+              { body: "on repeat", author_display_name: "Cal", created_at: "y" },
+            ],
+          }),
+        ],
+      });
+      renderRound();
+
+      await screen.findByRole("heading", { name: /the picks/i });
+      const card = cardFor("Bad Guy");
+      // collapsed by default: bodies hidden behind a "show N notes" toggle
+      expect(within(card).queryByText("this slaps")).not.toBeInTheDocument();
+      expect(within(card).getByRole("button", { name: /show 2 notes/i })).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
+
+      await user.click(within(card).getByRole("button", { name: /show 2 notes/i }));
+      expect(within(card).getByText("this slaps")).toBeInTheDocument();
+      expect(within(card).getByText("on repeat")).toBeInTheDocument();
+
+      // collapses again
+      await user.click(within(card).getByRole("button", { name: /hide 2 notes/i }));
+      expect(within(card).queryByText("this slaps")).not.toBeInTheDocument();
     });
 
     it("Submissions: the caller's own submission is labelled 'you'", async () => {

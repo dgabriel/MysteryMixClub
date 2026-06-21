@@ -36,6 +36,8 @@ from app.models.submission import Submission
 from app.models.user import User
 from app.models.vote import Vote
 from app.services.most_noted import compute_most_noted
+from app.services.youtube_playlist import build_watch_videos_url, normalize_video_ids
+from app.services.youtube_resolver import YouTubeResolver, get_youtube_resolver
 
 router = APIRouter(tags=["rounds"])
 
@@ -300,6 +302,12 @@ class PlaylistResponse(BaseModel):
     theme: str | None
     state: str
     entries: list[PlaylistEntry]
+    # A single ad-hoc YouTube link that plays the whole mix in playlist order
+    # (watch_videos?video_ids=...), or None if no track resolved to a YouTube id.
+    youtube_playlist_url: str | None
+    # How many of the round's tracks made it into the YouTube link, so the UI can
+    # show "N of M on YouTube". 0 when youtube_playlist_url is None.
+    youtube_track_count: int
 
 
 def _preferred_url(platforms: dict[str, str], preferred_service: str | None) -> str | None:
@@ -315,6 +323,7 @@ async def get_round_playlist(
     round_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    youtube: YouTubeResolver = Depends(get_youtube_resolver),
 ) -> PlaylistResponse:
     round_ = await _load_round(round_id, db)
     await _load_league_as_member(round_.league_id, current_user, db)
@@ -331,6 +340,8 @@ async def get_round_playlist(
     random.Random(round_id.int).shuffle(submissions)
 
     entries = []
+    video_ids: list[str] = []
+    backfilled = False
     for s in submissions:
         platforms = s.platform_links or {}
         entries.append(
@@ -347,12 +358,38 @@ async def get_round_playlist(
                 is_own=s.user_id == current_user.id,
             )
         )
+        # YouTube ids are resolved at submit time. Lazily backfill any submission
+        # that predates that (or whose submit-time resolve failed) so existing
+        # rounds light up; cache it back so it's a one-time cost per submission.
+        video_id = s.youtube_video_id
+        if not video_id:
+            video_id = await youtube.video_id_for(s.title, s.artist)
+            if video_id:
+                s.youtube_video_id = video_id
+                backfilled = True
+        if video_id:
+            video_ids.append(video_id)
+
+    # Best-effort: persist any backfilled ids, but never let a write failure break
+    # the read — the link is still returned from the in-memory ids.
+    if backfilled:
+        try:
+            await db.commit()
+        except Exception:
+            await db.rollback()
+
+    # Normalize once so the count and the URL can never disagree: the URL is
+    # built from exactly these de-duped/capped ids, and the count is their length.
+    playlist_ids = normalize_video_ids(video_ids)
+    youtube_playlist_url = build_watch_videos_url(playlist_ids)
     return PlaylistResponse(
         round_id=str(round_.id),
         round_number=round_.round_number,
         theme=round_.theme,
         state=round_.state,
         entries=entries,
+        youtube_playlist_url=youtube_playlist_url,
+        youtube_track_count=len(playlist_ids),
     )
 
 

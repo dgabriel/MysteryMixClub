@@ -65,6 +65,8 @@ export function RoundDetailRoute() {
   const [league, setLeague] = useState<League | null>(null);
   const [mine, setMine] = useState<SubmissionResult | null>(null);
   const [playlist, setPlaylist] = useState<PlaylistEntry[]>([]);
+  const [youtubePlaylistUrl, setYoutubePlaylistUrl] = useState<string | null>(null);
+  const [youtubeTrackCount, setYoutubeTrackCount] = useState(0);
   const [myVotes, setMyVotes] = useState<string[]>([]);
   const [results, setResults] = useState<RoundResults | null>(null);
   const [loading, setLoading] = useState(true);
@@ -100,6 +102,8 @@ export function RoundDetailRoute() {
           getMySubmission(id),
         ]);
         setPlaylist(loadedPlaylist.entries);
+        setYoutubePlaylistUrl(loadedPlaylist.youtube_playlist_url);
+        setYoutubeTrackCount(loadedPlaylist.youtube_track_count);
         setMyVotes(loadedVotes.submission_ids);
         setMine(loadedMine);
       } else {
@@ -280,6 +284,8 @@ export function RoundDetailRoute() {
               // Remount to re-seed the selection whenever the saved votes change.
               key={myVotes.join(",")}
               entries={playlist}
+              youtubePlaylistUrl={youtubePlaylistUrl}
+              youtubeTrackCount={youtubeTrackCount}
               votesPerPlayer={round.votes_per_player}
               myVotes={myVotes}
               isVibingParticipant={mine?.participation_mode === "vibing"}
@@ -523,8 +529,44 @@ function PlatformLinks({ entry }: { entry: PlaylistEntry }) {
   );
 }
 
+/**
+ * One-click "open the whole mix in YouTube" affordance (MYS-78). Renders only
+ * when the backend resolved at least one track to YouTube (`youtubePlaylistUrl`
+ * non-null). Stays firmly in the Sage/Ink family — a sage underline-style link,
+ * no Rust (reserved for the voted-song outline) and no YouTube red. The subtle
+ * count line tells the listener how much of the mix made it across.
+ */
+function YouTubePlaylistLink({
+  youtubePlaylistUrl,
+  youtubeTrackCount,
+  entryCount,
+}: {
+  youtubePlaylistUrl: string | null;
+  youtubeTrackCount: number;
+  entryCount: number;
+}) {
+  if (!youtubePlaylistUrl) return null;
+  return (
+    <div className="mb-8">
+      <a
+        href={youtubePlaylistUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink"
+      >
+        open playlist in YouTube
+      </a>
+      <span className="mt-1 block font-mono uppercase tracking-label text-[9px] text-muted">
+        {youtubeTrackCount} of {entryCount} on YouTube
+      </span>
+    </div>
+  );
+}
+
 function VotingSection({
   entries,
+  youtubePlaylistUrl,
+  youtubeTrackCount,
   votesPerPlayer,
   myVotes,
   isVibingParticipant,
@@ -535,6 +577,8 @@ function VotingSection({
   onActionError,
 }: {
   entries: PlaylistEntry[];
+  youtubePlaylistUrl: string | null;
+  youtubeTrackCount: number;
   votesPerPlayer: number;
   myVotes: string[];
   isVibingParticipant: boolean;
@@ -578,6 +622,13 @@ function VotingSection({
         <h2 className="mt-8 font-mono uppercase tracking-label text-[9px] text-muted">
           playlist ({entries.length})
         </h2>
+        <div className="mt-4">
+          <YouTubePlaylistLink
+            youtubePlaylistUrl={youtubePlaylistUrl}
+            youtubeTrackCount={youtubeTrackCount}
+            entryCount={entries.length}
+          />
+        </div>
         <ul className="mt-4 space-y-4">
           {entries.map((entry) => (
             <li key={entry.submission_id}>
@@ -604,6 +655,11 @@ function VotingSection({
 
   return (
     <>
+      <YouTubePlaylistLink
+        youtubePlaylistUrl={youtubePlaylistUrl}
+        youtubeTrackCount={youtubeTrackCount}
+        entryCount={entries.length}
+      />
       <div className="flex items-baseline justify-between gap-4">
         <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
           cast your votes

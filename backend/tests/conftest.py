@@ -27,6 +27,7 @@ from app.db.base import Base
 from app.db.session import get_db
 from app.main import create_app
 from app.services.email import EmailSender, get_email_sender
+from app.services.youtube_resolver import get_youtube_resolver
 
 # Import models so they register on Base.metadata before create_all.
 from app.models import MagicLinkToken, Session, User  # noqa: F401
@@ -102,6 +103,15 @@ def email_spy() -> SpyEmailSender:
     return SpyEmailSender()
 
 
+class _OfflineYouTubeResolver:
+    """Default resolver for the shared client fixture: never hits the real
+    YouTube Data API. Tests that need resolution behaviour override this with
+    their own fake; everyone else gets a safe no-op (always None)."""
+
+    async def video_id_for(self, title: str, artist: str | None = None) -> str | None:
+        return None
+
+
 @pytest_asyncio.fixture
 async def client(session_factory, email_spy: SpyEmailSender) -> AsyncGenerator[AsyncClient, None]:
     """AsyncClient over the ASGI app with get_db / get_email_sender overridden."""
@@ -116,6 +126,8 @@ async def client(session_factory, email_spy: SpyEmailSender) -> AsyncGenerator[A
 
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_email_sender] = override_get_email_sender
+    # Keep the whole suite offline by default — no live YouTube Data API calls.
+    app.dependency_overrides[get_youtube_resolver] = lambda: _OfflineYouTubeResolver()
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:

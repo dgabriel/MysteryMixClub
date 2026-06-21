@@ -7,13 +7,21 @@ empty-platforms case, and deterministic shuffling.
 """
 
 import uuid
+from collections.abc import AsyncGenerator
+
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.jwt import create_access_token
+from app.db.session import get_db
+from app.main import create_app
 from app.models.league import League
 from app.models.league_member import LeagueMember
 from app.models.round import Round
 from app.models.submission import Submission
 from app.models.user import User
+from app.services.youtube_resolver import get_youtube_resolver
 
 
 def _links(*platforms: str) -> dict:
@@ -41,7 +49,15 @@ async def _seed_round(db_session, organizer: User, *, state: str = "open_voting"
 
 
 async def _add_submission(
-    db_session, round_id, user_id, *, title, isrc, platform_links, mode="playing"
+    db_session,
+    round_id,
+    user_id,
+    *,
+    title,
+    isrc,
+    platform_links,
+    mode="playing",
+    youtube_video_id=None,
 ):
     db_session.add(
         Submission(
@@ -52,6 +68,7 @@ async def _add_submission(
             artist="A",
             platform_links=platform_links,
             participation_mode=mode,
+            youtube_video_id=youtube_video_id,
         )
     )
     await db_session.commit()
@@ -213,3 +230,258 @@ async def test_playlist_shuffle_is_deterministic(client, db_session):
     order2 = [e["title"] for e in second.json()["entries"]]
     assert order1 == order2  # stable per round
     assert sorted(order1) == [f"song {i}" for i in range(6)]  # all present
+
+
+# --------------------------------------------------------------------------- #
+# YouTube playlist link (MYS-78)
+# --------------------------------------------------------------------------- #
+
+
+class _FakeYouTube:
+    """Resolves a song -> video id by ``(title, artist)``, recording each call so
+    tests can assert the resolver is skipped for already-cached submissions.
+    ``error`` simulates an upstream failure that the resolver itself swallows to
+    None — here we return None to mirror its best-effort contract."""
+
+    def __init__(self, *, by_title=None, error=False):
+        self._by_title = by_title or {}
+        self._error = error
+        self.calls: list[tuple[str, str | None]] = []
+
+    async def video_id_for(self, title: str, artist: str | None = None) -> str | None:
+        self.calls.append((title, artist))
+        if self._error:
+            return None
+        return self._by_title.get(title)
+
+
+def _client_with_youtube(session_factory, youtube) -> AsyncClient:
+    app = create_app()
+
+    async def override_db() -> AsyncGenerator[AsyncSession, None]:
+        async with session_factory() as session:
+            yield session
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_youtube_resolver] = lambda: youtube
+    return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+
+
+def _ids_in_url(body: dict) -> list[str]:
+    """The video ids actually encoded in the returned watch_videos URL."""
+    return body["youtube_playlist_url"].split("video_ids=", 1)[1].replace("%2C", ",").split(",")
+
+
+async def test_youtube_playlist_url_includes_only_stored_ids_in_order(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    for i in range(2):
+        u = await _seed_user(db_session, f"m{i}@example.com")
+        db_session.add(LeagueMember(league_id=round_.league_id, user_id=u.id))
+    await db_session.commit()
+    members = list(await db_session.scalars(select(User).where(User.email.like("m%@example.com"))))
+
+    # Three submissions: two carry a stored YouTube id, one has none.
+    await _add_submission(
+        db_session,
+        round_.id,
+        organizer.id,
+        title="s0",
+        isrc="I0",
+        platform_links=_links("deezer"),
+        youtube_video_id="VID0",
+    )
+    await _add_submission(
+        db_session,
+        round_.id,
+        members[0].id,
+        title="s1",
+        isrc="I1",
+        platform_links=_links("deezer"),
+        youtube_video_id=None,
+    )
+    await _add_submission(
+        db_session,
+        round_.id,
+        members[1].id,
+        title="s2",
+        isrc="I2",
+        platform_links=_links("deezer"),
+        youtube_video_id="VID2",
+    )
+
+    # The resolver returns nothing, so the null submission stays out of the link.
+    youtube = _FakeYouTube(by_title={})
+
+    async with _client_with_youtube(session_factory, youtube) as client:
+        resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+
+    # The link contains exactly the stored ids, in playlist (shuffled) order.
+    titles = [e["title"] for e in body["entries"]]
+    expected_ids = [
+        vid for t, vid in ((t, {"s0": "VID0", "s1": None, "s2": "VID2"}[t]) for t in titles) if vid
+    ]
+    assert body["youtube_track_count"] == 2
+    assert _ids_in_url(body) == expected_ids
+
+
+async def test_youtube_playlist_url_none_when_nothing_resolves(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    await _add_submission(
+        db_session,
+        round_.id,
+        organizer.id,
+        title="s",
+        isrc="I",
+        platform_links=_links("deezer"),
+        youtube_video_id=None,
+    )
+    # No stored id, and the resolver finds nothing on backfill.
+    youtube = _FakeYouTube(by_title={})
+
+    async with _client_with_youtube(session_factory, youtube) as client:
+        resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+    body = resp.json()
+    assert body["youtube_playlist_url"] is None
+    assert body["youtube_track_count"] == 0
+
+
+async def test_stored_id_is_used_without_calling_resolver(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    await _add_submission(
+        db_session,
+        round_.id,
+        organizer.id,
+        title="cached",
+        isrc="I",
+        platform_links=_links("deezer"),
+        youtube_video_id="CACHED1",
+    )
+    # If the route resolved a cached submission, calls would be non-empty.
+    youtube = _FakeYouTube(by_title={"cached": "SHOULD_NOT_BE_USED"})
+
+    async with _client_with_youtube(session_factory, youtube) as client:
+        resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+    body = resp.json()
+    assert youtube.calls == []  # resolver never touched for a cached track
+    assert body["youtube_track_count"] == 1
+    assert _ids_in_url(body) == ["CACHED1"]
+
+
+async def test_lazy_backfill_resolves_and_caches_null_id(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    await _add_submission(
+        db_session,
+        round_.id,
+        organizer.id,
+        title="needs backfill",
+        isrc="I",
+        platform_links=_links("deezer"),
+        youtube_video_id=None,
+    )
+    youtube = _FakeYouTube(by_title={"needs backfill": "NEWVID"})
+
+    async with _client_with_youtube(session_factory, youtube) as client:
+        first = await client.get(_url(round_.id), headers=_auth(organizer.id))
+    body = first.json()
+    assert _ids_in_url(body) == ["NEWVID"]
+    assert body["youtube_track_count"] == 1
+    assert youtube.calls == [("needs backfill", "A")]  # resolved once
+
+    # The id is cached back; a fresh read sees it without resolving again.
+    sub = await db_session.scalar(select(Submission).where(Submission.round_id == round_.id))
+    assert sub.youtube_video_id == "NEWVID"
+
+    async with _client_with_youtube(session_factory, youtube) as client:
+        await client.get(_url(round_.id), headers=_auth(organizer.id))
+    assert youtube.calls == [("needs backfill", "A")]  # not called a second time
+
+
+async def test_resolver_failure_is_swallowed_and_endpoint_stays_200(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    await _add_submission(
+        db_session,
+        round_.id,
+        organizer.id,
+        title="s",
+        isrc="I",
+        platform_links=_links("deezer"),
+        youtube_video_id=None,
+    )
+    youtube = _FakeYouTube(error=True)
+
+    async with _client_with_youtube(session_factory, youtube) as client:
+        resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["youtube_playlist_url"] is None
+    assert body["youtube_track_count"] == 0
+
+
+async def test_track_count_matches_url_when_duplicate_ids_collapse(session_factory, db_session):
+    # Two distinct submissions with the SAME stored video id must count once,
+    # matching the de-duped URL (regression: count was off the raw appended list).
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    other = await _seed_user(db_session, "x@example.com")
+    db_session.add(LeagueMember(league_id=round_.league_id, user_id=other.id))
+    await db_session.commit()
+    await _add_submission(
+        db_session,
+        round_.id,
+        organizer.id,
+        title="a",
+        isrc="I0",
+        platform_links=_links("deezer"),
+        youtube_video_id="SAME",
+    )
+    await _add_submission(
+        db_session,
+        round_.id,
+        other.id,
+        title="b",
+        isrc="I1",
+        platform_links=_links("deezer"),
+        youtube_video_id="SAME",
+    )
+    youtube = _FakeYouTube(by_title={})
+
+    async with _client_with_youtube(session_factory, youtube) as client:
+        resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+    body = resp.json()
+    ids = _ids_in_url(body)
+    assert ids == ["SAME"]
+    assert body["youtube_track_count"] == len(ids) == 1
+
+
+async def test_track_count_matches_url_when_capped_at_fifty(session_factory, db_session):
+    # >50 stored ids: the URL caps at 50, and the count must too.
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    for i in range(51):
+        u = await _seed_user(db_session, f"c{i}@example.com")
+        db_session.add(LeagueMember(league_id=round_.league_id, user_id=u.id))
+        await db_session.commit()
+        await _add_submission(
+            db_session,
+            round_.id,
+            u.id,
+            title=f"s{i}",
+            isrc=f"I{i}",
+            platform_links=_links("deezer"),
+            youtube_video_id=f"VID{i}",
+        )
+    youtube = _FakeYouTube(by_title={})
+
+    async with _client_with_youtube(session_factory, youtube) as client:
+        resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+    body = resp.json()
+    ids = _ids_in_url(body)
+    assert len(ids) == 50
+    assert body["youtube_track_count"] == len(ids) == 50

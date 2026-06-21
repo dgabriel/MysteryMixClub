@@ -23,6 +23,7 @@ from app.models.round import Round
 from app.models.submission import Submission
 from app.models.user import User
 from app.services.song_links import get_link_assembler
+from app.services.youtube_resolver import get_youtube_resolver
 
 _LINKS = {
     "spotify": "https://open.spotify.com/search/bad%20guy",
@@ -40,7 +41,17 @@ class _FakeAssembler:
         return self._links
 
 
-def _build_client(session_factory, *, assembler=None) -> AsyncClient:
+class _FakeYouTube:
+    """Returns a fixed video id (or None) so submit tests never hit the real API."""
+
+    def __init__(self, video_id: str | None = None):
+        self._video_id = video_id
+
+    async def video_id_for(self, title, artist=None) -> str | None:
+        return self._video_id
+
+
+def _build_client(session_factory, *, assembler=None, youtube=None) -> AsyncClient:
     app = create_app()
 
     async def override_db() -> AsyncGenerator[AsyncSession, None]:
@@ -49,6 +60,8 @@ def _build_client(session_factory, *, assembler=None) -> AsyncClient:
 
     app.dependency_overrides[get_db] = override_db
     app.dependency_overrides[get_link_assembler] = lambda: assembler or _FakeAssembler()
+    # Always override the YouTube resolver so submit tests stay offline.
+    app.dependency_overrides[get_youtube_resolver] = lambda: youtube or _FakeYouTube()
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
 
@@ -184,6 +197,50 @@ async def test_submit_happy_path_persists_platform_links(session_factory, db_ses
     db_session.expire_all()
     stored = await db_session.scalar(select(Submission).where(Submission.round_id == round_id))
     assert stored.platform_links == _LINKS
+
+
+async def test_submit_resolves_and_persists_youtube_video_id(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    round_id = round_.id
+    youtube = _FakeYouTube(video_id="PRpiBpDy7MQ")
+    async with _build_client(session_factory, youtube=youtube) as client:
+        resp = await client.post(_sub_url(round_id), json=_body(), headers=_auth(organizer.id))
+    assert resp.status_code == 201, resp.text
+    db_session.expire_all()
+    stored = await db_session.scalar(select(Submission).where(Submission.round_id == round_id))
+    assert stored.youtube_video_id == "PRpiBpDy7MQ"
+
+
+async def test_submit_succeeds_when_youtube_resolution_yields_none(session_factory, db_session):
+    # A failed/empty YouTube resolve must not block the submission.
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    round_id = round_.id
+    youtube = _FakeYouTube(video_id=None)
+    async with _build_client(session_factory, youtube=youtube) as client:
+        resp = await client.post(_sub_url(round_id), json=_body(), headers=_auth(organizer.id))
+    assert resp.status_code == 201, resp.text
+    db_session.expire_all()
+    stored = await db_session.scalar(select(Submission).where(Submission.round_id == round_id))
+    assert stored.youtube_video_id is None
+
+
+async def test_resubmit_updates_youtube_video_id(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    round_id = round_.id
+    async with _build_client(session_factory, youtube=_FakeYouTube(video_id="FIRST")) as client:
+        first = await client.post(_sub_url(round_id), json=_body(), headers=_auth(organizer.id))
+        assert first.status_code == 201
+    async with _build_client(session_factory, youtube=_FakeYouTube(video_id="SECOND")) as client:
+        second = await client.post(
+            _sub_url(round_id), json=_body(title="new pick"), headers=_auth(organizer.id)
+        )
+    assert second.status_code == 200, second.text
+    db_session.expire_all()
+    stored = await db_session.scalar(select(Submission).where(Submission.round_id == round_id))
+    assert stored.youtube_video_id == "SECOND"
 
 
 async def test_submit_defaults_to_vibing_for_vibe_user(session_factory, db_session):

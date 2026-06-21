@@ -46,6 +46,7 @@ from app.models.round import Round
 from app.models.submission import Submission
 from app.models.user import User
 from app.services.song_links import get_link_assembler
+from app.services.youtube_resolver import get_youtube_resolver
 
 ME_URL = "/api/v1/users/me"
 LEAGUES_URL = "/api/v1/leagues"
@@ -66,6 +67,11 @@ class _FakeAssembler:
         return _LINKS
 
 
+class _FakeYouTube:
+    async def video_id_for(self, title, artist=None) -> str | None:
+        return None
+
+
 def _build_client(session_factory) -> AsyncClient:
     app = create_app()
 
@@ -75,6 +81,8 @@ def _build_client(session_factory) -> AsyncClient:
 
     app.dependency_overrides[get_db] = override_db
     app.dependency_overrides[get_link_assembler] = lambda: _FakeAssembler()
+    # Keep submit-path tests offline — no live YouTube API.
+    app.dependency_overrides[get_youtube_resolver] = lambda: _FakeYouTube()
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
 

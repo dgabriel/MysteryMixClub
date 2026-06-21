@@ -169,6 +169,8 @@ describe("RoundDetailRoute", () => {
       theme: "t",
       state: "open_voting",
       entries: [],
+      youtube_playlist_url: null,
+      youtube_track_count: 0,
     });
     mockGetResults.mockResolvedValue(results());
     mockGetMyVotes.mockResolvedValue({
@@ -259,6 +261,8 @@ describe("RoundDetailRoute", () => {
       theme: "t",
       state: "open_voting",
       entries,
+      youtube_playlist_url: null,
+      youtube_track_count: 0,
     });
     renderRound();
     expect(await screen.findByText("Debaser")).toBeInTheDocument();
@@ -302,6 +306,8 @@ describe("RoundDetailRoute", () => {
       votesPerPlayer?: number;
       myVotes?: string[];
       mine?: SubmissionResult | null;
+      youtubePlaylistUrl?: string | null;
+      youtubeTrackCount?: number;
     }) {
       const vpp = opts.votesPerPlayer ?? 3;
       mockGetRound.mockResolvedValue(round({ state: "open_voting", votes_per_player: vpp }));
@@ -311,6 +317,8 @@ describe("RoundDetailRoute", () => {
         theme: "t",
         state: "open_voting",
         entries: opts.entries,
+        youtube_playlist_url: opts.youtubePlaylistUrl ?? null,
+        youtube_track_count: opts.youtubeTrackCount ?? 0,
       });
       mockGetMyVotes.mockResolvedValue({
         round_id: "r1",
@@ -321,6 +329,43 @@ describe("RoundDetailRoute", () => {
       // Default: a playing submission so the caller is a voter.
       mockGetMine.mockResolvedValue(opts.mine === undefined ? mine() : opts.mine);
     }
+
+    it("open YouTube affordance: renders a new-tab link to youtube_playlist_url with the N of M count (MYS-78)", async () => {
+      setupVoting({
+        entries: [
+          entry({ submission_id: "p1", title: "Debaser" }),
+          entry({ submission_id: "p2", title: "Hey" }),
+        ],
+        myVotes: [],
+        youtubePlaylistUrl: "https://www.youtube.com/watch_videos?video_ids=a,b",
+        youtubeTrackCount: 1,
+      });
+      renderRound();
+
+      const link = await screen.findByRole("link", { name: /open playlist in youtube/i });
+      expect(link).toHaveAttribute(
+        "href",
+        "https://www.youtube.com/watch_videos?video_ids=a,b",
+      );
+      expect(link).toHaveAttribute("target", "_blank");
+      // N (youtube_track_count) of M (entry count) on YouTube
+      expect(screen.getByText("1 of 2 on YouTube")).toBeInTheDocument();
+    });
+
+    it("open YouTube affordance: hidden entirely when youtube_playlist_url is null (MYS-78)", async () => {
+      setupVoting({
+        entries: [entry({ submission_id: "p1", title: "Debaser" })],
+        myVotes: [],
+        youtubePlaylistUrl: null,
+      });
+      renderRound();
+
+      await screen.findByRole("button", { name: /Debaser/i });
+      expect(
+        screen.queryByRole("link", { name: /open playlist in youtube/i }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/on YouTube/i)).not.toBeInTheDocument();
+    });
 
     it("playing voter sees votable entries as toggles, a counter, and pre-selection from getMyVotes", async () => {
       setupVoting({
@@ -556,6 +601,8 @@ describe("RoundDetailRoute", () => {
         theme: "t",
         state: "open_voting",
         entries: opts.entries,
+        youtube_playlist_url: null,
+        youtube_track_count: 0,
       });
       mockGetMyVotes.mockResolvedValue({
         round_id: "r1",

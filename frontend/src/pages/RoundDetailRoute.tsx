@@ -620,8 +620,9 @@ function VotingSection({
         {votable.map((entry) => {
           // Your own song: shown in the playlist but never a vote toggle — you
           // can't vote for it (MYS-73), and it's clearly marked as yours
-          // (MYS-74). Stays in the Sage/Ink family; Rust is reserved for the
-          // songs you've voted for.
+          // (MYS-74/75). No notes affordance either — you can't leave a note on
+          // your own submission (MYS-77). Stays in the Sage/Ink family; Rust is
+          // reserved for the songs you've voted for.
           if (entry.is_own) {
             return (
               <li key={entry.submission_id}>
@@ -642,7 +643,6 @@ function VotingSection({
                   </p>
                 </div>
                 <PlatformLinks entry={entry} />
-                <SongNotes submissionId={entry.submission_id} onActionError={onActionError} />
               </li>
             );
           }

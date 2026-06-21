@@ -341,7 +341,7 @@ describe("RoundDetailRoute", () => {
       expect(screen.getByText("1 / 3 selected")).toBeInTheDocument();
     });
 
-    it("own song (is_own): shown as 'your pick', not a vote toggle, not selectable (MYS-73/74)", async () => {
+    it("own song (is_own): marked as yours, not a vote toggle, no notes affordance, not selectable (MYS-73/74/75/77)", async () => {
       setupVoting({
         entries: [
           entry({ submission_id: "mine", title: "My Track", is_own: true }),
@@ -361,6 +361,16 @@ describe("RoundDetailRoute", () => {
       expect(screen.getByRole("button", { name: /Their Track/i })).toBeInTheDocument();
       // and it doesn't count toward the selectable set
       expect(screen.getByText("0 / 3 selected")).toBeInTheDocument();
+
+      // you can't leave a note on your own submission (MYS-77): the own card has
+      // no notes / leave-a-note affordance, while a peer's card still does.
+      const ownCard = screen.getByText("My Track").closest("li") as HTMLElement;
+      expect(within(ownCard).queryByRole("button", { name: /^notes$/i })).not.toBeInTheDocument();
+      expect(
+        within(ownCard).queryByRole("button", { name: /leave a note/i }),
+      ).not.toBeInTheDocument();
+      const peerCard = screen.getByText("Their Track").closest("li") as HTMLElement;
+      expect(within(peerCard).getByRole("button", { name: /^notes$/i })).toBeInTheDocument();
     });
 
     it("toggling selects/deselects and updates the counter", async () => {

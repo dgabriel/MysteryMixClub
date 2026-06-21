@@ -33,7 +33,9 @@ class Round(Base):
         UUID(as_uuid=True), ForeignKey("leagues.id"), nullable=False, index=True
     )
     round_number: Mapped[int] = mapped_column(Integer, nullable=False)
-    theme: Mapped[str] = mapped_column(String, nullable=False)
+    # Nullable: rounds are auto-generated at league creation without a theme;
+    # the organizer fills it in while the round is still pending (MYS-62).
+    theme: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     description: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     state: Mapped[str] = mapped_column(
         String, nullable=False, default="open_submission", server_default=text("'open_submission'")

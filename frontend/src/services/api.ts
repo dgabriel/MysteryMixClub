@@ -436,12 +436,13 @@ export async function searchSongs(q: string, artist?: string): Promise<SongSearc
 /** A round's lifecycle state. `pending` rounds are pre-created and not yet open. */
 export type RoundState = "pending" | "open_submission" | "open_voting" | "closed";
 
-/** A round within a league. */
+/** A round within a league. `theme` is null until the organizer names the round
+ *  (rounds are auto-created as `pending` with no theme at league creation). */
 export type Round = {
   id: string;
   league_id: string;
   round_number: number;
-  theme: string;
+  theme: string | null;
   state: RoundState;
   description: string | null;
   submission_deadline: string | null;
@@ -483,18 +484,9 @@ export type PlaylistEntry = {
 export type Playlist = {
   round_id: string;
   round_number: number;
-  theme: string;
+  theme: string | null;
   state: RoundState;
   entries: PlaylistEntry[];
-};
-
-/** A single round in a bulk pre-create batch. Only `theme` is required. */
-export type RoundBatchItem = {
-  theme: string;
-  description?: string | null;
-  submission_deadline?: string | null;
-  voting_deadline?: string | null;
-  votes_per_player?: number;
 };
 
 /** Create a round in a league (organizer only). */
@@ -519,24 +511,6 @@ export async function createRound(
   return (await res.json()) as Round;
 }
 
-/** Pre-create all of a league's rounds at once (organizer only). The backend
- *  numbers them 1..N, marks them `pending`, and sets the league's total_rounds.
- *  Returns the created rounds in order. 409 if the league already has rounds. */
-export async function createRoundsBatch(
-  leagueId: string,
-  rounds: RoundBatchItem[],
-): Promise<Round[]> {
-  const res = await authenticatedRequest(`/api/v1/leagues/${leagueId}/rounds:batch`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ rounds }),
-  });
-  if (!res.ok) {
-    throw new ApiError(res.status, await readErrorMessage(res));
-  }
-  return (await res.json()) as Round[];
-}
-
 /** Get all rounds for a league (members). */
 export async function getRounds(leagueId: string): Promise<Round[]> {
   const res = await authenticatedRequest(`/api/v1/leagues/${leagueId}/rounds`);
@@ -559,7 +533,7 @@ export async function getRound(roundId: string): Promise<Round> {
 export async function updateRound(
   roundId: string,
   input: {
-    theme?: string;
+    theme?: string | null;
     description?: string | null;
     state?: RoundState;
     submission_deadline?: string | null;
@@ -679,7 +653,7 @@ export type MostNotedWinner = {
 export type RoundResults = {
   round_id: string;
   round_number: number;
-  theme: string;
+  theme: string | null;
   state: RoundState;
   submissions: ResultSubmission[];
   leaderboard: LeaderboardEntry[];

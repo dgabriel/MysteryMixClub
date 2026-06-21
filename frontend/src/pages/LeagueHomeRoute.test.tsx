@@ -8,11 +8,12 @@ import {
   createInvite,
   getLeague,
   getLeagueMembers,
+  getResults,
   getRounds,
   removeMember,
   updateLeague,
 } from "../services/api";
-import type { Invite, League, LeagueMember } from "../services/api";
+import type { Invite, League, LeagueMember, Round, RoundResults } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 
 // Mock the API module (no network). Keep ApiError real.
@@ -23,6 +24,7 @@ vi.mock("../services/api", async () => {
     getLeague: vi.fn(),
     getLeagueMembers: vi.fn(),
     getRounds: vi.fn(),
+    getResults: vi.fn(),
     createRound: vi.fn(),
     updateLeague: vi.fn(),
     removeMember: vi.fn(),
@@ -38,6 +40,7 @@ vi.mock("../hooks/useAuth", () => ({
 const mockGetLeague = vi.mocked(getLeague);
 const mockGetLeagueMembers = vi.mocked(getLeagueMembers);
 const mockGetRounds = vi.mocked(getRounds);
+const mockGetResults = vi.mocked(getResults);
 const mockUpdateLeague = vi.mocked(updateLeague);
 const mockRemoveMember = vi.mocked(removeMember);
 const mockCreateInvite = vi.mocked(createInvite);
@@ -90,6 +93,50 @@ function inviteWith(token: string): Invite {
   };
 }
 
+function closedRound(overrides: Partial<Round> = {}): Round {
+  return {
+    id: "round-1",
+    league_id: "league-1",
+    round_number: 1,
+    theme: "late summer feels",
+    state: "closed",
+    description: null,
+    submission_deadline: null,
+    voting_deadline: null,
+    votes_per_player: 3,
+    created_at: "2026-01-01T00:00:00Z",
+    closed_at: "2026-01-05T00:00:00Z",
+    ...overrides,
+  };
+}
+
+function resultsWith(overrides: Partial<RoundResults> = {}): RoundResults {
+  return {
+    round_id: "round-1",
+    round_number: 1,
+    theme: "late summer feels",
+    state: "closed",
+    submissions: [],
+    leaderboard: [
+      { user_id: "u-wren", display_name: "Wren", vote_count: 5, rank: 1 },
+      { user_id: "u-cy", display_name: "Cy", vote_count: 2, rank: 2 },
+    ],
+    most_noted: {
+      note_count: 3,
+      winners: [
+        {
+          submission_id: "s-1",
+          title: "Strange Currencies",
+          artist: "R.E.M.",
+          note_count: 3,
+          notes: [],
+        },
+      ],
+    },
+    ...overrides,
+  };
+}
+
 function setAuth(userId: string | null) {
   mockUseAuth.mockReturnValue({
     status: "authenticated",
@@ -123,6 +170,7 @@ describe("LeagueHomeRoute", () => {
     mockGetLeague.mockResolvedValue(leagueWith());
     mockGetLeagueMembers.mockResolvedValue(members());
     mockGetRounds.mockResolvedValue([]);
+    mockGetResults.mockResolvedValue(resultsWith());
     setAuth(ORGANIZER_ID);
   });
 
@@ -229,5 +277,78 @@ describe("LeagueHomeRoute", () => {
     await user.click(screen.getByRole("button", { name: /^back$/i }));
 
     expect(await screen.findByText("HOME CONTENT")).toBeInTheDocument();
+  });
+
+  it("closed round: shows the single winner and most-noted pick on the card", async () => {
+    mockGetRounds.mockResolvedValue([closedRound()]);
+    mockGetResults.mockResolvedValue(resultsWith());
+
+    renderLeague();
+    await screen.findByText("Friday Mixtape");
+
+    expect(await screen.findByText("winner")).toBeInTheDocument();
+    expect(screen.getByText("Wren")).toBeInTheDocument();
+    expect(screen.getByText("most noted")).toBeInTheDocument();
+    expect(screen.getByText("Strange Currencies")).toBeInTheDocument();
+    expect(mockGetResults).toHaveBeenCalledWith("round-1");
+  });
+
+  it("closed round tie: shows every co-winner and every most-noted pick", async () => {
+    mockGetRounds.mockResolvedValue([closedRound()]);
+    mockGetResults.mockResolvedValue(
+      resultsWith({
+        leaderboard: [
+          { user_id: "u-ada", display_name: "Ada", vote_count: 4, rank: 1 },
+          { user_id: "u-bo", display_name: "Bo", vote_count: 4, rank: 2 },
+          { user_id: "u-cy", display_name: "Cy", vote_count: 1, rank: 3 },
+        ],
+        most_noted: {
+          note_count: 2,
+          winners: [
+            {
+              submission_id: "s-1",
+              title: "Strange Currencies",
+              artist: "R.E.M.",
+              note_count: 2,
+              notes: [],
+            },
+            {
+              submission_id: "s-2",
+              title: "Nightswimming",
+              artist: "R.E.M.",
+              note_count: 2,
+              notes: [],
+            },
+          ],
+        },
+      }),
+    );
+
+    renderLeague();
+    await screen.findByText("Friday Mixtape");
+
+    expect(await screen.findByText("winners")).toBeInTheDocument();
+    expect(screen.getByText("Ada & Bo")).toBeInTheDocument();
+    // Cy did not tie for first and is not named as a winner.
+    expect(screen.queryByText(/Cy/)).not.toBeInTheDocument();
+    expect(screen.getByText("Strange Currencies · Nightswimming")).toBeInTheDocument();
+  });
+
+  it("closed round with no votes or notes: omits the summary entirely", async () => {
+    mockGetRounds.mockResolvedValue([closedRound()]);
+    mockGetResults.mockResolvedValue(
+      resultsWith({
+        leaderboard: [{ user_id: "u-ada", display_name: "Ada", vote_count: 0, rank: 1 }],
+        most_noted: { note_count: 0, winners: [] },
+      }),
+    );
+
+    renderLeague();
+    // The round card still renders…
+    expect(await screen.findByText("late summer feels")).toBeInTheDocument();
+    // …but with no winner / most-noted summary.
+    await waitFor(() => expect(mockGetResults).toHaveBeenCalled());
+    expect(screen.queryByText("winner")).not.toBeInTheDocument();
+    expect(screen.queryByText("most noted")).not.toBeInTheDocument();
   });
 });

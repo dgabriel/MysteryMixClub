@@ -87,16 +87,21 @@ export function CreateLeagueScreen({
             disabled={submitting}
           />
 
-          <TextField
-            id="league-total-rounds"
-            label="rounds"
-            name="total_rounds"
-            type="number"
-            min={1}
-            value={totalRounds}
-            onChange={(e) => setTotalRounds(e.target.value)}
-            disabled={submitting}
-          />
+          <div>
+            <TextField
+              id="league-total-rounds"
+              label="number of rounds"
+              name="total_rounds"
+              type="number"
+              min={1}
+              value={totalRounds}
+              onChange={(e) => setTotalRounds(e.target.value)}
+              disabled={submitting}
+            />
+            <p className="mt-2 font-mono text-[11px] font-light text-muted">
+              we&apos;ll create this many rounds for you — name each one later.
+            </p>
+          </div>
 
           <TextField
             id="league-votes-per-player"

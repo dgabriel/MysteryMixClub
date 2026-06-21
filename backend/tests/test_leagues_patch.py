@@ -17,7 +17,10 @@ from sqlalchemy import select
 from app.auth.jwt import create_access_token
 from app.models.league import League
 from app.models.league_member import LeagueMember
+from app.models.round import Round
 from app.models.user import User
+
+LEAGUES_URL = "/api/v1/leagues"
 
 # The full league object key set, matching POST /leagues.
 _LEAGUE_KEYS = {
@@ -93,6 +96,30 @@ def _auth_header(user_id: uuid.UUID) -> dict[str, str]:
 
 def _patch_url(league_id) -> str:
     return f"/api/v1/leagues/{league_id}"
+
+
+async def _create_league_via_api(client, user_id, *, total_rounds=6, votes_per_player=5):
+    """Create a league through the POST endpoint so its round slate auto-generates."""
+    resp = await client.post(
+        LEAGUES_URL,
+        headers=_auth_header(user_id),
+        json={
+            "name": "Reconcile League",
+            "total_rounds": total_rounds,
+            "votes_per_player": votes_per_player,
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+async def _round_numbers(db_session, league_id):
+    rounds = list(
+        await db_session.scalars(
+            select(Round).where(Round.league_id == league_id).order_by(Round.round_number.asc())
+        )
+    )
+    return [r.round_number for r in rounds]
 
 
 # ========================================================================== #
@@ -349,6 +376,21 @@ async def test_total_rounds_below_one_returns_422(client, db_session):
     assert resp.status_code == 422, resp.text
 
 
+async def test_total_rounds_above_max_returns_422(client, db_session):
+    # Same upper bound as create: the reconcile grow path must not bulk-insert an
+    # unbounded slate.
+    organizer = await _seed_user(db_session)
+    league = await _seed_league(db_session, organizer)
+
+    resp = await client.patch(
+        _patch_url(league.id),
+        headers=_auth_header(organizer.id),
+        json={"total_rounds": 51},
+    )
+
+    assert resp.status_code == 422, resp.text
+
+
 async def test_explicit_null_name_returns_422(client, db_session):
     organizer = await _seed_user(db_session)
     league = await _seed_league(db_session, organizer)
@@ -398,3 +440,139 @@ async def test_explicit_null_description_clears_it_returns_200(client, db_sessio
 
     persisted = await db_session.scalar(select(League).where(League.id == league_id))
     assert persisted.description is None
+
+
+# ========================================================================== #
+# Round-slate reconciliation on total_rounds change (MYS-62)
+# ========================================================================== #
+
+
+async def test_grow_total_rounds_appends_pending_rounds(client, db_session):
+    # f. N -> N+2 appends two new pending rounds with the next sequential numbers.
+    organizer = await _seed_user(db_session)
+    league = await _create_league_via_api(client, organizer.id, total_rounds=4)
+    league_id = uuid.UUID(league["id"])
+
+    resp = await client.patch(
+        _patch_url(league_id),
+        headers=_auth_header(organizer.id),
+        json={"total_rounds": 6},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["total_rounds"] == 6
+
+    db_session.expire_all()
+    assert await _round_numbers(db_session, league_id) == [1, 2, 3, 4, 5, 6]
+    # The two appended rounds are pending with no theme/description and inherit
+    # the league's votes_per_player.
+    appended = list(
+        await db_session.scalars(
+            select(Round)
+            .where(Round.league_id == league_id, Round.round_number > 4)
+            .order_by(Round.round_number.asc())
+        )
+    )
+    assert [r.round_number for r in appended] == [5, 6]
+    assert all(r.state == "pending" for r in appended)
+    assert all(r.theme is None and r.description is None for r in appended)
+    assert all(r.votes_per_player == 5 for r in appended)
+
+
+async def test_shrink_total_rounds_deletes_trailing_pending_rounds(client, db_session):
+    # g. N -> N-2 deletes the trailing two (all-pending) rounds.
+    organizer = await _seed_user(db_session)
+    league = await _create_league_via_api(client, organizer.id, total_rounds=6)
+    league_id = uuid.UUID(league["id"])
+
+    resp = await client.patch(
+        _patch_url(league_id),
+        headers=_auth_header(organizer.id),
+        json={"total_rounds": 4},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["total_rounds"] == 4
+
+    db_session.expire_all()
+    assert await _round_numbers(db_session, league_id) == [1, 2, 3, 4]
+
+
+async def test_shrink_blocked_when_a_removed_round_has_started(client, db_session):
+    # h. A trailing round that is NOT pending (here: closed) cannot be removed by
+    #    a shrink. Set up the slate directly so a started round sits ABOVE the new
+    #    total while current_round stays below it, isolating the started-round
+    #    guard from the current_round guard. Expect 409, slate + total_rounds
+    #    intact. All db_session writes happen up front (committed) before any API
+    #    call, per the async expire_all/greenlet conventions.
+    organizer = await _seed_user(db_session)
+    league = League(
+        name="Started Trailing",
+        organizer_id=organizer.id,
+        total_rounds=4,
+        votes_per_player=3,
+        current_round=1,
+    )
+    db_session.add(league)
+    await db_session.flush()
+    league_id = league.id
+    db_session.add(LeagueMember(league_id=league_id, user_id=organizer.id))
+    # Rounds 1 (open_submission) and 2 (closed) have started; 3 and 4 are pending.
+    db_session.add(Round(league_id=league_id, round_number=1, state="open_submission"))
+    db_session.add(Round(league_id=league_id, round_number=2, state="closed"))
+    db_session.add(Round(league_id=league_id, round_number=3, state="pending"))
+    db_session.add(Round(league_id=league_id, round_number=4, state="pending"))
+    await db_session.commit()
+
+    # Shrink to 2 keeps current_round (1) satisfied, but rounds > 2 are 3,4 (both
+    # pending) -> that alone would be allowed. Shrink to 1 instead: rounds > 1 are
+    # 2 (closed/started), 3, 4 -> the started round 2 blocks removal. current_round
+    # is 1, so new_total (1) is NOT below current_round; only the started-round
+    # guard fires.
+    resp = await client.patch(
+        _patch_url(league_id),
+        headers=_auth_header(organizer.id),
+        json={"total_rounds": 1},
+    )
+    assert resp.status_code == 409, resp.text
+    assert "already started" in resp.json()["detail"]
+
+    # Unchanged: total_rounds still 4 and all four rounds remain.
+    db_session.expire_all()
+    persisted = await db_session.scalar(select(League).where(League.id == league_id))
+    assert persisted.total_rounds == 4
+    assert await _round_numbers(db_session, league_id) == [1, 2, 3, 4]
+
+
+async def test_total_rounds_below_current_round_returns_409(client, db_session):
+    # i. new_total < current_round -> 409, slate unchanged. Seed a league already
+    #    on round 2 (round 1 closed, round 2 open) directly, up front, so the only
+    #    API call is the failing PATCH.
+    organizer = await _seed_user(db_session)
+    league = League(
+        name="Mid-flight",
+        organizer_id=organizer.id,
+        total_rounds=4,
+        votes_per_player=3,
+        current_round=2,
+    )
+    db_session.add(league)
+    await db_session.flush()
+    league_id = league.id
+    db_session.add(LeagueMember(league_id=league_id, user_id=organizer.id))
+    db_session.add(Round(league_id=league_id, round_number=1, state="closed"))
+    db_session.add(Round(league_id=league_id, round_number=2, state="open_submission"))
+    db_session.add(Round(league_id=league_id, round_number=3, state="pending"))
+    db_session.add(Round(league_id=league_id, round_number=4, state="pending"))
+    await db_session.commit()
+
+    resp = await client.patch(
+        _patch_url(league_id),
+        headers=_auth_header(organizer.id),
+        json={"total_rounds": 1},
+    )
+    assert resp.status_code == 409, resp.text
+    assert "current_round" in resp.json()["detail"]
+
+    db_session.expire_all()
+    persisted = await db_session.scalar(select(League).where(League.id == league_id))
+    assert persisted.total_rounds == 4
+    assert await _round_numbers(db_session, league_id) == [1, 2, 3, 4]

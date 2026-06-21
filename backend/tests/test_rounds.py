@@ -94,11 +94,13 @@ async def test_create_non_organizer_member_forbidden(client, db_session):
     assert resp.status_code == 403
 
 
-async def test_create_missing_theme_is_422(client, db_session):
+async def test_create_missing_theme_is_allowed(client, db_session):
+    # theme is now optional (MYS-62): a round may be created without one.
     organizer = await _seed_user(db_session, "org@example.com")
     league = await _seed_league(db_session, organizer)
     resp = await client.post(_rounds_url(league.id), json={}, headers=_auth(organizer.id))
-    assert resp.status_code == 422
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["theme"] is None
 
 
 # --------------------------------------------------------------------------- #

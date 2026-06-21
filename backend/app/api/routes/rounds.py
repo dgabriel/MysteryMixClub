@@ -3,15 +3,15 @@
 Round lifecycle and the create/read/update surface for a league's rounds:
 
 * ``POST  /api/v1/leagues/:id/rounds``       — organizer creates the next round
-* ``POST  /api/v1/leagues/:id/rounds:batch`` — organizer pre-creates all rounds
 * ``GET   /api/v1/leagues/:id/rounds``       — members list a league's rounds
 * ``GET   /api/v1/rounds/:id``               — members read a round
 * ``PATCH /api/v1/rounds/:id``               — organizer edits fields / advances state
 * ``GET   /api/v1/rounds/:id/playlist``      — members get the anonymous voting playlist
 
 State machine is forward-only: ``pending -> open_submission -> open_voting ->
-closed``. Pre-created rounds start ``pending``; only one round per league may be
-active (open_submission/open_voting) at a time, enforced when a round opens. The
+closed``. Rounds are auto-generated as ``pending`` at league creation; only one
+round per league may be active (open_submission/open_voting) at a time, enforced
+when a round opens. The
 playlist surfaces each submission resolved to the viewer's preferred service (it
 reads the stored ``odesli_data``). Membership/organizer checks reuse the helpers
 in :mod:`app.api.routes.leagues`.
@@ -23,7 +23,7 @@ from datetime import datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field, StringConstraints, model_validator
+from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -56,51 +56,30 @@ _ACTIVE_STATES = ("open_submission", "open_voting")
 
 
 class RoundCreate(BaseModel):
-    theme: RoundTheme
+    # Optional: rounds may be created without a theme (filled in while pending).
+    theme: RoundTheme | None = None
     description: RoundDescription | None = None
     submission_deadline: datetime | None = None
     voting_deadline: datetime | None = None
     # Defaults to the league's votes_per_player when omitted.
     votes_per_player: int | None = Field(default=None, ge=1)
-
-
-class RoundBatchItem(BaseModel):
-    theme: RoundTheme
-    description: RoundDescription | None = None
-    submission_deadline: datetime | None = None
-    voting_deadline: datetime | None = None
-    # Defaults to the league's votes_per_player when omitted.
-    votes_per_player: int | None = Field(default=None, ge=1)
-
-
-class RoundBatchCreate(BaseModel):
-    # FastAPI request bodies are objects, so the round list is wrapped under
-    # `rounds`. At least one round is required.
-    rounds: list[RoundBatchItem] = Field(min_length=1)
 
 
 class RoundUpdate(BaseModel):
     # All optional: only provided fields are applied. `state` advances the machine.
+    # theme is nullable and may be cleared (it maps to a nullable column now).
     theme: RoundTheme | None = None
     description: RoundDescription | None = None
     submission_deadline: datetime | None = None
     voting_deadline: datetime | None = None
     state: Literal["pending", "open_submission", "open_voting", "closed"] | None = None
 
-    @model_validator(mode="before")
-    @classmethod
-    def _reject_explicit_null_theme(cls, data):
-        # theme maps to a NOT NULL column: allow omission, reject explicit null.
-        if isinstance(data, dict) and "theme" in data and data["theme"] is None:
-            raise ValueError("theme may not be null")
-        return data
-
 
 class RoundResponse(BaseModel):
     id: str
     league_id: str
     round_number: int
-    theme: str
+    theme: str | None
     description: str | None
     state: str
     submission_deadline: datetime | None
@@ -187,65 +166,6 @@ async def create_round(
     await db.commit()
     await db.refresh(round_)
     return _to_response(round_)
-
-
-@router.post(
-    "/leagues/{league_id}/rounds:batch",
-    status_code=201,
-    response_model=list[RoundResponse],
-)
-async def create_rounds_batch(
-    league_id: uuid.UUID,
-    payload: RoundBatchCreate,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> list[RoundResponse]:
-    """Pre-create a league's full slate of rounds in one call (MYS-62).
-
-    Every round is created as ``pending`` and numbered 1..N in payload order.
-    ``leagues.total_rounds`` is set to N. The league must have no rounds yet —
-    pre-creation is a one-shot setup step, not an append.
-    """
-    league = await _load_league_as_organizer(
-        league_id, current_user, db, "only the organizer can create rounds"
-    )
-    if league.state == "complete":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="league is complete")
-
-    existing = await db.scalar(
-        select(func.count()).select_from(Round).where(Round.league_id == league_id)
-    )
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="this league already has rounds",
-        )
-
-    created: list[Round] = []
-    for index, item in enumerate(payload.rounds, start=1):
-        round_ = Round(
-            league_id=league_id,
-            round_number=index,
-            theme=item.theme,
-            description=item.description,
-            state="pending",
-            submission_deadline=item.submission_deadline,
-            voting_deadline=item.voting_deadline,
-            votes_per_player=(
-                item.votes_per_player
-                if item.votes_per_player is not None
-                else league.votes_per_player
-            ),
-        )
-        db.add(round_)
-        created.append(round_)
-
-    # The slate defines the league's length; no round is active until one is opened.
-    league.total_rounds = len(payload.rounds)
-    await db.commit()
-    for round_ in created:
-        await db.refresh(round_)
-    return [_to_response(r) for r in created]
 
 
 @router.get("/leagues/{league_id}/rounds", response_model=list[RoundResponse])
@@ -372,7 +292,8 @@ class PlaylistEntry(BaseModel):
 class PlaylistResponse(BaseModel):
     round_id: str
     round_number: int
-    theme: str
+    # Nullable: a round may not have a theme yet (clients fall back to "Round N").
+    theme: str | None
     state: str
     entries: list[PlaylistEntry]
 
@@ -481,7 +402,8 @@ class MostNotedResult(BaseModel):
 class ResultsResponse(BaseModel):
     round_id: str
     round_number: int
-    theme: str
+    # Nullable: a round may not have a theme yet (clients fall back to "Round N").
+    theme: str | None
     state: str
     submissions: list[ResultSubmission]
     leaderboard: list[LeaderboardEntry]

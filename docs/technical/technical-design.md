@@ -188,7 +188,7 @@ created_at          TIMESTAMP
 id                  UUID PRIMARY KEY
 league_id           UUID REFERENCES leagues(id)
 round_number        INTEGER NOT NULL
-theme               TEXT NOT NULL
+theme               TEXT (nullable — unset until the organizer names the round)
 description         TEXT
 state               TEXT (pending | open_submission | open_voting | closed)
 submission_deadline TIMESTAMP
@@ -198,13 +198,17 @@ created_at          TIMESTAMP
 closed_at           TIMESTAMP
 ```
 
-Rounds may be pre-created as a full slate in the `pending` state and activated
-later. The lifecycle is forward-only: `pending → open_submission → open_voting →
-closed`. Only one round per league may be active (`open_submission`/
-`open_voting`) at a time, enforced when a round opens. `theme` and `description`
-are editable only while a round is `pending`; deadlines remain editable until the
-round closes. Closing a non-final round auto-opens the next `pending` round;
-closing the final round completes the league.
+The full slate of rounds is auto-generated in the `pending` state when a league
+is created, one per `total_rounds` (default 6), numbered 1..N with no theme yet.
+Editing a league's `total_rounds` reconciles the slate: raising it appends new
+`pending` rounds; lowering it deletes the trailing rounds, which must all still
+be `pending` (a started round cannot be removed). The lifecycle is forward-only:
+`pending → open_submission → open_voting → closed`. Only one round per league may
+be active (`open_submission`/`open_voting`) at a time, enforced when a round
+opens. `theme` (nullable) and `description` are editable only while a round is
+`pending`; deadlines remain editable until the round closes. Closing a non-final
+round auto-opens the next `pending` round; closing the final round completes the
+league.
 
 ### submissions
 ```
@@ -294,7 +298,6 @@ POST   /invites/:token/accept Join league via invite
 ### Rounds
 ```
 POST   /leagues/:id/rounds        Create a new round (organizer only)
-POST   /leagues/:id/rounds:batch  Pre-create all rounds as pending (organizer only; body: {"rounds": [...]})
 GET    /leagues/:id/rounds        Get all rounds for a league
 GET    /rounds/:id            Get round detail
 PATCH  /rounds/:id            Update round (organizer only: theme, deadlines, state)

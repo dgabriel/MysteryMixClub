@@ -89,8 +89,8 @@ export function RoundDetailRoute() {
       setLeague(loadedLeague);
 
       if (loadedRound.state === "pending") {
-        // Nothing to load yet — the round isn't open. The organizer can edit it
-        // (theme/description/deadlines) and open it from here.
+        // Nothing to load yet — the round isn't open. The organizer can edit its
+        // theme/description and open it from here.
       } else if (loadedRound.state === "open_submission") {
         setMine(await getMySubmission(id));
       } else if (loadedRound.state === "open_voting") {
@@ -159,12 +159,7 @@ export function RoundDetailRoute() {
     }
   }
 
-  async function handleEditRound(input: {
-    theme?: string;
-    description?: string | null;
-    submission_deadline?: string | null;
-    voting_deadline?: string | null;
-  }) {
+  async function handleEditRound(input: { theme?: string | null; description?: string | null }) {
     if (!id) return;
     setSavingEdit(true);
     setEditError(null);
@@ -232,7 +227,9 @@ export function RoundDetailRoute() {
           {league ? ` · ${league.name}` : ""}
         </span>
         <div className="mt-1 flex items-start justify-between gap-4">
-          <h1 className="font-serif text-[32px] leading-tight text-ink">{round.theme}</h1>
+          <h1 className="font-serif text-[32px] leading-tight text-ink">
+            {round.theme ?? `Round ${round.round_number}`}
+          </h1>
           <div className="shrink-0 pt-2">
             <Badge>{STATE_LABEL[round.state]}</Badge>
           </div>
@@ -332,32 +329,14 @@ function OrganizerControls({
   );
 }
 
-/** ISO datetime → a value the datetime-local input understands ("YYYY-MM-DDTHH:mm"),
- *  in the viewer's local time. Empty string when there's no deadline. */
-function isoToLocalInput(iso: string | null): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-/** Local datetime-local value → ISO (UTC), or null when blank. */
-function localInputToIso(local: string): string | null {
-  if (!local.trim()) return null;
-  const d = new Date(local);
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
-}
-
 /**
  * Organizer round editor. Theme and description are the round's identity — the
- * API allows editing them ONLY while the round is `pending` (409 otherwise), so
- * once the round opens those two fields lock (disabled, with a calm note) while
- * the deadlines stay editable. Reflecting the lock here keeps the organizer from
- * hitting a surprise 409.
+ * API allows editing them ONLY while the round is `pending` (409 otherwise).
+ * Once the round opens there's nothing left to edit here, so the affordance
+ * simply doesn't render for non-pending rounds.
  *
  * No Rust on this screen: the single Rust signal is reserved elsewhere (the
- * closed-round reveal). The lock note stays in Muted.
+ * closed-round reveal).
  */
 function EditRoundForm({
   round,
@@ -370,29 +349,22 @@ function EditRoundForm({
   saving: boolean;
   error?: string | null;
   onSave: (input: {
-    theme?: string;
+    theme?: string | null;
     description?: string | null;
-    submission_deadline?: string | null;
-    voting_deadline?: string | null;
   }) => Promise<boolean | undefined>;
   onDismissError: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [theme, setTheme] = useState(round.theme);
+  const [theme, setTheme] = useState(round.theme ?? "");
   const [description, setDescription] = useState(round.description ?? "");
-  const [submissionDeadline, setSubmissionDeadline] = useState(
-    isoToLocalInput(round.submission_deadline),
-  );
-  const [votingDeadline, setVotingDeadline] = useState(isoToLocalInput(round.voting_deadline));
 
-  // Theme/description are locked once the round leaves `pending`.
-  const identityLocked = round.state !== "pending";
+  // Theme/description are only editable while the round is still `pending`;
+  // once it opens there's nothing left to edit, so don't render the affordance.
+  if (round.state !== "pending") return null;
 
   function openForm() {
-    setTheme(round.theme);
+    setTheme(round.theme ?? "");
     setDescription(round.description ?? "");
-    setSubmissionDeadline(isoToLocalInput(round.submission_deadline));
-    setVotingDeadline(isoToLocalInput(round.voting_deadline));
     onDismissError();
     setOpen(true);
   }
@@ -400,31 +372,22 @@ function EditRoundForm({
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     const input: {
-      theme?: string;
+      theme?: string | null;
       description?: string | null;
-      submission_deadline?: string | null;
-      voting_deadline?: string | null;
     } = {};
 
-    // Theme/description only when still editable, and only if changed.
-    if (!identityLocked) {
-      const trimmedTheme = theme.trim();
-      if (trimmedTheme && trimmedTheme !== round.theme) input.theme = trimmedTheme;
-
-      const trimmedDescription = description.trim();
-      const currentDescription = round.description ?? "";
-      if (trimmedDescription !== currentDescription) {
-        input.description = trimmedDescription ? trimmedDescription : null;
-      }
+    // Only send fields that changed. A cleared theme is sent as null so an
+    // unnamed round can be saved back to unnamed.
+    const trimmedTheme = theme.trim();
+    const currentTheme = round.theme ?? "";
+    if (trimmedTheme !== currentTheme) {
+      input.theme = trimmedTheme ? trimmedTheme : null;
     }
 
-    // Compare at the minute-precision input level (what the organizer actually
-    // edits) so a stored ISO carrying seconds doesn't read as a spurious change.
-    if (submissionDeadline !== isoToLocalInput(round.submission_deadline)) {
-      input.submission_deadline = localInputToIso(submissionDeadline);
-    }
-    if (votingDeadline !== isoToLocalInput(round.voting_deadline)) {
-      input.voting_deadline = localInputToIso(votingDeadline);
+    const trimmedDescription = description.trim();
+    const currentDescription = round.description ?? "";
+    if (trimmedDescription !== currentDescription) {
+      input.description = trimmedDescription ? trimmedDescription : null;
     }
 
     if (Object.keys(input).length === 0) {
@@ -455,14 +418,9 @@ function EditRoundForm({
           name="theme"
           value={theme}
           onChange={(e) => setTheme(e.target.value)}
-          disabled={saving || identityLocked}
+          disabled={saving}
           autoComplete="off"
         />
-        {identityLocked ? (
-          <p className="mt-2 font-mono text-[11px] font-light text-muted">
-            theme and description lock once a round opens. deadlines stay editable.
-          </p>
-        ) : null}
       </div>
 
       <label htmlFor="edit-round-description" className="block">
@@ -474,31 +432,10 @@ function EditRoundForm({
           rows={2}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          disabled={saving || identityLocked}
+          disabled={saving}
           className="mt-2 w-full resize-none rounded-none border-0 border-b border-ink bg-transparent px-0 py-1 font-mono text-[13px] font-light text-ink placeholder:text-muted focus:border-sage focus:outline-none disabled:opacity-50"
         />
       </label>
-
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-        <TextField
-          id="edit-round-submission"
-          label="submissions close"
-          name="submission_deadline"
-          type="datetime-local"
-          value={submissionDeadline}
-          onChange={(e) => setSubmissionDeadline(e.target.value)}
-          disabled={saving}
-        />
-        <TextField
-          id="edit-round-voting"
-          label="voting closes"
-          name="voting_deadline"
-          type="datetime-local"
-          value={votingDeadline}
-          onChange={(e) => setVotingDeadline(e.target.value)}
-          disabled={saving}
-        />
-      </div>
 
       {error ? (
         <p role="alert" className="font-mono text-[11px] text-ink">

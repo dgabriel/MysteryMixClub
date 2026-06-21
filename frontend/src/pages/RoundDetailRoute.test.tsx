@@ -416,6 +416,34 @@ describe("RoundDetailRoute", () => {
       expect(await screen.findByText(/votes saved/i)).toBeInTheDocument();
     });
 
+    it("cast votes button shows a clear busy label while the request is in flight", async () => {
+      const user = userEvent.setup();
+      setupVoting({
+        entries: [entry({ submission_id: "p1", title: "Debaser" })],
+        myVotes: [],
+      });
+      // Hold the request open so the busy state is observable (MYS-66: the
+      // button must read "casting…", never a bare "…").
+      let resolveCast: (() => void) | undefined;
+      mockCastVotes.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveCast = () =>
+              resolve({ round_id: "r1", submission_ids: ["p1"], count: 1, votes_per_player: 3 });
+          }),
+      );
+      renderRound();
+
+      await user.click(await screen.findByRole("button", { name: /Debaser/i }));
+      await user.click(screen.getByRole("button", { name: /cast votes/i }));
+
+      expect(await screen.findByRole("button", { name: /casting…/i })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^…$/ })).not.toBeInTheDocument();
+
+      resolveCast?.();
+      expect(await screen.findByText(/votes saved/i)).toBeInTheDocument();
+    });
+
     it("cast votes button is disabled when nothing is selected", async () => {
       setupVoting({
         entries: [entry({ submission_id: "p1", title: "Debaser" })],

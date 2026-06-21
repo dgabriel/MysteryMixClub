@@ -341,6 +341,28 @@ describe("RoundDetailRoute", () => {
       expect(screen.getByText("1 / 3 selected")).toBeInTheDocument();
     });
 
+    it("own song (is_own): shown as 'your pick', not a vote toggle, not selectable (MYS-73/74)", async () => {
+      setupVoting({
+        entries: [
+          entry({ submission_id: "mine", title: "My Track", is_own: true }),
+          entry({ submission_id: "p2", title: "Their Track" }),
+        ],
+        myVotes: [],
+      });
+      renderRound();
+
+      await screen.findByText("My Track");
+      // clearly marked as yours, with the no-self-vote explanation
+      expect(screen.getByText("your pick")).toBeInTheDocument();
+      expect(screen.getByText(/can't vote for your own song/i)).toBeInTheDocument();
+      // your own song is NOT a vote toggle…
+      expect(screen.queryByRole("button", { name: /My Track/i })).not.toBeInTheDocument();
+      // …while everyone else's still is
+      expect(screen.getByRole("button", { name: /Their Track/i })).toBeInTheDocument();
+      // and it doesn't count toward the selectable set
+      expect(screen.getByText("0 / 3 selected")).toBeInTheDocument();
+    });
+
     it("toggling selects/deselects and updates the counter", async () => {
       const user = userEvent.setup();
       setupVoting({

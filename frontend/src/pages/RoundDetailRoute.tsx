@@ -892,6 +892,33 @@ function topVotedSubmissions(submissions: ResultSubmission[]): ResultSubmission[
 }
 
 /**
+ * A submission's notes on the reveal, collapsed by default behind a "N notes"
+ * toggle so a long thread doesn't bury the picks list (MYS-72). Used on the
+ * picks cards; Most Noted keeps its notes open, since seeing them is the point.
+ */
+function CollapsibleNotes({ notes }: { notes: ResultNote[] }) {
+  const [open, setOpen] = useState(false);
+  const label = `${notes.length} ${notes.length === 1 ? "note" : "notes"}`;
+  return (
+    <div className="mt-4 border-t border-border pt-4">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className="font-mono uppercase tracking-label text-[9px] text-muted underline underline-offset-[3px] transition-colors duration-150 hover:text-ink"
+      >
+        {open ? `hide ${label}` : `show ${label}`}
+      </button>
+      {open ? (
+        <div className="mt-4">
+          <ResultNoteList notes={notes} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
  * Closed-round reveal (MYS-24 / MYS-71). A static results moment — subtle
  * fade-in only, no staged animation (deferred to MYS-54). Top to bottom: Most
  * Noted (the one Rust signal on this screen), the Winner(s) by votes, the
@@ -955,11 +982,7 @@ function ResultsSection({
                       “{s.submitter_note}”
                     </p>
                   ) : null}
-                  {s.notes.length > 0 ? (
-                    <div className="mt-4 border-t border-border pt-4">
-                      <ResultNoteList notes={s.notes} />
-                    </div>
-                  ) : null}
+                  {s.notes.length > 0 ? <CollapsibleNotes notes={s.notes} /> : null}
                 </Card>
               </li>
             );

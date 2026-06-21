@@ -353,7 +353,7 @@ describe("RoundDetailRoute", () => {
 
       await screen.findByText("My Track");
       // clearly marked as yours, with the no-self-vote explanation
-      expect(screen.getByText("your pick")).toBeInTheDocument();
+      expect(screen.getByText("your submission")).toBeInTheDocument();
       expect(screen.getByText(/can't vote for your own song/i)).toBeInTheDocument();
       // your own song is NOT a vote toggle…
       expect(screen.queryByRole("button", { name: /My Track/i })).not.toBeInTheDocument();

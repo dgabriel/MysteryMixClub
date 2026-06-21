@@ -629,7 +629,7 @@ function VotingSection({
                   <div className="flex items-start justify-between gap-3">
                     <h3 className="font-serif text-[18px] leading-tight text-ink">{entry.title}</h3>
                     <span className="shrink-0">
-                      <Badge>your pick</Badge>
+                      <Badge>your submission</Badge>
                     </span>
                   </div>
                   {entry.artist ? (

@@ -1,6 +1,7 @@
 # MysteryMixClub — Ideas list
 
 - Better playlists; ability to generate whole playlist in youtube, deezer, spotify
+- See number of people who have submitted or voted on the tile for the round, clicking into the round shows you who has NOT yet submitted ot votd
 - Leave a comment on the song YOU are submitting
 - More than one song allowed to be submitted
 - Better visuals for voting screen (difficult to understand what's going on)

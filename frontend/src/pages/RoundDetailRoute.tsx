@@ -693,11 +693,24 @@ function ResultNoteList({ notes }: { notes: ResultNote[] }) {
 }
 
 /**
- * Closed-round reveal (MYS-24). A static results moment — subtle fade-in only,
- * no staged animation (deferred to MYS-54). Top to bottom: Most Noted (the one
- * Rust signal on this screen), the Playing leaderboard, then every submission
- * with its submitter revealed. Vibing picks are shown fully and equally — a
- * calm badge, never a score.
+ * The winning song(s) of the round — the most votes. A tie shows every winner.
+ * Returns [] when nobody drew a vote. Vibing picks never win (they aren't voted
+ * on). This stays in the Sage/Ink family — no Rust, which the reveal reserves
+ * for Most Noted (MYS-71).
+ */
+function topVotedSubmissions(submissions: ResultSubmission[]): ResultSubmission[] {
+  const playing = submissions.filter((s) => s.participation_mode !== "vibing");
+  const top = playing.reduce((max, s) => Math.max(max, s.vote_count), 0);
+  if (top <= 0) return [];
+  return playing.filter((s) => s.vote_count === top);
+}
+
+/**
+ * Closed-round reveal (MYS-24 / MYS-71). A static results moment — subtle
+ * fade-in only, no staged animation (deferred to MYS-54). Top to bottom: Most
+ * Noted (the one Rust signal on this screen), the Winner(s) by votes, the
+ * Playing leaderboard, then every submission with its submitter revealed.
+ * Vibing picks are shown fully and equally — a calm badge, never a score.
  */
 function ResultsSection({
   results,
@@ -713,10 +726,13 @@ function ResultsSection({
   const { submissions, leaderboard, most_noted } = results;
   const nameFor = (s: ResultSubmission) =>
     s.user_id === userId ? "you" : (s.submitter_display_name ?? "someone");
+  const winners = topVotedSubmissions(submissions);
 
   return (
     <div className="animate-fade-in space-y-12">
       {most_noted.winners.length > 0 ? <MostNotedSection winners={most_noted.winners} /> : null}
+
+      {winners.length > 0 ? <WinnersSection winners={winners} nameFor={nameFor} /> : null}
 
       {leaderboard.length > 0 ? <LeaderboardSection entries={leaderboard} /> : null}
 
@@ -799,6 +815,51 @@ function MostNotedSection({ winners }: { winners: MostNotedWinner[] }) {
                 <div className="mt-5 border-t border-border pt-5">
                   <ResultNoteList notes={w.notes} />
                 </div>
+              ) : null}
+            </Card>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/**
+ * The round's winner(s) by votes — prominent but secondary to Most Noted (no
+ * Rust accent here, so Most Noted keeps the screen's single Rust signal). A tie
+ * co-recognizes every top-voted pick.
+ */
+function WinnersSection({
+  winners,
+  nameFor,
+}: {
+  winners: ResultSubmission[];
+  nameFor: (s: ResultSubmission) => string;
+}) {
+  const tie = winners.length > 1;
+  return (
+    <section>
+      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
+        {tie ? "winners" : "winner"}
+      </h2>
+      <p className="mt-2 font-mono text-[13px] font-light text-muted">
+        {tie ? "tied for the most votes this round" : "the most votes this round"}
+      </p>
+      <ul className="mt-4 space-y-4">
+        {winners.map((w) => (
+          <li key={w.submission_id}>
+            <Card>
+              <div className="flex items-start justify-between gap-3">
+                <span className="font-mono uppercase tracking-label text-[9px] text-muted">
+                  {nameFor(w)}
+                </span>
+                <span className="shrink-0 pt-1 font-mono uppercase tracking-label text-[9px] text-sage">
+                  {w.vote_count} {w.vote_count === 1 ? "vote" : "votes"}
+                </span>
+              </div>
+              <h3 className="mt-1 font-serif text-[24px] leading-tight text-ink">{w.title}</h3>
+              {w.artist ? (
+                <p className="mt-1 font-mono text-[11px] font-light text-muted">{w.artist}</p>
               ) : null}
             </Card>
           </li>

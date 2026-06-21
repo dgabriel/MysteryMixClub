@@ -279,7 +279,7 @@ describe("RoundDetailRoute", () => {
             album_art_url: null,
             participation_mode: "playing",
             submitter_note: "a banger",
-            vote_count: 2,
+            vote_count: 0,
             notes: [],
           },
         ],
@@ -676,7 +676,7 @@ describe("RoundDetailRoute", () => {
               album_art_url: null,
               participation_mode: "playing",
               submitter_note: "a banger",
-              vote_count: 2,
+              vote_count: 0,
               notes: [],
             },
           ],
@@ -684,7 +684,7 @@ describe("RoundDetailRoute", () => {
       );
       renderRound();
 
-      await screen.findByText("Bad Guy");
+      await screen.findByRole("heading", { name: /the picks/i });
       expect(screen.queryByRole("button", { name: /leave a note/i })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /^notes$/i })).not.toBeInTheDocument();
       expect(mockGetNotes).not.toHaveBeenCalled();
@@ -727,9 +727,12 @@ describe("RoundDetailRoute", () => {
       return section as HTMLElement;
     }
 
-    /** The <li> card wrapping a submission, located by its song title. */
+    /** The <li> card wrapping a submission in the picks list, by its song title.
+     *  Scoped to the picks section since a top-voted song also appears in the
+     *  Winner(s) highlight (and Most Noted) above. */
     function cardFor(title: string): HTMLElement {
-      const heading = screen.getByText(title);
+      const picks = sectionFor(/the picks/i);
+      const heading = within(picks).getByText(title);
       const li = heading.closest("li");
       if (!li) throw new Error(`no card <li> found for "${title}"`);
       return li as HTMLElement;
@@ -813,15 +816,84 @@ describe("RoundDetailRoute", () => {
 
     it("Most Noted: section is omitted entirely when there are no winners", async () => {
       setupClosed({
-        submissions: [sub({ vote_count: 2 })],
+        submissions: [sub({ vote_count: 0 })],
         most_noted: { note_count: 0, winners: [] },
       });
       renderRound();
 
       // wait for the page to render the picks
-      await screen.findByText("Bad Guy");
+      await screen.findByRole("heading", { name: /the picks/i });
       expect(screen.queryByRole("heading", { name: /most noted/i })).not.toBeInTheDocument();
       expect(screen.queryByText(/got everyone talking/i)).not.toBeInTheDocument();
+    });
+
+    // ----- Winner(s) by votes (MYS-71) ------------------------------------ //
+
+    it("Winner: highlights the single top-voted song with submitter and vote count", async () => {
+      setupClosed({
+        submissions: [
+          sub({ submission_id: "s1", user_id: "u-bo", submitter_display_name: "Bo", title: "Bad Guy", vote_count: 3 }),
+          sub({
+            submission_id: "s2",
+            user_id: "u-cal",
+            submitter_display_name: "Cal",
+            title: "Vienna",
+            artist: "Billy Joel",
+            vote_count: 1,
+          }),
+        ],
+      });
+      renderRound();
+
+      await screen.findByRole("heading", { name: /^winner$/i });
+      const section = sectionFor(/^winner$/i);
+      expect(within(section).getByText("the most votes this round")).toBeInTheDocument();
+      expect(within(section).getByText("Bad Guy")).toBeInTheDocument();
+      expect(within(section).getByText("3 votes")).toBeInTheDocument();
+      // the lower-voted song is not in the winner section
+      expect(within(section).queryByText("Vienna")).not.toBeInTheDocument();
+    });
+
+    it("Winner: a tie co-recognizes every top-voted song", async () => {
+      setupClosed({
+        submissions: [
+          sub({ submission_id: "s1", user_id: "u-bo", submitter_display_name: "Bo", title: "Bad Guy", vote_count: 2 }),
+          sub({
+            submission_id: "s2",
+            user_id: "u-cal",
+            submitter_display_name: "Cal",
+            title: "Vienna",
+            artist: "Billy Joel",
+            vote_count: 2,
+          }),
+          sub({
+            submission_id: "s3",
+            user_id: "u-di",
+            submitter_display_name: "Di",
+            title: "Roygbiv",
+            artist: "Boards of Canada",
+            vote_count: 1,
+          }),
+        ],
+      });
+      renderRound();
+
+      await screen.findByRole("heading", { name: /^winners$/i });
+      const section = sectionFor(/^winners$/i);
+      expect(within(section).getByText("tied for the most votes this round")).toBeInTheDocument();
+      expect(within(section).getByText("Bad Guy")).toBeInTheDocument();
+      expect(within(section).getByText("Vienna")).toBeInTheDocument();
+      // the lower-voted song is not co-recognized
+      expect(within(section).queryByText("Roygbiv")).not.toBeInTheDocument();
+    });
+
+    it("Winner: section is omitted when no song drew a vote", async () => {
+      setupClosed({ submissions: [sub({ title: "Bad Guy", vote_count: 0 })] });
+      renderRound();
+
+      await screen.findByRole("heading", { name: /the picks/i });
+      expect(screen.queryByRole("heading", { name: /^winner$/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: /^winners$/i })).not.toBeInTheDocument();
     });
 
     // ----- Leaderboard ----------------------------------------------------- //
@@ -892,7 +964,7 @@ describe("RoundDetailRoute", () => {
       });
       renderRound();
 
-      await screen.findByText("Bad Guy");
+      await screen.findByRole("heading", { name: /the picks/i });
       expect(screen.queryByRole("heading", { name: /leaderboard/i })).not.toBeInTheDocument();
     });
 
@@ -916,7 +988,7 @@ describe("RoundDetailRoute", () => {
       });
       renderRound();
 
-      await screen.findByText("Bad Guy");
+      await screen.findByRole("heading", { name: /the picks/i });
       const card = cardFor("Bad Guy");
       expect(within(card).getByText("Bob")).toBeInTheDocument();
       expect(within(card).getByText("2 votes")).toBeInTheDocument();
@@ -942,7 +1014,7 @@ describe("RoundDetailRoute", () => {
       });
       renderRound();
 
-      await screen.findByText("Bad Guy");
+      await screen.findByRole("heading", { name: /the picks/i });
       const card = cardFor("Bad Guy");
       expect(within(card).getByText("you")).toBeInTheDocument();
       // their real display name is not shown for their own pick
@@ -955,7 +1027,7 @@ describe("RoundDetailRoute", () => {
       });
       renderRound();
 
-      await screen.findByText("Bad Guy");
+      await screen.findByRole("heading", { name: /the picks/i });
       const card = cardFor("Bad Guy");
       expect(within(card).getByText("1 vote")).toBeInTheDocument();
     });
@@ -988,7 +1060,7 @@ describe("RoundDetailRoute", () => {
       });
       renderRound();
 
-      await screen.findByText("Bad Guy");
+      await screen.findByRole("heading", { name: /the picks/i });
       const card = cardFor("Bad Guy");
       // no curly-quoted note, no note authors
       expect(within(card).queryByText(/“/)).not.toBeInTheDocument();
@@ -1009,7 +1081,7 @@ describe("RoundDetailRoute", () => {
       setupClosed({ submissions: [sub({ title: "Bad Guy" })] });
       renderRound();
 
-      await screen.findByText("Bad Guy");
+      await screen.findByRole("heading", { name: /the picks/i });
       expect(mockGetResults).toHaveBeenCalledWith("r1");
       // closed view no longer uses these
       expect(mockGetPlaylist).not.toHaveBeenCalled();

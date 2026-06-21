@@ -3,9 +3,10 @@
 Covers the auth/membership/404 gates, the POST-only ``open_voting`` round-state
 gate, and Pydantic body validation (1..280 chars, whitespace stripped). Also
 asserts the product rules: self-notes are allowed, vibing submissions are
-eligible, GET has no round-state gate (works in open_voting and closed, returns
-[] when empty), multiple notes by the same author persist, GET is ordered by
-created_at asc, and author_display_name is joined correctly.
+eligible, GET is gated by round state (during voting a member sees only their
+own notes; the full set is revealed once closed — MYS-67), GET returns [] when
+empty, multiple notes by the same author persist, GET is ordered by created_at
+asc, and author_display_name is joined correctly.
 """
 
 import uuid
@@ -275,6 +276,7 @@ async def test_get_returns_notes_ordered_by_created_at_asc(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com", name="Org")
     member = await _seed_user(db_session, "m@example.com", name="Mara")
     round_ = await _seed_league_with_round(db_session, organizer)
+    round_id = round_.id
     await _add_member(db_session, round_.league_id, member)
     sub = await _seed_submission(db_session, round_, organizer)
     sub_id = sub.id
@@ -282,6 +284,12 @@ async def test_get_returns_notes_ordered_by_created_at_asc(client, db_session):
     await client.post(_url(sub_id), json={"body": "one"}, headers=_auth(organizer.id))
     await client.post(_url(sub_id), json={"body": "two"}, headers=_auth(member.id))
     await client.post(_url(sub_id), json={"body": "three"}, headers=_auth(organizer.id))
+
+    # Close the round so the full multi-author set is visible (during voting a
+    # member would only see their own — see test_get_hides_others_notes...).
+    db_round = await db_session.scalar(select(Round).where(Round.id == round_id))
+    db_round.state = "closed"
+    await db_session.commit()
 
     resp = await client.get(_url(sub_id), headers=_auth(member.id))
     assert resp.status_code == 200, resp.text
@@ -291,8 +299,36 @@ async def test_get_returns_notes_ordered_by_created_at_asc(client, db_session):
     assert [n["author_display_name"] for n in notes] == ["Org", "Mara", "Org"]
 
 
+async def test_get_hides_others_notes_during_voting(client, db_session):
+    # MYS-67: while voting is open, a member sees only their own notes — others'
+    # stay hidden so they can't sway votes. The reveal (close) lifts this.
+    organizer = await _seed_user(db_session, "o@example.com", name="Org")
+    member = await _seed_user(db_session, "m@example.com", name="Mara")
+    round_ = await _seed_league_with_round(db_session, organizer, state="open_voting")
+    round_id = round_.id
+    await _add_member(db_session, round_.league_id, member)
+    sub = await _seed_submission(db_session, round_, organizer)
+    sub_id = sub.id
+    await client.post(
+        _url(sub_id), json={"body": "from the organizer"}, headers=_auth(organizer.id)
+    )
+    await client.post(_url(sub_id), json={"body": "from me"}, headers=_auth(member.id))
+
+    # During voting, the member sees only their own note.
+    resp = await client.get(_url(sub_id), headers=_auth(member.id))
+    assert resp.status_code == 200, resp.text
+    assert [n["body"] for n in resp.json()] == ["from me"]
+
+    # Once closed, the full set is revealed.
+    db_round = await db_session.scalar(select(Round).where(Round.id == round_id))
+    db_round.state = "closed"
+    await db_session.commit()
+    resp = await client.get(_url(sub_id), headers=_auth(member.id))
+    assert {n["body"] for n in resp.json()} == {"from the organizer", "from me"}
+
+
 async def test_get_works_when_round_closed(client, db_session):
-    # GET has no round-state gate: notes remain readable after close.
+    # Notes remain readable (in full) after close — the reveal.
     organizer = await _seed_user(db_session, "o@example.com")
     round_ = await _seed_league_with_round(db_session, organizer, state="open_voting")
     sub = await _seed_submission(db_session, round_, organizer)

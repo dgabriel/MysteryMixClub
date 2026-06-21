@@ -21,11 +21,7 @@ from app.models.league_member import LeagueMember
 from app.models.round import Round
 from app.models.submission import Submission
 from app.models.user import User
-from app.services.odesli import (
-    OdesliRateLimitError,
-    ResolvedSong,
-    get_odesli_client,
-)
+from app.services.youtube_resolver import get_youtube_resolver
 
 
 def _links(*platforms: str) -> dict:
@@ -53,7 +49,15 @@ async def _seed_round(db_session, organizer: User, *, state: str = "open_voting"
 
 
 async def _add_submission(
-    db_session, round_id, user_id, *, title, isrc, platform_links, mode="playing"
+    db_session,
+    round_id,
+    user_id,
+    *,
+    title,
+    isrc,
+    platform_links,
+    mode="playing",
+    youtube_video_id=None,
 ):
     db_session.add(
         Submission(
@@ -64,6 +68,7 @@ async def _add_submission(
             artist="A",
             platform_links=platform_links,
             participation_mode=mode,
+            youtube_video_id=youtube_video_id,
         )
     )
     await db_session.commit()
@@ -232,30 +237,25 @@ async def test_playlist_shuffle_is_deterministic(client, db_session):
 # --------------------------------------------------------------------------- #
 
 
-class _FakeOdesli:
-    """Maps a resolvable track URL -> the ResolvedSong it returns, recording each
-    resolve call so tests can assert whether the cached path skipped Odesli."""
+class _FakeYouTube:
+    """Resolves a song -> video id by ``(title, artist)``, recording each call so
+    tests can assert the resolver is skipped for already-cached submissions.
+    ``error`` simulates an upstream failure that the resolver itself swallows to
+    None — here we return None to mirror its best-effort contract."""
 
-    def __init__(self, *, by_url=None, error=None):
-        self._by_url = by_url or {}
+    def __init__(self, *, by_title=None, error=False):
+        self._by_title = by_title or {}
         self._error = error
-        self.calls: list[str] = []
+        self.calls: list[tuple[str, str | None]] = []
 
-    async def resolve(self, url: str) -> ResolvedSong:
-        self.calls.append(url)
+    async def video_id_for(self, title: str, artist: str | None = None) -> str | None:
+        self.calls.append((title, artist))
         if self._error:
-            raise self._error
-        return self._by_url[url]
+            return None
+        return self._by_title.get(title)
 
 
-def _resolved(youtube_url: str | None) -> ResolvedSong:
-    platforms = {"deezer": "https://www.deezer.com/track/123"}
-    if youtube_url:
-        platforms["youtube"] = youtube_url
-    return ResolvedSong(title="song", artist="A", platforms=platforms)
-
-
-def _client_with_odesli(session_factory, odesli) -> AsyncClient:
+def _client_with_youtube(session_factory, youtube) -> AsyncClient:
     app = create_app()
 
     async def override_db() -> AsyncGenerator[AsyncSession, None]:
@@ -263,33 +263,33 @@ def _client_with_odesli(session_factory, odesli) -> AsyncClient:
             yield session
 
     app.dependency_overrides[get_db] = override_db
-    app.dependency_overrides[get_odesli_client] = lambda: odesli
+    app.dependency_overrides[get_youtube_resolver] = lambda: youtube
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
 
-async def test_youtube_playlist_url_includes_only_resolved_ids_in_order(
-    session_factory, db_session
-):
+def _ids_in_url(body: dict) -> list[str]:
+    """The video ids actually encoded in the returned watch_videos URL."""
+    return body["youtube_playlist_url"].split("video_ids=", 1)[1].replace("%2C", ",").split(",")
+
+
+async def test_youtube_playlist_url_includes_only_stored_ids_in_order(session_factory, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
     round_ = await _seed_round(db_session, organizer)
-    # Two members so we can add three submissions total.
     for i in range(2):
         u = await _seed_user(db_session, f"m{i}@example.com")
         db_session.add(LeagueMember(league_id=round_.league_id, user_id=u.id))
     await db_session.commit()
     members = list(await db_session.scalars(select(User).where(User.email.like("m%@example.com"))))
 
-    # Three submissions: two resolve to a YouTube id, one has no YouTube link.
+    # Three submissions: two carry a stored YouTube id, one has none.
     await _add_submission(
         db_session,
         round_.id,
         organizer.id,
         title="s0",
         isrc="I0",
-        platform_links={
-            "deezer": "https://www.deezer.com/track/0",
-            "youtube": "https://music.youtube.com/search?q=s0",
-        },
+        platform_links=_links("deezer"),
+        youtube_video_id="VID0",
     )
     await _add_submission(
         db_session,
@@ -297,10 +297,8 @@ async def test_youtube_playlist_url_includes_only_resolved_ids_in_order(
         members[0].id,
         title="s1",
         isrc="I1",
-        platform_links={
-            "deezer": "https://www.deezer.com/track/1",
-            "youtube": "https://music.youtube.com/search?q=s1",
-        },
+        platform_links=_links("deezer"),
+        youtube_video_id=None,
     )
     await _add_submission(
         db_session,
@@ -308,33 +306,25 @@ async def test_youtube_playlist_url_includes_only_resolved_ids_in_order(
         members[1].id,
         title="s2",
         isrc="I2",
-        platform_links={
-            "deezer": "https://www.deezer.com/track/2",
-            "youtube": "https://music.youtube.com/search?q=s2",
-        },
+        platform_links=_links("deezer"),
+        youtube_video_id="VID2",
     )
 
-    odesli = _FakeOdesli(
-        by_url={
-            "https://www.deezer.com/track/0": _resolved("https://youtube.com/watch?v=VID0"),
-            "https://www.deezer.com/track/1": _resolved(None),  # no YouTube link
-            "https://www.deezer.com/track/2": _resolved("https://youtube.com/watch?v=VID2"),
-        }
-    )
+    # The resolver returns nothing, so the null submission stays out of the link.
+    youtube = _FakeYouTube(by_title={})
 
-    async with _client_with_odesli(session_factory, odesli) as client:
+    async with _client_with_youtube(session_factory, youtube) as client:
         resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
     assert resp.status_code == 200, resp.text
     body = resp.json()
 
-    # The link contains exactly the resolved ids, in playlist (shuffled) order.
+    # The link contains exactly the stored ids, in playlist (shuffled) order.
     titles = [e["title"] for e in body["entries"]]
     expected_ids = [
         vid for t, vid in ((t, {"s0": "VID0", "s1": None, "s2": "VID2"}[t]) for t in titles) if vid
     ]
     assert body["youtube_track_count"] == 2
-    joined = body["youtube_playlist_url"].split("video_ids=", 1)[1].replace("%2C", ",")
-    assert joined.split(",") == expected_ids
+    assert _ids_in_url(body) == expected_ids
 
 
 async def test_youtube_playlist_url_none_when_nothing_resolves(session_factory, db_session):
@@ -346,70 +336,73 @@ async def test_youtube_playlist_url_none_when_nothing_resolves(session_factory, 
         organizer.id,
         title="s",
         isrc="I",
-        platform_links={"deezer": "https://www.deezer.com/track/0"},
+        platform_links=_links("deezer"),
+        youtube_video_id=None,
     )
-    odesli = _FakeOdesli(by_url={"https://www.deezer.com/track/0": _resolved(None)})
+    # No stored id, and the resolver finds nothing on backfill.
+    youtube = _FakeYouTube(by_title={})
 
-    async with _client_with_odesli(session_factory, odesli) as client:
+    async with _client_with_youtube(session_factory, youtube) as client:
         resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
     body = resp.json()
     assert body["youtube_playlist_url"] is None
     assert body["youtube_track_count"] == 0
 
 
-async def test_cached_video_id_is_used_without_calling_odesli(session_factory, db_session):
-    organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer)
-    db_session.add(
-        Submission(
-            round_id=round_.id,
-            user_id=organizer.id,
-            isrc="I",
-            title="cached",
-            artist="A",
-            platform_links={"deezer": "https://www.deezer.com/track/0"},
-            participation_mode="playing",
-            youtube_video_id="CACHED1",
-        )
-    )
-    await db_session.commit()
-
-    # No mappings: if the route calls resolve(), it KeyErrors. It must not.
-    odesli = _FakeOdesli(by_url={})
-
-    async with _client_with_odesli(session_factory, odesli) as client:
-        resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
-    body = resp.json()
-    assert odesli.calls == []  # Odesli was never called for the cached track.
-    assert body["youtube_track_count"] == 1
-    joined = body["youtube_playlist_url"].split("video_ids=", 1)[1].replace("%2C", ",")
-    assert joined == "CACHED1"
-
-
-async def test_video_id_is_cached_back_onto_submission(session_factory, db_session):
+async def test_stored_id_is_used_without_calling_resolver(session_factory, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
     round_ = await _seed_round(db_session, organizer)
     await _add_submission(
         db_session,
         round_.id,
         organizer.id,
-        title="s",
+        title="cached",
         isrc="I",
-        platform_links={"deezer": "https://www.deezer.com/track/0"},
+        platform_links=_links("deezer"),
+        youtube_video_id="CACHED1",
     )
-    odesli = _FakeOdesli(
-        by_url={"https://www.deezer.com/track/0": _resolved("https://youtu.be/NEWVID")}
+    # If the route resolved a cached submission, calls would be non-empty.
+    youtube = _FakeYouTube(by_title={"cached": "SHOULD_NOT_BE_USED"})
+
+    async with _client_with_youtube(session_factory, youtube) as client:
+        resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+    body = resp.json()
+    assert youtube.calls == []  # resolver never touched for a cached track
+    assert body["youtube_track_count"] == 1
+    assert _ids_in_url(body) == ["CACHED1"]
+
+
+async def test_lazy_backfill_resolves_and_caches_null_id(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    await _add_submission(
+        db_session,
+        round_.id,
+        organizer.id,
+        title="needs backfill",
+        isrc="I",
+        platform_links=_links("deezer"),
+        youtube_video_id=None,
     )
+    youtube = _FakeYouTube(by_title={"needs backfill": "NEWVID"})
 
-    async with _client_with_odesli(session_factory, odesli) as client:
-        await client.get(_url(round_.id), headers=_auth(organizer.id))
+    async with _client_with_youtube(session_factory, youtube) as client:
+        first = await client.get(_url(round_.id), headers=_auth(organizer.id))
+    body = first.json()
+    assert _ids_in_url(body) == ["NEWVID"]
+    assert body["youtube_track_count"] == 1
+    assert youtube.calls == [("needs backfill", "A")]  # resolved once
 
-    # The resolved id is persisted; a fresh read sees it.
+    # The id is cached back; a fresh read sees it without resolving again.
     sub = await db_session.scalar(select(Submission).where(Submission.round_id == round_.id))
     assert sub.youtube_video_id == "NEWVID"
 
+    async with _client_with_youtube(session_factory, youtube) as client:
+        await client.get(_url(round_.id), headers=_auth(organizer.id))
+    assert youtube.calls == [("needs backfill", "A")]  # not called a second time
 
-async def test_odesli_failure_is_swallowed_and_endpoint_stays_200(session_factory, db_session):
+
+async def test_resolver_failure_is_swallowed_and_endpoint_stays_200(session_factory, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
     round_ = await _seed_round(db_session, organizer)
     await _add_submission(
@@ -418,11 +411,12 @@ async def test_odesli_failure_is_swallowed_and_endpoint_stays_200(session_factor
         organizer.id,
         title="s",
         isrc="I",
-        platform_links={"deezer": "https://www.deezer.com/track/0"},
+        platform_links=_links("deezer"),
+        youtube_video_id=None,
     )
-    odesli = _FakeOdesli(error=OdesliRateLimitError("slow down"))
+    youtube = _FakeYouTube(error=True)
 
-    async with _client_with_odesli(session_factory, odesli) as client:
+    async with _client_with_youtube(session_factory, youtube) as client:
         resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -430,13 +424,8 @@ async def test_odesli_failure_is_swallowed_and_endpoint_stays_200(session_factor
     assert body["youtube_track_count"] == 0
 
 
-def _ids_in_url(body: dict) -> list[str]:
-    """The video ids actually encoded in the returned watch_videos URL."""
-    return body["youtube_playlist_url"].split("video_ids=", 1)[1].replace("%2C", ",").split(",")
-
-
 async def test_track_count_matches_url_when_duplicate_ids_collapse(session_factory, db_session):
-    # Two distinct submissions resolving to the SAME video id must count once,
+    # Two distinct submissions with the SAME stored video id must count once,
     # matching the de-duped URL (regression: count was off the raw appended list).
     organizer = await _seed_user(db_session, "o@example.com")
     round_ = await _seed_round(db_session, organizer)
@@ -449,7 +438,8 @@ async def test_track_count_matches_url_when_duplicate_ids_collapse(session_facto
         organizer.id,
         title="a",
         isrc="I0",
-        platform_links={"deezer": "https://www.deezer.com/track/0"},
+        platform_links=_links("deezer"),
+        youtube_video_id="SAME",
     )
     await _add_submission(
         db_session,
@@ -457,17 +447,12 @@ async def test_track_count_matches_url_when_duplicate_ids_collapse(session_facto
         other.id,
         title="b",
         isrc="I1",
-        platform_links={"deezer": "https://www.deezer.com/track/1"},
+        platform_links=_links("deezer"),
+        youtube_video_id="SAME",
     )
-    # Both deezer tracks resolve to the identical YouTube video.
-    odesli = _FakeOdesli(
-        by_url={
-            "https://www.deezer.com/track/0": _resolved("https://youtube.com/watch?v=SAME"),
-            "https://www.deezer.com/track/1": _resolved("https://youtube.com/watch?v=SAME"),
-        }
-    )
+    youtube = _FakeYouTube(by_title={})
 
-    async with _client_with_odesli(session_factory, odesli) as client:
+    async with _client_with_youtube(session_factory, youtube) as client:
         resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
     body = resp.json()
     ids = _ids_in_url(body)
@@ -476,27 +461,25 @@ async def test_track_count_matches_url_when_duplicate_ids_collapse(session_facto
 
 
 async def test_track_count_matches_url_when_capped_at_fifty(session_factory, db_session):
-    # >50 resolvable tracks: the URL caps at 50, and the count must too.
+    # >50 stored ids: the URL caps at 50, and the count must too.
     organizer = await _seed_user(db_session, "o@example.com")
     round_ = await _seed_round(db_session, organizer)
-    by_url = {}
     for i in range(51):
         u = await _seed_user(db_session, f"c{i}@example.com")
         db_session.add(LeagueMember(league_id=round_.league_id, user_id=u.id))
         await db_session.commit()
-        track = f"https://www.deezer.com/track/{i}"
         await _add_submission(
             db_session,
             round_.id,
             u.id,
             title=f"s{i}",
             isrc=f"I{i}",
-            platform_links={"deezer": track},
+            platform_links=_links("deezer"),
+            youtube_video_id=f"VID{i}",
         )
-        by_url[track] = _resolved(f"https://youtube.com/watch?v=VID{i}")
-    odesli = _FakeOdesli(by_url=by_url)
+    youtube = _FakeYouTube(by_title={})
 
-    async with _client_with_odesli(session_factory, odesli) as client:
+    async with _client_with_youtube(session_factory, youtube) as client:
         resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
     body = resp.json()
     ids = _ids_in_url(body)

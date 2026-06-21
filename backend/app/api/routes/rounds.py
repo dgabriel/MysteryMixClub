@@ -36,13 +36,8 @@ from app.models.submission import Submission
 from app.models.user import User
 from app.models.vote import Vote
 from app.services.most_noted import compute_most_noted
-from app.services.odesli import (
-    OdesliClient,
-    OdesliError,
-    get_odesli_client,
-    youtube_video_id_from_url,
-)
 from app.services.youtube_playlist import build_watch_videos_url, normalize_video_ids
+from app.services.youtube_resolver import YouTubeResolver, get_youtube_resolver
 
 router = APIRouter(tags=["rounds"])
 
@@ -323,53 +318,12 @@ def _preferred_url(platforms: dict[str, str], preferred_service: str | None) -> 
     return next(iter(platforms.values()), None)
 
 
-def _resolvable_track_url(platforms: dict[str, str]) -> str | None:
-    """Pick a platform link Odesli can actually resolve to a YouTube video.
-
-    The stored Spotify/YouTube values are search deep-links (no track/video id),
-    so Odesli can't match them — prefer the exact Deezer/Apple track URLs that
-    the keyless assembler produces, and skip the deep-links entirely.
-    """
-    deezer = platforms.get("deezer")
-    if isinstance(deezer, str) and "deezer.com/track/" in deezer:
-        return deezer
-    apple = platforms.get("appleMusic")
-    if isinstance(apple, str) and "music.apple.com" in apple and "/search" not in apple:
-        return apple
-    return None
-
-
-async def _youtube_video_id_for(submission: Submission, odesli: OdesliClient) -> str | None:
-    """Cached YouTube video id for a submission, resolving via Odesli on a miss.
-
-    Best-effort: any failure (no resolvable input link, Odesli rate-limit/
-    timeout/unavailable, no YouTube link, unparseable id) returns None and leaves
-    the cache untouched, so the playlist never fails on one bad track.
-    """
-    if submission.youtube_video_id:
-        return submission.youtube_video_id
-    track_url = _resolvable_track_url(submission.platform_links or {})
-    if not track_url:
-        return None
-    try:
-        resolved = await odesli.resolve(track_url)
-    except OdesliError:
-        return None
-    video_id = youtube_video_id_from_url(resolved.platforms.get("youtube"))
-    if video_id:
-        # Cache-on-read: persist the resolved id back onto the submission so later
-        # playlist loads skip the Odesli call. This is a deliberate write inside a
-        # GET — the cost of resolving N tracks is paid once per round, not per view.
-        submission.youtube_video_id = video_id
-    return video_id
-
-
 @router.get("/rounds/{round_id}/playlist", response_model=PlaylistResponse)
 async def get_round_playlist(
     round_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    odesli: OdesliClient = Depends(get_odesli_client),
+    youtube: YouTubeResolver = Depends(get_youtube_resolver),
 ) -> PlaylistResponse:
     round_ = await _load_round(round_id, db)
     await _load_league_as_member(round_.league_id, current_user, db)
@@ -387,6 +341,7 @@ async def get_round_playlist(
 
     entries = []
     video_ids: list[str] = []
+    backfilled = False
     for s in submissions:
         platforms = s.platform_links or {}
         entries.append(
@@ -403,17 +358,25 @@ async def get_round_playlist(
                 is_own=s.user_id == current_user.id,
             )
         )
-        # Resolve YouTube ids in playlist order so the link plays in that order.
-        video_id = await _youtube_video_id_for(s, odesli)
+        # YouTube ids are resolved at submit time. Lazily backfill any submission
+        # that predates that (or whose submit-time resolve failed) so existing
+        # rounds light up; cache it back so it's a one-time cost per submission.
+        video_id = s.youtube_video_id
+        if not video_id:
+            video_id = await youtube.video_id_for(s.title, s.artist)
+            if video_id:
+                s.youtube_video_id = video_id
+                backfilled = True
         if video_id:
             video_ids.append(video_id)
 
-    # Best-effort: persist any newly-cached ids, but never let a write failure
-    # break the read — the link is still returned from the in-memory ids.
-    try:
-        await db.commit()
-    except Exception:
-        await db.rollback()
+    # Best-effort: persist any backfilled ids, but never let a write failure break
+    # the read — the link is still returned from the in-memory ids.
+    if backfilled:
+        try:
+            await db.commit()
+        except Exception:
+            await db.rollback()
 
     # Normalize once so the count and the URL can never disagree: the URL is
     # built from exactly these de-duped/capped ids, and the count is their length.

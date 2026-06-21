@@ -29,6 +29,7 @@ from app.db.session import get_db
 from app.models.submission import Submission
 from app.models.user import User
 from app.services.song_links import SongLinkAssembler, get_link_assembler
+from app.services.youtube_resolver import YouTubeResolver, get_youtube_resolver
 
 router = APIRouter(tags=["submissions"])
 
@@ -89,6 +90,7 @@ async def submit_song(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     assembler: SongLinkAssembler = Depends(get_link_assembler),
+    youtube: YouTubeResolver = Depends(get_youtube_resolver),
 ) -> SubmissionResponse:
     round_ = await _load_round(round_id, db)
     await _load_league_as_member(round_.league_id, current_user, db)
@@ -100,6 +102,9 @@ async def submit_song(
     # Assemble cross-service playback links keyless from the picked track. Always
     # returns at least deep links, so this never blocks the submission.
     platform_links = await assembler.assemble(payload.title, payload.artist, payload.isrc)
+    # Resolve a concrete YouTube video id for the shared watch_videos playlist.
+    # Best-effort: None on any failure, so it never blocks the submission.
+    youtube_video_id = await youtube.video_id_for(payload.title, payload.artist)
 
     mode = payload.participation_mode or ("vibing" if current_user.default_vibe_mode else "playing")
 
@@ -118,6 +123,7 @@ async def submit_song(
             album=payload.album,
             album_art_url=payload.album_art_url,
             platform_links=platform_links,
+            youtube_video_id=youtube_video_id,
             note=payload.note,
             participation_mode=mode,
         )
@@ -131,6 +137,7 @@ async def submit_song(
         existing.album = payload.album
         existing.album_art_url = payload.album_art_url
         existing.platform_links = platform_links
+        existing.youtube_video_id = youtube_video_id
         existing.note = payload.note
         existing.participation_mode = mode
         submission = existing

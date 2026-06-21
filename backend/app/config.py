@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     secret_key: str = Field(default="")
     resend_api_key: str = Field(default="")
     odesli_api_key: str = Field(default="")
+    youtube_api_key: str = Field(default="")
     allowed_origins: str = Field(default="")
     environment: Literal["development", "staging", "production"] = "development"
     app_base_url: str = Field(default="https://mysterymixclub.com")

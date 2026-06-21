@@ -14,6 +14,7 @@ Reference: https://www.notion.so/Public-API-d0ebe08a5e304a55928405eb682f6741
 from __future__ import annotations
 
 from collections.abc import Callable
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 from pydantic import BaseModel
@@ -94,6 +95,36 @@ def _extract_isrc(entities: dict[str, dict]) -> str | None:
             first = isrcs[0]
             if isinstance(first, str) and first:
                 return first
+    return None
+
+
+# YouTube hosts whose watch URLs carry a parseable video id (MYS-78). Search and
+# other deep links live on the same hosts but have no ``v=``/path id, so they
+# fall through to ``None``.
+_YOUTUBE_WATCH_HOSTS = {"youtube.com", "www.youtube.com", "music.youtube.com", "m.youtube.com"}
+_YOUTUBE_SHORT_HOSTS = {"youtu.be"}
+
+
+def youtube_video_id_from_url(url: str | None) -> str | None:
+    """Parse a YouTube video id from a watch URL, or ``None`` if there isn't one.
+
+    Accepts ``youtube.com/watch?v=<id>``, ``music.youtube.com/watch?v=<id>``
+    (the ``v`` query param) and ``youtu.be/<id>`` (the first path segment).
+    Search/deep links and anything unparseable return ``None``.
+    """
+    if not isinstance(url, str) or not _looks_like_url(url):
+        return None
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    if host in _YOUTUBE_WATCH_HOSTS:
+        values = parse_qs(parsed.query).get("v")
+        candidate = values[0] if values else None
+    elif host in _YOUTUBE_SHORT_HOSTS:
+        candidate = parsed.path.lstrip("/").split("/", 1)[0] or None
+    else:
+        return None
+    if candidate and candidate.strip():
+        return candidate
     return None
 
 

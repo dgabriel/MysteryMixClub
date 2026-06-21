@@ -32,15 +32,26 @@ Two sub-problems, independent of each other:
 
 ## 2. What we already have (grounding)
 
-The matching half of this problem is largely already solved by existing code.
+The matching half of this problem is partly solved by existing code — but **less
+than an earlier draft of this doc claimed** (see the correction below).
 
 | Asset | Where | Use for this feature |
 |-------|-------|----------------------|
 | **ISRC** (required per submission) | `submissions.isrc` (`app/models/submission.py`) | Canonical track key for Deezer + Spotify resolution |
-| **`odesli_data`** (full Odesli/Songlink response, JSONB) | `submissions.odesli_data`, technical-design §8 | Already contains `linksByPlatform` / per-platform entity IDs for spotify/youtube/deezer — likely avoids re-searching |
-| **`platform_links`** (assembled `{platform: url}`) | `submissions.platform_links`, `app/services/song_links.py` | Read-only deep/exact links today; not playlists |
+| **`platform_links`** (assembled `{platform: url}`) | `submissions.platform_links`, `app/services/song_links.py` | Keyless link map. **Deezer/Apple are exact track URLs; Spotify/YouTube are only *search* deep-links (no track/video id).** Read-only; not playlists |
 | Deezer ISRC lookup (keyless) | `song_links.py` `_deezer_exact` → `GET /track/isrc:{isrc}` | Reuse directly for Deezer track IDs |
-| Odesli integration | `app/services/odesli.py` | Single-file boundary; cross-platform identity |
+| Odesli integration | `app/services/odesli.py` (`OdesliClient.resolve`) | Single-file boundary; cross-platform identity. The way to obtain a real Spotify/YouTube track id is to **re-resolve a real track URL through Odesli** |
+
+> **⚠️ Correction (2026-06-21, found while scoping MYS-78):** an earlier draft
+> assumed a stored **`odesli_data`** JSONB holding the full Odesli payload with
+> per-platform IDs. **That column no longer exists.** MYS-52 renamed it to
+> `platform_links` and changed its meaning to the keyless `{platform: url}` map
+> above; the raw Odesli payload is **not** persisted. Consequently **no YouTube
+> video ids (and no Spotify track ids) are stored today.** Anywhere this doc says
+> "mine `odesli_data`" or "we already hold the destination track id," read it as:
+> **re-resolve via `OdesliClient.resolve(<a real track URL>)` at generation time
+> and cache the result.** Deezer is the exception — its exact ISRC link is stored
+> and keyless. The `odesli_data` mentions in `rounds.py`/`odesli.py` are stale comments.
 
 **Important:** everything today is **read-only**. We build links; we never
 authenticate as a user or write to a service. Playlist *creation* is a new
@@ -83,8 +94,9 @@ capability class (OAuth / write scopes), and technical-design §10 already lists
   library) but is exactly a "clickable link to the whole mix."
 - **Track resolution:** YouTube Data API **does not index ISRC**. Matching is
   **text search (title+artist)** → fuzzy and the weakest link of the three.
-  Mitigation: prefer the YouTube ID already present in `odesli_data` rather than
-  re-searching (saves quota *and* improves accuracy).
+  Mitigation: get the YouTube id from an **Odesli resolve** (cached on the
+  submission after first use) rather than YouTube text-search (saves quota *and*
+  improves accuracy).
 
 **Verdict:** best path is the **keyless `watch_videos` link** (no auth, no quota,
 matches the goal literally). Durable saved playlists need OAuth + Google app
@@ -108,14 +120,20 @@ whether Deezer API access is still obtainable** — treat as a go/no-go investig
 
 ## 4. Track resolution across services (sub-problem A)
 
-We do **not** need a new matching engine — reuse what exists, in priority order:
+We do **not** need a new matching engine — reuse what exists, in priority order
+(updated per the §2 correction — IDs are **not** pre-stored, so "reuse" means a
+keyless lookup or an Odesli re-resolve at generation time, then cache):
 
-1. **Mine `odesli_data` first** — it already carries per-platform entity IDs/URLs
-   for spotify/youtube/deezer for each submission. Zero extra API calls, no quota.
-2. **Fallback per service** when Odesli is missing a platform:
-   - Deezer → `GET /track/isrc:{isrc}` (keyless, existing code).
-   - Spotify → `search?q=isrc:` with app token (keyless-ish).
-   - YouTube → text search (last resort; costs quota; fuzziest).
+1. **Deezer** → exact, keyless, and already stored: the `platform_links` Deezer
+   value is a real track URL (`GET /track/isrc:{isrc}`). No extra work.
+2. **Spotify / YouTube** → re-resolve a real track URL through
+   `OdesliClient.resolve(...)` to get the platform link/id (the Spotify/YouTube
+   values in `platform_links` are only search deep-links). **Cache the resolved id
+   on the submission** so it's a one-time cost per song. (This is exactly the
+   approach taken for MYS-78's YouTube ids.)
+3. **Last-resort fallbacks** if Odesli can't place a track:
+   - Spotify → `search?q=isrc:` with an app token (keyless-ish).
+   - YouTube → text search (costs Data API quota; fuzziest).
 
 This makes YouTube the only service with a real accuracy risk, and the
 `watch_videos` link path lets us sidestep its quota entirely.
@@ -159,8 +177,8 @@ Spotify/Deezer fallback — it's already what `song_links.py` does per track.
 ## 6. Where it lives
 
 - **Backend:** a resolver endpoint, given a round, that (a) assembles per-service
-  track IDs (reusing `odesli_data` / existing keyless lookups) and (b) for
-  link-only services returns the URL, or (c) drives the OAuth playlist-create flow.
+  track IDs (keyless Deezer lookup + cached Odesli resolves for Spotify/YouTube)
+  and (b) for link-only services returns the URL, or (c) drives the OAuth playlist-create flow.
   OAuth token exchange **must** be server-side (client secrets, refresh tokens).
 - **Frontend:** a "Generate playlist" affordance on the round (open_voting and/or
   closed views), with a per-service link/button. The YouTube `watch_videos` URL
@@ -178,8 +196,8 @@ Spotify/Deezer fallback — it's already what `song_links.py` does per track.
 - **Spotify:** free; watch for dev-mode user caps + the quota-extension review.
 - **Deezer:** free *if* access is obtainable — that's the open question.
 - **Odesli:** free-tier rate limits are already a flagged pre-launch concern
-  (technical-design §8). Mining stored `odesli_data` instead of re-resolving keeps
-  us well under limits.
+  (technical-design §8). **Caching each resolve on the submission** (resolve once,
+  reuse forever) keeps us well under limits — versus re-resolving on every render.
 
 ---
 
@@ -214,11 +232,13 @@ same four-stage pipeline:
 **Where we're *better positioned* than a generic converter:**
 
 - Soundiiz can ingest a **share-link URL or JSON file** as a source (no source-side
-  OAuth). **We are the source of truth** — we already hold ISRC + `odesli_data` per
-  submission, so we skip stages 1–2 entirely and start at "resolve on destination."
-- Our `odesli_data` often already contains the **destination service's track ID**,
-  so where present we **skip the fuzzy search** — better accuracy *and* lower quota
-  than converters that must search blind. YouTube stays the fuzzy exception.
+  OAuth). **We are the source of truth** — we hold ISRC + a real track URL
+  (Deezer/Apple) per submission, so we skip stages 1–2 and start at "resolve on
+  destination."
+- For destination ids we **re-resolve through Odesli once and cache** (see §2
+  correction) rather than re-searching on every transfer — still better than a
+  converter that searches blind each time, but it's a cache-on-first-use, not a
+  pre-stored id. YouTube stays the fuzzy exception.
 
 ### 8.1 Build vs. buy — pricing
 
@@ -233,17 +253,20 @@ Both leaders expose B2B/embed APIs, so integrating one (instead of building OAut
   on a flow that's core to our product, and the sales-gated pricing makes it hard to
   even estimate for an MVP.
 
-**Recommendation: roll our own** (matches product preference). We already own the
-hard half (ISRC + `odesli_data`), the keyless YouTube path needs no vendor, and
-per-user OAuth for Spotify is well-trodden. Revisit buy-vs-build only if Deezer (or
-breadth across many services) turns into disproportionate maintenance.
+**Recommendation: roll our own** (matches product preference). We own the hard
+half (ISRC + the Odesli resolver to derive/cache destination ids), the keyless
+YouTube path needs no vendor, and per-user OAuth for Spotify is well-trodden.
+Revisit buy-vs-build only if Deezer (or breadth across many services) turns into
+disproportionate maintenance.
 
 ---
 
 ## 9. Proposed implementation tickets (to file after sign-off)
 
-1. **Track-resolution service** — round → `{service: [trackIds]}`, sourced from
-   `odesli_data` with keyless ISRC fallbacks (Deezer/Spotify). Foundation for all below.
+1. **Track-resolution service** — round → `{service: [trackIds]}`, via keyless
+   Deezer ISRC lookup + **cached Odesli resolves** for Spotify/YouTube (resolve
+   once, store the id on the submission). Foundation for all below; MYS-78 builds
+   the YouTube slice of this.
 2. **YouTube `watch_videos` playlist link** — no auth, Phase 1 quick win.
 3. **Frontend: "Generate playlist" on the round** — per-service buttons/links.
 4. **Spotify per-user OAuth + create playlist** — connect-account flow, server-side tokens.
@@ -258,8 +281,10 @@ breadth across many services) turns into disproportionate maintenance.
 
 ## 10. Bottom line
 
-- **Matching is mostly solved** — ISRC + stored `odesli_data` cover Spotify and
-  Deezer cleanly; YouTube is the only fuzzy one, and we can dodge it.
+- **Matching is tractable** — ISRC + a keyless Deezer lookup + a cache-on-first-use
+  Odesli resolve cover Spotify and Deezer cleanly; YouTube is the only fuzzy one,
+  and we can dodge it. (Note: destination ids are derived/cached, **not** pre-stored
+  — see the §2 correction.)
 - **Materialization is the real work, and it splits by service:** YouTube ships
   keyless today; Spotify needs OAuth (reliable); Deezer needs OAuth *and* an
   access go/no-go first.

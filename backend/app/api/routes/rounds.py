@@ -36,6 +36,13 @@ from app.models.submission import Submission
 from app.models.user import User
 from app.models.vote import Vote
 from app.services.most_noted import compute_most_noted
+from app.services.odesli import (
+    OdesliClient,
+    OdesliError,
+    get_odesli_client,
+    youtube_video_id_from_url,
+)
+from app.services.youtube_playlist import build_watch_videos_url, normalize_video_ids
 
 router = APIRouter(tags=["rounds"])
 
@@ -300,6 +307,12 @@ class PlaylistResponse(BaseModel):
     theme: str | None
     state: str
     entries: list[PlaylistEntry]
+    # A single ad-hoc YouTube link that plays the whole mix in playlist order
+    # (watch_videos?video_ids=...), or None if no track resolved to a YouTube id.
+    youtube_playlist_url: str | None
+    # How many of the round's tracks made it into the YouTube link, so the UI can
+    # show "N of M on YouTube". 0 when youtube_playlist_url is None.
+    youtube_track_count: int
 
 
 def _preferred_url(platforms: dict[str, str], preferred_service: str | None) -> str | None:
@@ -310,11 +323,53 @@ def _preferred_url(platforms: dict[str, str], preferred_service: str | None) -> 
     return next(iter(platforms.values()), None)
 
 
+def _resolvable_track_url(platforms: dict[str, str]) -> str | None:
+    """Pick a platform link Odesli can actually resolve to a YouTube video.
+
+    The stored Spotify/YouTube values are search deep-links (no track/video id),
+    so Odesli can't match them — prefer the exact Deezer/Apple track URLs that
+    the keyless assembler produces, and skip the deep-links entirely.
+    """
+    deezer = platforms.get("deezer")
+    if isinstance(deezer, str) and "deezer.com/track/" in deezer:
+        return deezer
+    apple = platforms.get("appleMusic")
+    if isinstance(apple, str) and "music.apple.com" in apple and "/search" not in apple:
+        return apple
+    return None
+
+
+async def _youtube_video_id_for(submission: Submission, odesli: OdesliClient) -> str | None:
+    """Cached YouTube video id for a submission, resolving via Odesli on a miss.
+
+    Best-effort: any failure (no resolvable input link, Odesli rate-limit/
+    timeout/unavailable, no YouTube link, unparseable id) returns None and leaves
+    the cache untouched, so the playlist never fails on one bad track.
+    """
+    if submission.youtube_video_id:
+        return submission.youtube_video_id
+    track_url = _resolvable_track_url(submission.platform_links or {})
+    if not track_url:
+        return None
+    try:
+        resolved = await odesli.resolve(track_url)
+    except OdesliError:
+        return None
+    video_id = youtube_video_id_from_url(resolved.platforms.get("youtube"))
+    if video_id:
+        # Cache-on-read: persist the resolved id back onto the submission so later
+        # playlist loads skip the Odesli call. This is a deliberate write inside a
+        # GET — the cost of resolving N tracks is paid once per round, not per view.
+        submission.youtube_video_id = video_id
+    return video_id
+
+
 @router.get("/rounds/{round_id}/playlist", response_model=PlaylistResponse)
 async def get_round_playlist(
     round_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    odesli: OdesliClient = Depends(get_odesli_client),
 ) -> PlaylistResponse:
     round_ = await _load_round(round_id, db)
     await _load_league_as_member(round_.league_id, current_user, db)
@@ -331,6 +386,7 @@ async def get_round_playlist(
     random.Random(round_id.int).shuffle(submissions)
 
     entries = []
+    video_ids: list[str] = []
     for s in submissions:
         platforms = s.platform_links or {}
         entries.append(
@@ -347,12 +403,30 @@ async def get_round_playlist(
                 is_own=s.user_id == current_user.id,
             )
         )
+        # Resolve YouTube ids in playlist order so the link plays in that order.
+        video_id = await _youtube_video_id_for(s, odesli)
+        if video_id:
+            video_ids.append(video_id)
+
+    # Best-effort: persist any newly-cached ids, but never let a write failure
+    # break the read — the link is still returned from the in-memory ids.
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+
+    # Normalize once so the count and the URL can never disagree: the URL is
+    # built from exactly these de-duped/capped ids, and the count is their length.
+    playlist_ids = normalize_video_ids(video_ids)
+    youtube_playlist_url = build_watch_videos_url(playlist_ids)
     return PlaylistResponse(
         round_id=str(round_.id),
         round_number=round_.round_number,
         theme=round_.theme,
         state=round_.state,
         entries=entries,
+        youtube_playlist_url=youtube_playlist_url,
+        youtube_track_count=len(playlist_ids),
     )
 
 

@@ -483,13 +483,18 @@ export type PlaylistEntry = {
   is_own: boolean;
 };
 
-/** A round's voting playlist (GET /rounds/:id/playlist). */
+/** A round's voting playlist (GET /rounds/:id/playlist). `youtube_playlist_url`
+ *  is a ready-to-open `watch_videos?video_ids=...` link for the whole mix, or
+ *  null when no track resolved to YouTube; `youtube_track_count` is how many
+ *  tracks made it into that link (0 when null). */
 export type Playlist = {
   round_id: string;
   round_number: number;
   theme: string | null;
   state: RoundState;
   entries: PlaylistEntry[];
+  youtube_playlist_url: string | null;
+  youtube_track_count: number;
 };
 
 /** Create a round in a league (organizer only). */

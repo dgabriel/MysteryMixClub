@@ -31,6 +31,10 @@ class Submission(Base):
     album_art_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     # Assembled cross-service links {platform: url} for playback (best-effort).
     platform_links: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    # Cached YouTube video id, resolved on-demand at playlist time (MYS-78). The
+    # stored YouTube platform_link is only a search deep-link with no video id,
+    # so this is filled by an Odesli resolve and cached to avoid repeat calls.
+    youtube_video_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     note: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     participation_mode: Mapped[str] = mapped_column(
         String, nullable=False, default="playing", server_default=text("'playing'")

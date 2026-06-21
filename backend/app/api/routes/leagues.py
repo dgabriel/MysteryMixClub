@@ -13,6 +13,7 @@ from app.db.session import get_db
 from app.models.invite import Invite
 from app.models.league import League
 from app.models.league_member import LeagueMember
+from app.models.round import Round
 from app.models.user import User
 
 router = APIRouter(prefix="/leagues", tags=["leagues"])
@@ -23,7 +24,9 @@ LeagueDescription = Annotated[str, StringConstraints(strip_whitespace=True, max_
 
 class LeagueCreate(BaseModel):
     name: LeagueName
-    total_rounds: int = Field(ge=1)
+    # Default 6; the backend auto-generates this many pending rounds at creation.
+    # Upper-bounded to keep slate sizes sane.
+    total_rounds: int = Field(default=6, ge=1, le=50)
     votes_per_player: int = Field(default=3, ge=1)
     description: LeagueDescription | None = None
 
@@ -32,7 +35,9 @@ class LeagueUpdate(BaseModel):
     # All fields optional: only those explicitly provided are applied.
     name: LeagueName | None = None
     description: LeagueDescription | None = None
-    total_rounds: int | None = Field(default=None, ge=1)
+    # Same upper bound as create: the reconcile grow path bulk-inserts rounds,
+    # so cap it here too to keep slate sizes sane.
+    total_rounds: int | None = Field(default=None, ge=1, le=50)
 
     # name and total_rounds map to NOT NULL columns: allow omission (partial
     # update) but reject an explicitly provided null with a 422. description is
@@ -134,12 +139,27 @@ async def create_league(
         votes_per_player=payload.votes_per_player,
     )
     db.add(league)
-    # Flush to populate league.id for the membership row below.
+    # Flush to populate league.id for the membership and round rows below.
     await db.flush()
 
     # The organizer is the league's first member.
     member = LeagueMember(league_id=league.id, user_id=current_user.id)
     db.add(member)
+
+    # Auto-generate the full slate of pending rounds (MYS-62). Each starts with
+    # no theme/description; the organizer fills those in while the round is
+    # pending. current_round stays 0 until a round is opened.
+    for number in range(1, payload.total_rounds + 1):
+        db.add(
+            Round(
+                league_id=league.id,
+                round_number=number,
+                theme=None,
+                description=None,
+                state="pending",
+                votes_per_player=payload.votes_per_player,
+            )
+        )
 
     await db.commit()
     await db.refresh(league)
@@ -243,17 +263,63 @@ async def update_league(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="league is complete")
 
     updates = payload.model_dump(exclude_unset=True)
-    if "total_rounds" in updates and updates["total_rounds"] < league.current_round:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="total_rounds cannot be below current_round",
-        )
+    new_total = updates.pop("total_rounds", None)
+
+    if new_total is not None and new_total != league.total_rounds:
+        await _reconcile_rounds(league, new_total, db)
+        league.total_rounds = new_total
 
     for field, value in updates.items():
         setattr(league, field, value)
     await db.commit()
     await db.refresh(league)
     return _to_response(league)
+
+
+async def _reconcile_rounds(league: League, new_total: int, db: AsyncSession) -> None:
+    """Grow or shrink a league's pending round slate to match ``new_total``.
+
+    INCREASE: append pending rounds numbered (current_max+1 .. new_total).
+    DECREASE: delete rounds numbered above new_total — but only if every one of
+    them is still ``pending``; a started round (open_submission/open_voting/
+    closed) can never be removed (409).
+    """
+    if new_total < league.current_round:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="total_rounds cannot be below current_round",
+        )
+
+    rounds = list(
+        await db.scalars(
+            select(Round).where(Round.league_id == league.id).order_by(Round.round_number.asc())
+        )
+    )
+    current_max = rounds[-1].round_number if rounds else 0
+
+    if new_total > current_max:
+        # Grow: append new pending rounds with no theme/description.
+        for number in range(current_max + 1, new_total + 1):
+            db.add(
+                Round(
+                    league_id=league.id,
+                    round_number=number,
+                    theme=None,
+                    description=None,
+                    state="pending",
+                    votes_per_player=league.votes_per_player,
+                )
+            )
+    elif new_total < current_max:
+        # Shrink: the rounds above new_total must all still be pending.
+        to_remove = [r for r in rounds if r.round_number > new_total]
+        if any(r.state != "pending" for r in to_remove):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="cannot remove rounds that have already started",
+            )
+        for r in to_remove:
+            await db.delete(r)
 
 
 @router.delete("/{league_id}/members/{user_id}", status_code=204)

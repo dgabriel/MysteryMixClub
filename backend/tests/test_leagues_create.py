@@ -222,14 +222,17 @@ async def test_name_too_long_returns_422(client, db_session):
     assert resp.status_code == 422, resp.text
 
 
-async def test_missing_total_rounds_returns_422(client, db_session):
+async def test_missing_total_rounds_defaults_to_6(client, db_session):
+    # total_rounds now defaults to 6 (MYS-62): omitting it is valid and yields a
+    # 201 with six auto-generated pending rounds.
     user = await _seed_user(db_session)
     body = _valid_body()
     body.pop("total_rounds")
 
     resp = await client.post(LEAGUES_URL, headers=_auth_header(user.id), json=body)
 
-    assert resp.status_code == 422, resp.text
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["total_rounds"] == 6
 
 
 async def test_total_rounds_below_one_returns_422(client, db_session):

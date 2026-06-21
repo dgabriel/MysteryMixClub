@@ -1,28 +1,46 @@
 import { type FormEvent, useEffect, useState } from "react";
-import type { League, LeagueMember, Round, RoundState } from "../services/api";
+import type {
+  LeaderboardEntry,
+  League,
+  LeagueMember,
+  Round,
+  RoundResults,
+  RoundState,
+} from "../services/api";
 import { Button } from "../components/Button";
 import { Badge } from "../components/Badge";
 import { TextField } from "../components/TextField";
 import { ConcentricRings } from "../components/ConcentricRings";
 
 const ROUND_STATE_LABEL: Record<RoundState, string> = {
+  pending: "upcoming",
   open_submission: "submissions open",
   open_voting: "voting open",
   closed: "closed",
 };
 
+/** A round is "active" when members can act on it right now. */
+function isActiveRound(state: RoundState): boolean {
+  return state === "open_submission" || state === "open_voting";
+}
+
 type LeagueHomeScreenProps = {
   league: League;
   members: LeagueMember[];
   rounds: Round[];
+  /** Reveal results keyed by round id, present once a closed round's results load. */
+  roundResults: Record<string, RoundResults>;
   isOrganizer: boolean;
   loading: boolean;
   error?: string | null;
   onBack: () => void;
   onOpenRound: (roundId: string) => void;
-  onCreateRound: (theme: string, votesPerPlayer?: number) => void;
-  creatingRound: boolean;
-  createRoundError?: string | null;
+  onUpdateRound: (
+    roundId: string,
+    input: { theme?: string | null; description?: string | null },
+  ) => Promise<boolean>;
+  savingRoundId: string | null;
+  updateRoundError?: string | null;
   inviteUrl: string | null;
   onGenerateInvite: () => void;
   generatingInvite: boolean;
@@ -43,14 +61,15 @@ export function LeagueHomeScreen({
   league,
   members,
   rounds,
+  roundResults,
   isOrganizer,
   loading,
   error,
   onBack,
   onOpenRound,
-  onCreateRound,
-  creatingRound,
-  createRoundError,
+  onUpdateRound,
+  savingRoundId,
+  updateRoundError,
   inviteUrl,
   onGenerateInvite,
   generatingInvite,
@@ -121,12 +140,12 @@ export function LeagueHomeScreen({
         {/* Rounds */}
         <RoundsSection
           rounds={rounds}
+          roundResults={roundResults}
           isOrganizer={isOrganizer}
-          canCreate={league.state !== "complete"}
           onOpenRound={onOpenRound}
-          onCreateRound={onCreateRound}
-          creatingRound={creatingRound}
-          createRoundError={createRoundError}
+          onUpdateRound={onUpdateRound}
+          savingRoundId={savingRoundId}
+          updateRoundError={updateRoundError}
         />
 
         {/* Members */}
@@ -189,33 +208,26 @@ export function LeagueHomeScreen({
 
 function RoundsSection({
   rounds,
+  roundResults,
   isOrganizer,
-  canCreate,
   onOpenRound,
-  onCreateRound,
-  creatingRound,
-  createRoundError,
+  onUpdateRound,
+  savingRoundId,
+  updateRoundError,
 }: {
   rounds: Round[];
+  roundResults: Record<string, RoundResults>;
   isOrganizer: boolean;
-  canCreate: boolean;
   onOpenRound: (roundId: string) => void;
-  onCreateRound: (theme: string, votesPerPlayer?: number) => void;
-  creatingRound: boolean;
-  createRoundError?: string | null;
+  onUpdateRound: (
+    roundId: string,
+    input: { theme?: string | null; description?: string | null },
+  ) => Promise<boolean>;
+  savingRoundId: string | null;
+  updateRoundError?: string | null;
 }) {
-  const [open, setOpen] = useState(false);
-  const [theme, setTheme] = useState("");
-
-  function handleCreate(e: FormEvent) {
-    e.preventDefault();
-    const trimmed = theme.trim();
-    if (!trimmed) return;
-    onCreateRound(trimmed);
-    setTheme("");
-    setOpen(false);
-  }
-
+  // Rounds are auto-created with the league, so the slate always exists. The
+  // empty state is a fallback only (e.g. a stale/odd league with zero rounds).
   return (
     <section className="mt-12">
       <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
@@ -225,77 +237,280 @@ function RoundsSection({
       {rounds.length === 0 ? (
         <p className="mt-4 font-mono text-[13px] font-light text-muted">no rounds yet</p>
       ) : (
-        <ul className="mt-4 divide-y divide-border border-t border-border">
+        <ul className="mt-4 space-y-3">
           {rounds.map((round) => (
             <li key={round.id}>
-              <button
-                type="button"
-                onClick={() => onOpenRound(round.id)}
-                className="flex w-full items-center justify-between gap-4 py-3 text-left transition-colors duration-150 hover:bg-sage-pale"
-              >
-                <span className="min-w-0">
-                  <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
-                    round {round.round_number}
-                  </span>
-                  <span className="mt-0.5 block truncate font-serif text-[16px] text-ink">
-                    {round.theme}
-                  </span>
-                </span>
-                <Badge>{ROUND_STATE_LABEL[round.state]}</Badge>
-              </button>
+              <RoundRow
+                round={round}
+                results={roundResults[round.id]}
+                isOrganizer={isOrganizer}
+                onOpen={() => onOpenRound(round.id)}
+                onUpdate={(input) => onUpdateRound(round.id, input)}
+                saving={savingRoundId === round.id}
+                error={savingRoundId === round.id ? updateRoundError : null}
+              />
             </li>
           ))}
         </ul>
       )}
+    </section>
+  );
+}
 
-      {isOrganizer && canCreate ? (
-        open ? (
-          <form onSubmit={handleCreate} className="mt-4 space-y-5">
-            <TextField
-              id="new-round-theme"
-              label="round theme"
-              name="theme"
-              placeholder="late summer feels"
-              value={theme}
-              onChange={(e) => setTheme(e.target.value)}
-              disabled={creatingRound}
-              autoComplete="off"
-              required
-            />
-            {createRoundError ? (
-              <p role="alert" className="font-mono text-[11px] text-ink">
-                {createRoundError}
-              </p>
+/**
+ * One round in the rounds list. State drives the visual weight, within the
+ * Sage/Ink family only — no Rust here (the screen reserves its single Rust use
+ * for the league-complete badge above):
+ *  - active round (open submission/voting) → Sage-pale fill, the eye lands here
+ *  - upcoming (pending) → muted theme, quiet
+ *  - closed → plain
+ *
+ * The heading is always "round N". When the organizer has named the round the
+ * theme shows beneath it; an unnamed round shows a quiet muted prompt to the
+ * organizer (and nothing to members). Organizers can rename a `pending` round
+ * in place (theme + description); once it opens the API locks those fields
+ * (409), so the edit affordance is replaced by a calm muted note.
+ *
+ * A closed round also carries a compact reveal summary — the winner (top of the
+ * vote leaderboard) and the most-noted pick — once its `results` have loaded.
+ * Ties show every co-winner.
+ */
+function RoundRow({
+  round,
+  results,
+  isOrganizer,
+  onOpen,
+  onUpdate,
+  saving,
+  error,
+}: {
+  round: Round;
+  results?: RoundResults;
+  isOrganizer: boolean;
+  onOpen: () => void;
+  onUpdate: (input: { theme?: string | null; description?: string | null }) => Promise<boolean>;
+  saving: boolean;
+  error?: string | null;
+}) {
+  const [editing, setEditing] = useState(false);
+
+  const active = isActiveRound(round.state);
+  const pending = round.state === "pending";
+  const named = !!round.theme;
+
+  if (editing) {
+    return (
+      <div className="rounded-[3px] border border-border bg-white px-5 py-5">
+        <RoundEditForm
+          round={round}
+          saving={saving}
+          error={error}
+          onCancel={() => setEditing(false)}
+          onSave={async (input) => {
+            const ok = await onUpdate(input);
+            if (ok) setEditing(false);
+          }}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={[
+        "rounded-[3px] border px-5 py-4 transition-colors duration-150",
+        active ? "border-sage bg-sage-pale" : "border-border bg-white",
+      ].join(" ")}
+    >
+      <button type="button" onClick={onOpen} className="block w-full text-left">
+        <div className="flex items-start justify-between gap-4">
+          <span className="min-w-0">
+            <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
+              round {round.round_number}
+            </span>
+            {named ? (
+              <span className="mt-0.5 block truncate font-serif text-[16px] text-ink">
+                {round.theme}
+              </span>
+            ) : isOrganizer ? (
+              <span className="mt-0.5 block truncate font-mono text-[13px] font-light italic text-muted">
+                untitled — add a theme
+              </span>
             ) : null}
-            <div className="flex items-center gap-4">
-              <Button type="submit" disabled={creatingRound || !theme.trim()}>
-                {creatingRound ? "creating…" : "create round"}
-              </Button>
-              <Button
-                variant="ghost"
-                type="button"
-                onClick={() => setOpen(false)}
-                disabled={creatingRound}
-              >
-                cancel
-              </Button>
-            </div>
-          </form>
-        ) : (
-          <div className="mt-4">
-            <Button variant="ghost" type="button" onClick={() => setOpen(true)}>
-              new round
-            </Button>
-          </div>
-        )
-      ) : null}
+          </span>
+          <span className="shrink-0">
+            <Badge>{ROUND_STATE_LABEL[round.state]}</Badge>
+          </span>
+        </div>
+        {round.description ? (
+          <p className="mt-2 font-mono text-[11px] font-light leading-relaxed text-muted">
+            {round.description}
+          </p>
+        ) : null}
+        {round.state === "closed" && results ? <ClosedRoundSummary results={results} /> : null}
+      </button>
 
-      {createRoundError && !open ? (
-        <p role="alert" className="mt-3 font-mono text-[11px] text-ink">
-          {createRoundError}
+      {isOrganizer ? (
+        <div className="mt-3">
+          {pending ? (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink"
+            >
+              {named ? "edit" : "add a theme"}
+            </button>
+          ) : (
+            <p className="font-mono text-[11px] font-light text-muted">
+              theme locks once a round opens
+            </p>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * The leaderboard ranks playing submitters by votes with *sequential* ranks, so
+ * a tie for first is not a shared rank — detect it by matching the top
+ * vote_count. A top score of zero means nobody was voted for: no winner.
+ */
+function topVoteWinners(leaderboard: LeaderboardEntry[]): LeaderboardEntry[] {
+  const top = leaderboard[0]?.vote_count ?? 0;
+  if (top <= 0) return [];
+  return leaderboard.filter((entry) => entry.vote_count === top);
+}
+
+/**
+ * Compact reveal summary for a closed round's card: the winner (top of the vote
+ * leaderboard) and the most-noted pick. Both can tie — every co-winner is named.
+ * Label-left / value-right, staying in the Sage/Ink family (no Rust here — the
+ * screen reserves its single Rust use for the league-complete badge).
+ */
+function ClosedRoundSummary({ results }: { results: RoundResults }) {
+  const winners = topVoteWinners(results.leaderboard);
+  const mostNoted = results.most_noted.winners;
+  if (winners.length === 0 && mostNoted.length === 0) return null;
+
+  return (
+    <dl className="mt-3 space-y-2 border-t border-border pt-3">
+      {winners.length > 0 ? (
+        <div className="flex items-baseline justify-between gap-4">
+          <dt className="shrink-0 font-mono uppercase tracking-label text-[9px] text-muted">
+            {winners.length > 1 ? "winners" : "winner"}
+          </dt>
+          <dd className="min-w-0 text-right font-mono text-[13px] font-light text-ink">
+            {winners.map((w) => w.display_name).join(" & ")}
+          </dd>
+        </div>
+      ) : null}
+      {mostNoted.length > 0 ? (
+        <div className="flex items-baseline justify-between gap-4">
+          <dt className="shrink-0 font-mono uppercase tracking-label text-[9px] text-muted">
+            most noted
+          </dt>
+          <dd className="min-w-0 text-right font-mono text-[13px] font-light text-ink">
+            {mostNoted.map((w) => w.title).join(" · ")}
+          </dd>
+        </div>
+      ) : null}
+    </dl>
+  );
+}
+
+/**
+ * Inline theme + description editor for a single pending round, shown in place
+ * within the rounds list. Underline inputs only (TextField + an underline
+ * textarea), matching the round-detail editor. No Rust — this screen's single
+ * Rust use is the league-complete badge.
+ */
+function RoundEditForm({
+  round,
+  saving,
+  error,
+  onCancel,
+  onSave,
+}: {
+  round: Round;
+  saving: boolean;
+  error?: string | null;
+  onCancel: () => void;
+  onSave: (input: { theme?: string | null; description?: string | null }) => void;
+}) {
+  const [theme, setTheme] = useState(round.theme ?? "");
+  const [description, setDescription] = useState(round.description ?? "");
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    const input: { theme?: string | null; description?: string | null } = {};
+
+    const trimmedTheme = theme.trim();
+    const currentTheme = round.theme ?? "";
+    if (trimmedTheme !== currentTheme) {
+      input.theme = trimmedTheme ? trimmedTheme : null;
+    }
+
+    const trimmedDescription = description.trim();
+    const currentDescription = round.description ?? "";
+    if (trimmedDescription !== currentDescription) {
+      input.description = trimmedDescription ? trimmedDescription : null;
+    }
+
+    if (Object.keys(input).length === 0) {
+      onCancel();
+      return;
+    }
+    onSave(input);
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-5">
+      <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
+        round {round.round_number}
+      </span>
+
+      <TextField
+        id={`round-theme-${round.id}`}
+        label="theme"
+        name="theme"
+        placeholder="late summer feels"
+        value={theme}
+        onChange={(e) => setTheme(e.target.value)}
+        disabled={saving}
+        autoComplete="off"
+      />
+
+      <label htmlFor={`round-description-${round.id}`} className="block">
+        <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
+          description
+        </span>
+        <textarea
+          id={`round-description-${round.id}`}
+          rows={2}
+          placeholder="a line or two of color for this round"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          disabled={saving}
+          className="mt-2 w-full resize-none rounded-none border-0 border-b border-ink bg-transparent px-0 py-1 font-mono text-[13px] font-light text-ink placeholder:text-muted focus:border-sage focus:outline-none disabled:opacity-50"
+        />
+      </label>
+
+      {error ? (
+        <p role="alert" className="font-mono text-[11px] text-ink">
+          {error}
         </p>
       ) : null}
-    </section>
+
+      <div className="flex items-center gap-4">
+        <Button type="submit" disabled={saving}>
+          {saving ? "saving…" : "save"}
+        </Button>
+        <Button variant="ghost" type="button" onClick={onCancel} disabled={saving}>
+          cancel
+        </Button>
+      </div>
+    </form>
   );
 }
 

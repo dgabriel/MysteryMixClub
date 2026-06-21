@@ -4,15 +4,17 @@ import { LeagueHomeScreen } from "./LeagueHomeScreen";
 import {
   ApiError,
   createInvite,
-  createRound,
   getLeague,
   getLeagueMembers,
+  getResults,
   getRounds,
   removeMember,
   updateLeague,
+  updateRound,
   type League,
   type LeagueMember,
   type Round,
+  type RoundResults,
 } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 
@@ -31,11 +33,12 @@ export function LeagueHomeRoute() {
   const [league, setLeague] = useState<League | null>(null);
   const [members, setMembers] = useState<LeagueMember[]>([]);
   const [rounds, setRounds] = useState<Round[]>([]);
+  const [roundResults, setRoundResults] = useState<Record<string, RoundResults>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [creatingRound, setCreatingRound] = useState(false);
-  const [createRoundError, setCreateRoundError] = useState<string | null>(null);
+  const [savingRoundId, setSavingRoundId] = useState<string | null>(null);
+  const [updateRoundError, setUpdateRoundError] = useState<string | null>(null);
 
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [generatingInvite, setGeneratingInvite] = useState(false);
@@ -67,6 +70,38 @@ export function LeagueHomeRoute() {
     })();
   }, [id]);
 
+  // Closed rounds get a winner + most-noted summary on their card. Results live
+  // behind a separate endpoint, so fetch them for every closed round in parallel
+  // once the slate is known. Failures are non-fatal — a card simply shows no
+  // summary rather than breaking the list.
+  useEffect(() => {
+    const closed = rounds.filter((r) => r.state === "closed");
+    if (closed.length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      const entries = await Promise.all(
+        closed.map(async (round) => {
+          try {
+            return [round.id, await getResults(round.id)] as const;
+          } catch {
+            return null;
+          }
+        }),
+      );
+      if (cancelled) return;
+      setRoundResults((current) => {
+        const next = { ...current };
+        for (const entry of entries) {
+          if (entry) next[entry[0]] = entry[1];
+        }
+        return next;
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [rounds]);
+
   const isOrganizer = !!userId && league?.organizer_id === userId;
 
   async function handleGenerateInvite() {
@@ -85,22 +120,27 @@ export function LeagueHomeRoute() {
     }
   }
 
-  async function handleCreateRound(theme: string, votesPerPlayer?: number) {
-    if (!id) return;
-    setCreatingRound(true);
-    setCreateRoundError(null);
+  // Edit a single round's theme/description in place. Returns true on success so
+  // the inline editor can close itself. On success we patch the round into local
+  // state rather than refetch — the rest of the slate is unchanged.
+  async function handleUpdateRound(
+    roundId: string,
+    input: { theme?: string | null; description?: string | null },
+  ): Promise<boolean> {
+    if (!id) return false;
+    setSavingRoundId(roundId);
+    setUpdateRoundError(null);
     try {
-      const round = await createRound(id, {
-        theme,
-        ...(votesPerPlayer ? { votes_per_player: votesPerPlayer } : {}),
-      });
-      setRounds((current) => [...current, round]);
+      const updated = await updateRound(roundId, input);
+      setRounds((current) => current.map((r) => (r.id === roundId ? updated : r)));
+      return true;
     } catch (err) {
-      setCreateRoundError(
-        err instanceof ApiError ? err.message : "couldn't create the round. try again.",
+      setUpdateRoundError(
+        err instanceof ApiError ? err.message : "couldn't save the round. try again.",
       );
+      return false;
     } finally {
-      setCreatingRound(false);
+      setSavingRoundId(null);
     }
   }
 
@@ -115,6 +155,15 @@ export function LeagueHomeRoute() {
     try {
       const updated = await updateLeague(id, input);
       setLeague(updated);
+      // Changing total_rounds reconciles the round slate server-side (adds or
+      // removes trailing pending rounds); refetch so the list matches. Non-fatal.
+      if (input.total_rounds !== undefined) {
+        try {
+          setRounds(await getRounds(id));
+        } catch {
+          // The league header is already current; leave the list as-is.
+        }
+      }
     } catch (err) {
       setUpdateError(err instanceof ApiError ? err.message : "couldn't save changes. try again.");
     } finally {
@@ -159,14 +208,15 @@ export function LeagueHomeRoute() {
       league={league ?? placeholderLeague}
       members={members}
       rounds={rounds}
+      roundResults={roundResults}
       isOrganizer={isOrganizer}
       loading={loading || (!league && !error)}
       error={error}
       onBack={() => navigate("/home")}
       onOpenRound={(roundId) => navigate(`/rounds/${roundId}`)}
-      onCreateRound={handleCreateRound}
-      creatingRound={creatingRound}
-      createRoundError={createRoundError}
+      onUpdateRound={handleUpdateRound}
+      savingRoundId={savingRoundId}
+      updateRoundError={updateRoundError}
       inviteUrl={inviteUrl}
       onGenerateInvite={handleGenerateInvite}
       generatingInvite={generatingInvite}

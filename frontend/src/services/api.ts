@@ -433,16 +433,18 @@ export async function searchSongs(q: string, artist?: string): Promise<SongSearc
 // Rounds, submissions & playlist (MYS-18 / MYS-51 / MYS-53).
 // --------------------------------------------------------------------------- //
 
-/** A round's lifecycle state. */
-export type RoundState = "open_submission" | "open_voting" | "closed";
+/** A round's lifecycle state. `pending` rounds are pre-created and not yet open. */
+export type RoundState = "pending" | "open_submission" | "open_voting" | "closed";
 
-/** A round within a league. */
+/** A round within a league. `theme` is null until the organizer names the round
+ *  (rounds are auto-created as `pending` with no theme at league creation). */
 export type Round = {
   id: string;
   league_id: string;
   round_number: number;
-  theme: string;
+  theme: string | null;
   state: RoundState;
+  description: string | null;
   submission_deadline: string | null;
   voting_deadline: string | null;
   votes_per_player: number;
@@ -482,7 +484,7 @@ export type PlaylistEntry = {
 export type Playlist = {
   round_id: string;
   round_number: number;
-  theme: string;
+  theme: string | null;
   state: RoundState;
   entries: PlaylistEntry[];
 };
@@ -492,6 +494,7 @@ export async function createRound(
   leagueId: string,
   input: {
     theme: string;
+    description?: string | null;
     votes_per_player?: number;
     submission_deadline?: string | null;
     voting_deadline?: string | null;
@@ -530,7 +533,8 @@ export async function getRound(roundId: string): Promise<Round> {
 export async function updateRound(
   roundId: string,
   input: {
-    theme?: string;
+    theme?: string | null;
+    description?: string | null;
     state?: RoundState;
     submission_deadline?: string | null;
     voting_deadline?: string | null;
@@ -649,7 +653,7 @@ export type MostNotedWinner = {
 export type RoundResults = {
   round_id: string;
   round_number: number;
-  theme: string;
+  theme: string | null;
   state: RoundState;
   submissions: ResultSubmission[];
   leaderboard: LeaderboardEntry[];

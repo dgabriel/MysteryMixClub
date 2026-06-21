@@ -94,11 +94,13 @@ async def test_create_non_organizer_member_forbidden(client, db_session):
     assert resp.status_code == 403
 
 
-async def test_create_missing_theme_is_422(client, db_session):
+async def test_create_missing_theme_is_allowed(client, db_session):
+    # theme is now optional (MYS-62): a round may be created without one.
     organizer = await _seed_user(db_session, "org@example.com")
     league = await _seed_league(db_session, organizer)
     resp = await client.post(_rounds_url(league.id), json={}, headers=_auth(organizer.id))
-    assert resp.status_code == 422
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["theme"] is None
 
 
 # --------------------------------------------------------------------------- #
@@ -268,7 +270,9 @@ async def test_patch_requires_organizer(client, db_session):
     assert resp.status_code == 403
 
 
-async def test_patch_updates_theme_and_deadline(client, db_session):
+async def test_patch_updates_deadline_on_open_round(client, db_session):
+    # A round created via single-create is born open_submission. Deadlines stay
+    # editable until the round closes, so a deadline-only edit still succeeds.
     organizer = await _seed_user(db_session, "org@example.com")
     league = await _seed_league(db_session, organizer)
     rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
@@ -276,12 +280,27 @@ async def test_patch_updates_theme_and_deadline(client, db_session):
     deadline = (datetime.now(timezone.utc) + timedelta(days=3)).isoformat()
     resp = await client.patch(
         f"/api/v1/rounds/{rid}",
-        json={"theme": "rainy day b-sides", "submission_deadline": deadline},
+        json={"submission_deadline": deadline},
         headers=_auth(organizer.id),
     )
     assert resp.status_code == 200, resp.text
-    assert resp.json()["theme"] == "rainy day b-sides"
     assert resp.json()["submission_deadline"] is not None
+
+
+async def test_patch_theme_on_open_round_is_rejected(client, db_session):
+    # theme is locked once a round opens (MYS-62 edit lock). A single-created
+    # round is born open_submission, so editing its theme is a 409.
+    organizer = await _seed_user(db_session, "org@example.com")
+    league = await _seed_league(db_session, organizer)
+    rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
+
+    resp = await client.patch(
+        f"/api/v1/rounds/{rid}",
+        json={"theme": "rainy day b-sides"},
+        headers=_auth(organizer.id),
+    )
+    assert resp.status_code == 409, resp.text
+    assert "locked" in resp.json()["detail"]
 
 
 # --------------------------------------------------------------------------- #

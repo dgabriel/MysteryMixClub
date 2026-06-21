@@ -59,6 +59,7 @@ function round(overrides: Partial<Round> = {}): Round {
     round_number: 1,
     theme: "late summer feels",
     state: "open_submission",
+    description: null,
     submission_deadline: null,
     voting_deadline: null,
     votes_per_player: 3,

@@ -618,6 +618,34 @@ function VotingSection({
 
       <ul className="mt-4 space-y-4">
         {votable.map((entry) => {
+          // Your own song: shown in the playlist but never a vote toggle — you
+          // can't vote for it (MYS-73), and it's clearly marked as yours
+          // (MYS-74). Stays in the Sage/Ink family; Rust is reserved for the
+          // songs you've voted for.
+          if (entry.is_own) {
+            return (
+              <li key={entry.submission_id}>
+                <div className="block w-full rounded-[3px] border border-border bg-sage-pale/40 px-6 py-5 text-left">
+                  <div className="flex items-start justify-between gap-3">
+                    <h3 className="font-serif text-[18px] leading-tight text-ink">{entry.title}</h3>
+                    <span className="shrink-0">
+                      <Badge>your pick</Badge>
+                    </span>
+                  </div>
+                  {entry.artist ? (
+                    <p className="mt-1 font-mono text-[11px] font-light text-muted">
+                      {entry.artist}
+                    </p>
+                  ) : null}
+                  <p className="mt-2 font-mono text-[11px] font-light text-muted">
+                    you can&apos;t vote for your own song
+                  </p>
+                </div>
+                <PlatformLinks entry={entry} />
+                <SongNotes submissionId={entry.submission_id} onActionError={onActionError} />
+              </li>
+            );
+          }
           const isSelected = selected.includes(entry.submission_id);
           const disabled = !isSelected && atLimit;
           return (

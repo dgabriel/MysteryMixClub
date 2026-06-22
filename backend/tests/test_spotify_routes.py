@@ -147,9 +147,9 @@ async def fake_spotify() -> FakeSpotifyClient:
     return FakeSpotifyClient(isrc_map={"I-MATCH": "spotify:track:matched"})
 
 
-@pytest_asyncio.fixture
-async def spotify_client(session_factory, fake_spotify) -> AsyncGenerator[AsyncClient, None]:
-    """Local app whose Spotify dependency is the fake (no network)."""
+def _client_with_spotify(session_factory, fake) -> AsyncClient:
+    """An ASGI client whose Spotify dependency is `fake` (no network, no
+    dependence on the ambient .env)."""
     app = create_app()
 
     async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -157,12 +157,24 @@ async def spotify_client(session_factory, fake_spotify) -> AsyncGenerator[AsyncC
             yield session
 
     app.dependency_overrides[get_db] = override_get_db
-    app.dependency_overrides[get_spotify_client] = lambda: fake_spotify
+    app.dependency_overrides[get_spotify_client] = lambda: fake
     app.dependency_overrides[get_youtube_resolver] = lambda: None
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+    return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+
+
+@pytest_asyncio.fixture
+async def spotify_client(session_factory, fake_spotify) -> AsyncGenerator[AsyncClient, None]:
+    """Local app wired to a *configured* fake Spotify client."""
+    async with _client_with_spotify(session_factory, fake_spotify) as ac:
         yield ac
-    app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def unconfigured_client(session_factory) -> AsyncGenerator[AsyncClient, None]:
+    """Local app wired to an *unconfigured* fake Spotify client — pins the
+    'feature off' behaviour regardless of whether real creds sit in .env."""
+    async with _client_with_spotify(session_factory, FakeSpotifyClient(configured=False)) as ac:
+        yield ac
 
 
 # --------------------------------------------------------------------------- #
@@ -170,9 +182,9 @@ async def spotify_client(session_factory, fake_spotify) -> AsyncGenerator[AsyncC
 # --------------------------------------------------------------------------- #
 
 
-async def test_status_unconfigured_and_disconnected(client, db_session):
+async def test_status_unconfigured_and_disconnected(unconfigured_client, db_session):
     user = await _seed_user(db_session, "u@example.com")
-    resp = await client.get("/api/v1/spotify/status", headers=_auth(user.id))
+    resp = await unconfigured_client.get("/api/v1/spotify/status", headers=_auth(user.id))
     assert resp.status_code == 200
     assert resp.json() == {"configured": False, "connected": False}
 
@@ -184,9 +196,9 @@ async def test_status_connected(spotify_client, db_session):
     assert resp.json() == {"configured": True, "connected": True}
 
 
-async def test_connect_503_when_unconfigured(client, db_session):
+async def test_connect_503_when_unconfigured(unconfigured_client, db_session):
     user = await _seed_user(db_session, "u@example.com")
-    resp = await client.get("/api/v1/spotify/connect", headers=_auth(user.id))
+    resp = await unconfigured_client.get("/api/v1/spotify/connect", headers=_auth(user.id))
     assert resp.status_code == 503
 
 

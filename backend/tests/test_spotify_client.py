@@ -45,6 +45,7 @@ def test_authorize_url_includes_required_params():
     assert "client_id=cid" in url
     assert "response_type=code" in url
     assert "state=state-123" in url
+    assert "playlist-read-private" in url  # needed to list playlists for reuse (MYS-90)
     assert "playlist-modify-public" in url
     assert "playlist-modify-private" in url
 
@@ -294,13 +295,15 @@ async def test_find_playlist_id_by_name_401_raises_auth_error():
         await _client(lambda r: httpx.Response(401)).find_playlist_id_by_name("tok", "x", "me")
 
 
-async def test_find_playlist_id_by_name_transient_error_raises_api_error():
-    # A transient failure must surface (caller retries), NOT be mistaken for "not
-    # found" — that would silently create a duplicate.
-    with pytest.raises(SpotifyApiError):
-        await _client(lambda r: httpx.Response(500)).find_playlist_id_by_name("tok", "x", "me")
-    with pytest.raises(SpotifyApiError):
-        await _client(lambda r: httpx.Response(429)).find_playlist_id_by_name("tok", "x", "me")
+async def test_find_playlist_id_by_name_non_auth_failures_degrade_to_none():
+    # A non-auth failure must NOT block generation — degrade to None (reuse is
+    # best-effort; at worst we create a fresh playlist). Covers the 403
+    # "insufficient scope" regression (MYS-90), rate-limit (429), and 5xx.
+    for code in (403, 429, 500):
+        result = await _client(lambda r, c=code: httpx.Response(c)).find_playlist_id_by_name(
+            "tok", "x", "me"
+        )
+        assert result is None, f"status {code} should degrade to None"
 
 
 async def test_replace_tracks_puts_to_items_endpoint():

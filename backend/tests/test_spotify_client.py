@@ -193,34 +193,42 @@ async def test_get_current_user_id_401_raises_auth_error():
         await _client(lambda r: httpx.Response(401)).get_current_user_id("tok")
 
 
-async def test_create_playlist_returns_id_and_url():
+async def test_create_playlist_uses_me_endpoint_and_returns_id_and_url():
+    # The /users/{id}/playlists form was retired Feb 2026; must POST /me/playlists.
     payload = {
         "id": "pl123",
         "external_urls": {"spotify": "https://open.spotify.com/playlist/pl123"},
     }
-    pid, url = await _client(lambda r: httpx.Response(201, json=payload)).create_playlist(
-        "tok", "spuser", "name", "desc"
-    )
+    seen: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["path"] = request.url.path
+        return httpx.Response(201, json=payload)
+
+    pid, url = await _client(handler).create_playlist("tok", "name", "desc")
+    assert seen["path"] == "/v1/me/playlists"
     assert pid == "pl123"
     assert url == "https://open.spotify.com/playlist/pl123"
 
 
 async def test_create_playlist_missing_id_raises_api_error():
     with pytest.raises(SpotifyApiError):
-        await _client(lambda r: httpx.Response(201, json={})).create_playlist(
-            "tok", "spuser", "n", "d"
-        )
+        await _client(lambda r: httpx.Response(201, json={})).create_playlist("tok", "n", "d")
 
 
-async def test_add_tracks_chunks_at_100():
+async def test_add_tracks_chunks_at_100_via_items_endpoint():
     batches: list[int] = []
+    paths: set[str] = set()
 
     def handler(request: httpx.Request) -> httpx.Response:
         import json
 
+        paths.add(request.url.path)
         batches.append(len(json.loads(request.content)["uris"]))
         return httpx.Response(201, json={"snapshot_id": "s"})
 
     uris = [f"spotify:track:{i}" for i in range(250)]
     await _client(handler).add_tracks("tok", "pl", uris)
     assert batches == [100, 100, 50]
+    # The /tracks form was retired Feb 2026; must POST /playlists/{id}/items.
+    assert paths == {"/v1/playlists/pl/items"}

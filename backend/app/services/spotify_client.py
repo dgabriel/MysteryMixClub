@@ -230,17 +230,20 @@ class SpotifyClient:
     async def create_playlist(
         self,
         access_token: str,
-        spotify_user_id: str,
         name: str,
         description: str,
         *,
         public: bool = False,
     ) -> tuple[str, str]:
-        """Create an empty playlist; return ``(playlist_id, external_url)``."""
+        """Create an empty playlist in the authorized user's library; return
+        ``(playlist_id, external_url)``.
+
+        Uses ``POST /me/playlists``. The older ``POST /users/{id}/playlists`` form
+        was **retired in Spotify's February 2026 Web API changes** (it now returns
+        403); ``/me/playlists`` creates the playlist for the token's own user.
+        """
         body = {"name": name, "description": description, "public": public}
-        data = await self._authed_post(
-            f"/users/{spotify_user_id}/playlists", access_token, json=body
-        )
+        data = await self._authed_post("/me/playlists", access_token, json=body)
         playlist_id = data.get("id")
         external_url = (data.get("external_urls") or {}).get("spotify")
         if not isinstance(playlist_id, str) or not playlist_id:
@@ -248,11 +251,15 @@ class SpotifyClient:
         return playlist_id, external_url or f"https://open.spotify.com/playlist/{playlist_id}"
 
     async def add_tracks(self, access_token: str, playlist_id: str, uris: list[str]) -> None:
-        """Add track URIs to a playlist, chunked at Spotify's 100-per-call cap."""
+        """Add track URIs to a playlist, chunked at Spotify's 100-per-call cap.
+
+        Uses ``POST /playlists/{id}/items``; the ``/tracks`` form was retired in
+        Spotify's February 2026 Web API changes.
+        """
         for start in range(0, len(uris), _MAX_TRACKS_PER_ADD):
             chunk = uris[start : start + _MAX_TRACKS_PER_ADD]
             await self._authed_post(
-                f"/playlists/{playlist_id}/tracks", access_token, json={"uris": chunk}
+                f"/playlists/{playlist_id}/items", access_token, json={"uris": chunk}
             )
 
     async def _authed_get(self, path: str, access_token: str) -> dict:

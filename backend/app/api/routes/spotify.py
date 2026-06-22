@@ -232,10 +232,8 @@ async def create_round_spotify_playlist(
     playlist_url: str | None = None
     if matched_uris:
         try:
-            owner_id = await client.get_current_user_id(access_token)
             playlist_id, playlist_url = await client.create_playlist(
                 access_token,
-                owner_id,
                 playlist_name(round_.round_number, round_.theme),
                 playlist_description(round_.round_number, round_.theme),
             )

@@ -132,10 +132,8 @@ class FakeSpotifyClient:
     async def get_current_user_id(self, access_token) -> str:
         return "spuser"
 
-    async def create_playlist(
-        self, access_token, spotify_user_id, name, description, *, public=False
-    ):
-        self.created = {"name": name, "description": description, "owner": spotify_user_id}
+    async def create_playlist(self, access_token, name, description, *, public=False):
+        self.created = {"name": name, "description": description}
         return "pl1", "https://open.spotify.com/playlist/pl1"
 
     async def add_tracks(self, access_token, playlist_id, uris) -> None:

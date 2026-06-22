@@ -36,6 +36,10 @@ class Submission(Base):
     # is resolved via the YouTube Data API at submit time (and lazily backfilled
     # at playlist time for pre-existing rows), then cached to avoid repeat calls.
     youtube_video_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    # Cached Spotify track URI (spotify:track:...) resolved from the ISRC via the
+    # Spotify search API, for building a saved playlist (MYS-83). Resolved lazily
+    # at playlist-create time and cached; nullable when no match is found.
+    spotify_track_uri: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     note: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     participation_mode: Mapped[str] = mapped_column(
         String, nullable=False, default="playing", server_default=text("'playing'")

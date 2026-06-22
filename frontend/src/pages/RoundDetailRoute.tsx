@@ -33,6 +33,7 @@ import { Card } from "../components/Card";
 import { TextField } from "../components/TextField";
 import { ConcentricRings } from "../components/ConcentricRings";
 import { SongSearchCard } from "../components/songs/SongSearchCard";
+import { SpotifyPlaylist } from "../components/SpotifyPlaylist";
 
 const STATE_LABEL: Record<RoundState, string> = {
   pending: "upcoming",
@@ -200,7 +201,7 @@ export function RoundDetailRoute() {
     );
   }
 
-  if (error || !round) {
+  if (error || !round || !id) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center px-4 text-center sm:px-8">
         <p className="font-mono text-[13px] font-light text-muted">{error ?? "round not found."}</p>
@@ -283,6 +284,7 @@ export function RoundDetailRoute() {
             <VotingSection
               // Remount to re-seed the selection whenever the saved votes change.
               key={myVotes.join(",")}
+              roundId={id}
               entries={playlist}
               youtubePlaylistUrl={youtubePlaylistUrl}
               youtubeTrackCount={youtubeTrackCount}
@@ -564,6 +566,7 @@ function YouTubePlaylistLink({
 }
 
 function VotingSection({
+  roundId,
   entries,
   youtubePlaylistUrl,
   youtubeTrackCount,
@@ -576,6 +579,7 @@ function VotingSection({
   onSelectionChange,
   onActionError,
 }: {
+  roundId: string;
   entries: PlaylistEntry[];
   youtubePlaylistUrl: string | null;
   youtubeTrackCount: number;
@@ -628,6 +632,7 @@ function VotingSection({
             youtubeTrackCount={youtubeTrackCount}
             entryCount={entries.length}
           />
+          <SpotifyPlaylist roundId={roundId} entryCount={entries.length} />
         </div>
         <ul className="mt-4 space-y-4">
           {entries.map((entry) => (
@@ -660,6 +665,7 @@ function VotingSection({
         youtubeTrackCount={youtubeTrackCount}
         entryCount={entries.length}
       />
+      <SpotifyPlaylist roundId={roundId} entryCount={entries.length} />
       <div className="flex items-baseline justify-between gap-4">
         <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
           cast your votes

@@ -12,6 +12,13 @@ class Settings(BaseSettings):
     secret_key: str = Field(default="")
     resend_api_key: str = Field(default="")
     youtube_api_key: str = Field(default="")
+    # Spotify app credentials for per-user OAuth playlist creation (MYS-83).
+    # Server-side only; the client secret must never reach the browser.
+    spotify_client_id: str = Field(default="")
+    spotify_client_secret: str = Field(default="")
+    # Where Spotify redirects after consent. Must match a redirect URI registered
+    # on the Spotify app dashboard exactly, per environment.
+    spotify_redirect_uri: str = Field(default="")
     allowed_origins: str = Field(default="")
     environment: Literal["development", "staging", "production"] = "development"
     app_base_url: str = Field(default="https://mysterymixclub.com")

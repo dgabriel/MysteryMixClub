@@ -5,6 +5,7 @@ from app.models.magic_link_token import MagicLinkToken
 from app.models.note import Note
 from app.models.round import Round
 from app.models.session import Session
+from app.models.spotify_connection import SpotifyConnection
 from app.models.submission import Submission
 from app.models.user import User
 from app.models.vote import Vote
@@ -17,6 +18,7 @@ __all__ = [
     "Note",
     "Round",
     "Session",
+    "SpotifyConnection",
     "Submission",
     "User",
     "Vote",

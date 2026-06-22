@@ -13,6 +13,7 @@ import {
   getPlaylist,
   getResults,
   getRound,
+  getSpotifyStatus,
   updateRound,
 } from "../services/api";
 import type { League, PlaylistEntry, Round, RoundResults, SubmissionResult } from "../services/api";
@@ -33,6 +34,7 @@ vi.mock("../services/api", async () => {
     castVotes: vi.fn(),
     getNotes: vi.fn(),
     addNote: vi.fn(),
+    getSpotifyStatus: vi.fn(),
   };
 });
 vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
@@ -47,6 +49,7 @@ const mockGetMyVotes = vi.mocked(getMyVotes);
 const mockCastVotes = vi.mocked(castVotes);
 const mockGetNotes = vi.mocked(getNotes);
 const mockAddNote = vi.mocked(addNote);
+const mockGetSpotifyStatus = vi.mocked(getSpotifyStatus);
 const mockUseAuth = vi.mocked(useAuth);
 
 const ORGANIZER = "org-1";
@@ -163,6 +166,8 @@ describe("RoundDetailRoute", () => {
     mockGetRound.mockResolvedValue(round());
     mockGetLeague.mockResolvedValue(league());
     mockGetMine.mockResolvedValue(null);
+    // Spotify feature hidden by default in these tests (not configured).
+    mockGetSpotifyStatus.mockResolvedValue({ configured: false, connected: false });
     mockGetPlaylist.mockResolvedValue({
       round_id: "r1",
       round_number: 1,

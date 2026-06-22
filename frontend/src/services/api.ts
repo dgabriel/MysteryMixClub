@@ -602,6 +602,62 @@ export async function getPlaylist(roundId: string): Promise<Playlist> {
   return (await res.json()) as Playlist;
 }
 
+// --- Spotify playlist generation (MYS-83) -------------------------------- //
+
+/** Whether the server has Spotify configured at all, and whether the current
+ *  user has connected their Spotify account. */
+export type SpotifyStatus = {
+  configured: boolean;
+  connected: boolean;
+};
+
+/** A track we couldn't match to Spotify when building the playlist. */
+export type SpotifyUnmatchedTrack = {
+  submission_id: string;
+  title: string;
+  artist: string;
+};
+
+/** Result of creating a round's Spotify playlist. `playlist_url` is null when
+ *  no track matched (no empty playlist is created); `track_count` of
+ *  `total_count` were added, and `unmatched` lists what couldn't be placed. */
+export type SpotifyPlaylistResult = {
+  round_id: string;
+  playlist_url: string | null;
+  track_count: number;
+  total_count: number;
+  unmatched: SpotifyUnmatchedTrack[];
+};
+
+/** Is Spotify configured/connected for the current user? */
+export async function getSpotifyStatus(): Promise<SpotifyStatus> {
+  const res = await authenticatedRequest("/api/v1/spotify/status");
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as SpotifyStatus;
+}
+
+/** Begin the connect flow: returns the Spotify consent URL to redirect to. */
+export async function connectSpotify(): Promise<{ authorize_url: string }> {
+  const res = await authenticatedRequest("/api/v1/spotify/connect");
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as { authorize_url: string };
+}
+
+/** Create a saved Spotify playlist for the round in the user's library. */
+export async function createSpotifyPlaylist(roundId: string): Promise<SpotifyPlaylistResult> {
+  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/spotify-playlist`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as SpotifyPlaylistResult;
+}
+
 /** Get all submissions for a round (revealed only after it closes). */
 export async function getRoundSubmissions(roundId: string): Promise<SubmissionResult[]> {
   const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/submissions`);

@@ -53,6 +53,18 @@ router = APIRouter(tags=["spotify"])
 _OAUTH_PURPOSE = "spotify"
 
 
+def _safe_return_path(path: str | None) -> str | None:
+    """Accept only an in-app **absolute path** (e.g. ``/rounds/<id>``) to guard
+    against open-redirect — the callback concatenates this onto our own base URL.
+    Rejects anything not single-slash-rooted, protocol-relative (``//``), or
+    carrying a scheme/backslash/newline."""
+    if not path or not path.startswith("/") or path.startswith("//"):
+        return None
+    if "://" in path or "\\" in path or "\n" in path or "\r" in path:
+        return None
+    return path
+
+
 # --------------------------------------------------------------------------- #
 # Schemas
 # --------------------------------------------------------------------------- #
@@ -93,6 +105,7 @@ class SpotifyPlaylistResponse(BaseModel):
 
 @router.get("/spotify/connect", response_model=ConnectResponse)
 async def spotify_connect(
+    return_to: str | None = None,
     current_user: User = Depends(get_current_user),
     client: SpotifyClient = Depends(get_spotify_client),
 ) -> ConnectResponse:
@@ -101,7 +114,9 @@ async def spotify_connect(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="spotify is not configured on this server",
         )
-    state = create_oauth_state(current_user.id, _OAUTH_PURPOSE)
+    # `return_to` (e.g. the round that started the connect) rides in the signed
+    # state so the callback can land the user back where they were (MYS-93).
+    state = create_oauth_state(current_user.id, _OAUTH_PURPOSE, _safe_return_path(return_to))
     return ConnectResponse(authorize_url=client.authorize_url(state))
 
 
@@ -115,41 +130,48 @@ async def spotify_callback(
     settings: Settings = Depends(get_settings),
 ) -> RedirectResponse:
     """Spotify redirects here after consent. Validates state, exchanges the code,
-    persists the connection, and bounces back to the SPA with a status flag.
+    persists the connection, and bounces back to the SPA — to the round the user
+    started from (``return_to`` in the state), else ``/home``.
 
-    Lands on ``/home`` (an authenticated route), NOT ``/`` — the root route
-    unconditionally redirects to ``/login``, which would strand the just-returned
-    (and still authenticated) user on the login page (MYS-92)."""
-    success = f"{settings.app_base_url}/home?spotify=connected"
-    failure = f"{settings.app_base_url}/home?spotify=error"
+    Note the landing is an authenticated route, never ``/`` — the root route
+    unconditionally redirects to ``/login`` and would strand the still-authenticated
+    user on the login page (MYS-92)."""
+
+    def _redirect(path: str, flag: str) -> RedirectResponse:
+        return RedirectResponse(
+            url=f"{settings.app_base_url}{path}?spotify={flag}",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    # A bad/expired state can't be trusted to carry a return path → fall back home.
+    try:
+        oauth_state = decode_oauth_state(state, _OAUTH_PURPOSE)
+    except JWTError:
+        return _redirect("/home", "error")
+    return_to = _safe_return_path(oauth_state.return_to) or "/home"
 
     if error or not code:
         # User denied consent or Spotify returned an error.
-        return RedirectResponse(url=failure, status_code=status.HTTP_303_SEE_OTHER)
-
-    try:
-        user_id = decode_oauth_state(state, _OAUTH_PURPOSE)
-    except JWTError:
-        return RedirectResponse(url=failure, status_code=status.HTTP_303_SEE_OTHER)
+        return _redirect(return_to, "error")
 
     try:
         tokens = await client.exchange_code(code)
         if not tokens.refresh_token:
             # Initial authorization must include a refresh token; without it we
             # can't mint future access tokens.
-            return RedirectResponse(url=failure, status_code=status.HTTP_303_SEE_OTHER)
+            return _redirect(return_to, "error")
         spotify_user_id = await client.get_current_user_id(tokens.access_token)
     except (SpotifyAuthError, SpotifyApiError):
-        return RedirectResponse(url=failure, status_code=status.HTTP_303_SEE_OTHER)
+        return _redirect(return_to, "error")
 
     await _upsert_connection(
         db,
-        user_id=user_id,
+        user_id=oauth_state.user_id,
         spotify_user_id=spotify_user_id,
         refresh_token=tokens.refresh_token,
         scope=tokens.scope,
     )
-    return RedirectResponse(url=success, status_code=status.HTTP_303_SEE_OTHER)
+    return _redirect(return_to, "connected")
 
 
 @router.get("/spotify/status", response_model=StatusResponse)

@@ -49,7 +49,7 @@ describe("SpotifyPlaylist", () => {
     const button = await screen.findByRole("button", { name: /connect spotify/i });
     await userEvent.click(button);
 
-    expect(mockConnect).toHaveBeenCalled();
+    expect(mockConnect).toHaveBeenCalledWith("/rounds/r1"); // returns here after consent
     await waitFor(() =>
       expect(assign).toHaveBeenCalledWith("https://accounts.spotify.com/authorize?x=1"),
     );

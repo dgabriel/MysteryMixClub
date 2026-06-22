@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime, timedelta, timezone
+from typing import NamedTuple
 
 from jose import JWTError, jwt
 
@@ -9,11 +10,21 @@ from app.config import get_settings
 # directly (jose ships no type stubs; keeping the boundary here confines that).
 __all__ = [
     "JWTError",
+    "OAuthState",
     "create_access_token",
     "decode_access_token",
     "create_oauth_state",
     "decode_oauth_state",
 ]
+
+
+class OAuthState(NamedTuple):
+    """Decoded OAuth-state: the initiating user, plus an optional in-app path to
+    return to after the round-trip (e.g. the round that started the connect)."""
+
+    user_id: uuid.UUID
+    return_to: str | None
+
 
 # Access tokens are short-lived JWTs (TD 5): 60-minute expiry, HS256, signed
 # with the server secret. This module both mints and verifies them.
@@ -53,9 +64,11 @@ def decode_access_token(token: str) -> uuid.UUID:
         raise JWTError("subject claim is not a valid user id") from exc
 
 
-def create_oauth_state(user_id: uuid.UUID, purpose: str) -> str:
+def create_oauth_state(user_id: uuid.UUID, purpose: str, return_to: str | None = None) -> str:
     """Return a signed, 10-minute state token binding ``user_id`` to ``purpose``
-    (e.g. ``"spotify"``) for a third-party OAuth round-trip."""
+    (e.g. ``"spotify"``) for a third-party OAuth round-trip, optionally carrying a
+    ``return_to`` in-app path to land on afterwards. Signing it keeps it
+    tamper-proof across the round-trip; callers still validate it on use."""
     now = datetime.now(timezone.utc)
     claims = {
         "sub": str(user_id),
@@ -63,11 +76,13 @@ def create_oauth_state(user_id: uuid.UUID, purpose: str) -> str:
         "iat": int(now.timestamp()),
         "exp": int((now + _OAUTH_STATE_TTL).timestamp()),
     }
+    if return_to:
+        claims["rt"] = return_to
     return jwt.encode(claims, get_settings().secret_key, algorithm=_ALGORITHM)
 
 
-def decode_oauth_state(token: str, purpose: str) -> uuid.UUID:
-    """Verify an OAuth-state token and return its ``sub`` user id.
+def decode_oauth_state(token: str, purpose: str) -> OAuthState:
+    """Verify an OAuth-state token and return its user id + optional return path.
 
     Raises ``jose.JWTError`` on any failure: malformed, bad signature, expired,
     a missing/invalid ``sub``, or a ``purpose`` that doesn't match (so a state
@@ -80,6 +95,8 @@ def decode_oauth_state(token: str, purpose: str) -> uuid.UUID:
     if not isinstance(sub, str):
         raise JWTError("missing or invalid subject claim")
     try:
-        return uuid.UUID(sub)
+        user_id = uuid.UUID(sub)
     except ValueError as exc:
         raise JWTError("subject claim is not a valid user id") from exc
+    rt = claims.get("rt")
+    return OAuthState(user_id=user_id, return_to=rt if isinstance(rt, str) else None)

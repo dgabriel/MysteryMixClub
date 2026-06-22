@@ -638,9 +638,14 @@ export async function getSpotifyStatus(): Promise<SpotifyStatus> {
   return (await res.json()) as SpotifyStatus;
 }
 
-/** Begin the connect flow: returns the Spotify consent URL to redirect to. */
-export async function connectSpotify(): Promise<{ authorize_url: string }> {
-  const res = await authenticatedRequest("/api/v1/spotify/connect");
+/** Begin the connect flow: returns the Spotify consent URL to redirect to.
+ *  `returnTo` is an in-app path (e.g. the current round) the callback lands on
+ *  after consent, so the user comes back where they started. */
+export async function connectSpotify(returnTo?: string): Promise<{ authorize_url: string }> {
+  const path = returnTo
+    ? `/api/v1/spotify/connect?return_to=${encodeURIComponent(returnTo)}`
+    : "/api/v1/spotify/connect";
+  const res = await authenticatedRequest(path);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }

@@ -14,7 +14,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.jwt import create_access_token
+from app.auth.jwt import create_access_token, create_oauth_state
 from app.db.session import get_db
 from app.main import create_app
 from app.models.league import League
@@ -221,11 +221,21 @@ async def test_connect_returns_authorize_url(spotify_client, db_session):
 
 
 async def test_callback_redirects_to_home_not_root(spotify_client):
-    # Must land on /home (authenticated route), not / (which hard-redirects to
-    # /login and strands the returned user — MYS-92). Error path needs no client.
+    # An unrecoverable (invalid) state falls back to /home — never / (which
+    # hard-redirects to /login and strands the returned user — MYS-92).
     resp = await spotify_client.get("/api/v1/spotify/callback?state=x&error=denied")
     assert resp.status_code == 303
     assert resp.headers["location"].endswith("/home?spotify=error")
+
+
+async def test_callback_returns_to_round_from_state(spotify_client, db_session):
+    # A valid state carrying return_to lands back on that round (MYS-93). Error
+    # path exercises the redirect without mocking the token exchange.
+    user = await _seed_user(db_session, "u@example.com")
+    state = create_oauth_state(user.id, "spotify", "/rounds/r-123")
+    resp = await spotify_client.get(f"/api/v1/spotify/callback?state={state}&error=denied")
+    assert resp.status_code == 303
+    assert resp.headers["location"].endswith("/rounds/r-123?spotify=error")
 
 
 # --------------------------------------------------------------------------- #

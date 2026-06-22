@@ -551,7 +551,7 @@ async def test_note_body_xss_payload_round_trips_verbatim(client, db_session):
 #   The model also requires url-or-title (existing validator).
 #
 # Both endpoints need auth (get_current_user) and dependency-injected service
-# clients. We mock Deezer (search) / Odesli + assembler (resolve) so a 422
+# clients. We mock Deezer (search) / link resolver + assembler (resolve) so a 422
 # (validation) is reached BEFORE any external call, and valid requests still
 # resolve via the mock (positive controls). For the 422 boundary cases the
 # external mock may never be invoked — that is expected and correct.
@@ -561,7 +561,7 @@ from app.services.deezer_search import (  # noqa: E402
     SongTrack,
     get_deezer_client,
 )
-from app.services.odesli import ResolvedSong, get_odesli_client  # noqa: E402
+from app.services.link_resolver import SongIdentity, get_link_resolver  # noqa: E402
 
 SEARCH_URL = "/api/v1/songs/search"
 RESOLVE_URL = "/api/v1/songs/resolve"
@@ -571,13 +571,12 @@ _ASSEMBLED = {
     "youtube": "https://music.youtube.com/search?q=x",
 }
 
-_RESOLVED_SONG = ResolvedSong(
+_RESOLVED_SONG = SongIdentity(
     title="bad guy",
     artist="Billie Eilish",
     album=None,
     thumbnail_url="https://img/x.jpg",
     isrc="USUM71900764",
-    platforms={"spotify": "https://open.spotify.com/track/2", "youtube": "https://yt/z"},
 )
 
 
@@ -601,8 +600,8 @@ class _FakeDeezerSearch:
         )
 
 
-class _FakeOdesliResolve:
-    async def resolve(self, url: str) -> ResolvedSong:
+class _FakeLinkResolve:
+    async def resolve(self, url: str) -> SongIdentity:
         return _RESOLVED_SONG
 
 
@@ -612,7 +611,7 @@ class _FakeResolveAssembler:
 
 
 def _build_songs_client(session_factory) -> AsyncClient:
-    """Client with get_db + Deezer/Odesli/assembler overridden (no live HTTP)."""
+    """Client with get_db + Deezer/resolver/assembler overridden (no live HTTP)."""
     app = create_app()
 
     async def override_db() -> AsyncGenerator[AsyncSession, None]:
@@ -621,7 +620,7 @@ def _build_songs_client(session_factory) -> AsyncClient:
 
     app.dependency_overrides[get_db] = override_db
     app.dependency_overrides[get_deezer_client] = lambda: _FakeDeezerSearch()
-    app.dependency_overrides[get_odesli_client] = lambda: _FakeOdesliResolve()
+    app.dependency_overrides[get_link_resolver] = lambda: _FakeLinkResolve()
     app.dependency_overrides[get_link_assembler] = lambda: _FakeResolveAssembler()
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 

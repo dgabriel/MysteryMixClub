@@ -13,7 +13,7 @@ closed``. Rounds are auto-generated as ``pending`` at league creation; only one
 round per league may be active (open_submission/open_voting) at a time, enforced
 when a round opens. The
 playlist surfaces each submission resolved to the viewer's preferred service (it
-reads the stored ``odesli_data``). Membership/organizer checks reuse the helpers
+reads the stored ``platform_links``). Membership/organizer checks reuse the helpers
 in :mod:`app.api.routes.leagues`.
 """
 
@@ -283,8 +283,8 @@ class PlaylistEntry(BaseModel):
     album: str | None
     album_art_url: str | None
     participation_mode: str
-    # Platform links resolved from the stored Odesli payload (may be empty if
-    # the upstream lookup failed at submission time).
+    # Platform links assembled keyless at submission time and stored per
+    # submission (may be empty if the upstream lookup failed then).
     platforms: dict[str, str]
     # The single link to surface by default: the viewer's preferred service,
     # else YouTube as the universal fallback, else any available platform.

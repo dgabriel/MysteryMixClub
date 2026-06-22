@@ -1,60 +1,10 @@
 """Unit tests for the YouTube playlist helpers (MYS-78).
 
-Covers ``youtube_video_id_from_url`` URL parsing and ``build_watch_videos_url``
-list assembly. Both are pure — no network, no DB.
+Covers ``build_watch_videos_url`` / ``normalize_video_ids`` list assembly. Both
+are pure — no network, no DB.
 """
 
-import pytest
-
-from app.services.odesli import youtube_video_id_from_url
 from app.services.youtube_playlist import build_watch_videos_url, normalize_video_ids
-
-
-# --------------------------------------------------------------------------- #
-# youtube_video_id_from_url
-# --------------------------------------------------------------------------- #
-
-
-@pytest.mark.parametrize(
-    "url,expected",
-    [
-        ("https://www.youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ"),
-        ("https://youtube.com/watch?v=abc123", "abc123"),
-        ("https://music.youtube.com/watch?v=XYZ_987", "XYZ_987"),
-        ("https://m.youtube.com/watch?v=abc123", "abc123"),
-        ("https://youtu.be/dQw4w9WgXcQ", "dQw4w9WgXcQ"),
-        ("https://youtu.be/abc123?t=42", "abc123"),
-        # Extra query params alongside v= still parse.
-        ("https://www.youtube.com/watch?list=PL1&v=abc123&t=10", "abc123"),
-    ],
-)
-def test_parses_accepted_watch_urls(url, expected):
-    assert youtube_video_id_from_url(url) == expected
-
-
-@pytest.mark.parametrize(
-    "url",
-    [
-        # Search / deep links carry no video id.
-        "https://music.youtube.com/search?q=bad%20guy",
-        "https://www.youtube.com/results?search_query=bad+guy",
-        # watch URL without a v param.
-        "https://www.youtube.com/watch",
-        # Non-YouTube hosts.
-        "https://open.spotify.com/track/2",
-        "https://www.deezer.com/track/4",
-        # Not a URL at all.
-        "not a url",
-        "youtube.com/watch?v=abc123",
-        "",
-    ],
-)
-def test_returns_none_for_non_watch_inputs(url):
-    assert youtube_video_id_from_url(url) is None
-
-
-def test_returns_none_for_none():
-    assert youtube_video_id_from_url(None) is None
 
 
 # --------------------------------------------------------------------------- #

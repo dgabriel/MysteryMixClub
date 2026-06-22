@@ -1,8 +1,9 @@
-"""Endpoint tests for app.routers.songs (MYS-44).
+"""Endpoint tests for app.routers.songs (MYS-44, MYS-81).
 
-The Odesli and Deezer service dependencies are overridden with in-memory fakes
-so we test the router's auth gate, request/response contract, and the mapping
-from service errors to HTTP status codes — without any network or live keys.
+The link-resolver and Deezer service dependencies are overridden with in-memory
+fakes so we test the router's auth gate, request/response contract, and the
+mapping from service errors to HTTP status codes — without any network or live
+keys.
 """
 
 import uuid
@@ -24,13 +25,13 @@ from app.services.deezer_search import (
     SongTrack,
     get_deezer_client,
 )
-from app.services.odesli import (
-    OdesliRateLimitError,
-    OdesliTimeoutError,
-    OdesliUnavailableError,
-    ResolvedSong,
+from app.services.link_resolver import (
+    ResolverRateLimitError,
+    ResolverTimeoutError,
+    ResolverUnavailableError,
+    SongIdentity,
     SongNotFoundError,
-    get_odesli_client,
+    get_link_resolver,
 )
 from app.services.song_links import get_link_assembler
 
@@ -46,12 +47,12 @@ _ASSEMBLED = {
 }
 
 
-class _FakeOdesli:
-    def __init__(self, *, result: ResolvedSong | None = None, error: Exception | None = None):
+class _FakeResolver:
+    def __init__(self, *, result: SongIdentity | None = None, error: Exception | None = None):
         self._result = result
         self._error = error
 
-    async def resolve(self, url: str) -> ResolvedSong:
+    async def resolve(self, url: str) -> SongIdentity:
         if self._error:
             raise self._error
         assert self._result is not None
@@ -90,7 +91,7 @@ def _auth_header(user_id: uuid.UUID) -> dict[str, str]:
     return {"Authorization": f"Bearer {create_access_token(user_id)}"}
 
 
-def _build_client(session_factory, *, odesli=None, deezer=None, assembler=None) -> AsyncClient:
+def _build_client(session_factory, *, resolver=None, deezer=None, assembler=None) -> AsyncClient:
     app = create_app()
 
     async def override_db() -> AsyncGenerator[AsyncSession, None]:
@@ -98,8 +99,8 @@ def _build_client(session_factory, *, odesli=None, deezer=None, assembler=None) 
             yield session
 
     app.dependency_overrides[get_db] = override_db
-    if odesli is not None:
-        app.dependency_overrides[get_odesli_client] = lambda: odesli
+    if resolver is not None:
+        app.dependency_overrides[get_link_resolver] = lambda: resolver
     if deezer is not None:
         app.dependency_overrides[get_deezer_client] = lambda: deezer
     if assembler is not None:
@@ -108,13 +109,12 @@ def _build_client(session_factory, *, odesli=None, deezer=None, assembler=None) 
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
 
-_SONG = ResolvedSong(
+_SONG = SongIdentity(
     title="bad guy",
     artist="Billie Eilish",
     album=None,
     thumbnail_url="https://img/x.jpg",
     isrc="USUM71900764",
-    platforms={"spotify": "https://open.spotify.com/track/2", "youtube": "https://yt/z"},
 )
 
 
@@ -124,7 +124,7 @@ _SONG = ResolvedSong(
 
 
 async def test_resolve_requires_auth(session_factory):
-    async with _build_client(session_factory, odesli=_FakeOdesli(result=_SONG)) as client:
+    async with _build_client(session_factory, resolver=_FakeResolver(result=_SONG)) as client:
         resp = await client.post(RESOLVE_URL, json={"url": "https://x/y"})
     assert resp.status_code == 401
 
@@ -143,10 +143,10 @@ async def test_search_requires_auth(session_factory):
 
 
 async def test_resolve_by_pasted_url(session_factory, db_session):
-    # Paste flow: Odesli identifies the song, the assembler builds the links.
+    # Paste flow: the resolver identifies the song, the assembler builds links.
     user = await _seed_user(db_session)
     async with _build_client(
-        session_factory, odesli=_FakeOdesli(result=_SONG), assembler=_FakeAssembler(_ASSEMBLED)
+        session_factory, resolver=_FakeResolver(result=_SONG), assembler=_FakeAssembler(_ASSEMBLED)
     ) as client:
         resp = await client.post(
             RESOLVE_URL,
@@ -160,12 +160,14 @@ async def test_resolve_by_pasted_url(session_factory, db_session):
     assert set(body["platforms"]) == {"spotify", "appleMusic", "deezer", "youtube"}
 
 
-async def test_resolve_by_identity_skips_odesli(session_factory, db_session):
-    # Search-selected flow: identity provided, so Odesli is never called.
+async def test_resolve_by_identity_skips_resolver(session_factory, db_session):
+    # Search-selected flow: identity provided, so the resolver is never called.
     user = await _seed_user(db_session)
-    boom = _FakeOdesli(error=AssertionError("Odesli must not be called for an identity resolve"))
+    boom = _FakeResolver(
+        error=AssertionError("resolver must not be called for an identity resolve")
+    )
     async with _build_client(
-        session_factory, odesli=boom, assembler=_FakeAssembler(_ASSEMBLED)
+        session_factory, resolver=boom, assembler=_FakeAssembler(_ASSEMBLED)
     ) as client:
         resp = await client.post(
             RESOLVE_URL,
@@ -180,7 +182,7 @@ async def test_resolve_by_identity_skips_odesli(session_factory, db_session):
 
 async def test_resolve_without_url_or_title_is_422(session_factory, db_session):
     user = await _seed_user(db_session)
-    async with _build_client(session_factory, odesli=_FakeOdesli(result=_SONG)) as client:
+    async with _build_client(session_factory, resolver=_FakeResolver(result=_SONG)) as client:
         resp = await client.post(RESOLVE_URL, json={}, headers=_auth_header(user.id))
     assert resp.status_code == 422
 
@@ -189,14 +191,14 @@ async def test_resolve_without_url_or_title_is_422(session_factory, db_session):
     ("error", "expected"),
     [
         (SongNotFoundError(), 404),
-        (OdesliRateLimitError(), 429),
-        (OdesliTimeoutError(), 504),
-        (OdesliUnavailableError(), 502),
+        (ResolverRateLimitError(), 429),
+        (ResolverTimeoutError(), 504),
+        (ResolverUnavailableError(), 502),
     ],
 )
 async def test_resolve_maps_service_errors(session_factory, db_session, error, expected):
     user = await _seed_user(db_session)
-    async with _build_client(session_factory, odesli=_FakeOdesli(error=error)) as client:
+    async with _build_client(session_factory, resolver=_FakeResolver(error=error)) as client:
         resp = await client.post(
             RESOLVE_URL, json={"url": "https://x/y"}, headers=_auth_header(user.id)
         )

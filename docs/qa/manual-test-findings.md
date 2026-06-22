@@ -32,6 +32,8 @@ the structured template below is only there if you want to be precise.
 - ~~[P2] round results — winning songs above most noted~~ → **MYS-71** (kept Most Noted on top per decision)
 - ~~[P2] round results — collapsible notes under songs~~ → **MYS-72**
 - enabler added: **MYS-68** — voting playlist marks the caller's own entry (blocks MYS-73, MYS-74)
+- [P2] spotify playlist — playlist title should be "MysteryMixClub: League Name, Round theme" → **MYS-86**
+- [P1] spotify playlist - login should be a pop up or modal, not a whole page redirect → **MYS-85**
 
 ---
 

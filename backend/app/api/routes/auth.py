@@ -22,6 +22,14 @@ _TOKEN_TTL = timedelta(minutes=15)
 
 _REFRESH_COOKIE_NAME = "refresh_token"
 _REFRESH_COOKIE_PATH = "/api/v1/auth"
+# SameSite=Lax (not Strict) so the session survives a return from an external
+# OAuth provider (e.g. Spotify connect): Strict withholds the cookie on the
+# cross-site-initiated navigation back, which silently logs the user out. Lax is
+# safe here — every sensitive endpoint under this path is POST, and Lax still
+# withholds the cookie on all cross-site POST/XHR, so it can't be CSRF-forged.
+# (Deviates from technical-design §5/§9, which is updated with this rationale.)
+# Must match between set and delete or the cookie won't clear.
+_REFRESH_COOKIE_SAMESITE = "lax"
 # Single source of truth for the 30-day refresh window: the cookie max-age and
 # the server-side expiry check both derive from this so they can never drift.
 _REFRESH_TOKEN_TTL = timedelta(days=30)
@@ -158,7 +166,7 @@ async def verify_magic_link(
         max_age=_REFRESH_TOKEN_MAX_AGE,
         path=_REFRESH_COOKIE_PATH,
         httponly=True,
-        samesite="strict",
+        samesite=_REFRESH_COOKIE_SAMESITE,
         secure=settings.secure_cookies,
     )
 
@@ -210,7 +218,7 @@ def _clear_refresh_cookie(response: Response, settings: Settings) -> None:
         key=_REFRESH_COOKIE_NAME,
         path=_REFRESH_COOKIE_PATH,
         httponly=True,
-        samesite="strict",
+        samesite=_REFRESH_COOKIE_SAMESITE,
         secure=settings.secure_cookies,
     )
 

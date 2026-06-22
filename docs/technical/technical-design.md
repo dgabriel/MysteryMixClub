@@ -99,7 +99,13 @@ MysteryMixClub is a PWA from day one. This is not a post-launch enhancement.
 7. Server issues an access token (JWT, 60-minute expiry) and a refresh token (cryptographically random, 30-day expiry)
 8. Refresh token is stored server-side in the `sessions` table
 9. Access token is stored in memory on the client (never localStorage)
-10. Refresh token is stored in an HttpOnly, Secure, SameSite=Strict cookie
+10. Refresh token is stored in an HttpOnly, Secure, **SameSite=Lax** cookie.
+    (Originally specced as SameSite=Strict; changed to Lax in MYS-91 so the
+    session survives a return from an external OAuth provider — Strict withholds
+    the cookie on the cross-site-initiated navigation back and silently logs the
+    user out. Lax is safe here because every sensitive endpoint under the cookie
+    path is POST, and Lax still withholds the cookie on all cross-site POST/XHR,
+    so it can't be CSRF-forged.)
 
 ### Token Refresh Flow
 
@@ -370,7 +376,7 @@ These are non-negotiable requirements, not suggestions.
 - [ ] `.env.example` committed with all required keys, no values
 - [ ] Magic link tokens: single-use, 15-minute expiry, cryptographically random
 - [ ] Access tokens: never stored in localStorage or DOM
-- [ ] Refresh tokens: HttpOnly Secure SameSite=Strict cookie only
+- [ ] Refresh tokens: HttpOnly Secure SameSite=Lax cookie only (Lax, not Strict, so the session survives an OAuth-provider return — see §5.10 / MYS-91)
 - [ ] Rate limiting on magic link requests
 - [x] Tenant isolation — players can only access their own league data. Enforced at the **application layer** (authorization checks + cross-tenant isolation tests, MYS-48), not Postgres row-level security. True PG RLS remains an optional future defense-in-depth layer, not a launch requirement.
 - [ ] Input sanitization on all text fields (submission notes, display names)

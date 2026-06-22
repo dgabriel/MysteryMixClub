@@ -43,6 +43,19 @@ services:
       - key: YOUTUBE_API_KEY
         scope: RUN_TIME
         type: SECRET
+      # Spotify per-user OAuth playlist creation (MYS-83). Optional — the feature
+      # is hidden when unset. SPOTIFY_REDIRECT_URI must match a redirect URI
+      # registered on the Spotify app and point at this API's /spotify/callback.
+      # Set the secret values in the DO dashboard / doctl, never here.
+      - key: SPOTIFY_CLIENT_ID
+        scope: RUN_TIME
+        type: SECRET
+      - key: SPOTIFY_CLIENT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: SPOTIFY_REDIRECT_URI
+        scope: RUN_TIME
+        type: SECRET
       - key: ENVIRONMENT
         scope: RUN_TIME
         type: GENERAL

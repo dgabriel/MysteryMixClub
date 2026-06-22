@@ -11,6 +11,7 @@ from app.api.routes import (
     leagues,
     notes,
     rounds,
+    spotify,
     submissions,
     users,
     votes,
@@ -63,6 +64,7 @@ def create_app() -> FastAPI:
     app.include_router(submissions.router, prefix="/api/v1")
     app.include_router(votes.router, prefix="/api/v1")
     app.include_router(notes.router, prefix="/api/v1")
+    app.include_router(spotify.router, prefix="/api/v1")
     app.include_router(songs.router, prefix="/api/v1")
 
     return app

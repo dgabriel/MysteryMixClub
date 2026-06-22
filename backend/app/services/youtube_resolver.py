@@ -1,8 +1,8 @@
 """YouTube Data API resolver (MYS-78).
 
 Resolves a song (title + optional artist) to a single YouTube video id via the
-YouTube Data API ``search.list`` endpoint. Like :mod:`odesli` / :mod:`song_links`
-this module fully owns the upstream response shape; callers only ever see a bare
+YouTube Data API ``search.list`` endpoint. Like :mod:`link_resolver` /
+:mod:`song_links` this module fully owns the upstream response shape; callers only ever see a bare
 video id string (or ``None``).
 
 Resolution is best-effort by design: a missing API key, quota/auth failure,

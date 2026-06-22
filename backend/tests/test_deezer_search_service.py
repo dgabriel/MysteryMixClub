@@ -119,6 +119,23 @@ async def test_no_artist_uses_plain_query():
     assert dict(rec.calls[0].url.params)["q"] == "take on me"
 
 
+async def test_quotes_are_stripped_from_advanced_query():
+    # A double-quote in title/artist would corrupt Deezer's artist:"" track:""
+    # filter grammar (no escaping); they must be removed before interpolation.
+    rec = _Recorder(httpx.Response(200, json=_body(1, 1)))
+    await _client(rec).search('That\'s Heavenly To Me "Live"', 'Sam "The Man" Cooke')
+    q = dict(rec.calls[0].url.params)["q"]
+    assert '"Live"' not in q
+    # Exactly the two filter-delimiter quote pairs remain, none stray.
+    assert q.count('"') == 4
+
+
+async def test_quotes_are_stripped_from_plain_query():
+    rec = _Recorder(httpx.Response(200, json=_body(1, 1)))
+    await _client(rec).search('say "hello"')
+    assert '"' not in dict(rec.calls[0].url.params)["q"]
+
+
 # --------------------------------------------------------------------------- #
 # Caching
 # --------------------------------------------------------------------------- #

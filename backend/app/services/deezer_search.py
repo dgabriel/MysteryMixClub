@@ -1,10 +1,11 @@
 """Deezer search integration (MYS-44).
 
-Keyless, free song search. Like :mod:`odesli`, this module fully owns the Deezer
-response shape — callers get a normalized :class:`SongSearchResult` and never see
-Deezer JSON. Each result carries its ISRC (Deezer returns it inline) so the
-canonical-identity goal is met at search time, plus a ``resolve_url`` (the Deezer
-track URL) that the resolve step feeds to Odesli for cross-platform links.
+Keyless, free song search. Like :mod:`song_links`, this module fully owns the
+Deezer response shape — callers get a normalized :class:`SongSearchResult` and
+never see Deezer JSON. Each result carries its ISRC (Deezer returns it inline) so
+the canonical-identity goal is met at search time, plus a ``resolve_url`` (the
+Deezer track URL). The keyless paste-a-link resolver (:mod:`link_resolver`) also
+reuses this search to recover an ISRC for Apple/Spotify/YouTube links.
 
 Results are cached in-process (TTL) so popular searches don't re-hit Deezer —
 the scaling lever that lets a small upstream budget serve a large audience.
@@ -40,7 +41,7 @@ class SongTrack(BaseModel):
     album: str | None = None
     thumbnail_url: str | None = None
     isrc: str | None = None
-    # The platform URL handed to /resolve (Odesli) when this track is selected.
+    # The Deezer track URL handed to /resolve when this track is selected.
     resolve_url: str | None = None
 
 
@@ -97,8 +98,15 @@ class _TTLCache:
 
 def _build_query(title: str, artist: str | None) -> str:
     if artist:
-        return f'artist:"{artist}" track:"{title}"'
-    return title
+        # Deezer's advanced filter has no quote escaping, so a stray double-quote
+        # in a title/artist would corrupt the artist:"" track:"" grammar and
+        # silently mis-/zero-match. Drop quotes; fuzzy match still lands the track.
+        return f'artist:"{_strip_quotes(artist)}" track:"{_strip_quotes(title)}"'
+    return title.replace('"', " ").strip() or title
+
+
+def _strip_quotes(value: str) -> str:
+    return value.replace('"', " ").strip()
 
 
 def _track_from_item(item: dict) -> SongTrack | None:

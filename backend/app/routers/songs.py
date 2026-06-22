@@ -7,7 +7,7 @@ Two endpoints back the home-screen Song Search card:
 
 Both are authenticated. Search uses Deezer (keyless). Resolve assembles
 cross-service links keyless (:mod:`app.services.song_links`); a *pasted* URL is
-first turned into a song identity via :mod:`app.services.odesli` (keyless
+first turned into a song identity via :mod:`app.services.link_resolver` (keyless
 identity only — not its link resolution). This router only maps service errors
 onto HTTP status codes.
 """
@@ -28,15 +28,15 @@ from app.services.deezer_search import (
     SongSearchResult,
     get_deezer_client,
 )
-from app.services.odesli import (
+from app.services.link_resolver import (
     InvalidSongURLError,
-    OdesliClient,
-    OdesliRateLimitError,
-    OdesliTimeoutError,
-    OdesliUnavailableError,
+    LinkResolver,
     ResolvedSong,
+    ResolverRateLimitError,
+    ResolverTimeoutError,
+    ResolverUnavailableError,
     SongNotFoundError,
-    get_odesli_client,
+    get_link_resolver,
 )
 from app.services.song_links import SongLinkAssembler, get_link_assembler
 
@@ -71,32 +71,32 @@ class ResolveRequest(BaseModel):
 async def resolve_song(
     payload: ResolveRequest,
     _user: User = Depends(get_current_user),
-    odesli: OdesliClient = Depends(get_odesli_client),
+    resolver: LinkResolver = Depends(get_link_resolver),
     assembler: SongLinkAssembler = Depends(get_link_assembler),
 ) -> ResolvedSong:
     if payload.title:
         title, artist, isrc = payload.title, payload.artist, payload.isrc
         album, thumbnail_url = payload.album, payload.thumbnail_url
     else:
-        # Paste flow: identify the song behind the URL (keyless Odesli identity).
+        # Paste flow: identify the song behind the URL (keyless resolver).
         try:
-            song = await odesli.resolve(payload.url or "")
+            song = await resolver.resolve(payload.url or "")
         except InvalidSongURLError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         except SongNotFoundError as exc:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="song not found"
             ) from exc
-        except OdesliRateLimitError as exc:
+        except ResolverRateLimitError as exc:
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail="rate limited, try again shortly",
             ) from exc
-        except OdesliTimeoutError as exc:
+        except ResolverTimeoutError as exc:
             raise HTTPException(
                 status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail="song lookup timed out"
             ) from exc
-        except OdesliUnavailableError as exc:
+        except ResolverUnavailableError as exc:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY, detail="song lookup is unavailable"
             ) from exc

@@ -148,7 +148,8 @@ async def test_verify_sets_secure_cookie_in_staging(staging_client, email_spy):
     assert "secure" in lowered, set_cookie
     # Other attributes still intact (regression guard on the set_cookie call).
     assert "httponly" in lowered, set_cookie
-    assert "samesite=strict" in lowered, set_cookie
+    # Lax (not Strict) so the session survives an OAuth-provider return (MYS-91).
+    assert "samesite=lax" in lowered, set_cookie
     assert "path=/api/v1/auth" in lowered, set_cookie
 
 

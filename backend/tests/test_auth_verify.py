@@ -120,7 +120,8 @@ async def test_refresh_cookie_attributes(client, email_spy):
     assert "refresh_token=" in set_cookie
     lowered = set_cookie.lower()
     assert "httponly" in lowered, set_cookie
-    assert "samesite=strict" in lowered, set_cookie
+    # Lax (not Strict) so the session survives an OAuth-provider return (MYS-91).
+    assert "samesite=lax" in lowered, set_cookie
     assert "path=/api/v1/auth" in lowered, set_cookie
     assert "max-age=2592000" in lowered, set_cookie
     # Development env: cookie must NOT carry the Secure attribute.

@@ -105,11 +105,15 @@ class FakeSpotifyClient:
     """Stands in for SpotifyClient. Resolves ISRCs from a fixed map and records
     the playlist it was asked to create."""
 
-    def __init__(self, *, isrc_map=None, configured=True):
+    def __init__(self, *, isrc_map=None, configured=True, existing_playlist_id=None):
         self._isrc_map = isrc_map or {}
         self._configured = configured
+        # When set, find_playlist_id_by_name returns this id (reuse path).
+        self._existing_playlist_id = existing_playlist_id
         self.created: dict | None = None
         self.added: list[str] = []
+        self.replaced: dict | None = None
+        self.looked_up_name: str | None = None
 
     @property
     def is_configured(self) -> bool:
@@ -132,12 +136,19 @@ class FakeSpotifyClient:
     async def get_current_user_id(self, access_token) -> str:
         return "spuser"
 
+    async def find_playlist_id_by_name(self, access_token, name) -> str | None:
+        self.looked_up_name = name
+        return self._existing_playlist_id
+
     async def create_playlist(self, access_token, name, description, *, public=False):
         self.created = {"name": name, "description": description}
         return "pl1", "https://open.spotify.com/playlist/pl1"
 
     async def add_tracks(self, access_token, playlist_id, uris) -> None:
         self.added.extend(uris)
+
+    async def replace_tracks(self, access_token, playlist_id, uris) -> None:
+        self.replaced = {"playlist_id": playlist_id, "uris": list(uris)}
 
 
 @pytest_asyncio.fixture
@@ -266,9 +277,11 @@ async def test_create_builds_playlist_and_reports_unmatched(
     assert body["total_count"] == 2
     assert len(body["unmatched"]) == 1
     assert body["unmatched"][0]["title"] == "miss"
-    # The matched uri was added; the playlist name carries the round theme.
+    # The matched uri was added; the title carries league name + theme (MYS-86),
+    # and we looked it up first (reuse check, MYS-87).
     assert fake_spotify.added == ["spotify:track:matched"]
-    assert "Late Summer" in fake_spotify.created["name"]
+    assert fake_spotify.created["name"] == "MysteryMixClub: L, Late Summer"
+    assert fake_spotify.looked_up_name == "MysteryMixClub: L, Late Summer"
 
 
 async def test_create_caches_resolved_uri_on_submission(spotify_client, db_session, fake_spotify):
@@ -299,3 +312,24 @@ async def test_create_no_matches_returns_no_playlist(spotify_client, db_session,
     assert body["playlist_url"] is None
     assert body["track_count"] == 0
     assert fake_spotify.created is None  # no empty playlist created
+
+
+async def test_create_reuses_existing_playlist_instead_of_duplicating(session_factory, db_session):
+    # When a same-named playlist already exists, reuse it (replace tracks) rather
+    # than creating a duplicate (MYS-87).
+    fake = FakeSpotifyClient(
+        isrc_map={"I-MATCH": "spotify:track:matched"}, existing_playlist_id="pl-existing"
+    )
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    await _connect(db_session, organizer.id)
+    await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
+
+    async with _client_with_spotify(session_factory, fake) as c:
+        resp = await c.post(_playlist_url(round_.id), headers=_auth(organizer.id))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert fake.created is None  # did NOT create a new playlist
+    assert fake.replaced == {"playlist_id": "pl-existing", "uris": ["spotify:track:matched"]}
+    assert body["playlist_url"] == "https://open.spotify.com/playlist/pl-existing"
+    assert body["track_count"] == 1

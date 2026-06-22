@@ -232,3 +232,92 @@ async def test_add_tracks_chunks_at_100_via_items_endpoint():
     assert batches == [100, 100, 50]
     # The /tracks form was retired Feb 2026; must POST /playlists/{id}/items.
     assert paths == {"/v1/playlists/pl/items"}
+
+
+# --------------------------------------------------------------------------- #
+# Reuse: find existing playlist by name + replace its tracks (MYS-87)
+# --------------------------------------------------------------------------- #
+
+
+async def test_find_playlist_id_by_name_matches_on_first_page():
+    payload = {
+        "items": [
+            {"id": "p1", "name": "Other"},
+            {"id": "p2", "name": "MysteryMixClub: L, theme"},
+        ],
+        "next": None,
+    }
+    pid = await _client(lambda r: httpx.Response(200, json=payload)).find_playlist_id_by_name(
+        "tok", "MysteryMixClub: L, theme"
+    )
+    assert pid == "p2"
+
+
+async def test_find_playlist_id_by_name_paginates_until_match():
+    pages = [
+        httpx.Response(
+            200,
+            json={"items": [{"id": "a", "name": "x"}] * 50, "next": "https://next"},
+        ),
+        httpx.Response(200, json={"items": [{"id": "target", "name": "wanted"}], "next": None}),
+    ]
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        resp = pages[calls["n"]]
+        calls["n"] += 1
+        return resp
+
+    pid = await _client(handler).find_playlist_id_by_name("tok", "wanted")
+    assert pid == "target"
+    assert calls["n"] == 2  # had to fetch the second page
+
+
+async def test_find_playlist_id_by_name_returns_none_when_absent():
+    payload = {"items": [{"id": "p1", "name": "Other"}], "next": None}
+    pid = await _client(lambda r: httpx.Response(200, json=payload)).find_playlist_id_by_name(
+        "tok", "Nope"
+    )
+    assert pid is None
+
+
+async def test_find_playlist_id_by_name_401_raises_auth_error():
+    with pytest.raises(SpotifyAuthError):
+        await _client(lambda r: httpx.Response(401)).find_playlist_id_by_name("tok", "x")
+
+
+async def test_find_playlist_id_by_name_other_error_degrades_to_none():
+    # A non-auth failure must not block creation — treat as "not found".
+    assert await _client(lambda r: httpx.Response(500)).find_playlist_id_by_name("tok", "x") is None
+
+
+async def test_replace_tracks_puts_to_items_endpoint():
+    seen: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        import json
+
+        seen["method"] = request.method
+        seen["path"] = request.url.path
+        seen["uris"] = json.loads(request.content)["uris"]
+        return httpx.Response(200, json={"snapshot_id": "s"})
+
+    await _client(handler).replace_tracks("tok", "pl", ["spotify:track:a", "spotify:track:b"])
+    assert seen["method"] == "PUT"
+    assert seen["path"] == "/v1/playlists/pl/items"
+    assert seen["uris"] == ["spotify:track:a", "spotify:track:b"]
+
+
+async def test_replace_tracks_puts_first_100_then_appends_rest():
+    calls: list[tuple[str, int]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        import json
+
+        calls.append((request.method, len(json.loads(request.content)["uris"])))
+        return httpx.Response(200, json={"snapshot_id": "s"})
+
+    uris = [f"spotify:track:{i}" for i in range(150)]
+    await _client(handler).replace_tracks("tok", "pl", uris)
+    # First a PUT of 100 (replace), then a POST of the remaining 50 (append).
+    assert calls == [("PUT", 100), ("POST", 50)]

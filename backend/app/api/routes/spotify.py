@@ -182,7 +182,7 @@ async def create_round_spotify_playlist(
     client: SpotifyClient = Depends(get_spotify_client),
 ) -> SpotifyPlaylistResponse:
     round_ = await _load_round(round_id, db)
-    await _load_league_as_member(round_.league_id, current_user, db)
+    league = await _load_league_as_member(round_.league_id, current_user, db)
     # Mirror the voting playlist gate: the mix is only meaningful once submissions
     # are locked (the round has left open_submission).
     if round_.state == "open_submission":
@@ -229,15 +229,23 @@ async def create_round_spotify_playlist(
         except Exception:
             await db.rollback()
 
+    name = playlist_name(league.name, round_.round_number, round_.theme)
+    description = playlist_description(league.name, round_.round_number, round_.theme)
+
     playlist_url: str | None = None
     if matched_uris:
         try:
-            playlist_id, playlist_url = await client.create_playlist(
-                access_token,
-                playlist_name(round_.round_number, round_.theme),
-                playlist_description(round_.round_number, round_.theme),
-            )
-            await client.add_tracks(access_token, playlist_id, matched_uris)
+            # Idempotent: reuse an existing same-named playlist (replacing its
+            # tracks) instead of creating a duplicate on every generate (MYS-87).
+            existing_id = await client.find_playlist_id_by_name(access_token, name)
+            if existing_id is not None:
+                await client.replace_tracks(access_token, existing_id, matched_uris)
+                playlist_url = f"https://open.spotify.com/playlist/{existing_id}"
+            else:
+                playlist_id, playlist_url = await client.create_playlist(
+                    access_token, name, description
+                )
+                await client.add_tracks(access_token, playlist_id, matched_uris)
         except SpotifyAuthError as exc:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,

@@ -47,6 +47,9 @@ PLAYLIST_SCOPES = ("playlist-modify-public", "playlist-modify-private")
 
 # Spotify caps tracks-per-add request at 100; chunk larger playlists.
 _MAX_TRACKS_PER_ADD = 100
+# Cap how far we page through the user's library looking for an existing playlist
+# to reuse (50/page), so a huge library can't loop unbounded.
+_MAX_PLAYLIST_PAGES = 10
 # Refresh the app token a little before it actually expires to avoid races.
 _APP_TOKEN_SKEW_SECONDS = 30
 
@@ -262,6 +265,58 @@ class SpotifyClient:
                 f"/playlists/{playlist_id}/items", access_token, json={"uris": chunk}
             )
 
+    async def find_playlist_id_by_name(self, access_token: str, name: str) -> str | None:
+        """Return the id of the user's playlist whose name exactly matches
+        ``name``, or ``None`` if there's no match — so we can reuse a playlist
+        instead of creating a duplicate (MYS-87).
+
+        Raises :class:`SpotifyAuthError` on a rejected token (caller prompts a
+        reconnect); other upstream failures degrade to ``None`` (treated as "not
+        found" — the caller then creates a fresh playlist).
+        """
+        offset = 0
+        for _ in range(_MAX_PLAYLIST_PAGES):
+            try:
+                async with self._client_factory() as client:
+                    response = await client.get(
+                        f"{_API_BASE}/me/playlists",
+                        params={"limit": 50, "offset": offset},
+                        headers={"Authorization": f"Bearer {access_token}"},
+                    )
+            except httpx.HTTPError:
+                return None
+            if response.status_code == 401:
+                raise SpotifyAuthError("spotify access token rejected")
+            if response.status_code != 200:
+                return None
+            try:
+                payload = response.json()
+            except ValueError:
+                return None
+            items = payload.get("items") or []
+            for playlist in items:
+                if playlist.get("name") == name and isinstance(playlist.get("id"), str):
+                    return playlist["id"]
+            if payload.get("next") is None or len(items) < 50:
+                return None
+            offset += 50
+        return None
+
+    async def replace_tracks(self, access_token: str, playlist_id: str, uris: list[str]) -> None:
+        """Replace a playlist's contents with ``uris`` (idempotent regenerate).
+
+        ``PUT /playlists/{id}/items`` sets the first 100; any remainder is
+        appended via POST (same retired-endpoint-safe path as ``add_tracks``).
+        """
+        await self._authed_put(
+            f"/playlists/{playlist_id}/items",
+            access_token,
+            json={"uris": uris[:_MAX_TRACKS_PER_ADD]},
+        )
+        rest = uris[_MAX_TRACKS_PER_ADD:]
+        if rest:
+            await self.add_tracks(access_token, playlist_id, rest)
+
     async def _authed_get(self, path: str, access_token: str) -> dict:
         try:
             async with self._client_factory() as client:
@@ -283,6 +338,18 @@ class SpotifyClient:
                 )
         except httpx.HTTPError as exc:
             raise SpotifyApiError(f"spotify POST {path} failed: {exc}") from exc
+        return self._json_or_raise(response, path)
+
+    async def _authed_put(self, path: str, access_token: str, *, json: dict) -> dict:
+        try:
+            async with self._client_factory() as client:
+                response = await client.put(
+                    f"{_API_BASE}{path}",
+                    json=json,
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+        except httpx.HTTPError as exc:
+            raise SpotifyApiError(f"spotify PUT {path} failed: {exc}") from exc
         return self._json_or_raise(response, path)
 
     @staticmethod

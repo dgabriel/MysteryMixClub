@@ -8,10 +8,18 @@ from jose import JWTError
 from app.auth.jwt import create_oauth_state, decode_oauth_state
 
 
-def test_roundtrip_returns_user_id():
+def test_roundtrip_returns_user_id_and_no_return_path_by_default():
     uid = uuid.uuid4()
-    state = create_oauth_state(uid, "spotify")
-    assert decode_oauth_state(state, "spotify") == uid
+    decoded = decode_oauth_state(create_oauth_state(uid, "spotify"), "spotify")
+    assert decoded.user_id == uid
+    assert decoded.return_to is None
+
+
+def test_roundtrip_carries_return_path():
+    uid = uuid.uuid4()
+    decoded = decode_oauth_state(create_oauth_state(uid, "spotify", "/rounds/abc"), "spotify")
+    assert decoded.user_id == uid
+    assert decoded.return_to == "/rounds/abc"
 
 
 def test_purpose_mismatch_rejected():

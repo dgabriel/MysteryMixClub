@@ -55,7 +55,8 @@ export function SpotifyPlaylist({ roundId, entryCount }: { roundId: string; entr
     setBusy(true);
     setError(null);
     try {
-      const { authorize_url } = await connectSpotify();
+      // Tell the backend to land us back on this round after consent (MYS-93).
+      const { authorize_url } = await connectSpotify(`/rounds/${roundId}`);
       // Hand off to Spotify's consent page; the callback returns to the app.
       window.location.assign(authorize_url);
     } catch (err) {

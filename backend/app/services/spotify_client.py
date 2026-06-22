@@ -47,8 +47,9 @@ PLAYLIST_SCOPES = ("playlist-modify-public", "playlist-modify-private")
 
 # Spotify caps tracks-per-add request at 100; chunk larger playlists.
 _MAX_TRACKS_PER_ADD = 100
-# Cap how far we page through the user's library looking for an existing playlist
-# to reuse (50/page), so a huge library can't loop unbounded.
+# Page size + cap for scanning the user's library for an existing playlist to
+# reuse, so a huge library can't loop unbounded.
+_PLAYLIST_PAGE_SIZE = 50
 _MAX_PLAYLIST_PAGES = 10
 # Refresh the app token a little before it actually expires to avoid races.
 _APP_TOKEN_SKEW_SECONDS = 30
@@ -265,14 +266,21 @@ class SpotifyClient:
                 f"/playlists/{playlist_id}/items", access_token, json={"uris": chunk}
             )
 
-    async def find_playlist_id_by_name(self, access_token: str, name: str) -> str | None:
-        """Return the id of the user's playlist whose name exactly matches
-        ``name``, or ``None`` if there's no match — so we can reuse a playlist
-        instead of creating a duplicate (MYS-87).
+    async def find_playlist_id_by_name(
+        self, access_token: str, name: str, owner_id: str
+    ) -> str | None:
+        """Return the id of a playlist **owned by** ``owner_id`` whose name exactly
+        matches ``name``, or ``None`` if no such playlist is found — so we can
+        reuse it instead of creating a duplicate (MYS-87).
 
-        Raises :class:`SpotifyAuthError` on a rejected token (caller prompts a
-        reconnect); other upstream failures degrade to ``None`` (treated as "not
-        found" — the caller then creates a fresh playlist).
+        ``GET /me/playlists`` lists both owned *and followed* playlists, so we only
+        match ones the user owns (we can't write to a followed playlist).
+
+        Raises :class:`SpotifyAuthError` on a rejected token and
+        :class:`SpotifyApiError` on any other upstream failure — a transient error
+        must surface (the caller retries) rather than be mistaken for "not found",
+        which would silently create a duplicate. ``None`` means the scan completed
+        with no owned match (incl. exhausting the page cap on a huge library).
         """
         offset = 0
         for _ in range(_MAX_PLAYLIST_PAGES):
@@ -280,26 +288,30 @@ class SpotifyClient:
                 async with self._client_factory() as client:
                     response = await client.get(
                         f"{_API_BASE}/me/playlists",
-                        params={"limit": 50, "offset": offset},
+                        params={"limit": _PLAYLIST_PAGE_SIZE, "offset": offset},
                         headers={"Authorization": f"Bearer {access_token}"},
                     )
-            except httpx.HTTPError:
-                return None
+            except httpx.HTTPError as exc:
+                raise SpotifyApiError(f"spotify GET /me/playlists failed: {exc}") from exc
             if response.status_code == 401:
                 raise SpotifyAuthError("spotify access token rejected")
             if response.status_code != 200:
-                return None
+                raise SpotifyApiError(f"spotify /me/playlists returned {response.status_code}")
             try:
                 payload = response.json()
-            except ValueError:
-                return None
-            items = payload.get("items") or []
-            for playlist in items:
-                if playlist.get("name") == name and isinstance(playlist.get("id"), str):
+            except ValueError as exc:
+                raise SpotifyApiError("spotify /me/playlists returned invalid json") from exc
+            for playlist in payload.get("items") or []:
+                if (
+                    playlist.get("name") == name
+                    and isinstance(playlist.get("id"), str)
+                    and (playlist.get("owner") or {}).get("id") == owner_id
+                ):
                     return playlist["id"]
-            if payload.get("next") is None or len(items) < 50:
+            # `next` is Spotify's authoritative end-of-list cursor.
+            if payload.get("next") is None:
                 return None
-            offset += 50
+            offset += _PLAYLIST_PAGE_SIZE
         return None
 
     async def replace_tracks(self, access_token: str, playlist_id: str, uris: list[str]) -> None:

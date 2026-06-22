@@ -237,7 +237,9 @@ async def create_round_spotify_playlist(
         try:
             # Idempotent: reuse an existing same-named playlist (replacing its
             # tracks) instead of creating a duplicate on every generate (MYS-87).
-            existing_id = await client.find_playlist_id_by_name(access_token, name)
+            existing_id = await client.find_playlist_id_by_name(
+                access_token, name, connection.spotify_user_id
+            )
             if existing_id is not None:
                 await client.replace_tracks(access_token, existing_id, matched_uris)
                 playlist_url = f"https://open.spotify.com/playlist/{existing_id}"

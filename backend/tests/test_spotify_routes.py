@@ -114,6 +114,7 @@ class FakeSpotifyClient:
         self.added: list[str] = []
         self.replaced: dict | None = None
         self.looked_up_name: str | None = None
+        self.looked_up_owner: str | None = None
 
     @property
     def is_configured(self) -> bool:
@@ -136,8 +137,9 @@ class FakeSpotifyClient:
     async def get_current_user_id(self, access_token) -> str:
         return "spuser"
 
-    async def find_playlist_id_by_name(self, access_token, name) -> str | None:
+    async def find_playlist_id_by_name(self, access_token, name, owner_id) -> str | None:
         self.looked_up_name = name
+        self.looked_up_owner = owner_id
         return self._existing_playlist_id
 
     async def create_playlist(self, access_token, name, description, *, public=False):

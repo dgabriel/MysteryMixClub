@@ -115,9 +115,13 @@ async def spotify_callback(
     settings: Settings = Depends(get_settings),
 ) -> RedirectResponse:
     """Spotify redirects here after consent. Validates state, exchanges the code,
-    persists the connection, and bounces back to the SPA with a status flag."""
-    success = f"{settings.app_base_url}/?spotify=connected"
-    failure = f"{settings.app_base_url}/?spotify=error"
+    persists the connection, and bounces back to the SPA with a status flag.
+
+    Lands on ``/home`` (an authenticated route), NOT ``/`` — the root route
+    unconditionally redirects to ``/login``, which would strand the just-returned
+    (and still authenticated) user on the login page (MYS-92)."""
+    success = f"{settings.app_base_url}/home?spotify=connected"
+    failure = f"{settings.app_base_url}/home?spotify=error"
 
     if error or not code:
         # User denied consent or Spotify returned an error.

@@ -1,19 +1,38 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { LoginRoute } from "./LoginRoute";
 import { requestMagicLink } from "../services/api";
+import { useAuth } from "../hooks/useAuth";
 
 // Mock only the API module so no network is touched.
 vi.mock("../services/api", () => ({
   requestMagicLink: vi.fn(),
 }));
+vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
 
 const mockRequestMagicLink = vi.mocked(requestMagicLink);
+const mockUseAuth = vi.mocked(useAuth);
 
 describe("LoginRoute", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: not signed in, so the form renders.
+    mockUseAuth.mockReturnValue({ status: "unauthenticated" } as ReturnType<typeof useAuth>);
+  });
+
+  it("redirects an already-authenticated user to /home", () => {
+    mockUseAuth.mockReturnValue({ status: "authenticated" } as ReturnType<typeof useAuth>);
+    render(
+      <MemoryRouter initialEntries={["/login"]}>
+        <Routes>
+          <Route path="/login" element={<LoginRoute />} />
+          <Route path="/home" element={<div>HOME</div>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("HOME")).toBeInTheDocument();
   });
 
   it("happy path: submits a trimmed email and shows CheckEmail with that email", async () => {

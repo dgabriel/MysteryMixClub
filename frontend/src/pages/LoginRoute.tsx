@@ -1,13 +1,16 @@
 import { useState } from "react";
+import { Navigate } from "react-router-dom";
 import { EmailEntryScreen } from "./EmailEntryScreen";
 import { CheckEmailScreen } from "./CheckEmailScreen";
 import { requestMagicLink } from "../services/api";
+import { useAuth } from "../hooks/useAuth";
 
 /**
  * Login flow container. Drives EmailEntryScreen → CheckEmailScreen.
  * Wires the presentational screens via their documented props only.
  */
 export function LoginRoute() {
+  const { status } = useAuth();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
@@ -31,6 +34,13 @@ export function LoginRoute() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  // An already-authenticated user has no business on the login form — e.g. after
+  // returning from an external OAuth flow that lands on a route which funnels
+  // here. Bounce them home (MYS-92). /home cascades to /onboarding if needed.
+  if (status === "authenticated") {
+    return <Navigate to="/home" replace />;
   }
 
   if (sentTo) {

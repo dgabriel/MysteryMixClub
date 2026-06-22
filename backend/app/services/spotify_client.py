@@ -42,8 +42,14 @@ _TOKEN_URL = f"{_ACCOUNTS_BASE}/api/token"
 _API_BASE = "https://api.spotify.com/v1"
 _DEFAULT_TIMEOUT = 10.0
 
-# Scopes needed to create a playlist and add tracks in the user's library.
-PLAYLIST_SCOPES = ("playlist-modify-public", "playlist-modify-private")
+# Scopes needed to create/modify playlists AND to read the user's playlists
+# (`playlist-read-private` — required to list them for the reuse lookup; without
+# it GET /me/playlists returns 403 "Insufficient client scope").
+PLAYLIST_SCOPES = (
+    "playlist-read-private",
+    "playlist-modify-public",
+    "playlist-modify-private",
+)
 
 # Spotify caps tracks-per-add request at 100; chunk larger playlists.
 _MAX_TRACKS_PER_ADD = 100
@@ -273,14 +279,17 @@ class SpotifyClient:
         matches ``name``, or ``None`` if no such playlist is found — so we can
         reuse it instead of creating a duplicate (MYS-87).
 
-        ``GET /me/playlists`` lists both owned *and followed* playlists, so we only
-        match ones the user owns (we can't write to a followed playlist).
+        ``GET /me/playlists`` lists both owned *and followed* playlists (and needs
+        the ``playlist-read-private`` scope), so we only match ones the user owns
+        (we can't write to a followed playlist).
 
-        Raises :class:`SpotifyAuthError` on a rejected token and
-        :class:`SpotifyApiError` on any other upstream failure — a transient error
-        must surface (the caller retries) rather than be mistaken for "not found",
-        which would silently create a duplicate. ``None`` means the scan completed
-        with no owned match (incl. exhausting the page cap on a huge library).
+        **Best-effort:** a rejected token raises :class:`SpotifyAuthError` (the
+        caller prompts a reconnect), but any *other* failure — insufficient scope
+        (an old token without ``playlist-read-private``), rate-limit, 5xx, network,
+        bad JSON — degrades to ``None`` so the reuse lookup **never blocks
+        generation**; at worst we create a fresh playlist. (A working create beats a
+        502; robust reuse-by-id is MYS-89.) ``None`` also means the scan completed
+        with no owned match.
         """
         offset = 0
         for _ in range(_MAX_PLAYLIST_PAGES):
@@ -291,16 +300,16 @@ class SpotifyClient:
                         params={"limit": _PLAYLIST_PAGE_SIZE, "offset": offset},
                         headers={"Authorization": f"Bearer {access_token}"},
                     )
-            except httpx.HTTPError as exc:
-                raise SpotifyApiError(f"spotify GET /me/playlists failed: {exc}") from exc
+            except httpx.HTTPError:
+                return None
             if response.status_code == 401:
                 raise SpotifyAuthError("spotify access token rejected")
             if response.status_code != 200:
-                raise SpotifyApiError(f"spotify /me/playlists returned {response.status_code}")
+                return None
             try:
                 payload = response.json()
-            except ValueError as exc:
-                raise SpotifyApiError("spotify /me/playlists returned invalid json") from exc
+            except ValueError:
+                return None
             for playlist in payload.get("items") or []:
                 if (
                     playlist.get("name") == name

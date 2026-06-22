@@ -220,6 +220,14 @@ async def test_connect_returns_authorize_url(spotify_client, db_session):
     assert resp.json()["authorize_url"].startswith("https://accounts.spotify.com/authorize")
 
 
+async def test_callback_redirects_to_home_not_root(spotify_client):
+    # Must land on /home (authenticated route), not / (which hard-redirects to
+    # /login and strands the returned user — MYS-92). Error path needs no client.
+    resp = await spotify_client.get("/api/v1/spotify/callback?state=x&error=denied")
+    assert resp.status_code == 303
+    assert resp.headers["location"].endswith("/home?spotify=error")
+
+
 # --------------------------------------------------------------------------- #
 # create playlist — gates
 # --------------------------------------------------------------------------- #

@@ -232,3 +232,104 @@ async def test_add_tracks_chunks_at_100_via_items_endpoint():
     assert batches == [100, 100, 50]
     # The /tracks form was retired Feb 2026; must POST /playlists/{id}/items.
     assert paths == {"/v1/playlists/pl/items"}
+
+
+# --------------------------------------------------------------------------- #
+# Reuse: find existing playlist by name + replace its tracks (MYS-87)
+# --------------------------------------------------------------------------- #
+
+
+def _pl(pid: str, name: str, owner: str = "me") -> dict:
+    return {"id": pid, "name": name, "owner": {"id": owner}}
+
+
+async def test_find_playlist_id_by_name_matches_owned_on_first_page():
+    payload = {
+        "items": [_pl("p1", "Other"), _pl("p2", "MysteryMixClub: L, theme")],
+        "next": None,
+    }
+    pid = await _client(lambda r: httpx.Response(200, json=payload)).find_playlist_id_by_name(
+        "tok", "MysteryMixClub: L, theme", "me"
+    )
+    assert pid == "p2"
+
+
+async def test_find_playlist_id_by_name_ignores_followed_playlist():
+    # Same name but owned by someone else (a followed playlist) must not match —
+    # we can't write to it.
+    payload = {"items": [_pl("pX", "wanted", owner="someone-else")], "next": None}
+    pid = await _client(lambda r: httpx.Response(200, json=payload)).find_playlist_id_by_name(
+        "tok", "wanted", "me"
+    )
+    assert pid is None
+
+
+async def test_find_playlist_id_by_name_paginates_until_match():
+    pages = [
+        httpx.Response(200, json={"items": [_pl("a", "x")] * 50, "next": "https://next"}),
+        httpx.Response(200, json={"items": [_pl("target", "wanted")], "next": None}),
+    ]
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        resp = pages[calls["n"]]
+        calls["n"] += 1
+        return resp
+
+    pid = await _client(handler).find_playlist_id_by_name("tok", "wanted", "me")
+    assert pid == "target"
+    assert calls["n"] == 2  # had to fetch the second page
+
+
+async def test_find_playlist_id_by_name_returns_none_when_absent():
+    payload = {"items": [_pl("p1", "Other")], "next": None}
+    pid = await _client(lambda r: httpx.Response(200, json=payload)).find_playlist_id_by_name(
+        "tok", "Nope", "me"
+    )
+    assert pid is None
+
+
+async def test_find_playlist_id_by_name_401_raises_auth_error():
+    with pytest.raises(SpotifyAuthError):
+        await _client(lambda r: httpx.Response(401)).find_playlist_id_by_name("tok", "x", "me")
+
+
+async def test_find_playlist_id_by_name_transient_error_raises_api_error():
+    # A transient failure must surface (caller retries), NOT be mistaken for "not
+    # found" — that would silently create a duplicate.
+    with pytest.raises(SpotifyApiError):
+        await _client(lambda r: httpx.Response(500)).find_playlist_id_by_name("tok", "x", "me")
+    with pytest.raises(SpotifyApiError):
+        await _client(lambda r: httpx.Response(429)).find_playlist_id_by_name("tok", "x", "me")
+
+
+async def test_replace_tracks_puts_to_items_endpoint():
+    seen: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        import json
+
+        seen["method"] = request.method
+        seen["path"] = request.url.path
+        seen["uris"] = json.loads(request.content)["uris"]
+        return httpx.Response(200, json={"snapshot_id": "s"})
+
+    await _client(handler).replace_tracks("tok", "pl", ["spotify:track:a", "spotify:track:b"])
+    assert seen["method"] == "PUT"
+    assert seen["path"] == "/v1/playlists/pl/items"
+    assert seen["uris"] == ["spotify:track:a", "spotify:track:b"]
+
+
+async def test_replace_tracks_puts_first_100_then_appends_rest():
+    calls: list[tuple[str, int]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        import json
+
+        calls.append((request.method, len(json.loads(request.content)["uris"])))
+        return httpx.Response(200, json={"snapshot_id": "s"})
+
+    uris = [f"spotify:track:{i}" for i in range(150)]
+    await _client(handler).replace_tracks("tok", "pl", uris)
+    # First a PUT of 100 (replace), then a POST of the remaining 50 (append).
+    assert calls == [("PUT", 100), ("POST", 50)]

@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 
 from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Response, status
 from pydantic import BaseModel, EmailStr
@@ -29,7 +30,7 @@ _REFRESH_COOKIE_PATH = "/api/v1/auth"
 # withholds the cookie on all cross-site POST/XHR, so it can't be CSRF-forged.
 # (Deviates from technical-design §5/§9, which is updated with this rationale.)
 # Must match between set and delete or the cookie won't clear.
-_REFRESH_COOKIE_SAMESITE = "lax"
+_REFRESH_COOKIE_SAMESITE: Literal["lax"] = "lax"
 # Single source of truth for the 30-day refresh window: the cookie max-age and
 # the server-side expiry check both derive from this so they can never drift.
 _REFRESH_TOKEN_TTL = timedelta(days=30)

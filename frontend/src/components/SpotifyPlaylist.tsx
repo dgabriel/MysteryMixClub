@@ -69,7 +69,13 @@ export function SpotifyPlaylist({ roundId, entryCount }: { roundId: string; entr
     setBusy(true);
     setError(null);
     try {
-      setResult(await createSpotifyPlaylist(roundId));
+      const created = await createSpotifyPlaylist(roundId);
+      setResult(created);
+      // Auto-open the new playlist (MYS-103). May be popup-blocked (it's after an
+      // await); the "open playlist in Spotify" link below stays as the fallback.
+      if (created.playlist_url) {
+        window.open(created.playlist_url, "_blank", "noopener,noreferrer");
+      }
     } catch (err) {
       setError(messageFor(err));
     } finally {

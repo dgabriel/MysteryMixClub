@@ -57,6 +57,8 @@ describe("SpotifyPlaylist", () => {
 
   it("creates a playlist and shows the link plus matched/unmatched counts", async () => {
     mockStatus.mockResolvedValue({ configured: true, connected: true });
+    const open = vi.fn();
+    vi.stubGlobal("open", open);
     mockCreate.mockResolvedValue({
       round_id: "r1",
       playlist_url: "https://open.spotify.com/playlist/pl1",
@@ -73,6 +75,12 @@ describe("SpotifyPlaylist", () => {
     expect(link).toHaveAttribute("href", "https://open.spotify.com/playlist/pl1");
     expect(screen.getByText(/1 of 2 on Spotify/i)).toBeInTheDocument();
     expect(screen.getByText(/1 couldn't be matched/i)).toBeInTheDocument();
+    // Auto-opened the new playlist (MYS-103).
+    expect(open).toHaveBeenCalledWith(
+      "https://open.spotify.com/playlist/pl1",
+      "_blank",
+      "noopener,noreferrer",
+    );
   });
 
   it("reports when nothing matched (no playlist created)", async () => {

@@ -142,6 +142,7 @@ async def test_get_me_returns_exact_profile_shape(client, db_session):
         "email",
         "preferred_service",
         "default_vibe_mode",
+        "email_notifications",
     }
     assert body["id"] == str(user_id)
     assert body["display_name"] == "Bob"

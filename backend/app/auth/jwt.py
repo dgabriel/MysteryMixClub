@@ -15,6 +15,8 @@ __all__ = [
     "decode_access_token",
     "create_oauth_state",
     "decode_oauth_state",
+    "create_unsubscribe_token",
+    "decode_unsubscribe_token",
 ]
 
 
@@ -100,3 +102,32 @@ def decode_oauth_state(token: str, purpose: str) -> OAuthState:
         raise JWTError("subject claim is not a valid user id") from exc
     rt = claims.get("rt")
     return OAuthState(user_id=user_id, return_to=rt if isinstance(rt, str) else None)
+
+
+def create_unsubscribe_token(user_id: uuid.UUID) -> str:
+    """Return a signed, **non-expiring** token for one-click email unsubscribe.
+
+    Unlike access/state tokens this carries no ``exp``: the link lives in a sent
+    email indefinitely and must keep working. It's low-risk — the only action it
+    authorizes is turning the recipient's own notification preference off. Signed
+    so it can't be forged to unsubscribe someone else; bound to ``purpose`` so it
+    can't be swapped with an access/state token."""
+    claims = {"sub": str(user_id), "purpose": "unsubscribe"}
+    return jwt.encode(claims, get_settings().secret_key, algorithm=_ALGORITHM)
+
+
+def decode_unsubscribe_token(token: str) -> uuid.UUID:
+    """Verify an unsubscribe token and return its ``sub`` as a user id.
+
+    Raises ``jose.JWTError`` on any failure: malformed, bad signature, a
+    ``purpose`` that isn't ``"unsubscribe"``, or a missing/invalid ``sub``."""
+    claims = jwt.decode(token, get_settings().secret_key, algorithms=[_ALGORITHM])
+    if claims.get("purpose") != "unsubscribe":
+        raise JWTError("token purpose mismatch")
+    sub = claims.get("sub")
+    if not isinstance(sub, str):
+        raise JWTError("missing or invalid subject claim")
+    try:
+        return uuid.UUID(sub)
+    except ValueError as exc:
+        raise JWTError("subject claim is not a valid user id") from exc

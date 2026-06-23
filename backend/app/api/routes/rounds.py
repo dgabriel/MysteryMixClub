@@ -22,20 +22,23 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.leagues import _load_league_as_member, _load_league_as_organizer
 from app.auth.deps import get_current_user
+from app.config import Settings, get_settings
 from app.db.session import get_db
 from app.models.note import Note
 from app.models.round import Round
 from app.models.submission import Submission
 from app.models.user import User
 from app.models.vote import Vote
+from app.services.email import EmailSender, get_email_sender
 from app.services.most_noted import compute_most_noted
+from app.services.notifications import RoundEvent, gather_recipients, queue_round_event
 from app.services.youtube_playlist import build_watch_videos_url, normalize_video_ids
 from app.services.youtube_resolver import YouTubeResolver, get_youtube_resolver
 
@@ -198,8 +201,11 @@ async def get_round(
 async def update_round(
     round_id: uuid.UUID,
     payload: RoundUpdate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    sender: EmailSender = Depends(get_email_sender),
+    settings: Settings = Depends(get_settings),
 ) -> RoundResponse:
     round_ = await _load_round(round_id, db)
     league = await _load_league_as_organizer(
@@ -208,6 +214,9 @@ async def update_round(
 
     updates = payload.model_dump(exclude_unset=True)
     new_state = updates.pop("state", None)
+    # Lifecycle emails to fire once the transition commits (MYS-109). Collected as
+    # (round, event) so an auto-opened next round notifies for *its* opening.
+    events: list[tuple[Round, RoundEvent]] = []
 
     # Field edits (theme, deadlines) are frozen once the round is closed.
     if updates and round_.state == "closed":
@@ -246,12 +255,18 @@ async def update_round(
                 )
             league.current_round = round_.round_number
         round_.state = new_state
-        if new_state == "closed":
+        if new_state == "open_submission":
+            events.append((round_, "submission_open"))
+        elif new_state == "open_voting":
+            events.append((round_, "voting_open"))
+        elif new_state == "closed":
             round_.closed_at = func.now()
+            events.append((round_, "round_closed"))
             if round_.round_number >= league.total_rounds:
                 # Closing the final round completes the league.
                 league.state = "complete"
                 league.completed_at = func.now()
+                events.append((round_, "league_complete"))
             else:
                 # Auto-open the next pending round in sequence, if any.
                 next_round = await db.scalar(
@@ -264,6 +279,18 @@ async def update_round(
                 if next_round is not None:
                     next_round.state = "open_submission"
                     league.current_round = next_round.round_number
+                    events.append((next_round, "submission_open"))
+
+    # Build + schedule notifications before commit, while the ORM objects are
+    # loaded (avoids post-commit lazy-loads in async — the expire_on_commit
+    # MissingGreenlet trap). Background tasks only run on a successful response,
+    # so a failed commit below means no emails go out.
+    if events:
+        recipients = await gather_recipients(db, round_.league_id)
+        for event_round, event in events:
+            queue_round_event(
+                background_tasks, sender, settings, recipients, league, event_round, event
+            )
 
     await db.commit()
     await db.refresh(round_)

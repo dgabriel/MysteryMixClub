@@ -22,6 +22,26 @@ class Settings(BaseSettings):
     allowed_origins: str = Field(default="")
     environment: Literal["development", "staging", "production"] = "development"
     app_base_url: str = Field(default="https://mysterymixclub.com")
+    # Public base URL of the API itself, used to build links that must hit the
+    # backend directly (e.g. the one-click email-unsubscribe endpoint). Falls
+    # back to app_base_url when unset (same-host deployments that proxy /api).
+    api_base_url: str = Field(default="")
+    # ----------------------------------------------------------------------- #
+    # Feature flags
+    #
+    # App-level toggles, flipped per-environment via env vars (no redeploy).
+    # Conventions: name the boolean flag clearly, default it OFF (safe in prod),
+    # keep any companion config beside it, and document every flag in
+    # docs/feature-flags.md (+ .env.example, + the DO app specs if used in a
+    # deployed env). Add new flags below this banner.
+    # ----------------------------------------------------------------------- #
+
+    # Staging email sink: when on, every outbound email is redirected to
+    # email_test_recipient instead of the real recipient — lets staging be
+    # flipped between real delivery and a test inbox. If on but no recipient is
+    # set, email is suppressed (fail-safe). See docs/feature-flags.md.
+    email_redirect_to_test: bool = Field(default=False)
+    email_test_recipient: str = Field(default="")
 
     @field_validator("database_url")
     @classmethod

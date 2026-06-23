@@ -19,6 +19,11 @@ class User(Base):
     default_vibe_mode: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
+    # Whether to send round-lifecycle email notifications (MYS-109). Default on;
+    # toggled off in-app or via the one-click unsubscribe link in each email.
+    email_notifications: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

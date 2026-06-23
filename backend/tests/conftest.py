@@ -45,12 +45,22 @@ _TRUNCATE_TABLES = (
 
 @dataclass
 class SpyEmailSender:
-    """Records every magic-link send so tests can assert on arguments."""
+    """Records every send so tests can assert on arguments."""
 
     calls: list[tuple[str, str]] = field(default_factory=list)
+    # General notification sends (MYS-109): (email, subject, html).
+    sends: list[tuple[str, str, str]] = field(default_factory=list)
+    # Extra MIME headers per send (e.g. List-Unsubscribe), parallel to `sends`.
+    sent_headers: list[dict[str, str] | None] = field(default_factory=list)
 
     def send_magic_link(self, email: str, link: str) -> None:
         self.calls.append((email, link))
+
+    def send(
+        self, email: str, subject: str, html: str, headers: dict[str, str] | None = None
+    ) -> None:
+        self.sends.append((email, subject, html))
+        self.sent_headers.append(headers)
 
     @property
     def call_count(self) -> int:

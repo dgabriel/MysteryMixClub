@@ -47,3 +47,6 @@ build/
 
 # Generated at deploy time from .do/app.{staging,prod}.yaml
 .do/app.yaml
+
+# Local dev runtime (pids/logs from scripts/dev-up.sh)
+.dev/

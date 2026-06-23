@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { RoundDetailRoute } from "./RoundDetailRoute";
@@ -235,6 +235,18 @@ describe("RoundDetailRoute", () => {
     const btn = await screen.findByRole("button", { name: /open voting/i });
     await user.click(btn);
     expect(mockUpdateRound).toHaveBeenCalledWith("r1", { state: "open_voting" });
+  });
+
+  it("advance button resets after a successful open (not stuck on 'opening…') — MYS-95", async () => {
+    const user = userEvent.setup();
+    renderRound();
+    await user.click(await screen.findByRole("button", { name: /open voting/i }));
+    expect(mockUpdateRound).toHaveBeenCalled();
+    // After success the button returns to its label; it must not stay "opening…".
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /open voting/i })).toBeInTheDocument(),
+    );
+    expect(screen.queryByRole("button", { name: /opening/i })).not.toBeInTheDocument();
   });
 
   it("non-organizer sees no advance control", async () => {

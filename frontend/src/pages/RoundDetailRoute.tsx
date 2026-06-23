@@ -189,6 +189,9 @@ export function RoundDetailRoute() {
       await load();
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : "couldn't update the round.");
+    } finally {
+      // Reset on success too — otherwise the button sticks on "opening…" after
+      // the round has opened (MYS-95).
       setAdvancing(false);
     }
   }
@@ -271,7 +274,7 @@ export function RoundDetailRoute() {
         <section className="mt-10">
           {round.state === "pending" ? (
             <p className="font-mono text-[13px] font-light text-muted">
-              this round hasn&apos;t opened yet — it&apos;s up next in the queue.
+              this round hasn&apos;t opened yet.
             </p>
           ) : round.state === "open_submission" ? (
             <SubmissionSection

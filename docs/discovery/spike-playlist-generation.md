@@ -116,6 +116,24 @@ verification and burn quota.
 **Verdict:** matching is excellent (keyless ISRC); **playlist creation gated on
 whether Deezer API access is still obtainable** — treat as a go/no-go investigation.
 
+> **⛔ MYS-84 outcome (2026-06-22): NO-GO — Deezer playlist creation dropped from scope.**
+> The go/no-go ran to completion and failed at the first gate:
+> - **Check 1 (register a new app): ❌** Deezer's "My Apps" no longer allows creating
+>   new applications, so no Application ID / Secret can be obtained. (Confirmed
+>   first-hand on a logged-in account; corroborated by Deezer Community + multiple
+>   OSS projects reporting new-app creation disabled since ~early 2024, still off
+>   in 2025–2026. New API access is partnership-only via a contact-sales form.)
+> - **Checks 2–3 (OAuth `manage_library` token → `POST /user/me/playlists`): ❌ unreachable**
+>   without app credentials. The portal's **Simple API** is keyless *and read-only
+>   by design* ("Unlimited Access… without identification") — it can never write to
+>   a user's library; the documented POST/DELETE playlist actions require an OAuth
+>   token we cannot mint.
+>
+> **What still works:** keyless `GET /track/isrc:{isrc}` (verified 200 / real track
+> id) — Deezer stays in scope for **per-track playback links** (`song_links.py`,
+> already shipped). Only playlist *creation* is dropped. Revisit only if Deezer
+> reopens self-serve app registration.
+
 ---
 
 ## 4. Track resolution across services (sub-problem A)

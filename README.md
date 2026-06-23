@@ -60,6 +60,34 @@ A web app where a friend group can run music league rounds across Spotify, YouTu
 
 ## Running Locally
 
+### Quick start (recommended)
+
+New here? Install [git](https://git-scm.com) and [Docker](https://docs.docker.com/get-docker/),
+then:
+
+```bash
+git clone https://github.com/dgabriel/MysteryMixClub.git
+cd MysteryMixClub
+./scripts/dev-up.sh
+```
+
+`scripts/dev-up.sh` works on **macOS and Linux**: it checks for the tools you need
+(git, Python 3.11+, Node 20+, Docker), offers to install anything missing, creates
+`backend/.env`, pulls the latest code, and (re)starts the full stack — Postgres +
+API + web — in the background. Re-run it anytime to update and restart; it stops the
+previous instance first. Other commands:
+
+```bash
+./scripts/dev-up.sh check   # just verify/install tools, start nothing
+./scripts/dev-up.sh logs    # tail the API + web logs
+./scripts/dev-up.sh stop    # stop the API + web it started
+```
+
+Then open the web app at <http://localhost:5173>. The manual steps below do the
+same thing by hand if you prefer.
+
+### Manual setup
+
 **Prerequisites:** Python 3.11+, Node 20+, Docker (for Postgres).
 
 ### 1. Start Postgres

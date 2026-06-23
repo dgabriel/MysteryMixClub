@@ -29,7 +29,7 @@ Establishes the problem, the users, and the competitive landscape. Read this bef
 Defines what we're building and how.
 
 - [`docs/prd/prd.md`](docs/prd/prd.md): Product requirements, user stories, features, and MVP scope
-- [`docs/technical/technical-design.md`](docs/technical/technical-design.md): Stack, data model, API design *(coming soon)*
+- [`docs/technical/technical-design.md`](docs/technical/technical-design.md): Stack, data model, API design
 
 ---
 
@@ -45,7 +45,7 @@ Defines what we're building and how.
 
 ## MVP in One Sentence
 
-A web app where a friend group can run music league rounds across Spotify, YouTube, and Deezer, with a Just Vibing mode for players who want to participate without scoring, and a Most Noted mechanic that celebrates resonance alongside competition.
+A web app where a friend group can run music league rounds across Spotify, YouTube, Deezer, and Apple Music, with a Just Vibing mode for players who want to participate without scoring, and a Most Noted mechanic that celebrates resonance alongside competition.
 
 ---
 
@@ -53,8 +53,8 @@ A web app where a friend group can run music league rounds across Spotify, YouTu
 
 - Frontend: React / TypeScript
 - Backend: Python / FastAPI
-- Song identity: ISRC via Odesli/Songlink API
-- Hosting: Digital Ocean
+- Song identity: ISRC, resolved via keyless provider lookups (Deezer + iTunes), with cross-service links assembled in-app
+- Hosting: DigitalOcean — production on App Platform, staging on a self-managed Droplet
 
 ---
 
@@ -90,7 +90,7 @@ same thing by hand if you prefer.
 
 **Prerequisites:** Python 3.11+, Node 20+, Docker (for Postgres).
 
-### 1. Start Postgres
+#### 1. Start Postgres
 
 ```bash
 docker compose up -d db
@@ -99,7 +99,7 @@ docker compose up -d db
 Brings up Postgres on `localhost:5432` (user `mmc`, password `mmc`, database
 `mysterymixclub`).
 
-### 2. Configure environment
+#### 2. Configure environment
 
 ```bash
 cp .env.example backend/.env
@@ -112,10 +112,14 @@ DATABASE_URL=postgresql+asyncpg://mmc:mmc@localhost:5432/mysterymixclub
 SECRET_KEY=<python -c "import secrets; print(secrets.token_urlsafe(64))">
 ```
 
-`RESEND_API_KEY` / `ODESLI_API_KEY` can stay empty for local work. The frontend
-defaults to `http://localhost:8000`, so it needs no `.env` for the standard setup.
+The optional integration keys — `RESEND_API_KEY` (email), `YOUTUBE_API_KEY`, and
+the `SPOTIFY_*` keys — can stay empty for local work; those features just degrade
+gracefully (e.g. magic-link and notification emails print to the console instead
+of sending). The frontend defaults to `http://localhost:8000`, so it needs no
+`.env` for the standard setup. See [`docs/feature-flags.md`](docs/feature-flags.md)
+for env-driven toggles like the staging email sink.
 
-### 3. Backend (FastAPI)
+#### 3. Backend (FastAPI)
 
 ```bash
 cd backend
@@ -132,7 +136,7 @@ uvicorn app.main:app --reload
 > Sign-in is magic-link based. In development no email is sent — the link is
 > printed to the **uvicorn console**. Watch the backend logs to grab it.
 
-### 4. Frontend (React / Vite)
+#### 4. Frontend (React / Vite)
 
 ```bash
 cd frontend
@@ -183,11 +187,15 @@ The same checks run in CI (`ruff` · `mypy` · `pytest` for backend; `lint` ·
 
 Deploys are **automated through the pipeline — you do not deploy by hand.**
 
-| Branch      | Deploys to                      | Trigger                          |
-|-------------|---------------------------------|----------------------------------|
-| `feature/*` | nothing (open a PR)             | PR → `develop` runs CI           |
-| `develop`   | staging (`mysterymixclub-staging`) | merge → auto-deploys          |
-| `main`      | production (`mysterymixclub-prod`) | merge → manual approval gate  |
+| Branch      | Deploys to                          | Trigger                          |
+|-------------|-------------------------------------|----------------------------------|
+| `feature/*` | nothing (open a PR)                 | PR → `develop` runs CI           |
+| `develop`   | staging (self-managed DO **Droplet**) | merge → auto-deploys via SSH   |
+| `main`      | production (DO **App Platform**, `mysterymixclub-prod`) | merge → manual approval gate |
+
+> Staging and production deliberately diverge: staging runs on an Ubuntu Droplet
+> (Nginx + systemd + local Postgres), production on DO App Platform with managed
+> Postgres. Staging runbook: [`docs/staging-setup.md`](docs/staging-setup.md).
 
 Flow: branch `feature/*` off `develop` → PR into `develop` (CI must pass) →
 merge ships to staging → PR `develop` → `main` → approve → ships to prod.
@@ -200,14 +208,18 @@ how to add a secret — are in [`docs/ci-cd.md`](docs/ci-cd.md).
 ## Status
 
 PDLC Definition phase complete (Discovery, PRD, and technical design all done).
-**MVP build in progress.**
+**MVP build is well underway** — the end-to-end league loop runs. Merged on
+`develop`:
 
-- **Sprint 1 — Auth:** complete (magic-link sign-in, JWT sessions).
-- **Sprint 2 — League & Member Management ([MYS-11](https://linear.app/mysterymixclub/issue/MYS-11), in progress):**
-  create / read / manage league endpoints, invite + join flow, and the league
-  and invite frontend screens are all merged (MYS-12, 13, 14, 34, 35, 15).
-  Open follow-ups in the backlog: MYS-32 (harden join race), MYS-36 (re-home
-  "log out of all devices").
+- **Auth:** magic-link sign-in, JWT + refresh-token sessions, log-out-of-all-devices, account deletion.
+- **Leagues:** create / read / manage, member management, invite + join flow (with frontend screens).
+- **Rounds:** auto-generated round slate, forward-only state machine (pending → submission → voting → closed), organizer controls, auto-advance to the next round on close.
+- **Submissions:** paste-a-link and search, ISRC resolution, and cross-service playback links (Spotify, YouTube, Deezer, Apple Music) assembled keyless.
+- **Voting & scoring:** voting with a configurable per-round budget, **Just Vibing** mode, self-vote prevention, anonymous shuffled playlist, the **Most Noted** mechanic, and results / reveal.
+- **Playlist generation:** one-click YouTube playlist link (keyless) and per-user Spotify OAuth saved playlists. (Deezer playlist creation is a confirmed dead end — links only; Apple Music playlists are spiked and gated on an Apple Developer membership.)
+- **Notifications:** round-lifecycle email notifications (Resend) with per-user preference + one-click unsubscribe.
+- **Hardening:** security response headers and application-layer tenant isolation.
 
-Work is tracked in Linear (team **MysteryMixClub**, project **MysteryMixClub
-MVP**). `develop` leads `main`; staging carries the un-promoted Sprint 2 work.
+Active work — Apple Music playlists, round progress indicators, live state polling,
+a profile/settings screen, and more — is tracked in Linear (team **MysteryMixClub**,
+project **MysteryMixClub MVP**). `develop` leads `main` and deploys to staging.

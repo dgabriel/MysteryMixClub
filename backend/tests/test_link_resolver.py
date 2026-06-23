@@ -80,6 +80,25 @@ def _resolver(handler) -> LinkResolver:
     return LinkResolver(client_factory=factory)
 
 
+class _FakeSpotify:
+    """Stands in for SpotifyClient.track_identity_by_id (exact Spotify-link path)."""
+
+    def __init__(self, track):
+        self._track = track
+        self.looked_up: str | None = None
+
+    async def track_identity_by_id(self, track_id):
+        self.looked_up = track_id
+        return self._track
+
+
+def _resolver_with_spotify(handler, spotify) -> LinkResolver:
+    def factory() -> httpx.AsyncClient:
+        return httpx.AsyncClient(transport=httpx.MockTransport(handler), timeout=5.0)
+
+    return LinkResolver(client_factory=factory, spotify=spotify)
+
+
 # --------------------------------------------------------------------------- #
 # Deezer — direct track lookup
 # --------------------------------------------------------------------------- #
@@ -182,6 +201,58 @@ async def test_spotify_funnels_through_deezer_search():
     song = await _resolver(handler).resolve(url)
     assert song.title == "American Pie"
     assert song.isrc == "USEM38600088"
+
+
+async def test_spotify_uses_exact_api_identity_when_configured():
+    # With Spotify configured we resolve the track id exactly (artist + ISRC) and
+    # never touch the lossy oEmbed-title -> Deezer search that mis-matched
+    # "Serpents" -> "Serpentskirt" (MYS-100).
+    from app.services.spotify_client import SpotifyTrack
+
+    fake = _FakeSpotify(
+        SpotifyTrack(
+            title="Serpents",
+            artist="Sharon Van Etten",
+            album="Epic",
+            thumbnail_url="https://img/cover.jpg",
+            isrc="US38Y1220103",
+        )
+    )
+
+    def boom(_r):  # pragma: no cover - must not be hit on the exact path
+        raise AssertionError("oEmbed/Deezer must not be called when the API resolves it")
+
+    handler = _router(spotify=boom, search=boom)
+    song = await _resolver_with_spotify(handler, fake).resolve(
+        "https://open.spotify.com/track/2v05RhwIQx3zbN8O72Ff69"
+    )
+    assert (song.title, song.artist, song.isrc) == ("Serpents", "Sharon Van Etten", "US38Y1220103")
+    assert fake.looked_up == "2v05RhwIQx3zbN8O72Ff69"
+
+
+async def test_spotify_without_isrc_falls_back_to_deezer_with_artist():
+    # If the Spotify record lacks an ISRC (rare), use its exact title+artist for an
+    # accurate Deezer match — not a title-only search.
+    from app.services.spotify_client import SpotifyTrack
+
+    fake = _FakeSpotify(
+        SpotifyTrack(
+            title="American Pie", artist="Don McLean", album=None, thumbnail_url=None, isrc=None
+        )
+    )
+    seen: dict = {}
+
+    def search(request):
+        seen["q"] = request.url.params.get("q", "")
+        return httpx.Response(200, json=_DEEZER_SEARCH_HIT)
+
+    handler = _router(search=search)
+    song = await _resolver_with_spotify(handler, fake).resolve(
+        "https://open.spotify.com/track/abc123"
+    )
+    assert song.title == "American Pie"
+    assert song.isrc == "USEM38600088"
+    assert "Don McLean" in seen["q"]  # artist included, not a title-only search
 
 
 async def test_spotify_non_track_url_is_invalid():

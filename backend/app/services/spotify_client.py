@@ -80,6 +80,17 @@ class SpotifyTokens:
     expires_in: int
 
 
+@dataclass(frozen=True)
+class SpotifyTrack:
+    """Exact track identity from the Spotify API (for the paste-a-link resolver)."""
+
+    title: str
+    artist: str | None
+    album: str | None
+    thumbnail_url: str | None
+    isrc: str | None
+
+
 class SpotifyClient:
     """Async wrapper over Spotify's auth + Web API.
 
@@ -226,6 +237,46 @@ class SpotifyClient:
             return None
         uri = items[0].get("uri")
         return uri if isinstance(uri, str) and uri.startswith("spotify:track:") else None
+
+    async def track_identity_by_id(self, track_id: str) -> SpotifyTrack | None:
+        """Exact identity (title/artist/album/thumbnail/isrc) for a Spotify track
+        id via the app token, or ``None`` (unconfigured / not found / error).
+
+        Lets the paste-a-link resolver use precise Spotify metadata instead of a
+        fuzzy title search, which can mis-match (MYS-100). Best-effort — never raises.
+        """
+        token = await self.app_access_token()
+        if not token or not track_id:
+            return None
+        try:
+            async with self._client_factory() as client:
+                response = await client.get(
+                    f"{_API_BASE}/tracks/{track_id}",
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+        except httpx.HTTPError:
+            return None
+        if response.status_code != 200:
+            return None
+        try:
+            data = response.json()
+        except ValueError:
+            return None
+        name = data.get("name")
+        if not isinstance(name, str) or not name:
+            return None
+        artist = ", ".join(a["name"] for a in data.get("artists") or [] if a.get("name")) or None
+        album = data.get("album") or {}
+        images = album.get("images") or []
+        thumbnail = images[0].get("url") if images and isinstance(images[0], dict) else None
+        isrc = (data.get("external_ids") or {}).get("isrc")
+        return SpotifyTrack(
+            title=name,
+            artist=artist,
+            album=album.get("name") or None,
+            thumbnail_url=thumbnail,
+            isrc=isrc or None,
+        )
 
     # ------------------------------------------------------------- writes #
 

@@ -10,6 +10,7 @@ from app.api.routes import (
     invites,
     leagues,
     notes,
+    notifications,
     rounds,
     spotify,
     submissions,
@@ -64,6 +65,7 @@ def create_app() -> FastAPI:
     app.include_router(submissions.router, prefix="/api/v1")
     app.include_router(votes.router, prefix="/api/v1")
     app.include_router(notes.router, prefix="/api/v1")
+    app.include_router(notifications.router, prefix="/api/v1")
     app.include_router(spotify.router, prefix="/api/v1")
     app.include_router(songs.router, prefix="/api/v1")
 

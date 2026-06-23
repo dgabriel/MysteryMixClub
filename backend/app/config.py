@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     allowed_origins: str = Field(default="")
     environment: Literal["development", "staging", "production"] = "development"
     app_base_url: str = Field(default="https://mysterymixclub.com")
+    # Public base URL of the API itself, used to build links that must hit the
+    # backend directly (e.g. the one-click email-unsubscribe endpoint). Falls
+    # back to app_base_url when unset (same-host deployments that proxy /api).
+    api_base_url: str = Field(default="")
 
     @field_validator("database_url")
     @classmethod

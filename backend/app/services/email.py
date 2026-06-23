@@ -7,6 +7,7 @@ logger = logging.getLogger("app.services.email")
 
 _MAGIC_LINK_SUBJECT = "Your MysteryMixClub sign-in link"
 _FROM_ADDRESS = "MysteryMixClub <login@mysterymixclub.com>"
+_NOTIFY_FROM_ADDRESS = "MysteryMixClub <notifications@mysterymixclub.com>"
 
 
 def _magic_link_html(link: str) -> str:
@@ -18,36 +19,49 @@ def _magic_link_html(link: str) -> str:
 
 
 class EmailSender(Protocol):
-    """Anything that can deliver a magic link to an email address."""
+    """Anything that can deliver email — magic links and general notifications."""
 
     def send_magic_link(self, email: str, link: str) -> None: ...
 
+    def send(self, email: str, subject: str, html: str) -> None:
+        """Deliver a general (non-magic-link) notification email."""
+        ...
+
 
 class ConsoleEmailSender:
-    """Development fallback: logs the magic link instead of sending email."""
+    """Development fallback: logs emails instead of sending them."""
 
     def send_magic_link(self, email: str, link: str) -> None:
         logger.info("Magic link for %s: %s", email, link)
 
+    def send(self, email: str, subject: str, html: str) -> None:
+        logger.info("Email to %s — %s", email, subject)
+
 
 class ResendEmailSender:
-    """Sends magic links via the Resend API."""
+    """Sends email via the Resend API."""
 
     def __init__(self, api_key: str) -> None:
         self._api_key = api_key
 
-    def send_magic_link(self, email: str, link: str) -> None:
+    def _send(self, from_address: str, email: str, subject: str, html: str) -> None:
         import resend
 
         resend.api_key = self._api_key
         resend.Emails.send(
             {
-                "from": _FROM_ADDRESS,
+                "from": from_address,
                 "to": [email],
-                "subject": _MAGIC_LINK_SUBJECT,
-                "html": _magic_link_html(link),
+                "subject": subject,
+                "html": html,
             }
         )
+
+    def send_magic_link(self, email: str, link: str) -> None:
+        self._send(_FROM_ADDRESS, email, _MAGIC_LINK_SUBJECT, _magic_link_html(link))
+
+    def send(self, email: str, subject: str, html: str) -> None:
+        self._send(_NOTIFY_FROM_ADDRESS, email, subject, html)
 
 
 def build_email_sender(settings: Settings) -> EmailSender:

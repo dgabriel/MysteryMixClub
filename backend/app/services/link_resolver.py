@@ -41,6 +41,7 @@ from app.services.deezer_search import (
     DeezerUnavailableError,
     build_deezer_client,
 )
+from app.services.spotify_client import SpotifyClient, get_spotify_client
 
 _DEEZER_TRACK = "https://api.deezer.com/track/{id}"
 _ITUNES_LOOKUP = "https://itunes.apple.com/lookup"
@@ -156,6 +157,7 @@ class LinkResolver:
         timeout: float = _DEFAULT_TIMEOUT,
         client_factory: Callable[[], httpx.AsyncClient] | None = None,
         deezer: DeezerSearchClient | None = None,
+        spotify: SpotifyClient | None = None,
     ) -> None:
         self._timeout = timeout
         self._client_factory = client_factory or (lambda: httpx.AsyncClient(timeout=timeout))
@@ -163,6 +165,9 @@ class LinkResolver:
         self._deezer = deezer or DeezerSearchClient(
             timeout=timeout, client_factory=self._client_factory
         )
+        # Optional: when Spotify is configured, resolve Spotify track ids exactly
+        # via its API instead of the lossy oEmbed-title -> Deezer-search path.
+        self._spotify = spotify
 
     # ----------------------------------------------------------------- #
     # HTTP helper — maps httpx/status failures onto the resolver hierarchy.
@@ -252,11 +257,31 @@ class LinkResolver:
         )
 
     async def _resolve_spotify(self, url: str) -> SongIdentity:
+        # Exact path: when Spotify is configured, look the track up by id via its
+        # API — gives the real artist + ISRC, fixing the oEmbed-title mis-match
+        # where "Serpents" fuzzy-searched to "Serpentskirt" (MYS-100).
+        track_id = _spotify_track_id(urlparse(url).path)
+        if track_id and self._spotify is not None:
+            track = await self._spotify.track_identity_by_id(track_id)
+            if track is not None:
+                if track.isrc:
+                    return SongIdentity(
+                        title=track.title,
+                        artist=track.artist,
+                        album=track.album,
+                        thumbnail_url=track.thumbnail_url,
+                        isrc=track.isrc,
+                    )
+                # No ISRC on the Spotify record (rare): still use its exact
+                # title+artist for an accurate Deezer match (gets the ISRC).
+                return await self._identify_via_deezer_search(track.title, track.artist)
+
+        # Fallback (Spotify unconfigured / lookup failed): oEmbed gives only the
+        # track name (no artist), so search on the title alone. Weakest path.
         data = await self._get_json(_SPOTIFY_OEMBED, {"url": url})
         title = data.get("title")
         if not title:
             raise SongNotFoundError("Spotify track not found")
-        # oEmbed gives only the track name (no artist); search on title alone.
         return await self._identify_via_deezer_search(title, None)
 
     async def _resolve_youtube(self, url: str) -> SongIdentity:
@@ -320,9 +345,16 @@ def _deezer_track_id(path: str) -> str | None:
     return match.group(1) if match else None
 
 
+def _spotify_track_id(path: str) -> str | None:
+    """Extract a Spotify base-62 track id from a ``/track/{id}`` path, or None."""
+    match = re.search(r"/track/([A-Za-z0-9]+)", path)
+    return match.group(1) if match else None
+
+
 def build_link_resolver() -> LinkResolver:
-    # Share one keyless Deezer client (its in-process cache) across resolves.
-    return LinkResolver(deezer=build_deezer_client())
+    # Share one keyless Deezer client (its in-process cache) across resolves, and
+    # the configured Spotify client for exact Spotify-link resolution (MYS-100).
+    return LinkResolver(deezer=build_deezer_client(), spotify=get_spotify_client())
 
 
 _RESOLVER: LinkResolver | None = None

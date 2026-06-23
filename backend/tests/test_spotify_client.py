@@ -178,6 +178,64 @@ async def test_search_returns_none_on_error_status():
 
 
 # --------------------------------------------------------------------------- #
+# Exact track lookup by id (paste-a-link resolver — MYS-100)
+# --------------------------------------------------------------------------- #
+
+
+def _with_app_token(track_response):
+    """Handler serving the client-credentials token then a /tracks response."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/api/token"):
+            return httpx.Response(200, json={"access_token": "app-tok", "expires_in": 3600})
+        return track_response(request)
+
+    return handler
+
+
+async def test_track_identity_by_id_returns_exact_identity():
+    track = {
+        "name": "Serpents",
+        "artists": [{"name": "Sharon Van Etten"}],
+        "album": {"name": "Epic", "images": [{"url": "https://img/cover.jpg"}]},
+        "external_ids": {"isrc": "US38Y1220103"},
+    }
+    handler = _with_app_token(lambda r: httpx.Response(200, json=track))
+    result = await _client(handler).track_identity_by_id("2v05RhwIQx3zbN8O72Ff69")
+    assert result is not None
+    assert result.title == "Serpents"
+    assert result.artist == "Sharon Van Etten"
+    assert result.album == "Epic"
+    assert result.thumbnail_url == "https://img/cover.jpg"
+    assert result.isrc == "US38Y1220103"
+
+
+async def test_track_identity_by_id_joins_multiple_artists():
+    track = {
+        "name": "X",
+        "artists": [{"name": "A"}, {"name": "B"}],
+        "album": {},
+        "external_ids": {},
+    }
+    handler = _with_app_token(lambda r: httpx.Response(200, json=track))
+    result = await _client(handler).track_identity_by_id("t")
+    assert result is not None and result.artist == "A, B" and result.isrc is None
+
+
+async def test_track_identity_by_id_not_found_returns_none():
+    handler = _with_app_token(lambda r: httpx.Response(404))
+    assert await _client(handler).track_identity_by_id("t") is None
+
+
+async def test_track_identity_by_id_unconfigured_returns_none():
+    def handler(_request: httpx.Request) -> httpx.Response:  # pragma: no cover
+        raise AssertionError("no request without app credentials")
+
+    client = _client(handler, client_id="", client_secret="")
+    assert await client.track_identity_by_id("t") is None
+
+
+# --------------------------------------------------------------------------- #
 # Writes
 # --------------------------------------------------------------------------- #
 

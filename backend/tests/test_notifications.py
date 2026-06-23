@@ -221,6 +221,20 @@ async def test_unsubscribe_link_present_in_email(client, db_session, email_spy):
     assert "/api/v1/notifications/unsubscribe?token=" in html
 
 
+async def test_unsubscribe_header_present(client, db_session, email_spy):
+    organizer, league_id, _members = await _league_with_members(client, db_session, n_members=1)
+    rid = await _round_id(client, league_id, organizer.id, 1)
+
+    email_spy.sends.clear()
+    email_spy.sent_headers.clear()
+    await _advance(client, rid, organizer.id, "open_submission")
+
+    headers = email_spy.sent_headers[0]
+    assert headers is not None
+    assert headers["List-Unsubscribe-Post"] == "List-Unsubscribe=One-Click"
+    assert "/api/v1/notifications/unsubscribe?token=" in headers["List-Unsubscribe"]
+
+
 # --------------------------------------------------------------------------- #
 # Profile preference surface
 # --------------------------------------------------------------------------- #

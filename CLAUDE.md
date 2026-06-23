@@ -151,6 +151,7 @@ docs/
   prd/                      ← Product requirements
   discovery/                ← Research and early decisions
   ci-cd.md                  ← Pipeline, branch model, onboarding secrets
+  feature-flags.md          ← Env-driven feature flags: registry + how to add one
 ```
 
 ---

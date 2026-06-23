@@ -133,12 +133,21 @@ def queue_round_event(
         return
     subject, body = _subject_and_body(event, league, round_)
     for r in recipients:
-        html = _wrap_html(body, _unsubscribe_url(settings, r.user_id))
-        background_tasks.add_task(_safe_send, sender, r.email, subject, html)
+        url = _unsubscribe_url(settings, r.user_id)
+        html = _wrap_html(body, url)
+        # List-Unsubscribe(+Post) surface Gmail/Yahoo's native one-click
+        # unsubscribe and are part of their bulk-sender deliverability rules.
+        headers = {
+            "List-Unsubscribe": f"<{url}>",
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        }
+        background_tasks.add_task(_safe_send, sender, r.email, subject, html, headers)
 
 
-def _safe_send(sender: EmailSender, email: str, subject: str, html: str) -> None:
+def _safe_send(
+    sender: EmailSender, email: str, subject: str, html: str, headers: dict[str, str] | None = None
+) -> None:
     try:
-        sender.send(email, subject, html)
+        sender.send(email, subject, html, headers)
     except Exception:  # noqa: BLE001 — never let a mail failure escape the task
         logger.exception("failed to send notification email to %s", email)

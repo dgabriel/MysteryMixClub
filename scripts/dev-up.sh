@@ -300,15 +300,24 @@ start_backend() {
   info "Applying database migrations…"
   ( cd "$REPO_ROOT/backend" && "$venv/bin/alembic" upgrade head )
   info "Starting API (uvicorn) on :8000…"
-  ( cd "$REPO_ROOT/backend" && nohup "$venv/bin/uvicorn" app.main:app --reload --port 8000 \
-      >"$LOG_DIR/backend.log" 2>&1 & echo $! >"$PID_DIR/backend.pid" )
+  # cd is its own statement so '&' backgrounds only uvicorn (not the cd && … chain);
+  # otherwise $! captures a wrapper subshell that blocks on uvicorn and never exits,
+  # hanging the script and recording the wrong PID. </dev/null detaches stdin too.
+  ( cd "$REPO_ROOT/backend"
+    nohup "$venv/bin/uvicorn" app.main:app --reload --port 8000 \
+      </dev/null >"$LOG_DIR/backend.log" 2>&1 &
+    echo $! >"$PID_DIR/backend.pid" )
 }
 
 start_frontend() {
   info "Installing frontend dependencies…"
   ( cd "$REPO_ROOT/frontend" && npm install --no-fund --no-audit )
   info "Starting web (vite) on :5173…"
-  ( cd "$REPO_ROOT/frontend" && nohup npm run dev >"$LOG_DIR/frontend.log" 2>&1 & echo $! >"$PID_DIR/frontend.pid" )
+  # Same fix as start_backend: background only the server so $! is npm's real PID
+  # and the script returns instead of babysitting a wrapper subshell.
+  ( cd "$REPO_ROOT/frontend"
+    nohup npm run dev </dev/null >"$LOG_DIR/frontend.log" 2>&1 &
+    echo $! >"$PID_DIR/frontend.pid" )
 }
 
 wait_for_api() {

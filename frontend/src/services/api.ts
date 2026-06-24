@@ -10,7 +10,10 @@
  *    cookie is sent on the cross-origin (but same-site) request to :8000.
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+// Default to the 127.0.0.1 loopback (not "localhost"): the app keeps every
+// origin on one host so the session cookie survives the Spotify OAuth redirect
+// (MYS-85), and Spotify rejects "localhost" redirect URIs.
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 const AUTH_BASE = `${API_BASE_URL}/api/v1/auth`;
 
 /** In-memory access token. Lost on full page reload by design — the on-mount

@@ -7,11 +7,32 @@
 #      offers to install anything missing via the system package manager
 #      (Homebrew on macOS; apt/dnf/pacman/zypper on Linux). Docker must already be
 #      installed and running — it'll tell you how if not.
-#   2. Pulls the latest code on your current branch.
+#   2. Switches you to the 'develop' branch (the integration branch this app runs
+#      from) and pulls the latest code on it.
 #   3. Creates backend/.env from .env.example (with a generated SECRET_KEY) if absent.
 #   4. Stops any dev instance this script previously started, then spins up a fresh
 #      one: Postgres (docker compose) + API (uvicorn) + web (vite), in the
 #      background with logs under .dev/logs/.
+#
+# Optional integrations — fill these into backend/.env to light them up:
+#
+#   Spotify (per-user playlist creation — MYS-83). Until these are set, the app
+#   runs fine but Spotify playlist export is disabled.
+#     1. Sign in at https://developer.spotify.com/dashboard and "Create app".
+#     2. Copy the Client ID and Client Secret into SPOTIFY_CLIENT_ID /
+#        SPOTIFY_CLIENT_SECRET.
+#     3. In the app's settings, add this exact Redirect URI (Spotify rejects
+#        "localhost" — you must use the loopback IP):
+#          http://127.0.0.1:8000/api/v1/spotify/callback
+#        and put the same value in SPOTIFY_REDIRECT_URI.
+#
+#   Resend (magic-link sign-in + round-notification email). Until RESEND_API_KEY
+#   is set, no email is sent — in dev the magic-link is printed to the API log
+#   (.dev/logs/backend.log) so you can still sign in.
+#     1. Create an account at https://resend.com and verify a sending domain (or
+#        use their onboarding test domain).
+#     2. Create an API key at https://resend.com/api-keys and paste it into
+#        RESEND_API_KEY.
 #
 # Usage:
 #   scripts/dev-up.sh          # set up + (re)start the full stack  [default]
@@ -170,6 +191,14 @@ ensure_docker() {
 }
 
 # --- repo + env ------------------------------------------------------------ #
+checkout_develop() {
+  local branch
+  branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
+  [ "$branch" = "develop" ] && { ok "On 'develop'."; return; }
+  info "Switching to 'develop' (was on '${branch:-unknown}')…"
+  git checkout develop || die "Couldn't switch to 'develop' — commit or stash your changes, then re-run."
+}
+
 pull_latest() {
   if git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
     info "Pulling latest on $(git rev-parse --abbrev-ref HEAD)…"
@@ -193,11 +222,15 @@ ensure_env() {
   if [ -f "$env" ]; then ok "backend/.env present"; return; fi
   info "Creating backend/.env from .env.example…"
   cp "$REPO_ROOT/.env.example" "$env"
-  set_env_var "$env" DATABASE_URL "postgresql+asyncpg://mmc:mmc@localhost:5432/mysterymixclub"
+  # Use the 127.0.0.1 loopback IP (not "localhost") everywhere: Spotify's OAuth
+  # rejects "localhost" redirect URIs, so the whole dev stack stays on the IP to
+  # keep origins/cookies consistent with the Spotify callback.
+  set_env_var "$env" DATABASE_URL "postgresql+asyncpg://mmc:mmc@127.0.0.1:5432/mysterymixclub"
   set_env_var "$env" SECRET_KEY "$("${PYTHON_BIN:-python3}" -c 'import secrets;print(secrets.token_urlsafe(64))')"
   set_env_var "$env" ENVIRONMENT "development"
-  set_env_var "$env" APP_BASE_URL "http://localhost:5173"
-  set_env_var "$env" API_BASE_URL "http://localhost:8000"
+  set_env_var "$env" APP_BASE_URL "http://127.0.0.1:5173"
+  set_env_var "$env" API_BASE_URL "http://127.0.0.1:8000"
+  set_env_var "$env" SPOTIFY_REDIRECT_URI "http://127.0.0.1:8000/api/v1/spotify/callback"
   ok "backend/.env created with local defaults + a generated SECRET_KEY"
 }
 
@@ -266,8 +299,8 @@ start_frontend() {
 wait_for_api() {
   info "Waiting for the API to answer…"
   for _ in $(seq 1 30); do
-    if curl -fsS http://localhost:8000/api/v1/healthz >/dev/null 2>&1; then
-      ok "API healthy at http://localhost:8000"
+    if curl -fsS http://127.0.0.1:8000/api/v1/healthz >/dev/null 2>&1; then
+      ok "API healthy at http://127.0.0.1:8000"
       return
     fi
     sleep 1
@@ -279,14 +312,15 @@ summary() {
   printf '\n%s\n' "${BOLD}${GRN}MysteryMixClub dev stack is up.${RST}"
   cat <<EOF
 
-  Web   : http://localhost:5173
-  API   : http://localhost:8000   (docs: /docs, health: /api/v1/healthz)
-  DB    : postgres://mmc:mmc@localhost:5432/mysterymixclub
+  Web   : http://127.0.0.1:5173
+  API   : http://127.0.0.1:8000   (docs: /docs, health: /api/v1/healthz)
+  DB    : postgres://mmc:mmc@127.0.0.1:5432/mysterymixclub
 
   Logs  : .dev/logs/backend.log , .dev/logs/frontend.log
           tail with: scripts/dev-up.sh logs
   Stop  : scripts/dev-up.sh stop        (Postgres keeps running; 'docker compose stop db' to stop it)
-  Sign-in is magic-link based; in dev the link is printed to the API log.
+  Sign-in is magic-link based; in dev (no RESEND_API_KEY) the link is printed to the API log.
+  Spotify playlist export needs SPOTIFY_CLIENT_ID/SECRET in backend/.env (see top of this script).
 EOF
 }
 
@@ -331,6 +365,7 @@ ensure_python
 ensure_node
 ensure_docker
 
+checkout_develop
 pull_latest
 ensure_env
 ensure_hooks

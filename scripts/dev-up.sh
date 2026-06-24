@@ -234,6 +234,17 @@ ensure_env() {
   ok "backend/.env created with local defaults + a generated SECRET_KEY"
 }
 
+ensure_frontend_env() {
+  # frontend/.env.local is gitignored, so a fresh clone won't have it and the
+  # app falls back to localhost:8000. Point the browser at 127.0.0.1 so origins
+  # and the session cookie stay consistent across the Spotify OAuth redirect.
+  local fenv="$REPO_ROOT/frontend/.env.local"
+  if [ -f "$fenv" ]; then ok "frontend/.env.local present"; return; fi
+  info "Creating frontend/.env.local…"
+  printf '%s\n' "VITE_API_BASE_URL=http://127.0.0.1:8000" >"$fenv"
+  ok "frontend/.env.local created (API base on 127.0.0.1)"
+}
+
 ensure_hooks() {
   if [ ! -d "$REPO_ROOT/node_modules" ]; then
     info "Installing git hooks (husky)…"
@@ -368,6 +379,7 @@ ensure_docker
 checkout_develop
 pull_latest
 ensure_env
+ensure_frontend_env
 ensure_hooks
 
 info "Restarting the dev instance…"

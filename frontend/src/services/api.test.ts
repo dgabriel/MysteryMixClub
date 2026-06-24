@@ -37,7 +37,7 @@ import type {
   Votes,
 } from "./api";
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = "http://127.0.0.1:8000";
 const AUTH_BASE = `${API_BASE}/api/v1/auth`;
 const V1_BASE = `${API_BASE}/api/v1`;
 

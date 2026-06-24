@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     # backend directly (e.g. the one-click email-unsubscribe endpoint). Falls
     # back to app_base_url when unset (same-host deployments that proxy /api).
     api_base_url: str = Field(default="")
+    # Overrides the From address on all outbound email when set. Leave empty in
+    # staging/prod to use the per-purpose defaults (login@ / notifications@) on
+    # the verified domain. Locally, set to a sender Resend will accept without a
+    # verified domain, e.g. onboarding@resend.dev (delivers only to your own
+    # Resend account email until mysterymixclub.com is verified).
+    email_from: str = Field(default="")
     # ----------------------------------------------------------------------- #
     # Feature flags
     #

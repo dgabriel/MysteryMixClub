@@ -231,6 +231,10 @@ ensure_env() {
   set_env_var "$env" APP_BASE_URL "http://127.0.0.1:5173"
   set_env_var "$env" API_BASE_URL "http://127.0.0.1:8000"
   set_env_var "$env" SPOTIFY_REDIRECT_URI "http://127.0.0.1:8000/api/v1/spotify/callback"
+  # Local email sends through Resend (if RESEND_API_KEY is set) must come from a
+  # sender Resend accepts without a verified domain. onboarding@resend.dev works,
+  # but only delivers to your own Resend signup email until the domain is verified.
+  set_env_var "$env" EMAIL_FROM "onboarding@resend.dev"
   ok "backend/.env created with local defaults + a generated SECRET_KEY"
 }
 

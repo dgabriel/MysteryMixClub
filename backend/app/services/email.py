@@ -48,8 +48,12 @@ class ConsoleEmailSender:
 class ResendEmailSender:
     """Sends email via the Resend API."""
 
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: str, from_override: str = "") -> None:
         self._api_key = api_key
+        # When set, overrides the per-purpose From addresses below. Used locally
+        # to send from a Resend-accepted sender (e.g. onboarding@resend.dev)
+        # before the real domain is verified.
+        self._from_override = from_override
 
     def _send(
         self,
@@ -63,7 +67,7 @@ class ResendEmailSender:
 
         resend.api_key = self._api_key
         params: resend.Emails.SendParams = {
-            "from": from_address,
+            "from": self._from_override or from_address,
             "to": [email],
             "subject": subject,
             "html": html,
@@ -111,7 +115,7 @@ def build_email_sender(settings: Settings) -> EmailSender:
     message is redirected to ``EMAIL_TEST_RECIPIENT`` — and if that's unset, email
     is suppressed (console) rather than risk reaching real recipients."""
     base: EmailSender = (
-        ResendEmailSender(settings.resend_api_key)
+        ResendEmailSender(settings.resend_api_key, settings.email_from)
         if settings.resend_api_key
         else ConsoleEmailSender()
     )

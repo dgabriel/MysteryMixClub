@@ -222,3 +222,61 @@ async def test_empty_email_string_returns_422(client, db_session):
 async def test_no_email_sent_on_validation_error(client, email_spy):
     await client.post(REQUEST_URL, json={"email": "notanemail"})
     assert email_spy.call_count == 0
+
+
+# --------------------------------------------------------------------------- #
+# Email delivery failure must not take down sign-in (the token is already
+# persisted; outside production the dev_token still lets the UI sign in).
+# --------------------------------------------------------------------------- #
+
+
+class _FailingEmailSender:
+    """Email sender that always raises, simulating an unverified-domain / outage."""
+
+    def send_magic_link(self, email: str, link: str) -> None:
+        raise RuntimeError("domain is not verified")
+
+    def send(self, email, subject, html, headers=None) -> None:
+        raise RuntimeError("domain is not verified")
+
+
+async def _client_with_failing_email(session_factory, environment: str):
+    from httpx import ASGITransport, AsyncClient
+
+    from app.config import Settings, get_settings
+    from app.db.session import get_db
+    from app.main import create_app
+    from app.services.email import get_email_sender
+
+    app = create_app()
+
+    async def _override_db():
+        async with session_factory() as session:
+            yield session
+
+    app.dependency_overrides[get_db] = _override_db
+    app.dependency_overrides[get_email_sender] = lambda: _FailingEmailSender()
+    app.dependency_overrides[get_settings] = lambda: Settings(environment=environment)
+    return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+
+
+async def test_send_failure_outside_production_still_succeeds_with_dev_token(
+    session_factory, db_session
+):
+    async with await _client_with_failing_email(session_factory, "staging") as ac:
+        resp = await ac.post(REQUEST_URL, json={"email": "alice@example.com"})
+
+    # Delivery failed, but sign-in is not blocked: 200 + a usable dev_token.
+    assert resp.status_code == 200
+    assert resp.json()["dev_token"]
+    # The token row was still persisted (it is created before the send).
+    assert await _count_rows(db_session, "alice@example.com") == 1
+
+
+async def test_send_failure_in_production_returns_502(session_factory, db_session):
+    async with await _client_with_failing_email(session_factory, "production") as ac:
+        resp = await ac.post(REQUEST_URL, json={"email": "alice@example.com"})
+
+    # In production email is the only way in, so surface a clean 502 (not a raw 500).
+    assert resp.status_code == 502
+    assert "dev_token" not in resp.json()

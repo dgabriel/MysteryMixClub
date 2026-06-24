@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
@@ -14,6 +15,8 @@ from app.models.magic_link_token import MagicLinkToken
 from app.models.session import Session
 from app.models.user import User
 from app.services.email import EmailSender, get_email_sender
+
+logger = logging.getLogger("app.api.routes.auth")
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -100,7 +103,19 @@ async def request_magic_link(
     await db.commit()
 
     link = f"{settings.app_base_url.rstrip('/')}/auth/verify?token={raw_token}"
-    email_sender.send_magic_link(email, link)
+    try:
+        email_sender.send_magic_link(email, link)
+    except Exception:
+        # The token is already persisted and valid, so a delivery failure must
+        # not take down sign-in. Outside production the dev_token below lets the
+        # UI render a clickable link without email. In production email is the
+        # only way in, so surface a clean error instead of a raw 500.
+        logger.exception("Failed to send magic-link email")
+        if settings.environment == "production":
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Couldn't send the sign-in email right now. Please try again.",
+            )
 
     response = MagicLinkResponse()
     # Outside production, also hand the token back so dev/staging UIs can render a

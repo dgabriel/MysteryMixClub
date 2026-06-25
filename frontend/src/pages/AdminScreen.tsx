@@ -16,14 +16,14 @@ type AdminScreenProps = {
   onDeleteUser: (userId: string) => void;
   deletingUserId: string | null;
   deleteError?: string | null;
-  onBack: () => void;
 };
 
 /**
  * Thin platform-admin page: search users by email, then hard-delete a match
- * behind a typed confirm. The single Rust signal on this screen is the
- * destructive confirm action — everything else stays in the Sage/Ink family.
- * Underline-only inputs, ALL-CAPS labels, calm lowercase copy.
+ * behind a typed confirm. Content-only — the shared TopNav is rendered by
+ * AuthedLayout. The single Rust signal on this screen is the destructive confirm
+ * action; everything else stays in the Sage/Ink family. Underline-only inputs,
+ * ALL-CAPS labels, calm lowercase copy.
  */
 export function AdminScreen({
   query,
@@ -36,7 +36,6 @@ export function AdminScreen({
   onDeleteUser,
   deletingUserId,
   deleteError,
-  onBack,
 }: AdminScreenProps) {
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -44,16 +43,9 @@ export function AdminScreen({
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <header className="flex items-center justify-between px-4 py-4 sm:px-8">
-        <span className="font-serif lowercase text-[20px] text-ink">admin</span>
-        <Button variant="ghost" type="button" onClick={onBack}>
-          back
-        </Button>
-      </header>
-
-      <main className="mx-auto w-full max-w-lg px-4 pb-16 sm:px-8">
-        <p className="font-mono text-[13px] font-light text-muted">
+    <main className="mx-auto w-full max-w-lg px-4 pb-16 sm:px-8">
+      <h1 className="font-serif lowercase text-[28px] leading-tight text-ink">admin</h1>
+        <p className="mt-4 font-mono text-[13px] font-light text-muted">
           find a user by email, then remove their account and all of their data.
         </p>
 
@@ -105,8 +97,7 @@ export function AdminScreen({
             {deleteError}
           </p>
         ) : null}
-      </main>
-    </div>
+    </main>
   );
 }
 

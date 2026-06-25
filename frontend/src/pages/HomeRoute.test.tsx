@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { HomeRoute } from "./HomeRoute";
+import { AuthedLayout } from "../components/AuthedLayout";
 import { ApiError, getLeagues } from "../services/api";
 import type { League } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
@@ -47,7 +48,11 @@ function renderHome() {
   return render(
     <MemoryRouter initialEntries={["/home"]}>
       <Routes>
-        <Route path="/home" element={<HomeRoute />} />
+        {/* Mirror production: the route lives under AuthedLayout, which renders
+            the shared TopNav once above the routed content. */}
+        <Route element={<AuthedLayout />}>
+          <Route path="/home" element={<HomeRoute />} />
+        </Route>
         <Route path="/login" element={<div>LOGIN CONTENT</div>} />
         <Route path="/leagues/new" element={<div>NEW LEAGUE CONTENT</div>} />
         <Route path="/leagues/:id" element={<div>LEAGUE DETAIL CONTENT</div>} />
@@ -72,6 +77,7 @@ describe("HomeRoute (My Leagues)", () => {
       logout,
       logoutAll: vi.fn(),
       displayName: "ada",
+      email: "ada@example.com",
       userId: "11111111-1111-1111-1111-111111111111",
       profileStatus: "ready",
       needsOnboarding: false,
@@ -159,6 +165,7 @@ describe("HomeRoute (My Leagues)", () => {
       logout,
       logoutAll: vi.fn(),
       displayName: "ada",
+      email: "ada@example.com",
       userId: "11111111-1111-1111-1111-111111111111",
       profileStatus: "ready",
       needsOnboarding: false,

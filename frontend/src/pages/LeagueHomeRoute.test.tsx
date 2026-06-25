@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { LeagueHomeRoute } from "./LeagueHomeRoute";
+import { AuthedLayout } from "../components/AuthedLayout";
 import {
   ApiError,
   createInvite,
@@ -149,6 +150,7 @@ function setAuth(userId: string | null) {
     logout: vi.fn(),
     logoutAll: vi.fn(),
     displayName: "Ada",
+    email: "ada@example.com",
     userId,
     isPlatformAdmin: false,
     profileStatus: "ready",
@@ -161,7 +163,11 @@ function renderLeague(id = "league-1") {
   return render(
     <MemoryRouter initialEntries={[`/leagues/${id}`]}>
       <Routes>
-        <Route path="/leagues/:id" element={<LeagueHomeRoute />} />
+        {/* Mirror production: the route lives under AuthedLayout, which renders
+            the shared TopNav once above the routed content. */}
+        <Route element={<AuthedLayout />}>
+          <Route path="/leagues/:id" element={<LeagueHomeRoute />} />
+        </Route>
         <Route path="/home" element={<div>HOME CONTENT</div>} />
       </Routes>
     </MemoryRouter>,
@@ -273,13 +279,14 @@ describe("LeagueHomeRoute", () => {
     expect(mockRemoveMember).toHaveBeenCalledWith("league-1", MEMBER_ID);
   });
 
-  it("onBack: navigates to /home", async () => {
+  it("nav: the TopNav home link navigates to /home", async () => {
     const user = userEvent.setup();
 
     renderLeague();
     await screen.findByText("Friday Mixtape");
 
-    await user.click(screen.getByRole("button", { name: /^back$/i }));
+    // Two "home" controls in the TopNav (ring mark + text link); either routes home.
+    await user.click(screen.getAllByRole("button", { name: /^home$/i })[1]);
 
     expect(await screen.findByText("HOME CONTENT")).toBeInTheDocument();
   });

@@ -198,7 +198,7 @@ export function RoundDetailRoute() {
 
   if (loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center px-4 sm:px-8">
+      <main className="flex flex-1 items-center justify-center px-4 sm:px-8">
         <ConcentricRings size={88} spinning className="mx-auto" />
       </main>
     );
@@ -206,7 +206,7 @@ export function RoundDetailRoute() {
 
   if (error || !round || !id) {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center px-4 text-center sm:px-8">
+      <main className="flex flex-1 flex-col items-center justify-center px-4 text-center sm:px-8">
         <p className="font-mono text-[13px] font-light text-muted">{error ?? "round not found."}</p>
         <div className="mt-6">
           <Button variant="ghost" type="button" onClick={() => navigate("/home")}>
@@ -218,23 +218,24 @@ export function RoundDetailRoute() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="px-4 py-4 sm:px-8">
-        <Button
-          variant="ghost"
+    // Content-only: the shared TopNav is rendered once by AuthedLayout. The
+    // round's league is reached via a named link above the title (not a generic
+    // "← league" in the nav), so members always see which league they're in.
+    <main className="mx-auto w-full max-w-lg px-4 pb-16 sm:px-8">
+      {league ? (
+        <button
           type="button"
           onClick={() => navigate(`/leagues/${round.league_id}`)}
+          className="inline-flex items-center gap-1.5 font-mono uppercase tracking-ui text-[11px] text-sage transition-colors duration-150 hover:text-ink"
         >
-          back
-        </Button>
-      </header>
-
-      <main className="mx-auto w-full max-w-lg px-4 pb-16 sm:px-8">
-        <span className="font-mono uppercase tracking-label text-[9px] text-muted">
-          round {round.round_number}
-          {league ? ` · ${league.name}` : ""}
-        </span>
-        <div className="mt-1 flex items-start justify-between gap-4">
+          <span aria-hidden="true">←</span>
+          {league.name}
+        </button>
+      ) : null}
+      <span className="mt-3 block font-mono uppercase tracking-label text-[9px] text-muted">
+        round {round.round_number}
+      </span>
+      <div className="mt-1 flex items-start justify-between gap-4">
           <h1 className="font-serif text-[32px] leading-tight text-ink">
             {round.theme ?? `Round ${round.round_number}`}
           </h1>
@@ -304,8 +305,7 @@ export function RoundDetailRoute() {
             <ResultsSection results={results} userId={userId} />
           )}
         </section>
-      </main>
-    </div>
+    </main>
   );
 }
 

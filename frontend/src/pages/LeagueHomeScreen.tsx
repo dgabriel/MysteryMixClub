@@ -90,7 +90,7 @@ export function LeagueHomeScreen({
 }: LeagueHomeScreenProps) {
   if (loading) {
     return (
-      <main className="min-h-screen flex items-center justify-center px-4 sm:px-8">
+      <main className="flex flex-1 items-center justify-center px-4 sm:px-8">
         <ConcentricRings size={88} spinning className="mx-auto" />
       </main>
     );
@@ -98,7 +98,7 @@ export function LeagueHomeScreen({
 
   if (error) {
     return (
-      <main className="min-h-screen flex flex-col items-center justify-center px-4 text-center sm:px-8">
+      <main className="flex flex-1 flex-col items-center justify-center px-4 text-center sm:px-8">
         <p className="font-mono text-[13px] font-light text-muted">{error}</p>
         <div className="mt-6">
           <Button variant="ghost" type="button" onClick={onBack}>
@@ -111,22 +111,16 @@ export function LeagueHomeScreen({
 
   // Rust budget: this screen's single Rust signal is reserved for the organizer's
   // destructive delete-league confirm (DeleteLeagueSection below). Every other
-  // element — including the league-state badge — stays in the Sage family.
+  // element — including the league-state badge — stays in the Sage family. The
+  // shared TopNav is rendered by AuthedLayout, so this is content-only.
   return (
-    <div className="min-h-screen flex flex-col">
-      <header className="px-4 py-4 sm:px-8">
-        <Button variant="ghost" type="button" onClick={onBack}>
-          back
-        </Button>
-      </header>
-
-      <main className="mx-auto w-full max-w-lg px-4 pb-16 sm:px-8">
-        <div className="flex items-start justify-between gap-4">
-          <h1 className="font-serif text-[32px] leading-tight text-ink">{league.name}</h1>
-          <div className="shrink-0 pt-2">
-            <Badge>{league.state}</Badge>
-          </div>
+    <main className="mx-auto w-full max-w-lg px-4 pb-16 sm:px-8">
+      <div className="flex items-start justify-between gap-4">
+        <h1 className="font-serif text-[32px] leading-tight text-ink">{league.name}</h1>
+        <div className="shrink-0 pt-2">
+          <Badge>{league.state}</Badge>
         </div>
+      </div>
         {league.description ? (
           <p className="mt-2 font-mono text-[13px] font-light text-muted">{league.description}</p>
         ) : null}
@@ -222,8 +216,7 @@ export function LeagueHomeScreen({
             deleteLeagueError={deleteLeagueError}
           />
         ) : null}
-      </main>
-    </div>
+    </main>
   );
 }
 

@@ -142,6 +142,7 @@ function setAuth(userId: string) {
     logout: vi.fn(),
     logoutAll: vi.fn(),
     displayName: "x",
+    email: "x@example.com",
     userId,
     profileStatus: "ready",
     needsOnboarding: false,

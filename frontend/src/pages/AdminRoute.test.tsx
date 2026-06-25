@@ -32,6 +32,7 @@ function setAuth(isPlatformAdmin: boolean) {
     logout: vi.fn(),
     logoutAll: vi.fn(),
     displayName: "Ada",
+    email: "ada@example.com",
     userId: "admin-1",
     isPlatformAdmin,
     profileStatus: "ready",

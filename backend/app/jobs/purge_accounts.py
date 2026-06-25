@@ -16,6 +16,8 @@ of accounts purged, and exits.
 """
 
 import asyncio
+import uuid
+from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete, select, update
@@ -33,6 +35,38 @@ from app.models.user import User
 from app.models.vote import Vote
 
 _RETENTION_DAYS = 30
+
+
+async def hard_delete_users(
+    db: AsyncSession, user_ids: Sequence[uuid.UUID], emails: Sequence[str]
+) -> None:
+    """Hard-delete the given accounts and all their personal data, FK-safe.
+
+    Shared by the scheduled purge (right to be forgotten, TD 10) and the
+    platform-admin eject endpoint (MYS-128). Does NOT commit — the caller owns
+    the transaction boundary.
+    """
+    if not user_ids:
+        return
+
+    # FK-safe order: children before parents. Notes/votes reference submissions,
+    # so they go first; submissions/memberships/sessions/invites reference users
+    # next; then magic-link tokens keyed by the tombstoned email; then the
+    # organizer FK on leagues is nulled (purged accounts never organize active
+    # leagues); finally the users themselves. invites.created_by is a NOT NULL FK
+    # with no ON DELETE, so these must go before the user delete to avoid both an
+    # IntegrityError and an orphaned PII record.
+    await db.execute(delete(Note).where(Note.author_id.in_(user_ids)))
+    await db.execute(delete(Vote).where(Vote.voter_id.in_(user_ids)))
+    await db.execute(delete(Submission).where(Submission.user_id.in_(user_ids)))
+    await db.execute(delete(LeagueMember).where(LeagueMember.user_id.in_(user_ids)))
+    await db.execute(delete(Invite).where(Invite.created_by.in_(user_ids)))
+    await db.execute(delete(Session).where(Session.user_id.in_(user_ids)))
+    await db.execute(delete(MagicLinkToken).where(MagicLinkToken.email.in_(emails)))
+    await db.execute(
+        update(League).where(League.organizer_id.in_(user_ids)).values(organizer_id=None)
+    )
+    await db.execute(delete(User).where(User.id.in_(user_ids)))
 
 
 async def purge_deleted_accounts(
@@ -58,24 +92,7 @@ async def purge_deleted_accounts(
     user_ids = [row.id for row in rows]
     emails = [row.email for row in rows]
 
-    # FK-safe order: children before parents. Notes/votes reference submissions,
-    # so they go first; submissions/memberships/sessions/invites reference users
-    # next; then magic-link tokens keyed by the tombstoned email; then the
-    # organizer FK on leagues is nulled (purged accounts never organize active
-    # leagues); finally the users themselves. invites.created_by is a NOT NULL FK
-    # with no ON DELETE, so these must go before the user delete to avoid both an
-    # IntegrityError and an orphaned PII record.
-    await db.execute(delete(Note).where(Note.author_id.in_(user_ids)))
-    await db.execute(delete(Vote).where(Vote.voter_id.in_(user_ids)))
-    await db.execute(delete(Submission).where(Submission.user_id.in_(user_ids)))
-    await db.execute(delete(LeagueMember).where(LeagueMember.user_id.in_(user_ids)))
-    await db.execute(delete(Invite).where(Invite.created_by.in_(user_ids)))
-    await db.execute(delete(Session).where(Session.user_id.in_(user_ids)))
-    await db.execute(delete(MagicLinkToken).where(MagicLinkToken.email.in_(emails)))
-    await db.execute(
-        update(League).where(League.organizer_id.in_(user_ids)).values(organizer_id=None)
-    )
-    await db.execute(delete(User).where(User.id.in_(user_ids)))
+    await hard_delete_users(db, user_ids, emails)
 
     await db.commit()
     return len(user_ids)

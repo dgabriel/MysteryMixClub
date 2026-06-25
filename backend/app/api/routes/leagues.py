@@ -1,11 +1,11 @@
 import secrets
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, StringConstraints, model_validator
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
@@ -13,8 +13,11 @@ from app.db.session import get_db
 from app.models.invite import Invite
 from app.models.league import League
 from app.models.league_member import LeagueMember
+from app.models.note import Note
 from app.models.round import Round
+from app.models.submission import Submission
 from app.models.user import User
+from app.models.vote import Vote
 
 router = APIRouter(prefix="/leagues", tags=["leagues"])
 
@@ -55,6 +58,9 @@ class LeagueUpdate(BaseModel):
 # Number of random bytes for invite tokens, matching the magic-link idiom.
 # token_urlsafe(32) yields a 43-character URL-safe string.
 _INVITE_TOKEN_BYTES = 32
+# Shareable invite links expire 48h after creation (MYS-126); after that the
+# organizer must generate a fresh link. Mirrors auth's _TOKEN_TTL idiom.
+_INVITE_TTL = timedelta(hours=48)
 
 
 class InviteResponse(BaseModel):
@@ -322,6 +328,37 @@ async def _reconcile_rounds(league: League, new_total: int, db: AsyncSession) ->
             await db.delete(r)
 
 
+@router.delete("/{league_id}", status_code=204)
+async def delete_league(
+    league_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    league = await _load_league_as_organizer(
+        league_id, current_user, db, "only the organizer can delete this league"
+    )
+    # An in-flight league (a round is open) can't be deleted; finish or it must
+    # stay. A not-yet-started (current_round == 0) or complete league is fine.
+    if league.state == "active" and league.current_round > 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="cannot delete a league that is in progress",
+        )
+
+    # Cascade in FK dependency order in one transaction (no ON DELETE CASCADE):
+    # votes/notes/submissions (by this league's rounds) -> rounds -> invites ->
+    # members -> league.
+    round_ids = select(Round.id).where(Round.league_id == league_id)
+    await db.execute(delete(Vote).where(Vote.round_id.in_(round_ids)))
+    await db.execute(delete(Note).where(Note.round_id.in_(round_ids)))
+    await db.execute(delete(Submission).where(Submission.round_id.in_(round_ids)))
+    await db.execute(delete(Round).where(Round.league_id == league_id))
+    await db.execute(delete(Invite).where(Invite.league_id == league_id))
+    await db.execute(delete(LeagueMember).where(LeagueMember.league_id == league_id))
+    await db.execute(delete(League).where(League.id == league_id))
+    await db.commit()
+
+
 @router.delete("/{league_id}/members/{user_id}", status_code=204)
 async def remove_member(
     league_id: uuid.UUID,
@@ -373,12 +410,36 @@ async def create_invite(
     if membership is None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="not a member")
 
+    # Shareable-link invite with a 48h expiry (MYS-126); after that the organizer
+    # must generate a fresh link.
     invite = Invite(
         league_id=league_id,
         created_by=current_user.id,
         token=secrets.token_urlsafe(_INVITE_TOKEN_BYTES),
+        expires_at=datetime.now(timezone.utc) + _INVITE_TTL,
     )
     db.add(invite)
     await db.commit()
     await db.refresh(invite)
     return _to_invite_response(invite)
+
+
+@router.delete("/{league_id}/invites/{invite_id}", status_code=204)
+async def revoke_invite(
+    league_id: uuid.UUID,
+    invite_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    await _load_league_as_organizer(
+        league_id, current_user, db, "only the organizer can revoke invites"
+    )
+
+    invite = await db.scalar(select(Invite).where(Invite.id == invite_id))
+    if invite is None or invite.league_id != league_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invite not found")
+
+    # Revoke a shareable link: drop the invite row so the link stops working.
+    # Membership is managed separately (remove_member); no email mapping here.
+    await db.delete(invite)
+    await db.commit()

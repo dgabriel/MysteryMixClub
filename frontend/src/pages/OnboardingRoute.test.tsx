@@ -45,6 +45,7 @@ function setAuth(
     logoutAll: vi.fn(),
     displayName: overrides.needsOnboarding ? "" : "ada",
     userId: status === "authenticated" ? "11111111-1111-1111-1111-111111111111" : null,
+    isPlatformAdmin: false,
     profileStatus,
     needsOnboarding: overrides.needsOnboarding ?? false,
     applyDisplayName,
@@ -58,6 +59,7 @@ function profileWith(displayName: string): UserProfile {
     email: "new@example.com",
     preferred_service: null,
     default_vibe_mode: false,
+    is_platform_admin: false,
   };
 }
 

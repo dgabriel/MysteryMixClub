@@ -23,6 +23,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from httpx import ASGITransport, AsyncClient
 
+from app.config import Settings, get_settings
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import create_app
@@ -114,6 +115,25 @@ def email_spy() -> SpyEmailSender:
     return SpyEmailSender()
 
 
+@pytest.fixture
+def seed_admin_emails() -> str:
+    """Comma-separated platform-admin identity injected into the ``client``
+    fixture's settings (MYS-128).
+
+    Defaults to empty. This is NOT a login gate in v2 — it only controls
+    ``is_platform_admin`` on /users/me and access to the /admin endpoints. Admin
+    tests override it to make a caller a platform admin."""
+    return ""
+
+
+@pytest.fixture
+def max_users() -> int:
+    """Hard cap on non-deleted accounts injected into the ``client`` fixture's
+    settings (MYS-127). Defaults to 0 (unlimited) so ordinary tests aren't
+    blocked by the beta cap; the cap test overrides it to a small number."""
+    return 0
+
+
 class _OfflineYouTubeResolver:
     """Default resolver for the shared client fixture: never hits the real
     YouTube Data API. Tests that need resolution behaviour override this with
@@ -124,7 +144,9 @@ class _OfflineYouTubeResolver:
 
 
 @pytest_asyncio.fixture
-async def client(session_factory, email_spy: SpyEmailSender) -> AsyncGenerator[AsyncClient, None]:
+async def client(
+    session_factory, email_spy: SpyEmailSender, seed_admin_emails: str, max_users: int
+) -> AsyncGenerator[AsyncClient, None]:
     """AsyncClient over the ASGI app with get_db / get_email_sender overridden."""
     app = create_app()
 
@@ -135,8 +157,22 @@ async def client(session_factory, email_spy: SpyEmailSender) -> AsyncGenerator[A
     def override_get_email_sender() -> EmailSender:
         return email_spy
 
+    # Inject settings so tests can control platform-admin identity
+    # (``seed_admin_emails``, MYS-128) and the beta sign-up cap (``max_users``,
+    # MYS-127). environment stays development (the suite's default), matching the
+    # global lru_cached settings.
+    test_settings = Settings(
+        environment="development",
+        seed_admin_emails=seed_admin_emails,
+        max_users=max_users,
+    )
+
+    def override_get_settings() -> Settings:
+        return test_settings
+
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_email_sender] = override_get_email_sender
+    app.dependency_overrides[get_settings] = override_get_settings
     # Keep the whole suite offline by default — no live YouTube Data API calls.
     app.dependency_overrides[get_youtube_resolver] = lambda: _OfflineYouTubeResolver()
 

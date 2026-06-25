@@ -30,6 +30,7 @@ function setStatus(
     userId: status === "authenticated" ? "11111111-1111-1111-1111-111111111111" : null,
     profileStatus,
     needsOnboarding: overrides.needsOnboarding ?? false,
+    isPlatformAdmin: false,
     applyDisplayName: vi.fn(),
   });
 }

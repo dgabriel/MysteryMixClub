@@ -52,7 +52,8 @@ describe("LoginRoute", () => {
     await user.click(screen.getByRole("button", { name: /send sign-in link/i }));
 
     expect(mockRequestMagicLink).toHaveBeenCalledTimes(1);
-    expect(mockRequestMagicLink).toHaveBeenCalledWith("Friend@Example.com");
+    // No pending invite stashed → the invite token is null (ordinary sign-in).
+    expect(mockRequestMagicLink).toHaveBeenCalledWith("Friend@Example.com", null);
 
     // CheckEmail screen now shown with the submitted email.
     expect(await screen.findByText("check your email")).toBeInTheDocument();
@@ -116,6 +117,25 @@ describe("LoginRoute", () => {
     expect(link).toHaveAttribute("href", "/auth/verify?token=tok-123");
     // The "check your email" screen is not shown when the dev link is available.
     expect(screen.queryByText("check your email")).not.toBeInTheDocument();
+  });
+
+  it("invite flow: a stashed pending invite is passed to requestMagicLink and appended to the dev link", async () => {
+    localStorage.setItem("pendingInvitePath", "/invite/inv-789");
+    mockRequestMagicLink.mockResolvedValue({ devToken: "tok-123" });
+    const user = userEvent.setup();
+
+    try {
+      render(<LoginRoute />);
+
+      await user.type(screen.getByLabelText(/email/i), "guest@example.com");
+      await user.click(screen.getByRole("button", { name: /send sign-in link/i }));
+
+      expect(mockRequestMagicLink).toHaveBeenCalledWith("guest@example.com", "inv-789");
+      const link = await screen.findByRole("link", { name: /sign in with this link/i });
+      expect(link).toHaveAttribute("href", "/auth/verify?token=tok-123&invite=inv-789");
+    } finally {
+      localStorage.clear();
+    }
   });
 
   it("back affordance on CheckEmail returns to the email entry form", async () => {

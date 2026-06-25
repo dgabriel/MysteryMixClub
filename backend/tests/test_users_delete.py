@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 
 from app.auth.jwt import create_access_token
+from app.models.invite import Invite
 from app.models.league import League
 from app.models.league_member import LeagueMember
 from app.models.session import Session
@@ -199,6 +200,8 @@ async def test_completed_league_organizer_not_blocked_204(client, db_session):
 
 
 async def test_resignup_after_delete_creates_new_user_same_email(client, db_session, email_spy):
+    # v2 (MYS-127): a deleted account is no longer an existing user, so coming
+    # back requires a fresh invite link — which is exactly the realistic path.
     email = "comeback@example.com"
     user = await _seed_user(db_session, email=email)
     deleted_id = user.id
@@ -206,14 +209,21 @@ async def test_resignup_after_delete_creates_new_user_same_email(client, db_sess
     resp = await client.delete(ME_URL, headers=_auth_header(deleted_id))
     assert resp.status_code == 204, resp.text
 
-    # Email is now tombstoned, freeing the original address. Run the magic-link
-    # flow again for the same email (mirrors test_auth_verify.py).
-    req = await client.post(REQUEST_URL, json={"email": email})
+    # A fresh shareable invite (organizer + league seeded for it).
+    organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
+    league = await _seed_league(db_session, organizer.id, state="active")
+    invite_token = "tok_" + uuid.uuid4().hex
+    db_session.add(Invite(league_id=league.id, created_by=organizer.id, token=invite_token))
+    await db_session.commit()
+
+    # Email is now tombstoned, freeing the original address. Re-run the magic-link
+    # flow for the same email, this time carrying the invite token.
+    req = await client.post(REQUEST_URL, json={"email": email, "invite_token": invite_token})
     assert req.status_code == 200, req.text
     _, link = email_spy.calls[-1]
-    raw = link.split("token=")[1]
+    raw = link.split("token=")[1].split("&")[0]
 
-    verify = await client.get(VERIFY_URL, params={"token": raw})
+    verify = await client.get(VERIFY_URL, params={"token": raw, "invite": invite_token})
     assert verify.status_code == 200, verify.text
 
     # A brand-new, non-deleted user owns the email now.

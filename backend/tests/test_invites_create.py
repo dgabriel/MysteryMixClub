@@ -1,15 +1,14 @@
-"""Tests for MYS-13: POST /api/v1/leagues/{league_id}/invites (generate invite).
+"""Tests for MYS-13 + MYS-126: POST/DELETE /api/v1/leagues/{id}/invites.
 
-TDD-first: these are written before the Invite model and the invite endpoints
-exist, so they are expected to FAIL (red) until the developer implements them.
-
-Covers auth (401), missing league (404), non-member rejection (403),
-happy-path response shape, the URL-safe crypto-random token, that two calls
-return different tokens, and persistence of the invites row. See
+A v2 invite is a single anonymous shareable link with a 48h expiry (MYS-126).
+Covers auth (401), missing league (404), non-member rejection (403), happy-path
+response shape, the URL-safe crypto-random token, two calls return different
+tokens, persistence, the ~48h expires_at, and organizer-only revoke. See
 technical-design.md §6 (invites) and §7 (Invites API).
 """
 
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
@@ -167,7 +166,8 @@ async def test_organizer_creates_invite_returns_201_and_shape(client, db_session
     assert set(data.keys()) == _INVITE_KEYS
     assert data["league_id"] == str(league.id)
     assert data["created_by"] == str(organizer.id)
-    assert data["expires_at"] is None
+    # v2 (MYS-126): a shareable link now carries a 48h expiry.
+    assert data["expires_at"] is not None
     assert uuid.UUID(data["id"])
     # token is a non-empty, reasonably long URL-safe string.
     assert isinstance(data["token"], str)
@@ -227,4 +227,125 @@ async def test_create_invite_persists_invites_row(client, db_session):
     invite = invites[0]
     assert invite.league_id == league_id
     assert invite.created_by == organizer_id
-    assert invite.expires_at is None
+    # v2 (MYS-126): persisted with a 48h expiry, not None.
+    assert invite.expires_at is not None
+
+
+# --------------------------------------------------------------------------- #
+# 48h expiry (MYS-126)
+# --------------------------------------------------------------------------- #
+
+
+async def test_invite_expires_at_is_about_48h_from_creation(client, db_session):
+    organizer = await _seed_user(db_session)
+    league = await _seed_league(db_session, organizer)
+
+    resp = await client.post(_invites_url(league.id), headers=_auth_header(organizer.id))
+    assert resp.status_code == 201, resp.text
+    token = resp.json()["token"]
+
+    db_session.expire_all()
+    invite = (await db_session.scalars(select(Invite).where(Invite.token == token))).one()
+    assert invite.expires_at is not None
+    delta = invite.expires_at - invite.created_at
+    # ~48h, allowing a little skew between the app clock and the server default.
+    assert abs(delta - timedelta(hours=48)) < timedelta(minutes=5), (
+        f"expected ~48h between created_at and expires_at, got {delta}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Revoke — DELETE /leagues/{id}/invites/{invite_id} (organizer-only)
+# --------------------------------------------------------------------------- #
+
+
+def _revoke_url(league_id, invite_id) -> str:
+    return f"/api/v1/leagues/{league_id}/invites/{invite_id}"
+
+
+async def _seed_invite(db_session, league: League, creator: User, **overrides) -> Invite:
+    defaults = {
+        "league_id": league.id,
+        "created_by": creator.id,
+        "token": "tok_" + uuid.uuid4().hex,
+        "expires_at": datetime.now(timezone.utc) + timedelta(hours=48),
+    }
+    defaults.update(overrides)
+    invite = Invite(**defaults)
+    db_session.add(invite)
+    await db_session.commit()
+    await db_session.refresh(invite)
+    return invite
+
+
+async def test_revoke_invite_returns_204_and_deletes_row(client, db_session):
+    organizer = await _seed_user(db_session)
+    league = await _seed_league(db_session, organizer)
+    invite = await _seed_invite(db_session, league, organizer)
+    invite_id = invite.id
+
+    resp = await client.delete(
+        _revoke_url(league.id, invite.id), headers=_auth_header(organizer.id)
+    )
+
+    assert resp.status_code == 204, resp.text
+    assert resp.content == b""
+
+    db_session.expire_all()
+    assert await db_session.scalar(select(Invite).where(Invite.id == invite_id)) is None
+
+
+async def test_revoke_invite_unauthenticated_returns_401(client, db_session):
+    organizer = await _seed_user(db_session)
+    league = await _seed_league(db_session, organizer)
+    invite = await _seed_invite(db_session, league, organizer)
+
+    resp = await client.delete(_revoke_url(league.id, invite.id))
+
+    assert resp.status_code == 401, resp.text
+
+
+async def test_revoke_invite_non_organizer_member_returns_403(client, db_session):
+    organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
+    league = await _seed_league(db_session, organizer)
+    member = await _seed_user(db_session, email="member@example.com", display_name="Member")
+    await _seed_member(db_session, league, member)
+    invite = await _seed_invite(db_session, league, organizer)
+
+    resp = await client.delete(_revoke_url(league.id, invite.id), headers=_auth_header(member.id))
+
+    assert resp.status_code == 403, resp.text
+
+    # The invite is untouched.
+    invite_id = invite.id
+    db_session.expire_all()
+    assert await db_session.scalar(select(Invite).where(Invite.id == invite_id)) is not None
+
+
+async def test_revoke_unknown_invite_returns_404(client, db_session):
+    organizer = await _seed_user(db_session)
+    league = await _seed_league(db_session, organizer)
+
+    resp = await client.delete(
+        _revoke_url(league.id, uuid.uuid4()), headers=_auth_header(organizer.id)
+    )
+
+    assert resp.status_code == 404, resp.text
+
+
+async def test_revoke_invite_from_another_league_returns_404(client, db_session):
+    organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
+    league_a = await _seed_league(db_session, organizer)
+    league_b = await _seed_league(db_session, organizer, name="Other League")
+    invite_b = await _seed_invite(db_session, league_b, organizer)
+
+    resp = await client.delete(
+        _revoke_url(league_a.id, invite_b.id), headers=_auth_header(organizer.id)
+    )
+
+    assert resp.status_code == 404, resp.text
+
+    # The foreign invite is left intact.
+    invite_b_id = invite_b.id
+    db_session.expire_all()
+    assert await db_session.scalar(select(Invite).where(Invite.id == invite_b_id)) is not None

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { JoinLeagueScreen } from "./JoinLeagueScreen";
 import {
   ApiError,
@@ -11,13 +11,20 @@ import { useAuth } from "../hooks/useAuth";
 
 /**
  * Public join route. The invite preview is visible to anyone with the link, so
- * this route is not behind ProtectedRoute. An authenticated visitor can join
- * directly; an unauthenticated one stashes the invite path and is sent to sign
- * in, after which /home picks the path back up and returns them here.
+ * this route is not behind ProtectedRoute.
+ *
+ * Two paths (v2):
+ *  - Logged-OUT: preview → "sign in" stashes the invite path and routes to
+ *    /login, which carries the token through request+verify; the backend
+ *    auto-joins on verify, so there is no explicit accept step for this path.
+ *    After verify the user lands here authenticated and is dropped straight into
+ *    the league (the auto-join already happened; accept is idempotent).
+ *  - Logged-IN: preview → accept (POST /invites/:token/accept) → join.
  */
 export function JoinLeagueRoute() {
   const { token } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { isAuthenticated } = useAuth();
 
   // A missing :token can't resolve to anything, so it's the not-found state
@@ -25,6 +32,9 @@ export function JoinLeagueRoute() {
   const [preview, setPreview] = useState<InvitePreview | null>(null);
   const [loading, setLoading] = useState(Boolean(token));
   const [notFound, setNotFound] = useState(!token);
+  // An expired link (410) reads differently from a bad one — calm "ask for a
+  // new one" copy rather than "didn't work".
+  const [expired, setExpired] = useState(false);
   const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
 
@@ -34,10 +44,14 @@ export function JoinLeagueRoute() {
       try {
         const result = await getInvitePreview(token);
         setPreview(result);
-      } catch {
-        // Any failure to resolve the invite is treated the same way: there's
-        // nothing to preview, so show the not-found state rather than a crash.
-        setNotFound(true);
+      } catch (err) {
+        // A 410 means the link expired; anything else is treated as not-found.
+        // Either way there's nothing to preview, so we show a calm state, not a crash.
+        if (err instanceof ApiError && err.status === 410) {
+          setExpired(true);
+        } else {
+          setNotFound(true);
+        }
       } finally {
         setLoading(false);
       }
@@ -52,6 +66,12 @@ export function JoinLeagueRoute() {
       const league = await acceptInvite(token);
       navigate(`/leagues/${league.id}`, { replace: true });
     } catch (err) {
+      // A link that expired between preview and accept flips to the expired state.
+      if (err instanceof ApiError && err.status === 410) {
+        setExpired(true);
+        setJoining(false);
+        return;
+      }
       setJoinError(
         err instanceof ApiError ? err.message : "couldn't join the league. try again.",
       );
@@ -60,7 +80,9 @@ export function JoinLeagueRoute() {
   }
 
   function handleSignIn() {
-    localStorage.setItem("pendingInvitePath", `/join/${token}`);
+    // Stash the exact path the visitor landed on (/invite/:token from email,
+    // or the /join/:token alias) so /home returns them here after sign-in.
+    localStorage.setItem("pendingInvitePath", location.pathname);
     navigate("/login");
   }
 
@@ -69,6 +91,7 @@ export function JoinLeagueRoute() {
       preview={preview}
       loading={loading}
       notFound={notFound}
+      expired={expired}
       isAuthenticated={isAuthenticated}
       onJoin={handleJoin}
       joining={joining}

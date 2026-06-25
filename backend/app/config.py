@@ -32,6 +32,14 @@ class Settings(BaseSettings):
     # verified domain, e.g. onboarding@resend.dev (delivers only to your own
     # Resend account email until mysterymixclub.com is verified).
     email_from: str = Field(default="")
+    # Comma-separated platform-admin identity (MYS-128): these emails may eject
+    # bad actors via the /admin endpoints and see is_platform_admin on /users/me.
+    # NOT a login gate — sign-in is open to existing users + valid invite links.
+    # Normalized via seed_admin_email_set.
+    seed_admin_emails: str = Field(default="")
+    # Hard cap on total (non-deleted) accounts for the controlled beta (MYS-127);
+    # new sign-ups are blocked at the cap, existing users unaffected. 0 = unlimited.
+    max_users: int = Field(default=1500)
     # ----------------------------------------------------------------------- #
     # Feature flags
     #
@@ -68,6 +76,12 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> list[str]:
         return [origin.strip() for origin in self.allowed_origins.split(",") if origin.strip()]
+
+    @property
+    def seed_admin_email_set(self) -> set[str]:
+        return {
+            email.strip().lower() for email in self.seed_admin_emails.split(",") if email.strip()
+        }
 
     @property
     def secure_cookies(self) -> bool:

@@ -55,6 +55,10 @@ type LeagueHomeScreenProps = {
   onRemoveMember: (userId: string) => void;
   removingUserId: string | null;
   removeError?: string | null;
+  // --- Organizer admin: delete league (MYS-124) ---
+  onDeleteLeague: () => void;
+  deletingLeague: boolean;
+  deleteLeagueError?: string | null;
 };
 
 export function LeagueHomeScreen({
@@ -80,6 +84,9 @@ export function LeagueHomeScreen({
   onRemoveMember,
   removingUserId,
   removeError,
+  onDeleteLeague,
+  deletingLeague,
+  deleteLeagueError,
 }: LeagueHomeScreenProps) {
   if (loading) {
     return (
@@ -102,10 +109,9 @@ export function LeagueHomeScreen({
     );
   }
 
-  // The screen's one Rust use: the state Badge turns Rust only when the league is
-  // complete. Every other element on this screen stays in the Sage family.
-  const stateIsComplete = league.state === "complete";
-
+  // Rust budget: this screen's single Rust signal is reserved for the organizer's
+  // destructive delete-league confirm (DeleteLeagueSection below). Every other
+  // element — including the league-state badge — stays in the Sage family.
   return (
     <div className="min-h-screen flex flex-col">
       <header className="px-4 py-4 sm:px-8">
@@ -118,7 +124,7 @@ export function LeagueHomeScreen({
         <div className="flex items-start justify-between gap-4">
           <h1 className="font-serif text-[32px] leading-tight text-ink">{league.name}</h1>
           <div className="shrink-0 pt-2">
-            <Badge variant={stateIsComplete ? "accent" : "default"}>{league.state}</Badge>
+            <Badge>{league.state}</Badge>
           </div>
         </div>
         {league.description ? (
@@ -183,16 +189,22 @@ export function LeagueHomeScreen({
           ) : null}
         </section>
 
-        {/* Invite share — visible to any member */}
+        {/* Invite share — a single shareable link, visible to any member. The
+            link expires after 48h; calm copy says so. */}
         <section className="mt-12">
           <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">invite</h2>
           <div className="mt-4">
             {inviteUrl ? (
               <InviteShare inviteUrl={inviteUrl} />
             ) : (
-              <Button type="button" onClick={onGenerateInvite} disabled={generatingInvite}>
-                {generatingInvite ? "generating…" : "invite"}
-              </Button>
+              <>
+                <Button type="button" onClick={onGenerateInvite} disabled={generatingInvite}>
+                  {generatingInvite ? "generating…" : "invite"}
+                </Button>
+                <p className="mt-3 font-mono text-[11px] font-light text-muted">
+                  a shareable link, good for 48 hours.
+                </p>
+              </>
             )}
           </div>
           {inviteError ? (
@@ -201,8 +213,81 @@ export function LeagueHomeScreen({
             </p>
           ) : null}
         </section>
+
+        {/* Organizer-only destructive action. */}
+        {isOrganizer ? (
+          <DeleteLeagueSection
+            onDeleteLeague={onDeleteLeague}
+            deletingLeague={deletingLeague}
+            deleteLeagueError={deleteLeagueError}
+          />
+        ) : null}
       </main>
     </div>
+  );
+}
+
+/**
+ * Organizer-only destructive action. A two-step confirm (calm copy, no
+ * exclamation marks): the first action arms the confirm, the second commits.
+ * This confirm carries the screen's single Rust signal — the `link`-variant
+ * Button renders in Rust. The backend rejects deleting an in-progress league
+ * (409); that calm message is surfaced verbatim.
+ */
+function DeleteLeagueSection({
+  onDeleteLeague,
+  deletingLeague,
+  deleteLeagueError,
+}: {
+  onDeleteLeague: () => void;
+  deletingLeague: boolean;
+  deleteLeagueError?: string | null;
+}) {
+  const [confirming, setConfirming] = useState(false);
+
+  return (
+    <section className="mt-12 border-t border-border pt-6">
+      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">delete league</h2>
+
+      {confirming ? (
+        <div className="mt-4 space-y-4">
+          <p className="font-mono text-[13px] font-light text-muted">
+            this removes the league and everything in it. it can't be undone.
+          </p>
+          <div className="flex items-center gap-4">
+            {/* The screen's single Rust use: the destructive confirm. */}
+            <Button
+              variant="link"
+              type="button"
+              onClick={onDeleteLeague}
+              disabled={deletingLeague}
+            >
+              {deletingLeague ? "deleting…" : "delete this league"}
+            </Button>
+            <Button
+              variant="ghost"
+              type="button"
+              onClick={() => setConfirming(false)}
+              disabled={deletingLeague}
+            >
+              cancel
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-4">
+          <Button variant="ghost" type="button" onClick={() => setConfirming(true)}>
+            delete league
+          </Button>
+        </div>
+      )}
+
+      {deleteLeagueError ? (
+        <p role="alert" className="mt-3 font-mono text-[11px] text-ink">
+          {deleteLeagueError}
+        </p>
+      ) : null}
+    </section>
   );
 }
 
@@ -260,7 +345,7 @@ function RoundsSection({
 /**
  * One round in the rounds list. State drives the visual weight, within the
  * Sage/Ink family only — no Rust here (the screen reserves its single Rust use
- * for the league-complete badge above):
+ * for the delete-league confirm):
  *  - active round (open submission/voting) → Sage-pale fill, the eye lands here
  *  - upcoming (pending) → muted theme, quiet
  *  - closed → plain
@@ -386,7 +471,7 @@ function topVoteWinners(leaderboard: LeaderboardEntry[]): LeaderboardEntry[] {
  * Compact reveal summary for a closed round's card: the winner (top of the vote
  * leaderboard) and the most-noted pick. Both can tie — every co-winner is named.
  * Label-left / value-right, staying in the Sage/Ink family (no Rust here — the
- * screen reserves its single Rust use for the league-complete badge).
+ * screen reserves its single Rust use for the delete-league confirm).
  */
 function ClosedRoundSummary({ results }: { results: RoundResults }) {
   const winners = topVoteWinners(results.leaderboard);
@@ -423,7 +508,7 @@ function ClosedRoundSummary({ results }: { results: RoundResults }) {
  * Inline theme + description editor for a single pending round, shown in place
  * within the rounds list. Underline inputs only (TextField + an underline
  * textarea), matching the round-detail editor. No Rust — this screen's single
- * Rust use is the league-complete badge.
+ * Rust use is the delete-league confirm.
  */
 function RoundEditForm({
   round,
@@ -655,6 +740,9 @@ function InviteShare({ inviteUrl }: { inviteUrl: string }) {
           className="mt-2 w-full bg-transparent font-mono text-[13px] text-ink border-0 border-b border-ink rounded-none px-0 py-1 focus:outline-none focus:border-sage"
         />
       </label>
+      <p className="mt-3 font-mono text-[11px] font-light text-muted">
+        this link expires in 48 hours.
+      </p>
       <div className="mt-4 flex items-center gap-4">
         <Button type="button" onClick={handleCopy}>
           {copied ? "copied" : "copy"}

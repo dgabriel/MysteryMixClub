@@ -7,10 +7,12 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.routes.invites import _join_via_invite
 from app.auth.jwt import create_access_token
 from app.auth.tokens import generate_token, hash_token
 from app.config import Settings, get_settings
 from app.db.session import get_db
+from app.models.invite import Invite
 from app.models.magic_link_token import MagicLinkToken
 from app.models.session import Session
 from app.models.user import User
@@ -43,10 +45,16 @@ _DEVICE_HINT_MAX_LENGTH = 255
 _NEUTRAL_MESSAGE = "If that email is registered, a sign-in link is on its way."
 _INVALID_LINK_MESSAGE = "invalid or expired link"
 _INVALID_SESSION_MESSAGE = "invalid or expired session"
+_INVITE_REQUIRED_MESSAGE = "you need an invite to create an account"
+_AT_CAPACITY_MESSAGE = "MysteryMixClub is at capacity right now"
 
 
 class MagicLinkRequest(BaseModel):
     email: EmailStr
+    # Shareable invite-link token (MYS-127). A new account can only be created by
+    # someone arriving through a valid unexpired link; existing users sign in
+    # without one. Carried through to /auth/verify via the magic link's &invite=.
+    invite_token: str | None = None
 
 
 class MagicLinkResponse(BaseModel):
@@ -65,6 +73,21 @@ class VerifyResponse(BaseModel):
 
 class LogoutResponse(BaseModel):
     message: str
+
+
+async def _load_valid_invite(
+    db: AsyncSession, invite_token: str | None, now: datetime
+) -> Invite | None:
+    """Return the invite for ``invite_token`` if it exists and is unexpired, else
+    None. Legacy invites with no expires_at never expire (MYS-126/127)."""
+    if not invite_token:
+        return None
+    invite = await db.scalar(select(Invite).where(Invite.token == invite_token))
+    if invite is None:
+        return None
+    if invite.expires_at is not None and invite.expires_at <= now:
+        return None
+    return invite
 
 
 @router.post("/request", response_model=MagicLinkResponse, response_model_exclude_none=True)
@@ -91,6 +114,20 @@ async def request_magic_link(
             detail="Too many sign-in requests. Please try again later.",
         )
 
+    # Invite-gated sign-up (MYS-127): only send a link to an existing user, or to
+    # someone arriving through a valid unexpired invite link. Everyone else gets
+    # the SAME neutral response with no token persisted and no mail sent — this is
+    # both anti-bot (no open sign-up) and anti-enumeration.
+    existing_user = (
+        await db.scalar(select(User.id).where(User.email == email, User.deleted_at.is_(None)))
+    ) is not None
+    invite = await _load_valid_invite(db, payload.invite_token, now)
+    if not existing_user and invite is None:
+        logger.debug(
+            "Sign-in request without an existing account or valid invite; neutral response"
+        )
+        return MagicLinkResponse()
+
     raw_token = generate_token()
     db.add(
         MagicLinkToken(
@@ -103,6 +140,10 @@ async def request_magic_link(
     await db.commit()
 
     link = f"{settings.app_base_url.rstrip('/')}/auth/verify?token={raw_token}"
+    # Carry a valid invite token through to verify so the new account (or an
+    # existing user following someone's link) is joined to that league.
+    if invite is not None:
+        link = f"{link}&invite={payload.invite_token}"
     try:
         email_sender.send_magic_link(email, link)
     except Exception:
@@ -132,6 +173,7 @@ async def verify_magic_link(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
     user_agent: str | None = Header(default=None),
+    invite: str | None = None,
 ) -> VerifyResponse:
     now = datetime.now(timezone.utc)
 
@@ -153,11 +195,34 @@ async def verify_magic_link(
 
     email = token_row.email
 
+    # The invite token (if any) rode here on the link; re-validate it server-side.
+    invite_row = await _load_valid_invite(db, invite, now)
+
     user = await db.scalar(select(User).where(User.email == email, User.deleted_at.is_(None)))
     if user is None:
+        # New account: invite-gated sign-up (MYS-127). A valid unexpired invite is
+        # required, and creation is blocked once the user cap is reached.
+        if invite_row is None:
+            await db.commit()
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail=_INVITE_REQUIRED_MESSAGE
+            )
+        total_users = await db.scalar(
+            select(func.count()).select_from(User).where(User.deleted_at.is_(None))
+        )
+        if settings.max_users and (total_users or 0) >= settings.max_users:
+            await db.commit()
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=_AT_CAPACITY_MESSAGE)
         user = User(email=email, display_name="", default_vibe_mode=False)
         db.add(user)
         await db.flush()
+
+    # Join the invite's league for both new and existing users following a link.
+    # Capture user.id into a local before any further async work to avoid the
+    # expire_all/MissingGreenlet trap.
+    user_id = user.id
+    if invite_row is not None:
+        await _join_via_invite(db, user_id, invite_row)
 
     raw_refresh_token = generate_token()
     device_hint = user_agent[:_DEVICE_HINT_MAX_LENGTH] if user_agent else None

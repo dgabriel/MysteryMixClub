@@ -26,17 +26,35 @@ from collections.abc import AsyncGenerator
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
 from app.db.session import get_db
 from app.main import create_app
+from app.models.user import User
 from app.services.email import EmailSender, get_email_sender
 
 REQUEST_URL = "/api/v1/auth/request"
 VERIFY_URL = "/api/v1/auth/verify"
 LOGOUT_URL = "/api/v1/auth/logout"
 LOGOUT_ALL_URL = "/api/v1/auth/logout-all"
+
+
+_SIGNIN_EMAIL = "alice@example.com"
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _seed_signin_user(session_factory):
+    """v2 (MYS-127): /auth/request only mails a link to an existing user. These
+    cookie tests sign in as ``alice@example.com`` via the real magic-link flow,
+    so the account must exist first. Seeded for every test in this module; the
+    DB-less unit tests simply ignore it."""
+    async with session_factory() as db:
+        existing = await db.scalar(select(User).where(User.email == _SIGNIN_EMAIL))
+        if existing is None:
+            db.add(User(email=_SIGNIN_EMAIL, display_name="", default_vibe_mode=False))
+            await db.commit()
 
 
 # --------------------------------------------------------------------------- #
@@ -90,7 +108,9 @@ def _make_env_client_fixture(environment: str):
 
         # Build the env-specific settings once. database_url/secret_key are
         # irrelevant here (db comes from the get_db override); only
-        # ``environment`` -> ``secure_cookies`` is load-bearing.
+        # ``environment`` -> ``secure_cookies`` is load-bearing. The sign-in email
+        # is seeded as a real user by the autouse fixture, so the v2 magic-link
+        # flow issues a token without needing an invite.
         env_settings = Settings(environment=environment)
 
         def override_get_settings() -> Settings:

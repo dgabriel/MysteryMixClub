@@ -6,6 +6,20 @@ import { requestMagicLink } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 
 /**
+ * Pull the invite token out of a stashed pending-invite path. The join flow
+ * stores the full path the visitor landed on (e.g. "/invite/<token>" or the
+ * legacy "/join/<token>"); we only need the trailing token to thread through
+ * sign-in so a new account can be gated + auto-joined. Returns null when there
+ * is no pending invite (ordinary sign-in by an existing user).
+ */
+function readPendingInviteToken(): string | null {
+  const pending = localStorage.getItem("pendingInvitePath");
+  if (!pending) return null;
+  const match = pending.match(/^\/(?:invite|join)\/([^/?#]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+/**
  * Login flow container. Drives EmailEntryScreen → CheckEmailScreen.
  * Wires the presentational screens via their documented props only.
  */
@@ -21,11 +35,17 @@ export function LoginRoute() {
     setError(null);
     setDevLink(null);
     try {
-      const { devToken } = await requestMagicLink(email);
+      // When arriving from an invite link, carry its token so the backend can
+      // gate signup on it and auto-join the league on verify.
+      const inviteToken = readPendingInviteToken();
+      const { devToken } = await requestMagicLink(email, inviteToken);
       if (devToken) {
         // Dev/staging only: show a clickable relative sign-in link in place of
-        // the emailed one (which isn't deliverable in those environments).
-        setDevLink(`/auth/verify?token=${encodeURIComponent(devToken)}`);
+        // the emailed one (which isn't deliverable in those environments). The
+        // invite token rides along as `&invite=` so verify mirrors the email link.
+        const params = new URLSearchParams({ token: devToken });
+        if (inviteToken) params.set("invite", inviteToken);
+        setDevLink(`/auth/verify?${params.toString()}`);
       } else {
         setSentTo(email);
       }

@@ -7,6 +7,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
+from app.config import Settings, get_settings
 from app.db.session import get_db
 from app.models.league import League
 from app.models.session import Session
@@ -26,6 +27,9 @@ class UserProfileResponse(BaseModel):
     preferred_service: str | None
     default_vibe_mode: bool
     email_notifications: bool
+    # Whether this account may use the platform-admin tools (MYS-128). Derived
+    # from SEED_ADMIN_EMAILS so the UI can gate the /admin nav entry.
+    is_platform_admin: bool
 
 
 class UserProfileUpdate(BaseModel):
@@ -48,7 +52,7 @@ class UserProfileUpdate(BaseModel):
         return data
 
 
-def _to_profile(user: User) -> UserProfileResponse:
+def _to_profile(user: User, settings: Settings) -> UserProfileResponse:
     return UserProfileResponse(
         id=str(user.id),
         display_name=user.display_name,
@@ -56,14 +60,16 @@ def _to_profile(user: User) -> UserProfileResponse:
         preferred_service=user.preferred_service,
         default_vibe_mode=user.default_vibe_mode,
         email_notifications=user.email_notifications,
+        is_platform_admin=user.email.lower() in settings.seed_admin_email_set,
     )
 
 
 @router.get("/me", response_model=UserProfileResponse)
 async def get_me(
     current_user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
 ) -> UserProfileResponse:
-    return _to_profile(current_user)
+    return _to_profile(current_user, settings)
 
 
 @router.patch("/me", response_model=UserProfileResponse)
@@ -71,11 +77,12 @@ async def update_me(
     payload: UserProfileUpdate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> UserProfileResponse:
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(current_user, field, value)
     await db.commit()
-    return _to_profile(current_user)
+    return _to_profile(current_user, settings)
 
 
 # Calm, actionable detail when the caller still organizes a live league.

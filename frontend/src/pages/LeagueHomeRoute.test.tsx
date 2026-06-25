@@ -6,6 +6,7 @@ import { LeagueHomeRoute } from "./LeagueHomeRoute";
 import {
   ApiError,
   createInvite,
+  deleteLeague,
   getLeague,
   getLeagueMembers,
   getResults,
@@ -29,6 +30,7 @@ vi.mock("../services/api", async () => {
     updateLeague: vi.fn(),
     removeMember: vi.fn(),
     createInvite: vi.fn(),
+    deleteLeague: vi.fn(),
   };
 });
 
@@ -44,6 +46,7 @@ const mockGetResults = vi.mocked(getResults);
 const mockUpdateLeague = vi.mocked(updateLeague);
 const mockRemoveMember = vi.mocked(removeMember);
 const mockCreateInvite = vi.mocked(createInvite);
+const mockDeleteLeague = vi.mocked(deleteLeague);
 const mockUseAuth = vi.mocked(useAuth);
 
 const ORGANIZER_ID = "org-1111";
@@ -147,6 +150,7 @@ function setAuth(userId: string | null) {
     logoutAll: vi.fn(),
     displayName: "Ada",
     userId,
+    isPlatformAdmin: false,
     profileStatus: "ready",
     needsOnboarding: false,
     applyDisplayName: vi.fn(),
@@ -220,7 +224,7 @@ describe("LeagueHomeRoute", () => {
     expect(await screen.findByRole("button", { name: /^back$/i })).toBeInTheDocument();
   });
 
-  it("invite: generating an invite calls createInvite and shows a /join/{token} url", async () => {
+  it("invite: generating a shareable link calls createInvite, shows an /invite/{token} url, and notes the 48h expiry", async () => {
     mockCreateInvite.mockResolvedValue(inviteWith("tok-xyz"));
     const user = userEvent.setup();
 
@@ -231,7 +235,8 @@ describe("LeagueHomeRoute", () => {
 
     expect(mockCreateInvite).toHaveBeenCalledWith("league-1");
     const field = (await screen.findByLabelText(/share link/i)) as HTMLInputElement;
-    expect(field.value).toContain("/join/tok-xyz");
+    expect(field.value).toContain("/invite/tok-xyz");
+    expect(screen.getByText(/expires in 48 hours/i)).toBeInTheDocument();
   });
 
   it("organizer update: submitting the edit form calls updateLeague; a 409 shows updateError", async () => {
@@ -350,5 +355,38 @@ describe("LeagueHomeRoute", () => {
     await waitFor(() => expect(mockGetResults).toHaveBeenCalled());
     expect(screen.queryByText("winner")).not.toBeInTheDocument();
     expect(screen.queryByText("most noted")).not.toBeInTheDocument();
+  });
+
+  // --- Organizer admin: delete league (MYS-124) ---
+
+  it("delete league: confirm step calls deleteLeague and navigates to /home", async () => {
+    mockDeleteLeague.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+
+    renderLeague();
+    await screen.findByText("Friday Mixtape");
+
+    // First click arms the confirm; the destructive action only fires on the second.
+    await user.click(screen.getByRole("button", { name: /^delete league$/i }));
+    await user.click(screen.getByRole("button", { name: /^delete this league$/i }));
+
+    await waitFor(() => expect(mockDeleteLeague).toHaveBeenCalledWith("league-1"));
+    expect(await screen.findByText("HOME CONTENT")).toBeInTheDocument();
+  });
+
+  it("delete league: a 409 shows the calm in-progress message and does not navigate", async () => {
+    mockDeleteLeague.mockRejectedValue(
+      new ApiError(409, "cannot delete a league that is in progress"),
+    );
+    const user = userEvent.setup();
+
+    renderLeague();
+    await screen.findByText("Friday Mixtape");
+
+    await user.click(screen.getByRole("button", { name: /^delete league$/i }));
+    await user.click(screen.getByRole("button", { name: /^delete this league$/i }));
+
+    expect(await screen.findByText(/cannot delete a league that is in progress/i)).toBeInTheDocument();
+    expect(screen.queryByText("HOME CONTENT")).not.toBeInTheDocument();
   });
 });

@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.jwt import JWTError, decode_access_token
+from app.config import Settings, get_settings
 from app.db.session import get_db
 from app.models.user import User
 
@@ -47,3 +48,20 @@ async def get_current_user(
         )
 
     return user
+
+
+async def get_platform_admin(
+    current_user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> User:
+    """Require the caller to be a platform admin (an email in SEED_ADMIN_EMAILS).
+
+    Builds on get_current_user, so a missing/invalid token still yields 401;
+    an authenticated non-admin gets 403 (MYS-128).
+    """
+    if current_user.email.lower() not in settings.seed_admin_email_set:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="not authorized",
+        )
+    return current_user

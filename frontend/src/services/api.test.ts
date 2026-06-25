@@ -148,9 +148,25 @@ describe("api.ts", () => {
 
       expect(result).toEqual({ access_token: "tok" });
       const [url, init] = fetchMock.mock.calls[0];
-      expect(url).toBe(`${AUTH_BASE}/verify?token=${encodeURIComponent("a b/c?d")}`);
+      // URLSearchParams form-encodes the token (space → "+"); no invite param
+      // when none is passed.
+      const params = new URLSearchParams({ token: "a b/c?d" });
+      expect(url).toBe(`${AUTH_BASE}/verify?${params.toString()}`);
+      expect(String(url)).not.toContain("invite=");
       expect(init?.method).toBe("GET");
       expect(init?.credentials).toBe("include");
+    });
+
+    it("appends the invite token when one is provided", async () => {
+      const fetchMock = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(jsonResponse(200, { access_token: "tok", token_type: "bearer" }));
+
+      await verifyToken("magic", "inv-123");
+
+      const [url] = fetchMock.mock.calls[0];
+      expect(String(url)).toContain("token=magic");
+      expect(String(url)).toContain("invite=inv-123");
     });
 
     it("throws ApiError on a non-2xx verify response", async () => {
@@ -336,6 +352,7 @@ describe("api.ts", () => {
       email: "ada@example.com",
       preferred_service: "spotify",
       default_vibe_mode: false,
+      is_platform_admin: false,
     };
 
     it("GETs /api/v1/users/me (Bearer + credentials) and resolves the parsed profile on 200", async () => {
@@ -398,6 +415,7 @@ describe("api.ts", () => {
       email: "alice@example.com",
       preferred_service: null,
       default_vibe_mode: false,
+      is_platform_admin: false,
     };
 
     it("PATCHes /api/v1/users/me with a JSON body and returns the parsed profile on 200", async () => {

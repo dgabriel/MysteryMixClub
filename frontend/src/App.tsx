@@ -9,6 +9,7 @@ import { CreateLeagueRoute } from "./pages/CreateLeagueRoute";
 import { LeagueHomeRoute } from "./pages/LeagueHomeRoute";
 import { RoundDetailRoute } from "./pages/RoundDetailRoute";
 import { JoinLeagueRoute } from "./pages/JoinLeagueRoute";
+import { AdminRoute } from "./pages/AdminRoute";
 
 /**
  * Route map:
@@ -21,8 +22,13 @@ import { JoinLeagueRoute } from "./pages/JoinLeagueRoute";
  *   /leagues/new   → protected; create a league
  *   /leagues/:id   → protected; league home (rounds, members, invite, organizer edit)
  *   /rounds/:id    → protected; round detail (submit / playlist / reveal)
- *   /join/:token   → public; invite preview + join (self-guards the
- *                    unauthenticated case via stored pendingInvitePath)
+ *   /admin         → protected + platform-admin only (self-guards non-admins
+ *                    → /home); user search + hard-delete
+ *   /invite/:token → public; invite preview + join. The shareable link an
+ *                    organizer hands out ({app_base_url}/invite/{token}).
+ *   /join/:token   → public; legacy alias for /invite/:token (in-flight links).
+ *                    Both self-guard the unauthenticated case via the stored
+ *                    pendingInvitePath.
  *   *              → redirect to /login
  */
 export default function App() {
@@ -66,6 +72,15 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute>
+                <AdminRoute />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/invite/:token" element={<JoinLeagueRoute />} />
           <Route path="/join/:token" element={<JoinLeagueRoute />} />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>

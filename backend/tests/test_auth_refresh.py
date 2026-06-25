@@ -19,6 +19,7 @@ from sqlalchemy import select
 from app.auth.tokens import hash_token
 from app.config import get_settings
 from app.models.session import Session
+from app.models.user import User
 
 REQUEST_URL = "/api/v1/auth/request"
 VERIFY_URL = "/api/v1/auth/verify"
@@ -29,24 +30,39 @@ _NEUTRAL_SESSION_DETAIL = "invalid or expired session"
 
 # --------------------------------------------------------------------------- #
 # Helpers
+#
+# v2 access model (MYS-127): /auth/request only mails a link to an EXISTING
+# (non-deleted) user or someone arriving via a valid invite link. These
+# session/refresh tests don't care how the account came to exist, so the helper
+# seeds the user first, then runs the real magic-link flow.
 # --------------------------------------------------------------------------- #
 
 
-async def _request_link(client, email_spy, email: str) -> str:
-    """Request a magic link for ``email`` and return the raw token from the email."""
+async def _seed_user(session_factory, email: str) -> None:
+    """Idempotently ensure a non-deleted user exists for ``email``."""
+    async with session_factory() as db:
+        existing = await db.scalar(select(User).where(User.email == email))
+        if existing is None:
+            db.add(User(email=email, display_name="", default_vibe_mode=False))
+            await db.commit()
+
+
+async def _request_link(client, email_spy, session_factory, email: str) -> str:
+    """Seed the user, request a magic link, return the raw token from the email."""
+    await _seed_user(session_factory, email)
     resp = await client.post(REQUEST_URL, json={"email": email})
     assert resp.status_code == 200, f"request -> {resp.status_code}: {resp.text}"
     _, link = email_spy.calls[-1]
     return link.split("token=")[1]
 
 
-async def _establish_session(client, email_spy, email: str) -> str:
+async def _establish_session(client, email_spy, session_factory, email: str) -> str:
     """Run request -> verify and return the raw refresh token cookie value.
 
     The same client's cookie jar also retains the cookie (path /api/v1/auth),
     so a subsequent /auth/refresh on this client carries it automatically.
     """
-    raw = await _request_link(client, email_spy, email)
+    raw = await _request_link(client, email_spy, session_factory, email)
     resp = await client.get(VERIFY_URL, params={"token": raw})
     assert resp.status_code == 200, resp.text
     refresh_cookie = resp.cookies.get("refresh_token")
@@ -67,8 +83,8 @@ async def _session_for_cookie(db_session, raw_cookie: str) -> Session:
 # --------------------------------------------------------------------------- #
 
 
-async def test_refresh_returns_200_with_bearer_token(client, email_spy):
-    await _establish_session(client, email_spy, "alice@example.com")
+async def test_refresh_returns_200_with_bearer_token(client, email_spy, session_factory):
+    await _establish_session(client, email_spy, session_factory, "alice@example.com")
 
     # Same client carries the refresh cookie set by /auth/verify automatically.
     resp = await client.post(REFRESH_URL)
@@ -81,10 +97,10 @@ async def test_refresh_returns_200_with_bearer_token(client, email_spy):
 
 
 async def test_refresh_jwt_decodes_with_correct_claims_and_60_min_ttl(
-    client, email_spy, db_session
+    client, email_spy, db_session, session_factory
 ):
     settings = get_settings()
-    raw_cookie = await _establish_session(client, email_spy, "alice@example.com")
+    raw_cookie = await _establish_session(client, email_spy, session_factory, "alice@example.com")
 
     resp = await client.post(REFRESH_URL)
     assert resp.status_code == 200, resp.text
@@ -98,8 +114,8 @@ async def test_refresh_jwt_decodes_with_correct_claims_and_60_min_ttl(
     assert claims["exp"] - claims["iat"] == 3600
 
 
-async def test_refresh_advances_last_used_at(client, email_spy, db_session):
-    raw_cookie = await _establish_session(client, email_spy, "alice@example.com")
+async def test_refresh_advances_last_used_at(client, email_spy, db_session, session_factory):
+    raw_cookie = await _establish_session(client, email_spy, session_factory, "alice@example.com")
 
     before = await _session_for_cookie(db_session, raw_cookie)
     assert before is not None
@@ -115,8 +131,10 @@ async def test_refresh_advances_last_used_at(client, email_spy, db_session):
     )
 
 
-async def test_refresh_token_not_rotated_same_cookie_works_twice(client, email_spy, db_session):
-    raw_cookie = await _establish_session(client, email_spy, "alice@example.com")
+async def test_refresh_token_not_rotated_same_cookie_works_twice(
+    client, email_spy, db_session, session_factory
+):
+    raw_cookie = await _establish_session(client, email_spy, session_factory, "alice@example.com")
 
     first = await client.post(REFRESH_URL)
     assert first.status_code == 200, first.text
@@ -152,8 +170,8 @@ async def test_unknown_garbage_cookie_returns_401(client, db_session):
     assert resp.json()["detail"] == _NEUTRAL_SESSION_DETAIL
 
 
-async def test_invalidated_session_returns_401(client, email_spy, db_session):
-    raw_cookie = await _establish_session(client, email_spy, "alice@example.com")
+async def test_invalidated_session_returns_401(client, email_spy, db_session, session_factory):
+    raw_cookie = await _establish_session(client, email_spy, session_factory, "alice@example.com")
 
     session = await _session_for_cookie(db_session, raw_cookie)
     assert session is not None
@@ -167,8 +185,8 @@ async def test_invalidated_session_returns_401(client, email_spy, db_session):
     assert resp.json()["detail"] == _NEUTRAL_SESSION_DETAIL
 
 
-async def test_expired_session_returns_401(client, email_spy, db_session):
-    raw_cookie = await _establish_session(client, email_spy, "alice@example.com")
+async def test_expired_session_returns_401(client, email_spy, db_session, session_factory):
+    raw_cookie = await _establish_session(client, email_spy, session_factory, "alice@example.com")
 
     session = await _session_for_cookie(db_session, raw_cookie)
     assert session is not None
@@ -182,7 +200,9 @@ async def test_expired_session_returns_401(client, email_spy, db_session):
     assert resp.json()["detail"] == _NEUTRAL_SESSION_DETAIL
 
 
-async def test_401_detail_is_neutral_across_all_failure_modes(client, email_spy, db_session):
+async def test_401_detail_is_neutral_across_all_failure_modes(
+    client, email_spy, db_session, session_factory
+):
     # No cookie.
     no_cookie = await client.post(REFRESH_URL)
 
@@ -190,14 +210,14 @@ async def test_401_detail_is_neutral_across_all_failure_modes(client, email_spy,
     garbage = await client.post(REFRESH_URL, cookies={"refresh_token": "no-such-session"})
 
     # Invalidated session.
-    raw_inv = await _establish_session(client, email_spy, "inv@example.com")
+    raw_inv = await _establish_session(client, email_spy, session_factory, "inv@example.com")
     sess_inv = await _session_for_cookie(db_session, raw_inv)
     sess_inv.invalidated_at = datetime.now(timezone.utc)
     await db_session.commit()
     invalidated = await client.post(REFRESH_URL, cookies={"refresh_token": raw_inv})
 
     # Expired session.
-    raw_exp = await _establish_session(client, email_spy, "exp@example.com")
+    raw_exp = await _establish_session(client, email_spy, session_factory, "exp@example.com")
     sess_exp = await _session_for_cookie(db_session, raw_exp)
     sess_exp.created_at = datetime.now(timezone.utc) - timedelta(days=31)
     await db_session.commit()

@@ -145,6 +145,7 @@ function setAuth(userId: string) {
     userId,
     profileStatus: "ready",
     needsOnboarding: false,
+    isPlatformAdmin: false,
     applyDisplayName: vi.fn(),
   } as unknown as ReturnType<typeof useAuth>);
 }

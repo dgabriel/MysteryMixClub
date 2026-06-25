@@ -14,6 +14,9 @@ type MyLeaguesScreenProps = {
   onOpenLeague: (id: string) => void;
   onLogout: () => void;
   loggingOut: boolean;
+  /** Platform admins get an "admin" nav entry; hidden for everyone else. */
+  isPlatformAdmin?: boolean;
+  onOpenAdmin?: () => void;
 };
 
 export function MyLeaguesScreen({
@@ -25,14 +28,23 @@ export function MyLeaguesScreen({
   onOpenLeague,
   onLogout,
   loggingOut,
+  isPlatformAdmin,
+  onOpenAdmin,
 }: MyLeaguesScreenProps) {
   return (
     <div className="min-h-screen flex flex-col">
       <header className="flex items-center justify-between px-4 py-4 sm:px-8">
         <span className="font-serif lowercase text-[20px] text-ink">my leagues</span>
-        <Button variant="ghost" type="button" onClick={onLogout} disabled={loggingOut}>
-          {loggingOut ? "logging out…" : "logout"}
-        </Button>
+        <div className="flex items-center gap-4">
+          {isPlatformAdmin && onOpenAdmin ? (
+            <Button variant="ghost" type="button" onClick={onOpenAdmin}>
+              admin
+            </Button>
+          ) : null}
+          <Button variant="ghost" type="button" onClick={onLogout} disabled={loggingOut}>
+            {loggingOut ? "logging out…" : "logout"}
+          </Button>
+        </div>
       </header>
 
       <main className="flex flex-1 flex-col px-4 py-8 sm:px-8">

@@ -4,6 +4,7 @@ import { LeagueHomeScreen } from "./LeagueHomeScreen";
 import {
   ApiError,
   createInvite,
+  deleteLeague,
   getLeague,
   getLeagueMembers,
   getResults,
@@ -49,6 +50,10 @@ export function LeagueHomeRoute() {
 
   const [removingUserId, setRemovingUserId] = useState<string | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
+
+  // Organizer admin: delete league (MYS-124).
+  const [deletingLeague, setDeletingLeague] = useState(false);
+  const [deleteLeagueError, setDeleteLeagueError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -104,13 +109,32 @@ export function LeagueHomeRoute() {
 
   const isOrganizer = !!userId && league?.organizer_id === userId;
 
+  async function handleDeleteLeague() {
+    if (!id) return;
+    setDeletingLeague(true);
+    setDeleteLeagueError(null);
+    try {
+      await deleteLeague(id);
+      navigate("/home");
+    } catch (err) {
+      // The backend's 409 detail ("cannot delete a league that is in progress")
+      // is calm enough to show verbatim.
+      setDeleteLeagueError(
+        err instanceof ApiError ? err.message : "couldn't delete the league. try again.",
+      );
+      setDeletingLeague(false);
+    }
+  }
+
   async function handleGenerateInvite() {
     if (!id) return;
     setGeneratingInvite(true);
     setInviteError(null);
     try {
       const invite = await createInvite(id);
-      setInviteUrl(`${window.location.origin}/join/${invite.token}`);
+      // Canonical invite path is /invite/:token (what the backend emails too);
+      // /join/:token still resolves as a legacy alias.
+      setInviteUrl(`${window.location.origin}/invite/${invite.token}`);
     } catch (err) {
       setInviteError(
         err instanceof ApiError ? err.message : "couldn't generate an invite. try again.",
@@ -227,6 +251,9 @@ export function LeagueHomeRoute() {
       onRemoveMember={handleRemoveMember}
       removingUserId={removingUserId}
       removeError={removeError}
+      onDeleteLeague={handleDeleteLeague}
+      deletingLeague={deletingLeague}
+      deleteLeagueError={deleteLeagueError}
     />
   );
 }

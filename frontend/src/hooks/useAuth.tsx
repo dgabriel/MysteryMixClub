@@ -46,6 +46,9 @@ type AuthContextValue = {
   /** Current user's id once the profile loads; null while unloaded. League
    *  routes compare it against league.organizer_id to gate organizer controls. */
   userId: string | null;
+  /** True once the profile loads and the user is a platform admin. Gates the
+   *  /admin route and its nav entry; false while the profile is unloaded. */
+  isPlatformAdmin: boolean;
   /** Lifecycle of the profile fetch that follows authentication. */
   profileStatus: ProfileStatus;
   /** True only when authenticated, profile loaded, and the name is the
@@ -63,6 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
   const [profileStatus, setProfileStatus] = useState<ProfileStatus>("idle");
   const didInit = useRef(false);
   const didLoadProfile = useRef(false);
@@ -79,6 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStatus("unauthenticated");
     setDisplayName(null);
     setUserId(null);
+    setIsPlatformAdmin(false);
     setProfileStatus("idle");
   }, []);
 
@@ -128,6 +133,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const profile = await getMe();
         setDisplayName(profile.display_name);
         setUserId(profile.id);
+        setIsPlatformAdmin(profile.is_platform_admin);
         setProfileStatus("ready");
       } catch {
         didLoadProfile.current = false;
@@ -165,6 +171,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logoutAll,
       displayName,
       userId,
+      isPlatformAdmin,
       profileStatus,
       needsOnboarding,
       applyDisplayName,
@@ -178,6 +185,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logoutAll,
       displayName,
       userId,
+      isPlatformAdmin,
       profileStatus,
       needsOnboarding,
       applyDisplayName,

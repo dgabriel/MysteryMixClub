@@ -59,6 +59,7 @@ function setAuth(isAuthenticated: boolean) {
     userId: isAuthenticated ? "user-1" : null,
     profileStatus: isAuthenticated ? "ready" : "idle",
     needsOnboarding: false,
+    isPlatformAdmin: false,
     applyDisplayName: vi.fn(),
   });
 }
@@ -102,6 +103,14 @@ describe("JoinLeagueRoute", () => {
     expect(
       await screen.findByText(/that invite link didn.?t work/i),
     ).toBeInTheDocument();
+    expect(screen.queryByText("Friday Mixtape")).not.toBeInTheDocument();
+  });
+
+  it("expired: getInvitePreview rejecting with 410 renders the expired state", async () => {
+    mockGetInvitePreview.mockRejectedValue(new ApiError(410, "gone"));
+    renderJoin();
+
+    expect(await screen.findByText(/this link has expired/i)).toBeInTheDocument();
     expect(screen.queryByText("Friday Mixtape")).not.toBeInTheDocument();
   });
 

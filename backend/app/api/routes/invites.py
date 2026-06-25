@@ -1,3 +1,6 @@
+import uuid
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -13,6 +16,32 @@ from app.models.user import User
 
 router = APIRouter(prefix="/invites", tags=["invites"])
 
+_EXPIRED_LINK_MESSAGE = "this invite link has expired"
+
+
+def _is_expired(invite: Invite, now: datetime) -> bool:
+    """Shareable links expire 48h after creation (MYS-126). Legacy invites with
+    no expires_at never expire."""
+    return invite.expires_at is not None and invite.expires_at <= now
+
+
+async def _join_via_invite(db: AsyncSession, user_id: uuid.UUID, invite: Invite) -> None:
+    """Join ``user_id`` to the invite's league: insert a new membership, or
+    reactivate an existing (possibly removed) one in place. Shared by the invite
+    accept route and the auto-join on sign-in (MYS-127). The caller commits."""
+    membership = await db.scalar(
+        select(LeagueMember).where(
+            LeagueMember.league_id == invite.league_id,
+            LeagueMember.user_id == user_id,
+        )
+    )
+    if membership is not None:
+        if membership.removed_at is not None:
+            membership.removed_at = None
+            membership.joined_at = func.now()
+    else:
+        db.add(LeagueMember(league_id=invite.league_id, user_id=user_id))
+
 
 class InvitePreviewResponse(BaseModel):
     league_name: str
@@ -27,6 +56,9 @@ async def preview_invite(
     invite = await db.scalar(select(Invite).where(Invite.token == token))
     if invite is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invite not found")
+
+    if _is_expired(invite, datetime.now(timezone.utc)):
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail=_EXPIRED_LINK_MESSAGE)
 
     league = await db.scalar(select(League).where(League.id == invite.league_id))
     if league is None:
@@ -53,6 +85,9 @@ async def accept_invite(
     if invite is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invite not found")
 
+    if _is_expired(invite, datetime.now(timezone.utc)):
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail=_EXPIRED_LINK_MESSAGE)
+
     league = await db.scalar(select(League).where(League.id == invite.league_id))
     if league is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invite not found")
@@ -63,14 +98,10 @@ async def accept_invite(
             LeagueMember.user_id == current_user.id,
         )
     )
-    if membership is not None:
-        if membership.removed_at is None:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="already a member")
-        # Reactivate the existing row in place rather than inserting a second one.
-        membership.removed_at = None
-        membership.joined_at = func.now()
-    else:
-        db.add(LeagueMember(league_id=invite.league_id, user_id=current_user.id))
+    if membership is not None and membership.removed_at is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="already a member")
+
+    await _join_via_invite(db, current_user.id, invite)
 
     await db.commit()
     await db.refresh(league)

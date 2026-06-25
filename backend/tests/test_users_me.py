@@ -10,6 +10,7 @@ columns. See technical-design.md §5 (auth) and §6 (users data model).
 import uuid
 from datetime import datetime, timedelta, timezone
 
+import pytest
 from jose import jwt
 from sqlalchemy import select
 
@@ -143,12 +144,15 @@ async def test_get_me_returns_exact_profile_shape(client, db_session):
         "preferred_service",
         "default_vibe_mode",
         "email_notifications",
+        "is_platform_admin",
     }
     assert body["id"] == str(user_id)
     assert body["display_name"] == "Bob"
     assert body["email"] == "bob@example.com"
     assert body["preferred_service"] is None
     assert body["default_vibe_mode"] is True
+    # Bob is not on SEED_ADMIN_EMAILS (empty by default in the client fixture).
+    assert body["is_platform_admin"] is False
 
 
 async def test_get_me_includes_user_id(client, db_session):
@@ -163,6 +167,39 @@ async def test_get_me_includes_user_id(client, db_session):
     assert body["id"] == str(user_id)
     assert isinstance(body["id"], str)
     assert body["id"] != ""
+
+
+class TestPlatformAdminFlag:
+    """MYS-128: is_platform_admin is derived from SEED_ADMIN_EMAILS."""
+
+    @pytest.fixture
+    def seed_admin_emails(self) -> str:
+        return "boss@example.com"
+
+    async def test_admin_email_reports_is_platform_admin_true(self, client, db_session):
+        admin = await _seed_user(db_session, email="boss@example.com", display_name="Boss")
+
+        resp = await client.get(ME_URL, headers=_auth_header(admin.id))
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["is_platform_admin"] is True
+
+    async def test_admin_match_is_case_insensitive(self, client, db_session):
+        # Stored email differs in case from the seed list; still recognized.
+        admin = await _seed_user(db_session, email="Boss@Example.com", display_name="Boss")
+
+        resp = await client.get(ME_URL, headers=_auth_header(admin.id))
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["is_platform_admin"] is True
+
+    async def test_non_admin_email_reports_false_even_with_seed_set(self, client, db_session):
+        plain = await _seed_user(db_session, email="nobody@example.com", display_name="Nobody")
+
+        resp = await client.get(ME_URL, headers=_auth_header(plain.id))
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["is_platform_admin"] is False
 
 
 # --------------------------------------------------------------------------- #

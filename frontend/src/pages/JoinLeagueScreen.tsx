@@ -6,6 +6,8 @@ type JoinLeagueScreenProps = {
   preview: InvitePreview | null;
   loading: boolean;
   notFound: boolean;
+  /** The invite link has expired (410) — distinct calm copy from notFound. */
+  expired?: boolean;
   isAuthenticated: boolean;
   onJoin: () => void;
   joining: boolean;
@@ -17,6 +19,7 @@ export function JoinLeagueScreen({
   preview,
   loading,
   notFound,
+  expired,
   isAuthenticated,
   onJoin,
   joining,
@@ -28,6 +31,13 @@ export function JoinLeagueScreen({
       <div className="w-full max-w-sm text-center">
         {loading ? (
           <ConcentricRings size={88} spinning className="mx-auto" />
+        ) : expired ? (
+          <>
+            <ConcentricRings size={72} className="mx-auto" />
+            <p className="mt-8 font-mono text-[13px] font-light text-muted">
+              this link has expired — ask the organizer for a new one.
+            </p>
+          </>
         ) : notFound ? (
           <>
             <ConcentricRings size={72} className="mx-auto" />

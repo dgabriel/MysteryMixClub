@@ -13,7 +13,7 @@ import { useAuth } from "../hooks/useAuth";
  */
 export function HomeRoute() {
   const navigate = useNavigate();
-  const { displayName, logout } = useAuth();
+  const { displayName, logout, isPlatformAdmin } = useAuth();
   const [leagues, setLeagues] = useState<League[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +61,8 @@ export function HomeRoute() {
       onOpenLeague={(id) => navigate(`/leagues/${id}`)}
       onLogout={handleLogout}
       loggingOut={loggingOut}
+      isPlatformAdmin={isPlatformAdmin}
+      onOpenAdmin={() => navigate("/admin")}
     />
   );
 }

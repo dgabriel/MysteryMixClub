@@ -52,6 +52,7 @@ function renderHome() {
         <Route path="/leagues/new" element={<div>NEW LEAGUE CONTENT</div>} />
         <Route path="/leagues/:id" element={<div>LEAGUE DETAIL CONTENT</div>} />
         <Route path="/join/:token" element={<div>JOIN CONTENT</div>} />
+        <Route path="/admin" element={<div>ADMIN CONTENT</div>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -74,6 +75,7 @@ describe("HomeRoute (My Leagues)", () => {
       userId: "11111111-1111-1111-1111-111111111111",
       profileStatus: "ready",
       needsOnboarding: false,
+      isPlatformAdmin: false,
       applyDisplayName: vi.fn(),
     });
   });
@@ -139,5 +141,35 @@ describe("HomeRoute (My Leagues)", () => {
 
     expect(await screen.findByText("JOIN CONTENT")).toBeInTheDocument();
     expect(localStorage.getItem("pendingInvitePath")).toBeNull();
+  });
+
+  it("admin nav: hidden for a non-admin", async () => {
+    renderHome();
+
+    await screen.findByText("Friday Mixtape");
+    expect(screen.queryByRole("button", { name: /^admin$/i })).not.toBeInTheDocument();
+  });
+
+  it("admin nav: a platform admin gets an admin entry that routes to /admin", async () => {
+    mockUseAuth.mockReturnValue({
+      status: "authenticated",
+      isAuthenticated: true,
+      setAccessToken: vi.fn(),
+      clear: vi.fn(),
+      logout,
+      logoutAll: vi.fn(),
+      displayName: "ada",
+      userId: "11111111-1111-1111-1111-111111111111",
+      profileStatus: "ready",
+      needsOnboarding: false,
+      isPlatformAdmin: true,
+      applyDisplayName: vi.fn(),
+    });
+    const user = userEvent.setup();
+    renderHome();
+
+    await user.click(await screen.findByRole("button", { name: /^admin$/i }));
+
+    expect(await screen.findByText("ADMIN CONTENT")).toBeInTheDocument();
   });
 });

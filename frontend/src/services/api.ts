@@ -42,6 +42,9 @@ export type UserProfile = {
   email: string;
   preferred_service: string | null;
   default_vibe_mode: boolean;
+  /** True for platform admins (email in the server's SEED_ADMIN_EMAILS). Gates
+   *  the /admin page and its nav entry. */
+  is_platform_admin: boolean;
 };
 
 class ApiError extends Error {
@@ -67,14 +70,24 @@ async function readErrorMessage(res: Response): Promise<string> {
  * Request a magic link. Returns a neutral result regardless of whether the
  * email is registered — the backend responds 200 with a neutral message.
  *
+ * When the request comes from a shareable invite link, pass `inviteToken` so the
+ * backend can both gate signup on it (a new account requires a valid invite) and
+ * carry it into the verify link to auto-join the league. The dev verify link the
+ * UI builds must append `&invite=<inviteToken>` to match.
+ *
  * Outside production the backend also returns `dev_token` so the UI can show a
  * clickable sign-in link for testing; it is absent in production.
  */
-export async function requestMagicLink(email: string): Promise<{ devToken: string | null }> {
+export async function requestMagicLink(
+  email: string,
+  inviteToken?: string | null,
+): Promise<{ devToken: string | null }> {
   const res = await fetch(`${AUTH_BASE}/request`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email }),
+    // JSON.stringify drops an undefined value, so an absent invite token simply
+    // isn't sent — keeping the no-invite request body identical to before.
+    body: JSON.stringify({ email, invite_token: inviteToken ?? undefined }),
   });
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
@@ -88,8 +101,15 @@ export async function requestMagicLink(email: string): Promise<{ devToken: strin
  * cookie and returns the access token. Requires `credentials: 'include'` so the
  * Set-Cookie is accepted.
  */
-export async function verifyToken(token: string): Promise<{ access_token: string }> {
-  const res = await fetch(`${AUTH_BASE}/verify?token=${encodeURIComponent(token)}`, {
+export async function verifyToken(
+  token: string,
+  invite?: string | null,
+): Promise<{ access_token: string }> {
+  const params = new URLSearchParams({ token });
+  // A new account requires a valid invite; an existing user with an invite is
+  // auto-joined to that league. Absent invite → plain verify (existing users).
+  if (invite) params.set("invite", invite);
+  const res = await fetch(`${AUTH_BASE}/verify?${params.toString()}`, {
     method: "GET",
     credentials: "include",
   });
@@ -331,6 +351,18 @@ export async function createInvite(leagueId: string): Promise<Invite> {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
   return (await res.json()) as Invite;
+}
+
+/** Delete a league (organizer only). Resolves on 204. The backend returns 409
+ *  when the league is in progress; the calm detail message ("cannot delete a
+ *  league that is in progress") is surfaced on the thrown ApiError. */
+export async function deleteLeague(leagueId: string): Promise<void> {
+  const res = await authenticatedRequest(`/api/v1/leagues/${leagueId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
 }
 
 /** Validate an invite token and return a public league preview. Unauthenticated:
@@ -815,6 +847,42 @@ export async function getNotes(submissionId: string): Promise<Note[]> {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
   return (await res.json()) as Note[];
+}
+
+// --------------------------------------------------------------------------- //
+// Platform admin (MYS-128). Every endpoint here is platform-admin-only; the
+// backend returns 403 for non-admins. The UI gates the whole page on
+// `is_platform_admin` from /users/me so these are never called by others.
+// --------------------------------------------------------------------------- //
+
+/** A user as surfaced in the admin search results (GET /api/v1/admin/users). */
+export type AdminUser = {
+  id: string;
+  email: string;
+  display_name: string;
+  created_at: string;
+};
+
+/** Search users by an email substring (platform-admin only). */
+export async function adminSearchUsers(email: string): Promise<AdminUser[]> {
+  const res = await authenticatedRequest(
+    `/api/v1/admin/users?email=${encodeURIComponent(email)}`,
+  );
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as AdminUser[];
+}
+
+/** Hard-delete a user and all their data (platform-admin only). Resolves on 204.
+ *  The backend returns 409 on a self-delete; that detail surfaces on the error. */
+export async function adminDeleteUser(userId: string): Promise<void> {
+  const res = await authenticatedRequest(`/api/v1/admin/users/${userId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
 }
 
 export { ApiError };

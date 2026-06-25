@@ -10,7 +10,7 @@ technical-design.md §6 (invites, league_members) and §7 (Invites API).
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
@@ -292,3 +292,60 @@ async def test_reactivation_accept_returns_200_and_reuses_same_row(client, db_se
     assert len(members) == 1
     assert members[0].id == original_member_id
     assert members[0].removed_at is None
+
+
+# ========================================================================== #
+# Expired shareable links (MYS-126) — 410 Gone on both preview and accept
+# ========================================================================== #
+
+
+async def test_preview_expired_link_returns_410(client, db_session):
+    organizer = await _seed_user(db_session)
+    league = await _seed_league(db_session, organizer)
+    invite = await _seed_invite(
+        db_session, league, organizer, expires_at=datetime.now(timezone.utc) - timedelta(minutes=1)
+    )
+
+    resp = await client.get(_preview_url(invite.token))
+
+    assert resp.status_code == 410, resp.text
+
+
+async def test_accept_expired_link_returns_410_and_no_membership(client, db_session):
+    organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
+    league = await _seed_league(db_session, organizer)
+    invite = await _seed_invite(
+        db_session, league, organizer, expires_at=datetime.now(timezone.utc) - timedelta(minutes=1)
+    )
+    joiner = await _seed_user(db_session, email="join@example.com", display_name="Joiner")
+    joiner_id = joiner.id
+    league_id = league.id
+
+    resp = await client.post(_accept_url(invite.token), headers=_auth_header(joiner.id))
+
+    assert resp.status_code == 410, resp.text
+
+    # No membership was created for the would-be joiner.
+    db_session.expire_all()
+    members = (
+        await db_session.scalars(
+            select(LeagueMember).where(
+                LeagueMember.league_id == league_id,
+                LeagueMember.user_id == joiner_id,
+            )
+        )
+    ).all()
+    assert members == []
+
+
+async def test_unexpired_dated_link_still_previews_200(client, db_session):
+    # A dated link that hasn't passed its expiry behaves like a live link.
+    organizer = await _seed_user(db_session)
+    league = await _seed_league(db_session, organizer)
+    invite = await _seed_invite(
+        db_session, league, organizer, expires_at=datetime.now(timezone.utc) + timedelta(hours=24)
+    )
+
+    resp = await client.get(_preview_url(invite.token))
+
+    assert resp.status_code == 200, resp.text

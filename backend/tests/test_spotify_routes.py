@@ -34,7 +34,7 @@ from app.services.youtube_resolver import get_youtube_resolver
 
 
 async def _seed_user(db_session, email: str) -> User:
-    user = User(email=email, display_name="U", default_vibe_mode=False)
+    user = User(email=email, display_name="U")
     db_session.add(user)
     await db_session.commit()
     await db_session.refresh(user)

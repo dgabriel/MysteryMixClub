@@ -53,7 +53,7 @@ async def _seed_signin_user(session_factory):
     async with session_factory() as db:
         existing = await db.scalar(select(User).where(User.email == _SIGNIN_EMAIL))
         if existing is None:
-            db.add(User(email=_SIGNIN_EMAIL, display_name="", default_vibe_mode=False))
+            db.add(User(email=_SIGNIN_EMAIL, display_name=""))
             await db.commit()
 
 

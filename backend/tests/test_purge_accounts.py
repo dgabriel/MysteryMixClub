@@ -43,7 +43,7 @@ NOW = datetime(2026, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
 
 
 async def _seed_user(db_session, email: str, *, deleted_at=None, name: str = "User") -> User:
-    user = User(email=email, display_name=name, default_vibe_mode=False, deleted_at=deleted_at)
+    user = User(email=email, display_name=name, deleted_at=deleted_at)
     db_session.add(user)
     await db_session.commit()
     await db_session.refresh(user)

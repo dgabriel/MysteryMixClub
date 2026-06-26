@@ -51,7 +51,7 @@ _AT_CAPACITY_MESSAGE = "MysteryMixClub is at capacity right now"
 
 
 async def _seed_user(db_session, email: str, **overrides) -> User:
-    defaults = {"email": email, "display_name": "", "default_vibe_mode": False}
+    defaults = {"email": email, "display_name": ""}
     defaults.update(overrides)
     user = User(**defaults)
     db_session.add(user)
@@ -62,7 +62,7 @@ async def _seed_user(db_session, email: str, **overrides) -> User:
 
 async def _seed_league_with_invite(db_session, *, expires_at: datetime | None = None) -> Invite:
     """Seed an organizer + active league + shareable invite; return the Invite."""
-    organizer = User(email="org@example.com", display_name="Org", default_vibe_mode=False)
+    organizer = User(email="org@example.com", display_name="Org")
     db_session.add(organizer)
     await db_session.flush()
     league = League(
@@ -219,7 +219,6 @@ async def test_first_login_with_invite_creates_user_with_empty_name_and_vibe_fal
     new_user = await db_session.scalar(select(User).where(User.email == "newbie@example.com"))
     assert new_user is not None
     assert new_user.display_name == ""
-    assert new_user.default_vibe_mode is False
 
 
 async def test_first_login_with_invite_joins_the_league(client, email_spy, db_session):

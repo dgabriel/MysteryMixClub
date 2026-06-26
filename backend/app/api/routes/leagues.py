@@ -32,6 +32,9 @@ class LeagueCreate(BaseModel):
     total_rounds: int = Field(default=6, ge=1, le=50)
     votes_per_player: int = Field(default=3, ge=1)
     description: LeagueDescription | None = None
+    # Admin-set default participation mode for the league (MYS-112). Seeds every
+    # member's vibe_mode at join (including the organizer at creation).
+    default_vibe_mode: bool = False
 
 
 class LeagueUpdate(BaseModel):
@@ -41,15 +44,18 @@ class LeagueUpdate(BaseModel):
     # Same upper bound as create: the reconcile grow path bulk-inserts rounds,
     # so cap it here too to keep slate sizes sane.
     total_rounds: int | None = Field(default=None, ge=1, le=50)
+    # Changing the league default only affects members who join afterward; it does
+    # not re-seed existing members' settings (MYS-112).
+    default_vibe_mode: bool | None = None
 
-    # name and total_rounds map to NOT NULL columns: allow omission (partial
-    # update) but reject an explicitly provided null with a 422. description is
-    # nullable, so an explicit null is allowed and clears it.
+    # name, total_rounds and default_vibe_mode map to NOT NULL columns: allow
+    # omission (partial update) but reject an explicitly provided null with a 422.
+    # description is nullable, so an explicit null is allowed and clears it.
     @model_validator(mode="before")
     @classmethod
     def _reject_explicit_null(cls, data):
         if isinstance(data, dict):
-            for field in ("name", "total_rounds"):
+            for field in ("name", "total_rounds", "default_vibe_mode"):
                 if field in data and data[field] is None:
                     raise ValueError(f"{field} may not be null")
         return data
@@ -93,6 +99,9 @@ class LeagueResponse(BaseModel):
     votes_per_player: int
     current_round: int
     state: str
+    # Admin-set default participation mode for the league (MYS-112). A member's own
+    # setting lives on their membership (GET /leagues/:id/membership), not here.
+    default_vibe_mode: bool
     created_at: datetime
     completed_at: datetime | None
 
@@ -107,6 +116,7 @@ def _to_response(league: League) -> LeagueResponse:
         votes_per_player=league.votes_per_player,
         current_round=league.current_round,
         state=league.state,
+        default_vibe_mode=league.default_vibe_mode,
         created_at=league.created_at,
         completed_at=league.completed_at,
     )
@@ -143,13 +153,19 @@ async def create_league(
         organizer_id=current_user.id,
         total_rounds=payload.total_rounds,
         votes_per_player=payload.votes_per_player,
+        default_vibe_mode=payload.default_vibe_mode,
     )
     db.add(league)
     # Flush to populate league.id for the membership and round rows below.
     await db.flush()
 
-    # The organizer is the league's first member.
-    member = LeagueMember(league_id=league.id, user_id=current_user.id)
+    # The organizer is the league's first member; seed their vibe_mode from the
+    # league default like any other member (MYS-112).
+    member = LeagueMember(
+        league_id=league.id,
+        user_id=current_user.id,
+        vibe_mode=payload.default_vibe_mode,
+    )
     db.add(member)
 
     # Auto-generate the full slate of pending rounds (MYS-62). Each starts with
@@ -253,6 +269,67 @@ async def list_league_members(
         .order_by(LeagueMember.joined_at.asc())
     )
     return [_to_member_response(member, user, league.organizer_id) for member, user in rows.all()]
+
+
+class MembershipResponse(BaseModel):
+    # The caller's own per-league participation setting (MYS-112). Vibing is
+    # private, so this only ever reports the caller's own setting — never anyone
+    # else's (the members list deliberately omits it).
+    league_id: str
+    user_id: str
+    vibe_mode: bool
+
+
+class MembershipUpdate(BaseModel):
+    vibe_mode: bool
+
+
+async def _load_active_membership(
+    league_id: uuid.UUID, current_user: User, db: AsyncSession
+) -> LeagueMember:
+    """Load the caller's active membership for a league, gating on 404/403 first."""
+    await _load_league_as_member(league_id, current_user, db)
+    membership = await db.scalar(
+        select(LeagueMember).where(
+            LeagueMember.league_id == league_id,
+            LeagueMember.user_id == current_user.id,
+            LeagueMember.removed_at.is_(None),
+        )
+    )
+    # _load_league_as_member already proved an active membership exists.
+    assert membership is not None
+    return membership
+
+
+@router.get("/{league_id}/membership", response_model=MembershipResponse)
+async def get_my_membership(
+    league_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> MembershipResponse:
+    membership = await _load_active_membership(league_id, current_user, db)
+    return MembershipResponse(
+        league_id=str(league_id),
+        user_id=str(current_user.id),
+        vibe_mode=membership.vibe_mode,
+    )
+
+
+@router.patch("/{league_id}/membership", response_model=MembershipResponse)
+async def set_my_membership(
+    league_id: uuid.UUID,
+    payload: MembershipUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> MembershipResponse:
+    membership = await _load_active_membership(league_id, current_user, db)
+    membership.vibe_mode = payload.vibe_mode
+    await db.commit()
+    return MembershipResponse(
+        league_id=str(league_id),
+        user_id=str(current_user.id),
+        vibe_mode=membership.vibe_mode,
+    )
 
 
 @router.patch("/{league_id}", response_model=LeagueResponse)

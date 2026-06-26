@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, func, text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -29,6 +29,12 @@ class League(Base):
     )
     state: Mapped[str] = mapped_column(
         String, nullable=False, default="active", server_default=text("'active'")
+    )
+    # Admin-set default participation mode for the league (MYS-112). Seeds each
+    # member's league_members.vibe_mode at join; per-round overrides live on the
+    # submission's participation_mode.
+    default_vibe_mode: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

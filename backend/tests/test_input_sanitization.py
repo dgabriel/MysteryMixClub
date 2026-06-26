@@ -92,7 +92,7 @@ def _build_client(session_factory) -> AsyncClient:
 
 
 async def _seed_user(db_session, email: str = "alice@example.com", name: str = "Alice") -> User:
-    user = User(email=email, display_name=name, default_vibe_mode=False)
+    user = User(email=email, display_name=name)
     db_session.add(user)
     await db_session.commit()
     await db_session.refresh(user)

@@ -19,6 +19,7 @@ export function CreateLeagueRoute() {
     description?: string;
     total_rounds: number;
     votes_per_player: number;
+    default_vibe_mode: boolean;
   }) {
     setSubmitting(true);
     setError(null);

@@ -30,6 +30,7 @@ _LEAGUE_KEYS = {
     "total_rounds",
     "votes_per_player",
     "current_round",
+    "default_vibe_mode",
     "state",
     "created_at",
     "completed_at",
@@ -47,7 +48,6 @@ async def _seed_user(db_session, **overrides) -> User:
         "email": "alice@example.com",
         "display_name": "Alice",
         "preferred_service": None,
-        "default_vibe_mode": False,
     }
     defaults.update(overrides)
     user = User(**defaults)

@@ -5,6 +5,7 @@ import {
   addNote,
   castVotes,
   getLeague,
+  getMyMembership,
   getMySubmission,
   getMyVotes,
   getNotes,
@@ -65,6 +66,9 @@ export function RoundDetailRoute() {
   const [round, setRound] = useState<Round | null>(null);
   const [league, setLeague] = useState<League | null>(null);
   const [mine, setMine] = useState<SubmissionResult | null>(null);
+  // Per-round "Just Vibes for this Round" toggle (MYS-60), seeded from the
+  // existing submission's mode, else the caller's per-league vibe setting.
+  const [roundVibe, setRoundVibe] = useState(false);
   const [playlist, setPlaylist] = useState<PlaylistEntry[]>([]);
   const [youtubePlaylistUrl, setYoutubePlaylistUrl] = useState<string | null>(null);
   const [youtubeTrackCount, setYoutubeTrackCount] = useState(0);
@@ -99,7 +103,16 @@ export function RoundDetailRoute() {
         // Nothing to load yet — the round isn't open. The organizer can edit its
         // theme/description and open it from here.
       } else if (loadedRound.state === "open_submission") {
-        setMine(await getMySubmission(id));
+        const [loadedMine, membership] = await Promise.all([
+          getMySubmission(id),
+          getMyMembership(loadedRound.league_id),
+        ]);
+        setMine(loadedMine);
+        // Seed the round toggle: an existing submission's mode wins, else the
+        // member's per-league default.
+        setRoundVibe(
+          loadedMine ? loadedMine.participation_mode === "vibing" : membership.vibe_mode,
+        );
       } else if (loadedRound.state === "open_voting") {
         const [loadedPlaylist, loadedVotes, loadedMine] = await Promise.all([
           getPlaylist(id),
@@ -144,6 +157,7 @@ export function RoundDetailRoute() {
         isrc: song.isrc,
         album: song.album,
         album_art_url: song.thumbnail_url,
+        participation_mode: roundVibe ? "vibing" : "playing",
       });
       setMine(result);
       // Refresh the round so "X of Y submitted" reflects this submission right
@@ -312,6 +326,8 @@ export function RoundDetailRoute() {
               <SubmissionSection
                 mine={mine}
                 submitting={submitting}
+                roundVibe={roundVibe}
+                onRoundVibeChange={setRoundVibe}
                 onSubmit={handleSubmit}
                 onChange={() => setMine(null)}
               />
@@ -520,11 +536,15 @@ function SubmissionProgress({ submitted, total }: { submitted: number; total: nu
 function SubmissionSection({
   mine,
   submitting,
+  roundVibe,
+  onRoundVibeChange,
   onSubmit,
   onChange,
 }: {
   mine: SubmissionResult | null;
   submitting: boolean;
+  roundVibe: boolean;
+  onRoundVibeChange: (next: boolean) => void;
   onSubmit: (song: ResolvedSong) => void;
   onChange: () => void;
 }) {
@@ -552,12 +572,33 @@ function SubmissionSection({
     );
   }
   return (
-    <SongSearchCard
-      eyebrow="this round"
-      heading="submit a song"
-      onSubmit={onSubmit}
-      submitting={submitting}
-    />
+    <>
+      {/* Per-round override (MYS-60). Defaults from the member's per-league
+          setting; flipping it changes only this round's submission. */}
+      <div className="mb-6">
+        <label className="flex cursor-pointer items-center gap-3">
+          <input
+            type="checkbox"
+            checked={roundVibe}
+            onChange={(e) => onRoundVibeChange(e.target.checked)}
+            disabled={submitting}
+            className="h-4 w-4 rounded-[2px] border border-ink accent-sage"
+          />
+          <span className="font-mono uppercase tracking-ui text-[11px] text-ink">
+            just vibes for this round
+          </span>
+        </label>
+        <p className="mt-2 font-mono text-[11px] font-light text-muted">
+          vibing means you sit out voting on this round and leave notes instead.
+        </p>
+      </div>
+      <SongSearchCard
+        eyebrow="this round"
+        heading="submit a song"
+        onSubmit={onSubmit}
+        submitting={submitting}
+      />
+    </>
   );
 }
 

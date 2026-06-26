@@ -8,9 +8,12 @@ Run these steps before writing any code:
    ```
    read docs/design/style-guide.md
    read docs/technical/technical-design.md
+   read docs/git-hygiene.md
    ```
    Do not proceed with any frontend work without having read the style guide.
    Do not proceed with any backend/architecture work without having read the technical design.
+   Do not touch git (branch, commit, push, merge, rebase) without having read the
+   git hygiene guide. These rules are non-negotiable — never improvise around a git mess.
 
 2. **Load your sprint**
    Use the Linear MCP to fetch your current issues:
@@ -151,6 +154,7 @@ docs/
   prd/                      ← Product requirements
   discovery/                ← Research and early decisions
   ci-cd.md                  ← Pipeline, branch model, onboarding secrets
+  git-hygiene.md            ← Read before ANY git work. Non-negotiable git rules
   feature-flags.md          ← Env-driven feature flags: registry + how to add one
 ```
 
@@ -160,6 +164,7 @@ docs/
 
 - [ ] Read `docs/design/style-guide.md`
 - [ ] Read `docs/technical/technical-design.md`
+- [ ] Read `docs/git-hygiene.md`
 - [ ] Fetched active Linear issues
 - [ ] Confirmed which issue we're working on today
 - [ ] Stated one-sentence sprint goal back to user

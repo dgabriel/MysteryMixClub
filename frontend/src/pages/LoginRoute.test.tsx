@@ -35,6 +35,15 @@ describe("LoginRoute", () => {
     expect(screen.getByText("HOME")).toBeInTheDocument();
   });
 
+  it("no TopNav on the login screen (unauthenticated)", () => {
+    render(<LoginRoute />);
+
+    // The shared nav is authed-only; none of its links appear here.
+    expect(screen.queryByRole("button", { name: /^profile$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^logout$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^home$/i })).not.toBeInTheDocument();
+  });
+
   it("happy path: submits a trimmed email and shows CheckEmail with that email", async () => {
     mockRequestMagicLink.mockResolvedValue({ devToken: null });
     const user = userEvent.setup();

@@ -3,7 +3,9 @@ type ConcentricRingsProps = {
   size?: number;
   /** slowly rotate the rings — used for loading states */
   spinning?: boolean;
-  /** show the single off-center Rust dot ("the fish"). Counts as the screen's one Rust use. */
+  /** show the single off-center Rust dot ("the fish"). Counts as the screen's
+   *  one Rust use — except on the shared nav's brand mark, which the style guide
+   *  exempts as persistent brand identity. */
   accent?: boolean;
   className?: string;
 };

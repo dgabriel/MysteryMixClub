@@ -56,6 +56,7 @@ function setAuth(isAuthenticated: boolean) {
     logout: vi.fn(),
     logoutAll: vi.fn(),
     displayName: isAuthenticated ? "Ada" : null,
+    email: isAuthenticated ? "ada@example.com" : null,
     userId: isAuthenticated ? "user-1" : null,
     profileStatus: isAuthenticated ? "ready" : "idle",
     needsOnboarding: false,

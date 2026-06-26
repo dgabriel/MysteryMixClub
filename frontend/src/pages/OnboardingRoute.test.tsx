@@ -44,6 +44,7 @@ function setAuth(
     logout: vi.fn(),
     logoutAll: vi.fn(),
     displayName: overrides.needsOnboarding ? "" : "ada",
+    email: status === "authenticated" ? "ada@example.com" : null,
     userId: status === "authenticated" ? "11111111-1111-1111-1111-111111111111" : null,
     isPlatformAdmin: false,
     profileStatus,
@@ -86,6 +87,9 @@ describe("OnboardingRoute", () => {
 
     expect(screen.getByText("one more thing")).toBeInTheDocument();
     expect(screen.getByLabelText(/display name/i)).toBeInTheDocument();
+    // The shared TopNav is not shown during onboarding.
+    expect(screen.queryByRole("button", { name: /^profile$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^logout$/i })).not.toBeInTheDocument();
   });
 
   it("successful submit: trims the name, calls updateDisplayName + applyDisplayName, navigates to /home", async () => {

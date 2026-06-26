@@ -43,6 +43,9 @@ type AuthContextValue = {
   logoutAll: () => Promise<void>;
   /** Current user's display name once the profile loads; null while unloaded. */
   displayName: string | null;
+  /** Current user's email once the profile loads; null while unloaded. Shown on
+   *  the profile screen as read-only account identity. */
+  email: string | null;
   /** Current user's id once the profile loads; null while unloaded. League
    *  routes compare it against league.organizer_id to gate organizer controls. */
   userId: string | null;
@@ -65,6 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [displayName, setDisplayName] = useState<string | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
   const [profileStatus, setProfileStatus] = useState<ProfileStatus>("idle");
@@ -82,6 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(null);
     setStatus("unauthenticated");
     setDisplayName(null);
+    setEmail(null);
     setUserId(null);
     setIsPlatformAdmin(false);
     setProfileStatus("idle");
@@ -132,6 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const profile = await getMe();
         setDisplayName(profile.display_name);
+        setEmail(profile.email);
         setUserId(profile.id);
         setIsPlatformAdmin(profile.is_platform_admin);
         setProfileStatus("ready");
@@ -170,6 +176,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       logoutAll,
       displayName,
+      email,
       userId,
       isPlatformAdmin,
       profileStatus,
@@ -184,6 +191,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       logoutAll,
       displayName,
+      email,
       userId,
       isPlatformAdmin,
       profileStatus,

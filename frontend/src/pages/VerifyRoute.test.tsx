@@ -68,6 +68,7 @@ describe("VerifyRoute", () => {
       logout: vi.fn(),
       logoutAll: vi.fn(),
       displayName: null,
+      email: null,
       userId: null,
       profileStatus: "idle",
       needsOnboarding: false,
@@ -111,6 +112,9 @@ describe("VerifyRoute", () => {
     expect(await screen.findByText(/that link didn.?t work/i)).toBeInTheDocument();
     expect(mockVerifyToken).not.toHaveBeenCalled();
     expect(setAccessToken).not.toHaveBeenCalled();
+    // The verify screen is pre-auth — no shared TopNav.
+    expect(screen.queryByRole("button", { name: /^profile$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^logout$/i })).not.toBeInTheDocument();
   });
 
   it("invite: passes the invite query param through to verifyToken", async () => {

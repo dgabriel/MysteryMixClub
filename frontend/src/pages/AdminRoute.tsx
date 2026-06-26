@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Navigate } from "react-router-dom";
 import { AdminScreen } from "./AdminScreen";
 import { ApiError, adminDeleteUser, adminSearchUsers, type AdminUser } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
@@ -12,7 +12,6 @@ import { useAuth } from "../hooks/useAuth";
  * hard-delete action to the admin API.
  */
 export function AdminRoute() {
-  const navigate = useNavigate();
   const { isPlatformAdmin } = useAuth();
 
   const [query, setQuery] = useState("");
@@ -74,7 +73,6 @@ export function AdminRoute() {
       onDeleteUser={handleDeleteUser}
       deletingUserId={deletingUserId}
       deleteError={deleteError}
-      onBack={() => navigate("/home")}
     />
   );
 }

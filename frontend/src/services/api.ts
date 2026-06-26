@@ -782,6 +782,8 @@ export type ResultSubmission = {
   album_art_url: string | null;
   // participation_mode is intentionally absent (MYS-112): the reveal never shows
   // who vibed.
+  /** Playback links so the reveal tiles are playable. */
+  platforms: Partial<Record<PlatformKey, string>>;
   submitter_note: string | null;
   vote_count: number;
   notes: ResultNote[];
@@ -814,11 +816,15 @@ export type WinnerReveal = {
   submitter_display_name: string;
 };
 
-/** A vibing viewer's own submission with the notes left on it (MYS-112). */
-export type OwnSubmissionReveal = {
+/** A vibe-safe pick shown to a vibing viewer (MYS-134): a submitted song with
+ *  submitter + notes, but no vote count. */
+export type RevealPick = {
   submission_id: string;
+  submitter_display_name: string;
   title: string;
   artist: string;
+  /** Playback links so the tiles are playable. */
+  platforms: Partial<Record<PlatformKey, string>>;
   submitter_note: string | null;
   notes: ResultNote[];
 };
@@ -826,9 +832,9 @@ export type OwnSubmissionReveal = {
 /** A closed round's reveal (GET /rounds/:id/results). The reveal is gated by the
  *  viewer's participation mode (MYS-112): a player gets the full reveal
  *  (`submissions` + `leaderboard`); a viber (`viewer_is_vibing`) gets only
- *  `winners` + `own_submission` + `most_noted`, with `submissions`/`leaderboard`
- *  empty so no vote counts or rankings leak. `most_noted.winners` is empty when
- *  the round drew no notes. */
+ *  `winners` + `picks` + `most_noted`, with `submissions`/`leaderboard` empty so
+ *  no vote counts or rankings leak. `picks` is the unscored tracklist a viber
+ *  sees (MYS-134). `most_noted.winners` is empty when the round drew no notes. */
 export type RoundResults = {
   round_id: string;
   round_number: number;
@@ -839,7 +845,7 @@ export type RoundResults = {
   leaderboard: LeaderboardEntry[];
   most_noted: { note_count: number; winners: MostNotedWinner[] };
   winners: WinnerReveal[];
-  own_submission: OwnSubmissionReveal | null;
+  picks: RevealPick[];
 };
 
 /** Get a closed round's reveal results. Backend returns 409 while the round is

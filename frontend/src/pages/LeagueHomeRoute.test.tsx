@@ -131,7 +131,7 @@ function resultsWith(overrides: Partial<RoundResults> = {}): RoundResults {
     state: "closed",
     viewer_is_vibing: false,
     winners: [],
-    own_submission: null,
+    picks: [],
     submissions: [],
     leaderboard: [
       { user_id: "u-wren", display_name: "Wren", vote_count: 5, rank: 1 },

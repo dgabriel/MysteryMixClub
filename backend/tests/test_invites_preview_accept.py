@@ -243,21 +243,24 @@ async def test_new_user_accept_persists_active_membership(client, db_session):
     assert members[0].removed_at is None
 
 
-async def test_duplicate_active_membership_accept_returns_409_and_no_new_row(client, db_session):
+async def test_duplicate_active_membership_accept_is_idempotent_returns_league(client, db_session):
+    # MYS-135: an already-active member who re-accepts is routed to the league
+    # (200, league payload), not an error — and no duplicate membership row.
     organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
     league = await _seed_league(db_session, organizer)
     invite = await _seed_invite(db_session, league, organizer)
     member = await _seed_user(db_session, email="member@example.com", display_name="Member")
     await _seed_member(db_session, league, member)  # already active
 
-    resp = await client.post(_accept_url(invite.token), headers=_auth_header(member.id))
-
-    assert resp.status_code == 409, resp.text
-
     league_id = league.id
     member_id = member.id
-    db_session.expire_all()
 
+    resp = await client.post(_accept_url(invite.token), headers=_auth_header(member.id))
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["id"] == str(league_id)
+
+    db_session.expire_all()
     count = await _active_membership_count(db_session, league_id, member_id)
     assert count == 1
 

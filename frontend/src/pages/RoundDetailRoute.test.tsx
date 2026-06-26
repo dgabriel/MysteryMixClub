@@ -185,6 +185,9 @@ describe("RoundDetailRoute", () => {
       entries: [],
       youtube_playlist_url: null,
       youtube_track_count: 0,
+      voting_eligible: 0,
+      voting_acted: 0,
+      vibing_count: 0,
     });
     mockGetResults.mockResolvedValue(results());
     mockGetMyVotes.mockResolvedValue({
@@ -343,6 +346,9 @@ describe("RoundDetailRoute", () => {
       entries,
       youtube_playlist_url: null,
       youtube_track_count: 0,
+      voting_eligible: 0,
+      voting_acted: 0,
+      vibing_count: 0,
     });
     renderRound();
     expect(await screen.findByText("Debaser")).toBeInTheDocument();
@@ -388,6 +394,9 @@ describe("RoundDetailRoute", () => {
       mine?: SubmissionResult | null;
       youtubePlaylistUrl?: string | null;
       youtubeTrackCount?: number;
+      votingEligible?: number;
+      votingActed?: number;
+      vibingCount?: number;
     }) {
       const vpp = opts.votesPerPlayer ?? 3;
       mockGetRound.mockResolvedValue(round({ state: "open_voting", votes_per_player: vpp }));
@@ -399,6 +408,9 @@ describe("RoundDetailRoute", () => {
         entries: opts.entries,
         youtube_playlist_url: opts.youtubePlaylistUrl ?? null,
         youtube_track_count: opts.youtubeTrackCount ?? 0,
+        voting_eligible: opts.votingEligible ?? 0,
+        voting_acted: opts.votingActed ?? 0,
+        vibing_count: opts.vibingCount ?? 0,
       });
       mockGetMyVotes.mockResolvedValue({
         round_id: "r1",
@@ -445,6 +457,77 @@ describe("RoundDetailRoute", () => {
         screen.queryByRole("link", { name: /open playlist in youtube/i }),
       ).not.toBeInTheDocument();
       expect(screen.queryByText(/on YouTube/i)).not.toBeInTheDocument();
+    });
+
+    it("voting progress: shows X of Y voted or noted · Z just vibing (MYS-102)", async () => {
+      setupVoting({
+        entries: [entry({ submission_id: "p1", title: "Debaser" })],
+        myVotes: [],
+        votingEligible: 4,
+        votingActed: 2,
+        vibingCount: 1,
+      });
+      renderRound();
+
+      expect(await screen.findByText("2 of 4 voted or noted · 1 just vibing")).toBeInTheDocument();
+    });
+
+    it("voting progress: omits the vibing clause when nobody is vibing (MYS-102)", async () => {
+      setupVoting({
+        entries: [entry({ submission_id: "p1", title: "Debaser" })],
+        myVotes: [],
+        votingEligible: 3,
+        votingActed: 1,
+        vibingCount: 0,
+      });
+      renderRound();
+
+      expect(await screen.findByText("1 of 3 voted or noted")).toBeInTheDocument();
+      expect(screen.queryByText(/just vibing/i)).not.toBeInTheDocument();
+    });
+
+    it("voting progress: refreshes after casting votes (MYS-102)", async () => {
+      const user = userEvent.setup();
+      setupVoting({
+        entries: [
+          entry({ submission_id: "p1", title: "Debaser" }),
+          entry({ submission_id: "p2", title: "Hey" }),
+        ],
+        myVotes: [],
+        votingEligible: 4,
+        votingActed: 1,
+        vibingCount: 0,
+      });
+      // Key the reported progress on whether a cast has happened, so the
+      // assertion is robust to how many times the playlist is (re)fetched: the
+      // caller joins the "acted" tally only after they cast (1 → 2 of 4).
+      let casted = false;
+      mockCastVotes.mockImplementation(async () => {
+        casted = true;
+        return { round_id: "r1", submission_ids: ["p1"], count: 1, votes_per_player: 3 };
+      });
+      mockGetPlaylist.mockImplementation(async () => ({
+        round_id: "r1",
+        round_number: 1,
+        theme: "t",
+        state: "open_voting",
+        entries: [
+          entry({ submission_id: "p1", title: "Debaser" }),
+          entry({ submission_id: "p2", title: "Hey" }),
+        ],
+        youtube_playlist_url: null,
+        youtube_track_count: 0,
+        voting_eligible: 4,
+        voting_acted: casted ? 2 : 1,
+        vibing_count: 0,
+      }));
+      renderRound();
+
+      expect(await screen.findByText("1 of 4 voted or noted")).toBeInTheDocument();
+      await user.click(await screen.findByRole("button", { name: /Debaser/i }));
+      await user.click(screen.getByRole("button", { name: /cast votes/i }));
+
+      expect(await screen.findByText("2 of 4 voted or noted")).toBeInTheDocument();
     });
 
     it("playing voter sees votable entries as toggles, a counter, and pre-selection from getMyVotes", async () => {
@@ -683,6 +766,9 @@ describe("RoundDetailRoute", () => {
         entries: opts.entries,
         youtube_playlist_url: null,
         youtube_track_count: 0,
+      voting_eligible: 0,
+      voting_acted: 0,
+      vibing_count: 0,
       });
       mockGetMyVotes.mockResolvedValue({
         round_id: "r1",

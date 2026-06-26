@@ -385,6 +385,15 @@ class PlaylistResponse(BaseModel):
     # How many of the round's tracks made it into the YouTube link, so the UI can
     # show "N of M on YouTube". 0 when youtube_playlist_url is None.
     youtube_track_count: int
+    # Voting progress (MYS-102): "X of Y voted or noted · Z just vibing".
+    #  - voting_eligible (Y): playing participants — the ones who can vote.
+    #  - voting_acted    (X): playing participants who have cast a vote OR left a
+    #    note this round.
+    #  - vibing_count    (Z): vibing participants, along for the ride (they sit
+    #    voting out, so they're reported separately, not inside X/Y).
+    voting_eligible: int
+    voting_acted: int
+    vibing_count: int
 
 
 def _preferred_url(platforms: dict[str, str], preferred_service: str | None) -> str | None:
@@ -415,6 +424,19 @@ async def get_round_playlist(
     # Anonymous + shuffled (technical-design §8). Seed the shuffle on the round id
     # so the order is stable per round but hides submission/creation order.
     random.Random(round_id.int).shuffle(submissions)
+
+    # Voting progress (MYS-102). Playing participants are the eligible voters;
+    # vibing participants sit voting out (reported separately). A playing player
+    # counts as having "acted" once they've cast a vote or left a note.
+    playing_user_ids = {s.user_id for s in submissions if s.participation_mode == "playing"}
+    vibing_count = sum(1 for s in submissions if s.participation_mode == "vibing")
+    voter_ids = set(
+        await db.scalars(select(Vote.voter_id).where(Vote.round_id == round_id).distinct())
+    )
+    note_author_ids = set(
+        await db.scalars(select(Note.author_id).where(Note.round_id == round_id).distinct())
+    )
+    acted_user_ids = playing_user_ids & (voter_ids | note_author_ids)
 
     entries = []
     video_ids: list[str] = []
@@ -467,6 +489,9 @@ async def get_round_playlist(
         entries=entries,
         youtube_playlist_url=youtube_playlist_url,
         youtube_track_count=len(playlist_ids),
+        voting_eligible=len(playing_user_ids),
+        voting_acted=len(acted_user_ids),
+        vibing_count=vibing_count,
     )
 
 

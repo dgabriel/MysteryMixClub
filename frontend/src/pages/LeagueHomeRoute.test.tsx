@@ -433,10 +433,10 @@ describe("LeagueHomeRoute", () => {
     expect(await screen.findByText("HOME CONTENT")).toBeInTheDocument();
   });
 
-  it("delete league: a 409 shows the calm in-progress message and does not navigate", async () => {
-    mockDeleteLeague.mockRejectedValue(
-      new ApiError(409, "cannot delete a league that is in progress"),
-    );
+  it("delete league: a failure shows a calm error and does not navigate", async () => {
+    // Delete is allowed in any state now (MYS-137); this covers the generic
+    // error path (e.g. a server error), which still keeps the user in place.
+    mockDeleteLeague.mockRejectedValue(new ApiError(500, "couldn't delete the league"));
     const user = userEvent.setup();
 
     renderLeague();
@@ -445,7 +445,7 @@ describe("LeagueHomeRoute", () => {
     await user.click(screen.getByRole("button", { name: /^delete league$/i }));
     await user.click(screen.getByRole("button", { name: /^delete this league$/i }));
 
-    expect(await screen.findByText(/cannot delete a league that is in progress/i)).toBeInTheDocument();
+    expect(await screen.findByText(/couldn't delete the league/i)).toBeInTheDocument();
     expect(screen.queryByText("HOME CONTENT")).not.toBeInTheDocument();
   });
 });

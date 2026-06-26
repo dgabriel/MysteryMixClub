@@ -130,9 +130,11 @@ describe("JoinLeagueRoute", () => {
     expect(await screen.findByText("LEAGUE DETAIL CONTENT")).toBeInTheDocument();
   });
 
-  it("authenticated: acceptInvite 409 shows joinError and does not navigate", async () => {
+  it("authenticated: a join failure shows joinError and does not navigate", async () => {
+    // Note: an already-member no longer 409s — accept is idempotent (MYS-135).
+    // This covers the generic error path (e.g. a server error mid-join).
     setAuth(true);
-    mockAcceptInvite.mockRejectedValue(new ApiError(409, "already a member"));
+    mockAcceptInvite.mockRejectedValue(new ApiError(500, "couldn't join the league"));
     const user = userEvent.setup();
 
     renderJoin();
@@ -142,6 +144,20 @@ describe("JoinLeagueRoute", () => {
 
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     expect(screen.queryByText("LEAGUE DETAIL CONTENT")).not.toBeInTheDocument();
+  });
+
+  it("authenticated: the join page shows the top nav (MYS-136)", async () => {
+    setAuth(true);
+    renderJoin("tok-abc");
+    await screen.findByText("Friday Mixtape");
+    expect(screen.getByRole("navigation")).toBeInTheDocument();
+  });
+
+  it("unauthenticated: the join preview has no top nav (MYS-136)", async () => {
+    setAuth(false);
+    renderJoin("tok-abc");
+    await screen.findByText("Friday Mixtape");
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
   });
 
   it("unauthenticated: sign-in stores pendingInvitePath and navigates to /login", async () => {

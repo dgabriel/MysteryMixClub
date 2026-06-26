@@ -109,11 +109,13 @@ async def accept_invite(
             LeagueMember.user_id == current_user.id,
         )
     )
-    if membership is not None and membership.removed_at is None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="already a member")
+    # Accept is idempotent (MYS-135): an existing active member just gets routed
+    # to the league rather than an error. Only a new (or previously removed)
+    # membership needs the join + commit.
+    already_active = membership is not None and membership.removed_at is None
+    if not already_active:
+        await _join_via_invite(db, current_user.id, invite)
+        await db.commit()
 
-    await _join_via_invite(db, current_user.id, invite)
-
-    await db.commit()
     await db.refresh(league)
     return _to_response(league)

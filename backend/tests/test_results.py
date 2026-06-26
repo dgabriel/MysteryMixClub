@@ -453,8 +453,8 @@ async def test_results_vibing_submission_can_be_most_noted_and_on_leaderboard(cl
 
 
 async def test_results_vibing_viewer_gets_trimmed_reveal(client, db_session):
-    """A vibing viewer sees winner(s) + Most Noted + their own song's notes —
-    no leaderboard, no picks list, no vote counts."""
+    """A vibing viewer sees winner(s) + Most Noted + the full tracklist (with
+    notes) — but no leaderboard and no vote counts anywhere (MYS-134)."""
     organizer = await _seed_user(db_session, "o@example.com", "Org")
     alice = await _seed_user(db_session, "a@example.com", "Alice")
     viber = await _seed_user(db_session, "v@example.com", "Vera")
@@ -478,15 +478,18 @@ async def test_results_vibing_viewer_gets_trimmed_reveal(client, db_session):
     body = resp.json()
 
     assert body["viewer_is_vibing"] is True
-    # No rankings / picks / counts leak to a viber.
+    # No rankings / scored picks leak to a viber.
     assert body["leaderboard"] == []
     assert body["submissions"] == []
     # Winner is named, but carries no vote count.
     assert [w["submission_id"] for w in body["winners"]] == [str(s_alice_id)]
     assert "vote_count" not in body["winners"][0]
-    # Their own song + its notes survive (the appreciation mechanic).
-    assert body["own_submission"]["submission_id"] == str(s_viber_id)
-    assert [n["body"] for n in body["own_submission"]["notes"]] == ["love this"]
+    # The full tracklist is visible (title-ordered), with notes and NO vote counts.
+    picks = body["picks"]
+    assert [p["title"] for p in picks] == ["Org-song", "Vibed", "Winner"]
+    assert all("vote_count" not in p for p in picks)
+    own = next(p for p in picks if p["submission_id"] == str(s_viber_id))
+    assert [n["body"] for n in own["notes"]] == ["love this"]
     # Most Noted is still present.
     assert "most_noted" in body
 
@@ -509,6 +512,6 @@ async def test_results_playing_viewer_gets_full_reveal(client, db_session):
 
     assert body["viewer_is_vibing"] is False
     assert body["winners"] == []
-    assert body["own_submission"] is None
+    assert body["picks"] == []
     assert {s["title"] for s in body["submissions"]} == {"Org-song", "A-song"}
     assert len(body["leaderboard"]) == 2

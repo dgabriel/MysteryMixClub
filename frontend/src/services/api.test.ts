@@ -1108,7 +1108,7 @@ describe("api.ts", () => {
       state: "closed",
       viewer_is_vibing: false,
       winners: [],
-      own_submission: null,
+      picks: [],
       submissions: [
         {
           submission_id: "sub-1",

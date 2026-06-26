@@ -56,9 +56,9 @@ Creates and manages the league. Sets round themes (in v1), manages invites, adva
 Submits a song, votes on the round's (anonymous) submissions, receives scores, appears on the leaderboard.
 
 ### Player (Just Vibing mode)
-Submits a song that **competes like any other** — votable and eligible to win — but **does not cast votes**; they listen and may leave notes. Vibing is **private**: no one else can tell a submission came from a viber. Set as a **per-league** default (seeded from the league's default at join, changeable anytime) with a **per-round override**. At reveal a viber sees the winner(s), Most Noted, and notes — but **not** the leaderboard or vote counts. Eligible for Most Noted.
+Submits a song that **competes like any other** — votable and eligible to win — but **does not cast votes**; they listen and may leave notes. Vibing is **private**: no one else can tell a submission came from a viber. Set as a **per-league** default (seeded from the league's default at join, changeable anytime) with a **per-round override**. At reveal a viber sees the winner(s), Most Noted, and the full tracklist with notes — but **not** the leaderboard or vote counts. Eligible for Most Noted.
 
-> **Decision — Just Vibing v2 (2026-06-26, MYS-112).** This reverses the original model (a *visible, non-competitive* opt-out that received no votes and was excluded from the leaderboard). Vibing is now a *private voting opt-out*: the viber's song still competes, nobody sees who vibed, and the only differences are that the viber doesn't cast votes and sees a results view limited to winner + Most Noted + notes. The §2.2 inclusion principle still holds — its expression shifts from "celebrated and seen" to "invisible and equal."
+> **Decision — Just Vibing v2 (2026-06-26, MYS-112; refined by MYS-134).** This reverses the original model (a *visible, non-competitive* opt-out that received no votes and was excluded from the leaderboard). Vibing is now a *private voting opt-out*: the viber's song still competes, nobody sees who vibed, and the only differences are that the viber doesn't cast votes and sees a results view limited to winner + Most Noted + the unscored tracklist (no leaderboard, no vote counts — MYS-134). The §2.2 inclusion principle still holds — its expression shifts from "celebrated and seen" to "invisible and equal."
 
 ---
 
@@ -169,7 +169,7 @@ Modes are set per-league (a league default, seeded onto each member at join and 
 - **Private** — no badge or label exposes a viber to anyone, during voting or at reveal
 - Per-round override available until the submission deadline; per-league default changeable anytime
 - Can return to Playing any subsequent round with zero friction
-- Reveal is limited to winner(s) + Most Noted + notes (no leaderboard, no vote counts)
+- Reveal is limited to winner(s) + Most Noted + the full tracklist with notes (no leaderboard, no vote counts — MYS-134)
 - Eligible for Most Noted
 
 ### 5.4 Most Noted
@@ -188,7 +188,7 @@ Modes are set per-league (a league default, seeded onto each member at join and 
 - Submissions are anonymous during voting — submitter revealed at round close
 - Scores accumulate across rounds on a league leaderboard
 - All submitters compete, including Just Vibing players — a viber's song can place on the leaderboard and win (they simply don't cast votes themselves)
-- The reveal is gated by the viewer's mode for the round: Playing sees the full reveal (leaderboard, vote counts, all picks); Just Vibing sees only winner(s) + Most Noted + notes
+- The reveal is gated by the viewer's mode for the round: Playing sees the full reveal (leaderboard, vote counts, all picks); Just Vibing sees winner(s) + Most Noted + the full tracklist with notes, but no leaderboard or vote counts (MYS-134)
 
 ### 5.6 Round Management
 

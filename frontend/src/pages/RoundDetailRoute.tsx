@@ -18,13 +18,13 @@ import {
   type LeaderboardEntry,
   type MostNotedWinner,
   type Note,
-  type OwnSubmissionReveal,
   type PlaylistEntry,
   type ResolvedSong,
   type ResultNote,
   type ResultSubmission,
   type Round,
   type RoundResults,
+  type RevealPick,
   type RoundState,
   type SubmissionResult,
   type WinnerReveal,
@@ -1222,19 +1222,19 @@ function ResultsSection({
 }
 
 /**
- * The trimmed reveal a vibing viewer sees (MYS-112): Most Noted (the screen's one
- * Rust signal), the winner(s) by votes — named, no counts — and their own song's
- * notes so the appreciation lands. No leaderboard, no picks list, no vote tallies.
+ * The reveal a vibing viewer sees (MYS-112 / MYS-134): Most Noted (the screen's
+ * one Rust signal), the winner(s) by votes — named, no counts — and the full
+ * tracklist with notes but NO scores or leaderboard.
  */
 function VibingReveal({ results }: { results: RoundResults }) {
-  const { most_noted, winners, own_submission } = results;
+  const { most_noted, winners, picks } = results;
   return (
     <div className="animate-fade-in space-y-12">
       {most_noted.winners.length > 0 ? <MostNotedSection winners={most_noted.winners} /> : null}
 
       {winners.length > 0 ? <VibeWinnersSection winners={winners} /> : null}
 
-      {own_submission ? <OwnSubmissionSection own={own_submission} /> : null}
+      {picks.length > 0 ? <VibePicksSection picks={picks} /> : null}
     </div>
   );
 }
@@ -1269,30 +1269,36 @@ function VibeWinnersSection({ winners }: { winners: WinnerReveal[] }) {
   );
 }
 
-/** A vibing viewer's own song with the notes it drew — the appreciation mechanic
- *  (MYS-112), no score attached. */
-function OwnSubmissionSection({ own }: { own: OwnSubmissionReveal }) {
+/** The full tracklist as a vibing viewer sees it (MYS-134): every submitted song
+ *  with its submitter and notes, but NO vote counts or ranking — so they can see
+ *  what was in the round without any scores. */
+function VibePicksSection({ picks }: { picks: RevealPick[] }) {
   return (
     <section>
-      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">your song</h2>
-      <div className="mt-4">
-        <Card>
-          <h3 className="font-serif text-[18px] leading-tight text-ink">{own.title}</h3>
-          {own.artist ? (
-            <p className="mt-1 font-mono text-[11px] font-light text-muted">{own.artist}</p>
-          ) : null}
-          {own.submitter_note ? (
-            <p className="mt-2 font-mono text-[11px] font-light text-ink">“{own.submitter_note}”</p>
-          ) : null}
-          {own.notes.length > 0 ? (
-            <div className="mt-4 border-t border-border pt-4">
-              <ResultNoteList notes={own.notes} />
-            </div>
-          ) : (
-            <p className="mt-3 font-mono text-[11px] font-light text-muted">no notes yet</p>
-          )}
-        </Card>
-      </div>
+      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
+        the picks ({picks.length})
+      </h2>
+      <ul className="mt-4 space-y-4">
+        {picks.map((p) => (
+          <li key={p.submission_id}>
+            <Card>
+              <span className="font-mono uppercase tracking-label text-[9px] text-muted">
+                {p.submitter_display_name ?? "someone"}
+              </span>
+              <h3 className="mt-1 font-serif text-[18px] leading-tight text-ink">{p.title}</h3>
+              {p.artist ? (
+                <p className="mt-1 font-mono text-[11px] font-light text-muted">{p.artist}</p>
+              ) : null}
+              {p.submitter_note ? (
+                <p className="mt-2 font-mono text-[11px] font-light text-ink">
+                  “{p.submitter_note}”
+                </p>
+              ) : null}
+              {p.notes.length > 0 ? <CollapsibleNotes notes={p.notes} /> : null}
+            </Card>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

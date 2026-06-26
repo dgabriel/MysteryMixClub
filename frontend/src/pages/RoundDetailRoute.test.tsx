@@ -138,7 +138,7 @@ function results(overrides: Partial<RoundResults> = {}): RoundResults {
     state: "closed",
     viewer_is_vibing: false,
     winners: [],
-    own_submission: null,
+    picks: [],
     submissions: [],
     leaderboard: [],
     most_noted: { note_count: 0, winners: [] },
@@ -1046,9 +1046,9 @@ describe("RoundDetailRoute", () => {
       return li as HTMLElement;
     }
 
-    // ----- Vibing-viewer trimmed reveal (MYS-112) -------------------------- //
+    // ----- Vibing-viewer reveal (MYS-112 / MYS-134) ------------------------ //
 
-    it("vibing viewer: winner + own-song notes, no leaderboard or picks", async () => {
+    it("vibing viewer: winner + full tracklist with notes, no leaderboard or scores", async () => {
       setupClosed({
         viewer_is_vibing: true,
         submissions: [],
@@ -1061,24 +1061,38 @@ describe("RoundDetailRoute", () => {
             submitter_display_name: "Wren",
           },
         ],
-        own_submission: {
-          submission_id: "mine",
-          title: "My Quiet Pick",
-          artist: "Me",
-          submitter_note: null,
-          notes: [{ body: "this one got me", author_display_name: "Ada", created_at: "x" }],
-        },
+        picks: [
+          {
+            submission_id: "w1",
+            submitter_display_name: "Wren",
+            title: "Winning Song",
+            artist: "The Champs",
+            submitter_note: null,
+            notes: [],
+          },
+          {
+            submission_id: "mine",
+            submitter_display_name: "Vera",
+            title: "My Quiet Pick",
+            artist: "Me",
+            submitter_note: null,
+            notes: [{ body: "this one got me", author_display_name: "Ada", created_at: "x" }],
+          },
+        ],
       });
       renderRound();
 
-      // Winner shown (named, no count) and the viber's own song + its notes.
-      expect(await screen.findByText("Winning Song")).toBeInTheDocument();
-      expect(screen.getByRole("heading", { name: /your song/i })).toBeInTheDocument();
+      // Winner named (no count) and the full tracklist is visible, with notes
+      // behind the collapsible toggle. "Winning Song" shows in both the winner
+      // highlight and the tracklist.
+      expect(await screen.findByRole("heading", { name: /the picks/i })).toBeInTheDocument();
+      expect(screen.getAllByText("Winning Song").length).toBeGreaterThanOrEqual(2);
       expect(screen.getByText("My Quiet Pick")).toBeInTheDocument();
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: /show 1 note/i }));
       expect(screen.getByText("this one got me")).toBeInTheDocument();
-      // No leaderboard, no picks list, no vote tallies for a viber.
+      // No leaderboard and no vote tallies for a viber.
       expect(screen.queryByRole("heading", { name: /leaderboard/i })).not.toBeInTheDocument();
-      expect(screen.queryByRole("heading", { name: /the picks/i })).not.toBeInTheDocument();
       expect(screen.queryByText(/\bvotes?\b/i)).not.toBeInTheDocument();
     });
 

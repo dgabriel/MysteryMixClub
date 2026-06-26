@@ -139,6 +139,15 @@ export function RoundDetailRoute() {
         album_art_url: song.thumbnail_url,
       });
       setMine(result);
+      // Refresh the round so "X of Y submitted" reflects this submission right
+      // away (MYS-101). Refetch rather than locally increment so a *replacement*
+      // (which doesn't change the count) stays correct too. Non-fatal: the
+      // submission already saved; only the counter would lag.
+      try {
+        setRound(await getRound(id));
+      } catch {
+        // leave the counter as-is; the submission itself succeeded.
+      }
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : "couldn't submit. try again.");
     } finally {
@@ -278,12 +287,18 @@ export function RoundDetailRoute() {
               this round hasn&apos;t opened yet.
             </p>
           ) : round.state === "open_submission" ? (
-            <SubmissionSection
-              mine={mine}
-              submitting={submitting}
-              onSubmit={handleSubmit}
-              onChange={() => setMine(null)}
-            />
+            <>
+              <SubmissionProgress
+                submitted={round.submission_count}
+                total={round.member_count}
+              />
+              <SubmissionSection
+                mine={mine}
+                submitting={submitting}
+                onSubmit={handleSubmit}
+                onChange={() => setMine(null)}
+              />
+            </>
           ) : round.state === "open_voting" ? (
             <VotingSection
               // Remount to re-seed the selection whenever the saved votes change.
@@ -464,6 +479,21 @@ function EditRoundForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+/**
+ * Submission progress (MYS-101): "X of Y submitted" while a round is open for
+ * submissions, so members can see how many picks are in. A quiet muted label —
+ * no Rust (this screen reserves its single Rust use for the voting/reveal
+ * states). Renders nothing until the league's member count is known.
+ */
+function SubmissionProgress({ submitted, total }: { submitted: number; total: number }) {
+  if (total <= 0) return null;
+  return (
+    <p className="mb-6 font-mono uppercase tracking-label text-[9px] text-muted">
+      {submitted} of {total} submitted
+    </p>
   );
 }
 

@@ -14,6 +14,8 @@ import {
   getResults,
   getRound,
   getSpotifyStatus,
+  resolveSong,
+  submitSong,
   updateRound,
 } from "../services/api";
 import type { League, PlaylistEntry, Round, RoundResults, SubmissionResult } from "../services/api";
@@ -30,6 +32,7 @@ vi.mock("../services/api", async () => {
     getResults: vi.fn(),
     updateRound: vi.fn(),
     submitSong: vi.fn(),
+    resolveSong: vi.fn(),
     getMyVotes: vi.fn(),
     castVotes: vi.fn(),
     getNotes: vi.fn(),
@@ -50,6 +53,8 @@ const mockCastVotes = vi.mocked(castVotes);
 const mockGetNotes = vi.mocked(getNotes);
 const mockAddNote = vi.mocked(addNote);
 const mockGetSpotifyStatus = vi.mocked(getSpotifyStatus);
+const mockResolveSong = vi.mocked(resolveSong);
+const mockSubmitSong = vi.mocked(submitSong);
 const mockUseAuth = vi.mocked(useAuth);
 
 const ORGANIZER = "org-1";
@@ -68,6 +73,8 @@ function round(overrides: Partial<Round> = {}): Round {
     votes_per_player: 3,
     created_at: "2026-01-01T00:00:00Z",
     closed_at: null,
+    submission_count: 0,
+    member_count: 0,
     ...overrides,
   };
 }
@@ -209,6 +216,60 @@ describe("RoundDetailRoute", () => {
     renderRound();
     expect(await screen.findByText("late summer feels")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /submit a song/i })).toBeInTheDocument();
+  });
+
+  it("open_submission: shows submission progress (X of Y submitted) — MYS-101", async () => {
+    mockGetRound.mockResolvedValue(round({ submission_count: 2, member_count: 5 }));
+    renderRound();
+    expect(await screen.findByText("2 of 5 submitted")).toBeInTheDocument();
+  });
+
+  it("open_submission: hides progress until the member count is known — MYS-101", async () => {
+    mockGetRound.mockResolvedValue(round({ submission_count: 0, member_count: 0 }));
+    renderRound();
+    // Wait for the screen to settle on the submit card, then assert no progress.
+    expect(await screen.findByRole("heading", { name: /submit a song/i })).toBeInTheDocument();
+    expect(screen.queryByText(/submitted$/i)).not.toBeInTheDocument();
+  });
+
+  it("open_submission: submitting a song refreshes the X of Y count — MYS-101", async () => {
+    const user = userEvent.setup();
+    // The round is refetched after a successful submit: first load shows 0, the
+    // post-submit refetch shows 1.
+    mockGetRound
+      .mockResolvedValueOnce(round({ submission_count: 0, member_count: 5 }))
+      .mockResolvedValue(round({ submission_count: 1, member_count: 5 }));
+    mockResolveSong.mockResolvedValue({
+      title: "Debaser",
+      artist: "Pixies",
+      isrc: "I1",
+      album: null,
+      thumbnail_url: null,
+      platforms: {},
+    } as Awaited<ReturnType<typeof resolveSong>>);
+    mockSubmitSong.mockResolvedValue({
+      id: "s1",
+      round_id: "r1",
+      user_id: ORGANIZER,
+      isrc: "I1",
+      title: "Debaser",
+      artist: "Pixies",
+      album: null,
+      album_art_url: null,
+      note: null,
+      participation_mode: "playing",
+      created_at: "2026-01-01T00:00:00Z",
+    });
+
+    renderRound();
+    expect(await screen.findByText("0 of 5 submitted")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(/paste a spotify or youtube link/i), "https://x");
+    await user.click(screen.getByRole("button", { name: /^resolve$/i }));
+    await user.click(await screen.findByRole("button", { name: /submit this song/i }));
+
+    expect(await screen.findByText("1 of 5 submitted")).toBeInTheDocument();
+    expect(mockSubmitSong).toHaveBeenCalledTimes(1);
   });
 
   it("open_submission with an existing submission: shows it + change affordance", async () => {

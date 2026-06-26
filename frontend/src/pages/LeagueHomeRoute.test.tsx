@@ -110,6 +110,8 @@ function closedRound(overrides: Partial<Round> = {}): Round {
     votes_per_player: 3,
     created_at: "2026-01-01T00:00:00Z",
     closed_at: "2026-01-05T00:00:00Z",
+    submission_count: 0,
+    member_count: 0,
     ...overrides,
   };
 }
@@ -289,6 +291,22 @@ describe("LeagueHomeRoute", () => {
     await user.click(screen.getAllByRole("button", { name: /^home$/i })[1]);
 
     expect(await screen.findByText("HOME CONTENT")).toBeInTheDocument();
+  });
+
+  it("open_submission round: shows submission progress (X of Y submitted) on the card — MYS-101", async () => {
+    mockGetRounds.mockResolvedValue([
+      closedRound({
+        id: "round-open",
+        state: "open_submission",
+        closed_at: null,
+        submission_count: 3,
+        member_count: 6,
+      }),
+    ]);
+
+    renderLeague();
+    await screen.findByText("Friday Mixtape");
+    expect(await screen.findByText("3 of 6 submitted")).toBeInTheDocument();
   });
 
   it("closed round: shows the single winner and most-noted pick on the card", async () => {

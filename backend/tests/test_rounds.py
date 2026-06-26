@@ -15,6 +15,7 @@ from sqlalchemy import select
 from app.auth.jwt import create_access_token
 from app.models.league import League
 from app.models.league_member import LeagueMember
+from app.models.submission import Submission
 from app.models.user import User
 
 
@@ -346,3 +347,62 @@ async def test_cannot_create_round_on_complete_league(client, db_session):
     resp = await _create_round(client, league.id, organizer.id)
     assert resp.status_code == 409
     assert "complete" in resp.json()["detail"]
+
+
+# --------------------------------------------------------------------------- #
+# Submission progress (MYS-101)
+# --------------------------------------------------------------------------- #
+
+
+async def _add_submission(db_session, round_id: uuid.UUID, user: User) -> None:
+    db_session.add(
+        Submission(
+            round_id=round_id,
+            user_id=user.id,
+            isrc=f"ISRC-{user.id}",
+            title="A song",
+            artist="An artist",
+            participation_mode="playing",
+        )
+    )
+    await db_session.commit()
+
+
+async def test_round_reports_submission_and_member_counts(client, db_session):
+    organizer = await _seed_user(db_session, "org@example.com")
+    member = await _seed_user(db_session, "member@example.com")
+    other = await _seed_user(db_session, "other@example.com")
+    league = await _seed_league(db_session, organizer)
+    await _add_member(db_session, league.id, member)
+    await _add_member(db_session, league.id, other)
+
+    # A fresh round on creation has no submissions yet but knows the member count.
+    created = (await _create_round(client, league.id, organizer.id)).json()
+    rid = created["id"]
+    assert created["submission_count"] == 0
+    assert created["member_count"] == 3
+
+    await _add_submission(db_session, uuid.UUID(rid), organizer)
+
+    detail = await client.get(f"/api/v1/rounds/{rid}", headers=_auth(member.id))
+    assert detail.status_code == 200, detail.text
+    body = detail.json()
+    assert body["submission_count"] == 1  # 3 members, 1 has submitted
+    assert body["member_count"] == 3
+
+
+async def test_list_rounds_includes_per_round_submission_counts(client, db_session):
+    organizer = await _seed_user(db_session, "org@example.com")
+    member = await _seed_user(db_session, "member@example.com")
+    league = await _seed_league(db_session, organizer, total_rounds=3)
+    await _add_member(db_session, league.id, member)
+
+    rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
+    await _add_submission(db_session, uuid.UUID(rid), organizer)
+    await _add_submission(db_session, uuid.UUID(rid), member)
+
+    resp = await client.get(_rounds_url(league.id), headers=_auth(member.id))
+    assert resp.status_code == 200, resp.text
+    by_number = {r["round_number"]: r for r in resp.json()}
+    assert by_number[1]["submission_count"] == 2
+    assert by_number[1]["member_count"] == 2

@@ -1,6 +1,7 @@
 import type { InvitePreview } from "../services/api";
 import { Button } from "../components/Button";
 import { ConcentricRings } from "../components/ConcentricRings";
+import { TopNav } from "../components/TopNav";
 
 type JoinLeagueScreenProps = {
   preview: InvitePreview | null;
@@ -27,7 +28,11 @@ export function JoinLeagueScreen({
   onSignIn,
 }: JoinLeagueScreenProps) {
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center px-4 py-8 sm:px-8">
+    <div className="flex min-h-screen flex-col">
+      {/* Authenticated visitors get the shared nav (MYS-136). Logged-out
+          previewers have no session to drive it, so it stays absent for them. */}
+      {isAuthenticated ? <TopNav /> : null}
+      <main className="flex flex-1 flex-col items-center justify-center px-4 py-16 sm:px-8">
       <div className="w-full max-w-sm text-center">
         {loading ? (
           <ConcentricRings size={88} spinning className="mx-auto" />
@@ -80,5 +85,6 @@ export function JoinLeagueScreen({
         ) : null}
       </div>
     </main>
+    </div>
   );
 }

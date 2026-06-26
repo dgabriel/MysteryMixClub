@@ -51,6 +51,11 @@ the structured template below is only there if you want to be precise.
 - ~~[P1] git skill - create clear best-practice-based guidelines for git higene, and do not get into weird states ever. make sure those guidelines are persisted and referred to every time you begin a task.~~ → fixed (new `docs/git-hygiene.md` canonical guide; wired into CLAUDE.md "On Every Session Start" + Docs Map + Session Checklist so it's read before any git work; backed by a persistent memory)
 - ~~[P1] round voting - vibe players must be able to leave notes and submit them, even if voting if off~~ → **MYS-132**
 - ~~[P1] round closed - The playlist is no longer visible!~~ → **MYS-133**
+- ~~[P1] round closed - Vibers cannot see other submitted songs for the round~~ → **MYS-134** (vibers now see the song list + notes, no scores)
+- ~~[P2] Join League - instead of returning "already a memeber" error message is a player is already a member, button should take the player/viber to the league page~~ → **MYS-135**
+- ~~[P1] join league - missing nav bar~~ → **MYS-136**
+- ~~[P1] round - viber cannot see links to songs on the tiles~~ → fixed in PR #78 (MYS-134 follow-up: per-song platform links now on every reveal tile, player + viber)
+- [P2] league - new rule, admin can delete a league at any time, no matter the state
 - enabler added: **MYS-68** — voting playlist marks the caller's own entry (blocks MYS-73, MYS-74)
 
 ---

@@ -1108,7 +1108,7 @@ describe("api.ts", () => {
       state: "closed",
       viewer_is_vibing: false,
       winners: [],
-      own_submission: null,
+      picks: [],
       submissions: [
         {
           submission_id: "sub-1",
@@ -1119,6 +1119,7 @@ describe("api.ts", () => {
           artist: "Pixies",
           album: null,
           album_art_url: null,
+          platforms: { spotify: "https://open.spotify.com/track/x" },
           submitter_note: "a banger",
           vote_count: 3,
           notes: [{ body: "this slaps", author_display_name: "Ada", created_at: "x" }],

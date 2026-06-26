@@ -106,7 +106,6 @@ function entry(overrides: Partial<PlaylistEntry> = {}): PlaylistEntry {
     artist: "Pixies",
     album: null,
     album_art_url: null,
-    participation_mode: "playing",
     platforms: { spotify: "https://s" },
     preferred_url: "https://s",
     is_own: false,
@@ -137,6 +136,9 @@ function results(overrides: Partial<RoundResults> = {}): RoundResults {
     round_number: 1,
     theme: "late summer feels",
     state: "closed",
+    viewer_is_vibing: false,
+    winners: [],
+    own_submission: null,
     submissions: [],
     leaderboard: [],
     most_noted: { note_count: 0, winners: [] },
@@ -374,7 +376,6 @@ describe("RoundDetailRoute", () => {
         artist: "Pixies",
         album: null,
         album_art_url: null,
-        participation_mode: "playing",
         platforms: { spotify: "https://s", deezer: "https://d" },
         preferred_url: "https://s",
         is_own: false,
@@ -412,7 +413,6 @@ describe("RoundDetailRoute", () => {
             artist: "Billie Eilish",
             album: null,
             album_art_url: null,
-            participation_mode: "playing",
             submitter_note: "a banger",
             vote_count: 0,
             notes: [],
@@ -737,28 +737,22 @@ describe("RoundDetailRoute", () => {
       expect(screen.getByRole("button", { name: /cast votes/i })).toBeDisabled();
     });
 
-    it("vibing entries appear in the just-vibing section, are not toggles, and show the warm copy", async () => {
+    it("every submission is a votable toggle — no separate vibing section (MYS-112)", async () => {
       setupVoting({
         entries: [
           entry({ submission_id: "p1", title: "Debaser" }),
-          entry({
-            submission_id: "v1",
-            title: "Ambient Drift",
-            participation_mode: "vibing",
-          }),
+          entry({ submission_id: "p2", title: "Ambient Drift" }),
         ],
         myVotes: [],
       });
       renderRound();
 
-      // the vibing track is rendered, but NOT as a toggle button
-      await screen.findByRole("button", { name: /Debaser/i });
-      expect(screen.getByText("Ambient Drift")).toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: /Ambient Drift/i })).not.toBeInTheDocument();
-      // the warm helper copy + section heading ("just vibing" also appears as a
-      // badge on the entry, so target the section heading specifically)
-      expect(screen.getByRole("heading", { name: /just vibing/i })).toBeInTheDocument();
-      expect(screen.getByText(/along for the ride/i)).toBeInTheDocument();
+      // Every song is a votable toggle now — vibing is private during voting.
+      expect(await screen.findByRole("button", { name: /Debaser/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Ambient Drift/i })).toBeInTheDocument();
+      // No separate "just vibing" section or "along for the ride" copy.
+      expect(screen.queryByRole("heading", { name: /just vibing/i })).not.toBeInTheDocument();
+      expect(screen.queryByText(/along for the ride/i)).not.toBeInTheDocument();
     });
 
     it("a caller who is themselves vibing sees no vote controls, a sit-out message, and still the playlist", async () => {
@@ -829,35 +823,19 @@ describe("RoundDetailRoute", () => {
       return li as HTMLElement;
     }
 
-    it("a just-vibing card shows the leave-a-note affordance and the calm framing", async () => {
-      const user = userEvent.setup();
+    it("a song that's vibing for its submitter is a normal votable card to others (MYS-112)", async () => {
       setupVoting({
         entries: [
           entry({ submission_id: "p1", title: "Debaser" }),
-          entry({
-            submission_id: "v1",
-            title: "Ambient Drift",
-            participation_mode: "vibing",
-          }),
+          entry({ submission_id: "p2", title: "Ambient Drift" }),
         ],
       });
       renderRound();
 
-      await screen.findByRole("button", { name: /Debaser/i });
-      const vibingCard = cardFor("Ambient Drift");
-
-      // affordance present on the vibing card
-      const leaveNote = within(vibingCard).getByRole("button", { name: /leave a note/i });
-      expect(leaveNote).toBeInTheDocument();
-
-      // the calm hint only appears once the composer is opened
-      expect(
-        within(vibingCard).queryByText(/can't vote on this one — leave a note instead/i),
-      ).not.toBeInTheDocument();
-      await user.click(leaveNote);
-      expect(
-        within(vibingCard).getByText(/can't vote on this one — leave a note instead/i),
-      ).toBeInTheDocument();
+      // It's a votable toggle like any other, and the old vibing-only
+      // "can't vote on this one — leave a note instead" hint is gone entirely.
+      expect(await screen.findByRole("button", { name: /Ambient Drift/i })).toBeInTheDocument();
+      expect(screen.queryByText(/can't vote on this one/i)).not.toBeInTheDocument();
     });
 
     it("revealing notes calls getNotes for that submission and renders body + author", async () => {
@@ -992,7 +970,6 @@ describe("RoundDetailRoute", () => {
               artist: "Billie Eilish",
               album: null,
               album_art_url: null,
-              participation_mode: "playing",
               submitter_note: "a banger",
               vote_count: 0,
               notes: [],
@@ -1023,7 +1000,6 @@ describe("RoundDetailRoute", () => {
         artist: "Billie Eilish",
         album: null,
         album_art_url: null,
-        participation_mode: "playing",
         submitter_note: null,
         vote_count: 0,
         notes: [],
@@ -1055,6 +1031,42 @@ describe("RoundDetailRoute", () => {
       if (!li) throw new Error(`no card <li> found for "${title}"`);
       return li as HTMLElement;
     }
+
+    // ----- Vibing-viewer trimmed reveal (MYS-112) -------------------------- //
+
+    it("vibing viewer: winner + own-song notes, no leaderboard or picks", async () => {
+      setupClosed({
+        viewer_is_vibing: true,
+        submissions: [],
+        leaderboard: [],
+        winners: [
+          {
+            submission_id: "w1",
+            title: "Winning Song",
+            artist: "The Champs",
+            submitter_display_name: "Wren",
+          },
+        ],
+        own_submission: {
+          submission_id: "mine",
+          title: "My Quiet Pick",
+          artist: "Me",
+          submitter_note: null,
+          notes: [{ body: "this one got me", author_display_name: "Ada", created_at: "x" }],
+        },
+      });
+      renderRound();
+
+      // Winner shown (named, no count) and the viber's own song + its notes.
+      expect(await screen.findByText("Winning Song")).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: /your song/i })).toBeInTheDocument();
+      expect(screen.getByText("My Quiet Pick")).toBeInTheDocument();
+      expect(screen.getByText("this one got me")).toBeInTheDocument();
+      // No leaderboard, no picks list, no vote tallies for a viber.
+      expect(screen.queryByRole("heading", { name: /leaderboard/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: /the picks/i })).not.toBeInTheDocument();
+      expect(screen.queryByText(/\bvotes?\b/i)).not.toBeInTheDocument();
+    });
 
     // ----- Most Noted ------------------------------------------------------ //
 
@@ -1259,7 +1271,6 @@ describe("RoundDetailRoute", () => {
             submitter_display_name: "Vee",
             title: "Ambient Drift",
             artist: "Brian Eno",
-            participation_mode: "vibing",
             vote_count: 0,
           }),
         ],
@@ -1277,7 +1288,7 @@ describe("RoundDetailRoute", () => {
 
     it("Leaderboard: section is omitted when there are no ranked players", async () => {
       setupClosed({
-        submissions: [sub({ participation_mode: "vibing", vote_count: 0 })],
+        submissions: [sub({ vote_count: 0 })],
         leaderboard: [],
       });
       renderRound();
@@ -1297,7 +1308,6 @@ describe("RoundDetailRoute", () => {
             submitter_display_name: "Bob",
             title: "Bad Guy",
             artist: "Billie Eilish",
-            participation_mode: "playing",
             submitter_note: "a banger",
             vote_count: 2,
             notes: [{ body: "this slaps", author_display_name: "Ada", created_at: "x" }],
@@ -1377,7 +1387,7 @@ describe("RoundDetailRoute", () => {
 
     it("Submissions: a single-vote pick reads '1 vote' (singular)", async () => {
       setupClosed({
-        submissions: [sub({ title: "Bad Guy", participation_mode: "playing", vote_count: 1 })],
+        submissions: [sub({ title: "Bad Guy", vote_count: 1 })],
       });
       renderRound();
 
@@ -1386,26 +1396,21 @@ describe("RoundDetailRoute", () => {
       expect(within(card).getByText("1 vote")).toBeInTheDocument();
     });
 
-    it("Submissions: a vibing pick shows the 'just vibing' badge and NO vote count", async () => {
+    it("Submissions: every pick shows its vote count and no vibing badge (MYS-112)", async () => {
       setupClosed({
         submissions: [
-          sub({
-            submission_id: "v1",
-            title: "Ambient Drift",
-            artist: "Brian Eno",
-            participation_mode: "vibing",
-            vote_count: 0,
-          }),
+          sub({ submission_id: "w1", title: "Top Song", artist: "A", vote_count: 5 }),
+          sub({ submission_id: "v1", title: "Ambient Drift", artist: "Brian Eno", vote_count: 1 }),
         ],
       });
       renderRound();
 
-      await screen.findByText("Ambient Drift");
+      await screen.findByRole("heading", { name: /the picks/i });
+      // "Ambient Drift" isn't the winner, so it only appears in the picks list.
       const card = cardFor("Ambient Drift");
-      expect(within(card).getByText(/just vibing/i)).toBeInTheDocument();
-      // no score rendered for a vibing pick
-      expect(within(card).queryByText(/\bvotes?\b/i)).not.toBeInTheDocument();
-      expect(within(card).queryByText("0 votes")).not.toBeInTheDocument();
+      // The reveal never shows who vibed — just the score, like any other pick.
+      expect(within(card).getByText("1 vote")).toBeInTheDocument();
+      expect(within(card).queryByText(/just vibing/i)).not.toBeInTheDocument();
     });
 
     it("Submissions: a pick with no submitter note and no notes renders neither", async () => {

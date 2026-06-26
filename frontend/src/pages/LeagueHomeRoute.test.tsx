@@ -129,6 +129,9 @@ function resultsWith(overrides: Partial<RoundResults> = {}): RoundResults {
     round_number: 1,
     theme: "late summer feels",
     state: "closed",
+    viewer_is_vibing: false,
+    winners: [],
+    own_submission: null,
     submissions: [],
     leaderboard: [
       { user_id: "u-wren", display_name: "Wren", vote_count: 5, rank: 1 },

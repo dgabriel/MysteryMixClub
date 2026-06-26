@@ -263,7 +263,9 @@ async def test_cast_for_own_song_409(client, db_session):
     assert resp.json()["detail"] == "you can't vote for your own song"
 
 
-async def test_cast_for_vibing_song_409(client, db_session):
+async def test_cast_for_vibing_song_succeeds(client, db_session):
+    # MYS-112: a viber's song competes like any other — it is votable, and the
+    # voter can't tell it was a viber's.
     organizer = await _seed_user(db_session, "o@example.com")
     viber = await _seed_user(db_session, "vibe@example.com")
     round_ = await _seed_league_with_round(db_session, organizer)
@@ -275,8 +277,8 @@ async def test_cast_for_vibing_song_409(client, db_session):
         json={"submission_ids": [str(vibing_sub.id)]},
         headers=_auth(organizer.id),
     )
-    assert resp.status_code == 409
-    assert resp.json()["detail"] == "that song is just vibing — leave a note instead"
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["submission_ids"] == [str(vibing_sub.id)]
 
 
 # --------------------------------------------------------------------------- #

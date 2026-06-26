@@ -556,7 +556,8 @@ export type PlaylistEntry = {
   artist: string;
   album: string | null;
   album_art_url: string | null;
-  participation_mode: string;
+  // participation_mode is intentionally absent (MYS-112): vibing is private, so
+  // the voting playlist never reveals which songs are vibers'.
   platforms: Partial<Record<PlatformKey, string>>;
   preferred_url: string | null;
   is_own: boolean;
@@ -779,13 +780,15 @@ export type ResultSubmission = {
   artist: string;
   album: string | null;
   album_art_url: string | null;
-  participation_mode: string;
+  // participation_mode is intentionally absent (MYS-112): the reveal never shows
+  // who vibed.
   submitter_note: string | null;
   vote_count: number;
   notes: ResultNote[];
 };
 
-/** One ranked, Playing-only player on the leaderboard (vibing excluded). */
+/** One ranked player on the leaderboard — every submitter competes, vibers
+ *  included (MYS-112). */
 export type LeaderboardEntry = {
   user_id: string;
   display_name: string;
@@ -802,16 +805,41 @@ export type MostNotedWinner = {
   notes: ResultNote[];
 };
 
-/** A closed round's full results (GET /rounds/:id/results). `most_noted.winners`
- *  is empty when the round drew no notes. */
+/** The vibe-safe winner shape shown to a vibing viewer (MYS-112): named, no
+ *  vote count. */
+export type WinnerReveal = {
+  submission_id: string;
+  title: string;
+  artist: string;
+  submitter_display_name: string;
+};
+
+/** A vibing viewer's own submission with the notes left on it (MYS-112). */
+export type OwnSubmissionReveal = {
+  submission_id: string;
+  title: string;
+  artist: string;
+  submitter_note: string | null;
+  notes: ResultNote[];
+};
+
+/** A closed round's reveal (GET /rounds/:id/results). The reveal is gated by the
+ *  viewer's participation mode (MYS-112): a player gets the full reveal
+ *  (`submissions` + `leaderboard`); a viber (`viewer_is_vibing`) gets only
+ *  `winners` + `own_submission` + `most_noted`, with `submissions`/`leaderboard`
+ *  empty so no vote counts or rankings leak. `most_noted.winners` is empty when
+ *  the round drew no notes. */
 export type RoundResults = {
   round_id: string;
   round_number: number;
   theme: string | null;
   state: RoundState;
+  viewer_is_vibing: boolean;
   submissions: ResultSubmission[];
   leaderboard: LeaderboardEntry[];
   most_noted: { note_count: number; winners: MostNotedWinner[] };
+  winners: WinnerReveal[];
+  own_submission: OwnSubmissionReveal | null;
 };
 
 /** Get a closed round's reveal results. Backend returns 409 while the round is

@@ -18,6 +18,7 @@ import {
   type LeaderboardEntry,
   type MostNotedWinner,
   type Note,
+  type OwnSubmissionReveal,
   type PlaylistEntry,
   type ResolvedSong,
   type ResultNote,
@@ -26,6 +27,7 @@ import {
   type RoundResults,
   type RoundState,
   type SubmissionResult,
+  type WinnerReveal,
 } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 import { Button } from "../components/Button";
@@ -724,9 +726,6 @@ function VotingSection({
     return <p className="font-mono text-[13px] font-light text-muted">no submissions yet</p>;
   }
 
-  const votable = entries.filter((e) => e.participation_mode !== "vibing");
-  const vibing = entries.filter((e) => e.participation_mode === "vibing");
-
   function toggle(id: string) {
     onSelectionChange();
     setSelected((current) =>
@@ -763,14 +762,7 @@ function VotingSection({
           {entries.map((entry) => (
             <li key={entry.submission_id}>
               <Card>
-                <div className="flex items-start justify-between gap-3">
-                  <h3 className="font-serif text-[18px] leading-tight text-ink">{entry.title}</h3>
-                  {entry.participation_mode === "vibing" ? (
-                    <span className="shrink-0">
-                      <Badge>just vibing</Badge>
-                    </span>
-                  ) : null}
-                </div>
+                <h3 className="font-serif text-[18px] leading-tight text-ink">{entry.title}</h3>
                 {entry.artist ? (
                   <p className="mt-1 font-mono text-[11px] font-light text-muted">{entry.artist}</p>
                 ) : null}
@@ -805,7 +797,7 @@ function VotingSection({
       </div>
 
       <ul className="mt-4 space-y-4">
-        {votable.map((entry) => {
+        {entries.map((entry) => {
           // Your own song: shown in the playlist but never a vote toggle — you
           // can't vote for it (MYS-73), and it's clearly marked as yours
           // (MYS-74/75). No notes affordance either — you can't leave a note on
@@ -886,40 +878,6 @@ function VotingSection({
           </p>
         ) : null}
       </div>
-
-      {vibing.length > 0 ? (
-        <section className="mt-12">
-          <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">just vibing</h2>
-          <p className="mt-2 font-mono text-[13px] font-light text-muted">
-            these picks are along for the ride — outside voting, just good listening.
-          </p>
-          <ul className="mt-4 space-y-4">
-            {vibing.map((entry) => (
-              <li key={entry.submission_id}>
-                <Card>
-                  <div className="flex items-start justify-between gap-3">
-                    <h3 className="font-serif text-[18px] leading-tight text-ink">{entry.title}</h3>
-                    <span className="shrink-0">
-                      <Badge>just vibing</Badge>
-                    </span>
-                  </div>
-                  {entry.artist ? (
-                    <p className="mt-1 font-mono text-[11px] font-light text-muted">
-                      {entry.artist}
-                    </p>
-                  ) : null}
-                  <PlatformLinks entry={entry} />
-                  <SongNotes
-                    submissionId={entry.submission_id}
-                    onActionError={onActionError}
-                    composerHint="can't vote on this one — leave a note instead"
-                  />
-                </Card>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
     </>
   );
 }
@@ -1097,15 +1055,14 @@ function ResultNoteList({ notes }: { notes: ResultNote[] }) {
 
 /**
  * The winning song(s) of the round — the most votes. A tie shows every winner.
- * Returns [] when nobody drew a vote. Vibing picks never win (they aren't voted
- * on). This stays in the Sage/Ink family — no Rust, which the reveal reserves
- * for Most Noted (MYS-71).
+ * Returns [] when nobody drew a vote. Every submitter competes, vibers included
+ * (MYS-112). This stays in the Sage/Ink family — no Rust, which the reveal
+ * reserves for Most Noted (MYS-71).
  */
 function topVotedSubmissions(submissions: ResultSubmission[]): ResultSubmission[] {
-  const playing = submissions.filter((s) => s.participation_mode !== "vibing");
-  const top = playing.reduce((max, s) => Math.max(max, s.vote_count), 0);
+  const top = submissions.reduce((max, s) => Math.max(max, s.vote_count), 0);
   if (top <= 0) return [];
-  return playing.filter((s) => s.vote_count === top);
+  return submissions.filter((s) => s.vote_count === top);
 }
 
 /**
@@ -1149,7 +1106,17 @@ function ResultsSection({
   results: RoundResults | null;
   userId: string | null;
 }) {
-  if (!results || results.submissions.length === 0) {
+  if (!results) {
+    return <p className="font-mono text-[13px] font-light text-muted">no submissions</p>;
+  }
+
+  // A vibing viewer gets the trimmed reveal — winner(s) + Most Noted + their own
+  // song's notes, no rankings or vote counts (MYS-112).
+  if (results.viewer_is_vibing) {
+    return <VibingReveal results={results} />;
+  }
+
+  if (results.submissions.length === 0) {
     return <p className="font-mono text-[13px] font-light text-muted">no submissions</p>;
   }
 
@@ -1171,42 +1138,109 @@ function ResultsSection({
           the picks ({submissions.length})
         </h2>
         <ul className="mt-4 space-y-4">
-          {submissions.map((s) => {
-            const vibing = s.participation_mode === "vibing";
-            return (
-              <li key={s.submission_id}>
-                <Card>
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="font-mono uppercase tracking-label text-[9px] text-muted">
-                      {nameFor(s)}
-                    </span>
-                    {vibing ? (
-                      <span className="shrink-0">
-                        <Badge>just vibing</Badge>
-                      </span>
-                    ) : (
-                      <span className="shrink-0 font-mono uppercase tracking-label text-[9px] text-sage">
-                        {s.vote_count} {s.vote_count === 1 ? "vote" : "votes"}
-                      </span>
-                    )}
-                  </div>
-                  <h3 className="mt-1 font-serif text-[18px] leading-tight text-ink">{s.title}</h3>
-                  {s.artist ? (
-                    <p className="mt-1 font-mono text-[11px] font-light text-muted">{s.artist}</p>
-                  ) : null}
-                  {s.submitter_note ? (
-                    <p className="mt-2 font-mono text-[11px] font-light text-ink">
-                      “{s.submitter_note}”
-                    </p>
-                  ) : null}
-                  {s.notes.length > 0 ? <CollapsibleNotes notes={s.notes} /> : null}
-                </Card>
-              </li>
-            );
-          })}
+          {submissions.map((s) => (
+            <li key={s.submission_id}>
+              <Card>
+                <div className="flex items-start justify-between gap-3">
+                  <span className="font-mono uppercase tracking-label text-[9px] text-muted">
+                    {nameFor(s)}
+                  </span>
+                  <span className="shrink-0 font-mono uppercase tracking-label text-[9px] text-sage">
+                    {s.vote_count} {s.vote_count === 1 ? "vote" : "votes"}
+                  </span>
+                </div>
+                <h3 className="mt-1 font-serif text-[18px] leading-tight text-ink">{s.title}</h3>
+                {s.artist ? (
+                  <p className="mt-1 font-mono text-[11px] font-light text-muted">{s.artist}</p>
+                ) : null}
+                {s.submitter_note ? (
+                  <p className="mt-2 font-mono text-[11px] font-light text-ink">
+                    “{s.submitter_note}”
+                  </p>
+                ) : null}
+                {s.notes.length > 0 ? <CollapsibleNotes notes={s.notes} /> : null}
+              </Card>
+            </li>
+          ))}
         </ul>
       </section>
     </div>
+  );
+}
+
+/**
+ * The trimmed reveal a vibing viewer sees (MYS-112): Most Noted (the screen's one
+ * Rust signal), the winner(s) by votes — named, no counts — and their own song's
+ * notes so the appreciation lands. No leaderboard, no picks list, no vote tallies.
+ */
+function VibingReveal({ results }: { results: RoundResults }) {
+  const { most_noted, winners, own_submission } = results;
+  return (
+    <div className="animate-fade-in space-y-12">
+      {most_noted.winners.length > 0 ? <MostNotedSection winners={most_noted.winners} /> : null}
+
+      {winners.length > 0 ? <VibeWinnersSection winners={winners} /> : null}
+
+      {own_submission ? <OwnSubmissionSection own={own_submission} /> : null}
+    </div>
+  );
+}
+
+/** The winner(s) as shown to a vibing viewer — named, no vote counts. */
+function VibeWinnersSection({ winners }: { winners: WinnerReveal[] }) {
+  const tie = winners.length > 1;
+  return (
+    <section>
+      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
+        {tie ? "winners" : "winner"}
+      </h2>
+      <p className="mt-2 font-mono text-[13px] font-light text-muted">
+        {tie ? "the most-loved picks this round" : "the most-loved pick this round"}
+      </p>
+      <ul className="mt-4 space-y-4">
+        {winners.map((w) => (
+          <li key={w.submission_id}>
+            <Card>
+              <span className="font-mono uppercase tracking-label text-[9px] text-muted">
+                {w.submitter_display_name ?? "someone"}
+              </span>
+              <h3 className="mt-1 font-serif text-[24px] leading-tight text-ink">{w.title}</h3>
+              {w.artist ? (
+                <p className="mt-1 font-mono text-[11px] font-light text-muted">{w.artist}</p>
+              ) : null}
+            </Card>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** A vibing viewer's own song with the notes it drew — the appreciation mechanic
+ *  (MYS-112), no score attached. */
+function OwnSubmissionSection({ own }: { own: OwnSubmissionReveal }) {
+  return (
+    <section>
+      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">your song</h2>
+      <div className="mt-4">
+        <Card>
+          <h3 className="font-serif text-[18px] leading-tight text-ink">{own.title}</h3>
+          {own.artist ? (
+            <p className="mt-1 font-mono text-[11px] font-light text-muted">{own.artist}</p>
+          ) : null}
+          {own.submitter_note ? (
+            <p className="mt-2 font-mono text-[11px] font-light text-ink">“{own.submitter_note}”</p>
+          ) : null}
+          {own.notes.length > 0 ? (
+            <div className="mt-4 border-t border-border pt-4">
+              <ResultNoteList notes={own.notes} />
+            </div>
+          ) : (
+            <p className="mt-3 font-mono text-[11px] font-light text-muted">no notes yet</p>
+          )}
+        </Card>
+      </div>
+    </section>
   );
 }
 

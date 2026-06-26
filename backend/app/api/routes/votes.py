@@ -8,9 +8,11 @@ Casting and reading a player's votes for a round:
 Voting is open only while the round is in ``open_voting``. Only a Playing
 participant may vote: the caller must have a submission in the round, and a
 ``vibing`` submitter cannot vote — they leave a note instead (MYS-21). A player
-cannot vote for their own song, nor for a ``vibing`` submission. Casting
-replaces the caller's prior votes for the round wholesale (delete-then-insert),
-so a re-cast is idempotent — mirroring the submission replace-in-place pattern.
+cannot vote for their own song. Every other song is votable, including vibing
+submissions — vibing is private (the voter can't tell which songs are vibers'),
+and a viber's song competes like any other (MYS-112). Casting replaces the
+caller's prior votes for the round wholesale (delete-then-insert), so a re-cast
+is idempotent — mirroring the submission replace-in-place pattern.
 """
 
 import uuid
@@ -103,11 +105,8 @@ async def cast_votes(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT, detail="you can't vote for your own song"
             )
-        if target.participation_mode == "vibing":
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="that song is just vibing — leave a note instead",
-            )
+        # Vibing songs are votable (MYS-112): a viber's song competes like any
+        # other, and the voter can't tell which songs are vibers'.
 
     # All validation passed: replace the caller's votes for this round wholesale.
     existing = list(

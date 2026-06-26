@@ -771,6 +771,20 @@ describe("RoundDetailRoute", () => {
       expect(screen.getByText("Debaser")).toBeInTheDocument();
     });
 
+    it("vibing viewer can leave a note on each song (MYS-132)", async () => {
+      setupVoting({
+        entries: [entry({ submission_id: "p1", title: "Debaser" })],
+        myVotes: [],
+        mine: mine({ participation_mode: "vibing" }),
+      });
+      renderRound();
+
+      // Vibers don't vote, but they can still leave notes — the affordance is
+      // present on the playlist card.
+      expect(await screen.findByText(/you sit voting out/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /leave a note/i })).toBeInTheDocument();
+    });
+
     it("a castVotes ApiError surfaces in the actionError region", async () => {
       const user = userEvent.setup();
       const { ApiError } =
@@ -1436,14 +1450,37 @@ describe("RoundDetailRoute", () => {
 
     // ----- Data loading ---------------------------------------------------- //
 
-    it("calls getResults for a closed round and not the old submissions/members loaders", async () => {
+    it("closed round shows a 'listen back' affordance when there are tracks (MYS-133)", async () => {
+      mockGetPlaylist.mockResolvedValue({
+        round_id: "r1",
+        round_number: 1,
+        theme: "t",
+        state: "closed",
+        entries: [entry({ submission_id: "p1", title: "Debaser" })],
+        youtube_playlist_url: "https://www.youtube.com/watch_videos?video_ids=a",
+        youtube_track_count: 1,
+        voting_eligible: 0,
+        voting_acted: 0,
+        vibing_count: 0,
+      });
+      setupClosed({ submissions: [sub({ title: "Debaser" })] });
+      renderRound();
+
+      expect(await screen.findByRole("heading", { name: /listen back/i })).toBeInTheDocument();
+      expect(
+        screen.getByRole("link", { name: /open playlist in youtube/i }),
+      ).toBeInTheDocument();
+    });
+
+    it("calls getResults + getPlaylist for a closed round, and not getMine", async () => {
       setupClosed({ submissions: [sub({ title: "Bad Guy" })] });
       renderRound();
 
       await screen.findByRole("heading", { name: /the picks/i });
       expect(mockGetResults).toHaveBeenCalledWith("r1");
-      // closed view no longer uses these
-      expect(mockGetPlaylist).not.toHaveBeenCalled();
+      // The closed view also pulls the playlist for the "listen back" affordance
+      // (MYS-133), but never the caller's own submission.
+      expect(mockGetPlaylist).toHaveBeenCalledWith("r1");
       expect(mockGetMine).not.toHaveBeenCalled();
     });
 

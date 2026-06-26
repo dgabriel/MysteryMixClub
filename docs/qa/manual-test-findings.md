@@ -48,6 +48,7 @@ the structured template below is only there if you want to be precise.
 - ~~[P1] round - duplicated navigation bar~~ → fixed (round screen rendered a 2nd TopNav on top of AuthedLayout's; removed)
 - ~~[P1] round - Remove League from navigation bar, replace with a link to the league above the round name.  Use the league's actual name, not just "League"~~ → fixed (named "← {league.name}" link above the round title; nav back-link dropped)
 - ~~[P3] nav bar - add a bit of rust. too monotne, even for us~~ → fixed (brand mark now carries its Rust dot; documented as an official style-guide exception so it doesn't spend a screen's one-Rust budget)
+- ~~[P1] git skill - create clear best-practice-based guidelines for git higene, and do not get into weird states ever. make sure those guidelines are persisted and referred to every time you begin a task.~~ → fixed (new `docs/git-hygiene.md` canonical guide; wired into CLAUDE.md "On Every Session Start" + Docs Map + Session Checklist so it's read before any git work; backed by a persistent memory)
 
 - enabler added: **MYS-68** — voting playlist marks the caller's own entry (blocks MYS-73, MYS-74)
 

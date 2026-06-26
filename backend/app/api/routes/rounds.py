@@ -517,6 +517,9 @@ class ResultSubmission(BaseModel):
     album_art_url: str | None
     # participation_mode is intentionally NOT exposed (MYS-112): vibing stays
     # private — the reveal never shows who vibed.
+    # Cross-service playback links so the reveal tiles are playable (MYS-134
+    # follow-up); may be empty if the submit-time lookup failed.
+    platforms: dict[str, str]
     # The submitter's own optional note attached at submission time.
     submitter_note: str | None
     vote_count: int
@@ -562,6 +565,8 @@ class RevealPick(BaseModel):
     submitter_display_name: str
     title: str
     artist: str
+    # Playback links so the tiles are playable, same as the player reveal.
+    platforms: dict[str, str]
     submitter_note: str | None
     notes: list[ResultNote]
 
@@ -651,6 +656,7 @@ async def get_round_results(
             artist=s.artist,
             album=s.album,
             album_art_url=s.album_art_url,
+            platforms=s.platform_links or {},
             submitter_note=s.note,
             vote_count=votes_by_submission.get(s.id, 0),
             notes=notes_by_submission.get(s.id, []),
@@ -740,6 +746,7 @@ async def get_round_results(
             submitter_display_name=s.submitter_display_name,
             title=s.title,
             artist=s.artist,
+            platforms=s.platforms,
             submitter_note=s.submitter_note,
             notes=s.notes,
         )

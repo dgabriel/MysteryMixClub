@@ -782,6 +782,8 @@ export type ResultSubmission = {
   album_art_url: string | null;
   // participation_mode is intentionally absent (MYS-112): the reveal never shows
   // who vibed.
+  /** Playback links so the reveal tiles are playable. */
+  platforms: Partial<Record<PlatformKey, string>>;
   submitter_note: string | null;
   vote_count: number;
   notes: ResultNote[];
@@ -821,6 +823,8 @@ export type RevealPick = {
   submitter_display_name: string;
   title: string;
   artist: string;
+  /** Playback links so the tiles are playable. */
+  platforms: Partial<Record<PlatformKey, string>>;
   submitter_note: string | null;
   notes: ResultNote[];
 };

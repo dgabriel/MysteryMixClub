@@ -54,6 +54,8 @@ the structured template below is only there if you want to be precise.
 - ~~[P1] round closed - Vibers cannot see other submitted songs for the round~~ → **MYS-134** (vibers now see the song list + notes, no scores)
 - ~~[P2] Join League - instead of returning "already a memeber" error message is a player is already a member, button should take the player/viber to the league page~~ → **MYS-135**
 - ~~[P1] join league - missing nav bar~~ → **MYS-136**
+- ~~[P1] round - viber cannot see links to songs on the tiles~~ → fixed in PR #78 (MYS-134 follow-up: per-song platform links now on every reveal tile, player + viber)
+- [P2] league - new rule, admin can delete a league at any time, no matter the state
 - enabler added: **MYS-68** — voting playlist marks the caller's own entry (blocks MYS-73, MYS-74)
 
 ---

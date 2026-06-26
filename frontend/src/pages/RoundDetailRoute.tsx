@@ -18,6 +18,7 @@ import {
   type LeaderboardEntry,
   type MostNotedWinner,
   type Note,
+  type PlatformKey,
   type PlaylistEntry,
   type ResolvedSong,
   type ResultNote,
@@ -622,19 +623,24 @@ function SubmissionSection({
   );
 }
 
-function PlatformLinks({ entry }: { entry: PlaylistEntry }) {
-  const available = PLATFORM_LABELS.filter(
-    (p) => entry.platforms[p.key as keyof typeof entry.platforms],
-  );
+function PlatformLinks({
+  platforms,
+  title,
+}: {
+  platforms: Partial<Record<PlatformKey, string>>;
+  title: string;
+}) {
+  const available = PLATFORM_LABELS.filter((p) => platforms[p.key as PlatformKey]);
+  if (available.length === 0) return null;
   return (
     <ul className="mt-3 flex flex-wrap gap-2">
       {available.map((p) => (
         <li key={p.key}>
           <a
-            href={entry.platforms[p.key as keyof typeof entry.platforms]}
+            href={platforms[p.key as PlatformKey]}
             target="_blank"
             rel="noopener noreferrer"
-            aria-label={`open ${entry.title} on ${p.label} (opens in a new tab)`}
+            aria-label={`open ${title} on ${p.label} (opens in a new tab)`}
             className="inline-flex items-center rounded-[2px] border border-border px-2.5 py-1 font-mono uppercase tracking-ui text-[11px] text-ink transition-colors duration-150 hover:bg-sage-pale"
           >
             {p.label}
@@ -816,7 +822,7 @@ function VotingSection({
                 {entry.artist ? (
                   <p className="mt-1 font-mono text-[11px] font-light text-muted">{entry.artist}</p>
                 ) : null}
-                <PlatformLinks entry={entry} />
+                <PlatformLinks platforms={entry.platforms} title={entry.title} />
                 {/* Vibers don't vote, but they can still leave notes — it's how
                     they take part (MYS-132). */}
                 <SongNotes submissionId={entry.submission_id} onActionError={onActionError} />
@@ -875,7 +881,7 @@ function VotingSection({
                     you can&apos;t vote for your own song
                   </p>
                 </div>
-                <PlatformLinks entry={entry} />
+                <PlatformLinks platforms={entry.platforms} title={entry.title} />
               </li>
             );
           }
@@ -907,7 +913,7 @@ function VotingSection({
                   <p className="mt-1 font-mono text-[11px] font-light text-muted">{entry.artist}</p>
                 ) : null}
               </button>
-              <PlatformLinks entry={entry} />
+              <PlatformLinks platforms={entry.platforms} title={entry.title} />
               <SongNotes submissionId={entry.submission_id} onActionError={onActionError} />
             </li>
           );
@@ -1211,6 +1217,7 @@ function ResultsSection({
                     “{s.submitter_note}”
                   </p>
                 ) : null}
+                <PlatformLinks platforms={s.platforms} title={s.title} />
                 {s.notes.length > 0 ? <CollapsibleNotes notes={s.notes} /> : null}
               </Card>
             </li>
@@ -1294,6 +1301,7 @@ function VibePicksSection({ picks }: { picks: RevealPick[] }) {
                   “{p.submitter_note}”
                 </p>
               ) : null}
+              <PlatformLinks platforms={p.platforms} title={p.title} />
               {p.notes.length > 0 ? <CollapsibleNotes notes={p.notes} /> : null}
             </Card>
           </li>

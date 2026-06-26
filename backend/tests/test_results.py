@@ -488,6 +488,8 @@ async def test_results_vibing_viewer_gets_trimmed_reveal(client, db_session):
     picks = body["picks"]
     assert [p["title"] for p in picks] == ["Org-song", "Vibed", "Winner"]
     assert all("vote_count" not in p for p in picks)
+    # Tiles are playable: each pick carries its platform links (MYS-134 fix).
+    assert all("platforms" in p for p in picks)
     own = next(p for p in picks if p["submission_id"] == str(s_viber_id))
     assert [n["body"] for n in own["notes"]] == ["love this"]
     # Most Noted is still present.
@@ -514,4 +516,5 @@ async def test_results_playing_viewer_gets_full_reveal(client, db_session):
     assert body["winners"] == []
     assert body["picks"] == []
     assert {s["title"] for s in body["submissions"]} == {"Org-song", "A-song"}
+    assert all("platforms" in s for s in body["submissions"])
     assert len(body["leaderboard"]) == 2

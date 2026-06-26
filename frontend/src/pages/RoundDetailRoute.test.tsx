@@ -413,6 +413,7 @@ describe("RoundDetailRoute", () => {
             artist: "Billie Eilish",
             album: null,
             album_art_url: null,
+            platforms: {},
             submitter_note: "a banger",
             vote_count: 0,
             notes: [],
@@ -984,6 +985,7 @@ describe("RoundDetailRoute", () => {
               artist: "Billie Eilish",
               album: null,
               album_art_url: null,
+              platforms: {},
               submitter_note: "a banger",
               vote_count: 0,
               notes: [],
@@ -1014,6 +1016,7 @@ describe("RoundDetailRoute", () => {
         artist: "Billie Eilish",
         album: null,
         album_art_url: null,
+        platforms: {},
         submitter_note: null,
         vote_count: 0,
         notes: [],
@@ -1067,6 +1070,7 @@ describe("RoundDetailRoute", () => {
             submitter_display_name: "Wren",
             title: "Winning Song",
             artist: "The Champs",
+            platforms: {},
             submitter_note: null,
             notes: [],
           },
@@ -1075,6 +1079,7 @@ describe("RoundDetailRoute", () => {
             submitter_display_name: "Vera",
             title: "My Quiet Pick",
             artist: "Me",
+            platforms: { spotify: "https://open.spotify.com/track/x" },
             submitter_note: null,
             notes: [{ body: "this one got me", author_display_name: "Ada", created_at: "x" }],
           },
@@ -1088,6 +1093,8 @@ describe("RoundDetailRoute", () => {
       expect(await screen.findByRole("heading", { name: /the picks/i })).toBeInTheDocument();
       expect(screen.getAllByText("Winning Song").length).toBeGreaterThanOrEqual(2);
       expect(screen.getByText("My Quiet Pick")).toBeInTheDocument();
+      // The tracklist tiles are playable (regression — MYS-134 tiles need links).
+      expect(screen.getByRole("link", { name: /on Spotify/i })).toBeInTheDocument();
       const user = userEvent.setup();
       await user.click(screen.getByRole("button", { name: /show 1 note/i }));
       expect(screen.getByText("this one got me")).toBeInTheDocument();
@@ -1422,6 +1429,23 @@ describe("RoundDetailRoute", () => {
       await screen.findByRole("heading", { name: /the picks/i });
       const card = cardFor("Bad Guy");
       expect(within(card).getByText("1 vote")).toBeInTheDocument();
+    });
+
+    it("Submissions: a pick tile shows per-song platform links (regression)", async () => {
+      setupClosed({
+        submissions: [
+          sub({
+            title: "Bad Guy",
+            platforms: { spotify: "https://open.spotify.com/track/x" },
+          }),
+        ],
+      });
+      renderRound();
+
+      await screen.findByRole("heading", { name: /the picks/i });
+      const card = cardFor("Bad Guy");
+      const link = within(card).getByRole("link", { name: /on Spotify/i });
+      expect(link).toHaveAttribute("href", "https://open.spotify.com/track/x");
     });
 
     it("Submissions: every pick shows its vote count and no vibing badge (MYS-112)", async () => {

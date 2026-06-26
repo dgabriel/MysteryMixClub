@@ -141,10 +141,13 @@ id                  UUID PRIMARY KEY
 email               TEXT UNIQUE NOT NULL
 display_name        TEXT NOT NULL
 preferred_service   TEXT (spotify | youtube | deezer)
-default_vibe_mode   BOOLEAN DEFAULT FALSE
 created_at          TIMESTAMP
 deleted_at          TIMESTAMP (soft delete for cascade handling, hard purge on schedule)
 ```
+> *Participation mode is **per-league**, not per-user (MYS-112). The original
+> `default_vibe_mode` column on `users` is dropped; the default lives on
+> `leagues.default_vibe_mode` and the per-member setting on
+> `league_members.vibe_mode`.*
 
 ### sessions
 ```
@@ -166,6 +169,7 @@ organizer_id        UUID REFERENCES users(id)
 total_rounds        INTEGER NOT NULL
 current_round       INTEGER DEFAULT 0
 state               TEXT (active | complete)
+default_vibe_mode   BOOLEAN DEFAULT FALSE (admin-set default participation mode; seeds league_members.vibe_mode at join — MYS-112)
 created_at          TIMESTAMP
 completed_at        TIMESTAMP
 ```
@@ -175,6 +179,7 @@ completed_at        TIMESTAMP
 id                  UUID PRIMARY KEY
 league_id           UUID REFERENCES leagues(id)
 user_id             UUID REFERENCES users(id)
+vibe_mode           BOOLEAN DEFAULT FALSE (per-league participation default; seeded from leagues.default_vibe_mode at join, toggleable anytime — MYS-112)
 joined_at           TIMESTAMP
 removed_at          TIMESTAMP
 ```
@@ -228,7 +233,7 @@ album               TEXT
 album_art_url       TEXT
 odesli_data         JSONB (full Odesli response, for platform resolution at playback)
 note                TEXT (max 280 chars)
-participation_mode  TEXT (playing | vibing)
+participation_mode  TEXT (playing | vibing) — per-round mode; defaults at submit from league_members.vibe_mode, overridable per round (MYS-112)
 created_at          TIMESTAMP
 ```
 
@@ -280,17 +285,18 @@ POST   /auth/logout-all       Invalidate all sessions for current user
 ### Users
 ```
 GET    /users/me              Get current user profile
-PATCH  /users/me              Update display name, preferred service, vibe mode default
+PATCH  /users/me              Update display name, preferred service
 DELETE /users/me              Delete account and all associated data (right to be forgotten)
 ```
 
 ### Leagues
 ```
-POST   /leagues               Create a new league
+POST   /leagues               Create a new league (organizer sets default_vibe_mode — MYS-112)
 GET    /leagues               Get all leagues for current user
 GET    /leagues/:id           Get league detail
-PATCH  /leagues/:id           Update league (organizer only: name, total_rounds)
+PATCH  /leagues/:id           Update league (organizer only: name, total_rounds, default_vibe_mode)
 GET    /leagues/:id/members   Get league members
+PATCH  /leagues/:id/membership Set the caller's own vibe_mode for the league (MYS-112)
 DELETE /leagues/:id/members/:userId   Remove a member (organizer only)
 ```
 

@@ -411,16 +411,12 @@ async def delete_league(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    league = await _load_league_as_organizer(
+    await _load_league_as_organizer(
         league_id, current_user, db, "only the organizer can delete this league"
     )
-    # An in-flight league (a round is open) can't be deleted; finish or it must
-    # stay. A not-yet-started (current_round == 0) or complete league is fine.
-    if league.state == "active" and league.current_round > 0:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="cannot delete a league that is in progress",
-        )
+    # The organizer may delete the league in any state (MYS-137) — including an
+    # in-progress round. The two-step UI confirm guards the destructive intent;
+    # the cascade below removes everything the league owns.
 
     # Cascade in FK dependency order in one transaction (no ON DELETE CASCADE):
     # votes/notes/submissions (by this league's rounds) -> rounds -> invites ->

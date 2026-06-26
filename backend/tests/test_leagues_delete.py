@@ -1,15 +1,13 @@
 """Tests for MYS-124: DELETE /api/v1/leagues/{league_id} (organizer-only, cascade).
 
-A league can be hard-deleted by its organizer when it is not in progress: a
-not-yet-started league (current_round == 0) or a complete league. An in-flight
-league (state == "active" AND current_round > 0) returns 409. The delete
-cascades, in FK dependency order, to votes, notes, submissions, rounds, invites,
-and league_members — leaving no orphan rows. The users themselves are NOT
-deleted.
+A league can be hard-deleted by its organizer in ANY state (MYS-137) — not
+started, in progress (a round open), or complete. The delete cascades, in FK
+dependency order, to votes, notes, submissions, rounds, invites, and
+league_members — leaving no orphan rows. The users themselves are NOT deleted.
 
-Covers: 401 unauthenticated, 403 non-organizer, 404 missing league, 409
-in-flight, and 204 + no-orphans for both a not-started league and a complete
-league with real round data (submissions/votes/notes).
+Covers: 401 unauthenticated, 403 non-organizer, 404 missing league, and 204 +
+no-orphans for a not-started league, an in-flight league (open round with
+submission/vote), and a complete league with real round data.
 
 PKs are captured into locals before any expire_all (project MissingGreenlet
 gotcha). See technical-design.md §6 and the MYS-124 plan.
@@ -143,22 +141,45 @@ async def test_delete_outsider_returns_403(client, db_session):
 
 
 # ========================================================================== #
-# In-flight conflict (409)
+# In-flight league — now deletable in any state (MYS-137)
 # ========================================================================== #
 
 
-async def test_delete_in_flight_league_returns_409(client, db_session):
-    # state == active AND current_round > 0 -> in progress, can't delete.
-    organizer = await _seed_user(db_session)
-    league = await _seed_league(db_session, organizer, state="active", current_round=2)
+async def test_delete_in_flight_league_is_allowed_and_cascades(client, db_session):
+    # MYS-137: an in-progress league (state == active AND current_round > 0, with
+    # an open round + submission + vote) can be deleted, and everything cascades.
+    organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
+    league = await _seed_league(db_session, organizer, state="active", current_round=1)
+    player = await _seed_user(db_session, email="player@example.com", display_name="Player")
+    await _seed_member(db_session, league, player)
+
+    round_ = Round(league_id=league.id, round_number=1, state="open_voting")
+    db_session.add(round_)
+    await db_session.flush()
+    submission = Submission(
+        round_id=round_.id,
+        user_id=player.id,
+        isrc="USEXAMPLE0009",
+        title="Mid-round Song",
+        artist="An Artist",
+    )
+    db_session.add(submission)
+    await db_session.flush()
+    db_session.add(Vote(round_id=round_.id, voter_id=organizer.id, submission_id=submission.id))
+    await db_session.commit()
+
+    league_id = league.id
+    round_id = round_.id
 
     resp = await client.delete(_delete_url(league.id), headers=_auth_header(organizer.id))
 
-    assert resp.status_code == 409, resp.text
+    assert resp.status_code == 204, resp.text
 
-    league_id = league.id
     db_session.expire_all()
-    assert await db_session.scalar(select(League).where(League.id == league_id)) is not None
+    assert await db_session.scalar(select(League).where(League.id == league_id)) is None
+    assert await _count(db_session, Round, league_id=league_id) == 0
+    assert await _count(db_session, Submission, round_id=round_id) == 0
+    assert await _count(db_session, Vote, round_id=round_id) == 0
 
 
 async def test_delete_active_but_not_started_league_is_allowed(client, db_session):

@@ -425,6 +425,12 @@ function RoundRow({
             {round.description}
           </p>
         ) : null}
+        {/* Submission progress while the round is open for submissions (MYS-101). */}
+        {round.state === "open_submission" && round.member_count > 0 ? (
+          <p className="mt-2 font-mono uppercase tracking-label text-[9px] text-muted">
+            {round.submission_count} of {round.member_count} submitted
+          </p>
+        ) : null}
         {round.state === "closed" && results ? <ClosedRoundSummary results={results} /> : null}
       </button>
 

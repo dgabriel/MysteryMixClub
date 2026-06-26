@@ -31,6 +31,7 @@ from app.api.routes.leagues import _load_league_as_member, _load_league_as_organ
 from app.auth.deps import get_current_user
 from app.config import Settings, get_settings
 from app.db.session import get_db
+from app.models.league_member import LeagueMember
 from app.models.note import Note
 from app.models.round import Round
 from app.models.submission import Submission
@@ -92,9 +93,15 @@ class RoundResponse(BaseModel):
     votes_per_player: int
     created_at: datetime
     closed_at: datetime | None
+    # Submission progress (MYS-101): how many songs are in, out of the league's
+    # active members. The client shows "X of Y submitted" while submissions are
+    # open. member_count is a league fact denormalized onto the round so the
+    # round-detail screen needn't also fetch the member list.
+    submission_count: int
+    member_count: int
 
 
-def _to_response(r: Round) -> RoundResponse:
+def _to_response(r: Round, submission_count: int, member_count: int) -> RoundResponse:
     return RoundResponse(
         id=str(r.id),
         league_id=str(r.league_id),
@@ -107,7 +114,31 @@ def _to_response(r: Round) -> RoundResponse:
         votes_per_player=r.votes_per_player,
         created_at=r.created_at,
         closed_at=r.closed_at,
+        submission_count=submission_count,
+        member_count=member_count,
     )
+
+
+async def _submission_count(round_id: uuid.UUID, db: AsyncSession) -> int:
+    return (
+        await db.scalar(
+            select(func.count()).select_from(Submission).where(Submission.round_id == round_id)
+        )
+    ) or 0
+
+
+async def _member_count(league_id: uuid.UUID, db: AsyncSession) -> int:
+    """Count of a league's active (not-removed) members — the "Y" in X of Y."""
+    return (
+        await db.scalar(
+            select(func.count())
+            .select_from(LeagueMember)
+            .where(
+                LeagueMember.league_id == league_id,
+                LeagueMember.removed_at.is_(None),
+            )
+        )
+    ) or 0
 
 
 async def _load_round(round_id: uuid.UUID, db: AsyncSession) -> Round:
@@ -170,7 +201,8 @@ async def create_round(
     league.current_round = next_number
     await db.commit()
     await db.refresh(round_)
-    return _to_response(round_)
+    # A freshly created round has no submissions yet.
+    return _to_response(round_, 0, await _member_count(league_id, db))
 
 
 @router.get("/leagues/{league_id}/rounds", response_model=list[RoundResponse])
@@ -180,10 +212,20 @@ async def list_rounds(
     db: AsyncSession = Depends(get_db),
 ) -> list[RoundResponse]:
     await _load_league_as_member(league_id, current_user, db)
-    rounds = await db.scalars(
-        select(Round).where(Round.league_id == league_id).order_by(Round.round_number.asc())
+    rounds = list(
+        await db.scalars(
+            select(Round).where(Round.league_id == league_id).order_by(Round.round_number.asc())
+        )
     )
-    return [_to_response(r) for r in rounds]
+    member_count = await _member_count(league_id, db)
+    # One grouped count for the whole slate rather than a query per round.
+    count_rows = await db.execute(
+        select(Submission.round_id, func.count())
+        .where(Submission.round_id.in_([r.id for r in rounds]))
+        .group_by(Submission.round_id)
+    )
+    counts = {round_id: count for round_id, count in count_rows.all()}
+    return [_to_response(r, counts.get(r.id, 0), member_count) for r in rounds]
 
 
 @router.get("/rounds/{round_id}", response_model=RoundResponse)
@@ -194,7 +236,11 @@ async def get_round(
 ) -> RoundResponse:
     round_ = await _load_round(round_id, db)
     await _load_league_as_member(round_.league_id, current_user, db)
-    return _to_response(round_)
+    return _to_response(
+        round_,
+        await _submission_count(round_id, db),
+        await _member_count(round_.league_id, db),
+    )
 
 
 @router.patch("/rounds/{round_id}", response_model=RoundResponse)
@@ -294,7 +340,11 @@ async def update_round(
 
     await db.commit()
     await db.refresh(round_)
-    return _to_response(round_)
+    return _to_response(
+        round_,
+        await _submission_count(round_.id, db),
+        await _member_count(round_.league_id, db),
+    )
 
 
 # --------------------------------------------------------------------------- #

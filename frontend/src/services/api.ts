@@ -485,6 +485,10 @@ export type Round = {
   votes_per_player: number;
   created_at: string;
   closed_at: string | null;
+  /** Submission progress (MYS-101): songs in so far, out of the league's active
+   *  members. Shown as "X of Y submitted" while submissions are open. */
+  submission_count: number;
+  member_count: number;
 };
 
 /** A song submitted to a round (GET .../submissions, .../submissions/mine). */

@@ -42,7 +42,6 @@ async def _seed_user(db_session, **overrides) -> User:
         "email": "alice@example.com",
         "display_name": "Alice",
         "preferred_service": None,
-        "default_vibe_mode": False,
     }
     defaults.update(overrides)
     user = User(**defaults)

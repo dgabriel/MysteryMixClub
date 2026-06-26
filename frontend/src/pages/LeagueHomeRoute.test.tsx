@@ -10,9 +10,11 @@ import {
   deleteLeague,
   getLeague,
   getLeagueMembers,
+  getMyMembership,
   getResults,
   getRounds,
   removeMember,
+  setMyVibeMode,
   updateLeague,
 } from "../services/api";
 import type { Invite, League, LeagueMember, Round, RoundResults } from "../services/api";
@@ -25,11 +27,13 @@ vi.mock("../services/api", async () => {
     ...actual,
     getLeague: vi.fn(),
     getLeagueMembers: vi.fn(),
+    getMyMembership: vi.fn(),
     getRounds: vi.fn(),
     getResults: vi.fn(),
     createRound: vi.fn(),
     updateLeague: vi.fn(),
     removeMember: vi.fn(),
+    setMyVibeMode: vi.fn(),
     createInvite: vi.fn(),
     deleteLeague: vi.fn(),
   };
@@ -42,6 +46,8 @@ vi.mock("../hooks/useAuth", () => ({
 
 const mockGetLeague = vi.mocked(getLeague);
 const mockGetLeagueMembers = vi.mocked(getLeagueMembers);
+const mockGetMyMembership = vi.mocked(getMyMembership);
+const mockSetMyVibeMode = vi.mocked(setMyVibeMode);
 const mockGetRounds = vi.mocked(getRounds);
 const mockGetResults = vi.mocked(getResults);
 const mockUpdateLeague = vi.mocked(updateLeague);
@@ -64,6 +70,7 @@ function leagueWith(overrides: Partial<League> = {}): League {
     current_round: 2,
     state: "active",
     created_at: "2026-01-01T00:00:00Z",
+    default_vibe_mode: false,
     completed_at: null,
     ...overrides,
   };
@@ -181,6 +188,16 @@ describe("LeagueHomeRoute", () => {
     vi.clearAllMocks();
     mockGetLeague.mockResolvedValue(leagueWith());
     mockGetLeagueMembers.mockResolvedValue(members());
+    mockGetMyMembership.mockResolvedValue({
+      league_id: "league-1",
+      user_id: ORGANIZER_ID,
+      vibe_mode: false,
+    });
+    mockSetMyVibeMode.mockResolvedValue({
+      league_id: "league-1",
+      user_id: ORGANIZER_ID,
+      vibe_mode: true,
+    });
     mockGetRounds.mockResolvedValue([]);
     mockGetResults.mockResolvedValue(resultsWith());
     setAuth(ORGANIZER_ID);
@@ -194,6 +211,20 @@ describe("LeagueHomeRoute", () => {
     expect(screen.getByText("Bo")).toBeInTheDocument();
     expect(mockGetLeague).toHaveBeenCalledWith("league-1");
     expect(mockGetLeagueMembers).toHaveBeenCalledWith("league-1");
+  });
+
+  it("per-league vibe toggle: reflects membership and calls setMyVibeMode on change (MYS-60)", async () => {
+    const user = userEvent.setup();
+    renderLeague("league-1");
+
+    const toggle = await screen.findByLabelText(/just vibing this league/i);
+    expect(toggle).not.toBeChecked();
+
+    await user.click(toggle);
+
+    expect(mockSetMyVibeMode).toHaveBeenCalledWith("league-1", true);
+    // The route re-reads the returned membership (vibe_mode: true).
+    expect(await screen.findByLabelText(/just vibing this league/i)).toBeChecked();
   });
 
   it("isOrganizer: organizer controls present when userId === organizer_id", async () => {

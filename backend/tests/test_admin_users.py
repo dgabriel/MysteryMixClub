@@ -49,7 +49,7 @@ def seed_admin_emails() -> str:
 
 
 async def _seed_user(db_session, email: str, *, name: str = "User", deleted_at=None) -> User:
-    user = User(email=email, display_name=name, default_vibe_mode=False, deleted_at=deleted_at)
+    user = User(email=email, display_name=name, deleted_at=deleted_at)
     db_session.add(user)
     await db_session.commit()
     await db_session.refresh(user)

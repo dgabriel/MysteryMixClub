@@ -43,7 +43,7 @@ async def _seed_user(session_factory, email: str) -> None:
     async with session_factory() as db:
         existing = await db.scalar(select(User).where(User.email == email))
         if existing is None:
-            db.add(User(email=email, display_name="", default_vibe_mode=False))
+            db.add(User(email=email, display_name=""))
             await db.commit()
 
 

@@ -39,8 +39,19 @@ async def _join_via_invite(db: AsyncSession, user_id: uuid.UUID, invite: Invite)
         if membership.removed_at is not None:
             membership.removed_at = None
             membership.joined_at = func.now()
+            # A returning member keeps their existing vibe_mode; only fresh joins
+            # seed from the league default.
     else:
-        db.add(LeagueMember(league_id=invite.league_id, user_id=user_id))
+        # Seed the new member's per-league vibe_mode from the league default
+        # (MYS-112).
+        league = await db.scalar(select(League).where(League.id == invite.league_id))
+        db.add(
+            LeagueMember(
+                league_id=invite.league_id,
+                user_id=user_id,
+                vibe_mode=league.default_vibe_mode if league is not None else False,
+            )
+        )
 
 
 class InvitePreviewResponse(BaseModel):

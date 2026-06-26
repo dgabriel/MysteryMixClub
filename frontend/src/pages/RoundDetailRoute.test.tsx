@@ -7,6 +7,7 @@ import {
   addNote,
   castVotes,
   getLeague,
+  getMyMembership,
   getMySubmission,
   getMyVotes,
   getNotes,
@@ -27,6 +28,7 @@ vi.mock("../services/api", async () => {
     ...actual,
     getRound: vi.fn(),
     getLeague: vi.fn(),
+    getMyMembership: vi.fn(),
     getMySubmission: vi.fn(),
     getPlaylist: vi.fn(),
     getResults: vi.fn(),
@@ -44,6 +46,7 @@ vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
 
 const mockGetRound = vi.mocked(getRound);
 const mockGetLeague = vi.mocked(getLeague);
+const mockGetMyMembership = vi.mocked(getMyMembership);
 const mockGetMine = vi.mocked(getMySubmission);
 const mockGetPlaylist = vi.mocked(getPlaylist);
 const mockGetResults = vi.mocked(getResults);
@@ -90,6 +93,7 @@ function league(): League {
     current_round: 1,
     state: "active",
     created_at: "2026-01-01T00:00:00Z",
+    default_vibe_mode: false,
     completed_at: null,
   };
 }
@@ -174,6 +178,11 @@ describe("RoundDetailRoute", () => {
     vi.clearAllMocks();
     mockGetRound.mockResolvedValue(round());
     mockGetLeague.mockResolvedValue(league());
+    mockGetMyMembership.mockResolvedValue({
+      league_id: "lg1",
+      user_id: ORGANIZER,
+      vibe_mode: false,
+    });
     mockGetMine.mockResolvedValue(null);
     // Spotify feature hidden by default in these tests (not configured).
     mockGetSpotifyStatus.mockResolvedValue({ configured: false, connected: false });
@@ -233,6 +242,39 @@ describe("RoundDetailRoute", () => {
     // Wait for the screen to settle on the submit card, then assert no progress.
     expect(await screen.findByRole("heading", { name: /submit a song/i })).toBeInTheDocument();
     expect(screen.queryByText(/submitted$/i)).not.toBeInTheDocument();
+  });
+
+  it("open_submission: round vibe toggle seeds from membership and submit sends participation_mode (MYS-60)", async () => {
+    const user = userEvent.setup();
+    mockGetMyMembership.mockResolvedValue({
+      league_id: "lg1",
+      user_id: ORGANIZER,
+      vibe_mode: true,
+    });
+    mockResolveSong.mockResolvedValue({
+      title: "Debaser",
+      artist: "Pixies",
+      isrc: "I1",
+      album: null,
+      thumbnail_url: null,
+      platforms: {},
+    } as Awaited<ReturnType<typeof resolveSong>>);
+    mockSubmitSong.mockResolvedValue(mine({ participation_mode: "vibing" }));
+
+    renderRound();
+
+    // Seeded checked from the member's per-league vibe_mode.
+    const toggle = await screen.findByLabelText(/just vibes for this round/i);
+    expect(toggle).toBeChecked();
+
+    await user.type(screen.getByLabelText(/paste a spotify or youtube link/i), "https://x");
+    await user.click(screen.getByRole("button", { name: /^resolve$/i }));
+    await user.click(await screen.findByRole("button", { name: /submit this song/i }));
+
+    expect(mockSubmitSong).toHaveBeenCalledWith(
+      "r1",
+      expect.objectContaining({ participation_mode: "vibing" }),
+    );
   });
 
   it("open_submission: submitting a song refreshes the X of Y count — MYS-101", async () => {

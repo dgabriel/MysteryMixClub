@@ -31,7 +31,7 @@ def _links(*platforms: str) -> dict:
 
 
 async def _seed_user(db_session, email: str, *, preferred: str | None = None) -> User:
-    user = User(email=email, display_name="U", default_vibe_mode=False, preferred_service=preferred)
+    user = User(email=email, display_name="U", preferred_service=preferred)
     db_session.add(user)
     await db_session.commit()
     await db_session.refresh(user)

@@ -26,6 +26,7 @@ from app.api.routes.leagues import _load_league_as_member
 from app.api.routes.rounds import _load_round
 from app.auth.deps import get_current_user
 from app.db.session import get_db
+from app.models.league_member import LeagueMember
 from app.models.submission import Submission
 from app.models.user import User
 from app.services.song_links import SongLinkAssembler, get_link_assembler
@@ -106,7 +107,17 @@ async def submit_song(
     # Best-effort: None on any failure, so it never blocks the submission.
     youtube_video_id = await youtube.video_id_for(payload.title, payload.artist)
 
-    mode = payload.participation_mode or ("vibing" if current_user.default_vibe_mode else "playing")
+    # Per-round mode: an explicit override wins; otherwise default from the
+    # member's per-league vibe setting (MYS-112).
+    member = await db.scalar(
+        select(LeagueMember).where(
+            LeagueMember.league_id == round_.league_id,
+            LeagueMember.user_id == current_user.id,
+            LeagueMember.removed_at.is_(None),
+        )
+    )
+    member_default_vibe = member.vibe_mode if member is not None else False
+    mode = payload.participation_mode or ("vibing" if member_default_vibe else "playing")
 
     existing = await db.scalar(
         select(Submission).where(

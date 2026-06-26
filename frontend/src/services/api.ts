@@ -41,7 +41,6 @@ export type UserProfile = {
   display_name: string;
   email: string;
   preferred_service: string | null;
-  default_vibe_mode: boolean;
   /** True for platform admins (email in the server's SEED_ADMIN_EMAILS). Gates
    *  the /admin page and its nav entry. */
   is_platform_admin: boolean;
@@ -241,8 +240,20 @@ export type League = {
   votes_per_player: number;
   current_round: number;
   state: string;
+  /** Admin-set default participation mode for the league (MYS-112). A member's
+   *  own setting lives on their membership (getMyMembership), not here. */
+  default_vibe_mode: boolean;
   created_at: string;
   completed_at: string | null;
+};
+
+/** The caller's own per-league participation setting (GET/PATCH
+ *  /leagues/:id/membership). Vibing is private — this is only ever the caller's
+ *  own setting, never another member's. */
+export type Membership = {
+  league_id: string;
+  user_id: string;
+  vibe_mode: boolean;
 };
 
 /** A member of a league (GET /api/v1/leagues/:id/members). */
@@ -276,6 +287,7 @@ export async function createLeague(input: {
   total_rounds: number;
   votes_per_player?: number;
   description?: string;
+  default_vibe_mode?: boolean;
 }): Promise<League> {
   const res = await authenticatedRequest("/api/v1/leagues", {
     method: "POST",
@@ -319,7 +331,12 @@ export async function getLeagueMembers(id: string): Promise<LeagueMember[]> {
  *  only undefined keys are dropped by JSON.stringify. Returns the updated League. */
 export async function updateLeague(
   id: string,
-  input: { name?: string; description?: string | null; total_rounds?: number },
+  input: {
+    name?: string;
+    description?: string | null;
+    total_rounds?: number;
+    default_vibe_mode?: boolean;
+  },
 ): Promise<League> {
   const res = await authenticatedRequest(`/api/v1/leagues/${id}`, {
     method: "PATCH",
@@ -330,6 +347,29 @@ export async function updateLeague(
     throw new ApiError(res.status, await readErrorMessage(res));
   }
   return (await res.json()) as League;
+}
+
+/** Get the caller's own per-league participation (vibe) setting. */
+export async function getMyMembership(leagueId: string): Promise<Membership> {
+  const res = await authenticatedRequest(`/api/v1/leagues/${leagueId}/membership`);
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as Membership;
+}
+
+/** Set the caller's own per-league "just vibing" setting. Returns the updated
+ *  membership. */
+export async function setMyVibeMode(leagueId: string, vibeMode: boolean): Promise<Membership> {
+  const res = await authenticatedRequest(`/api/v1/leagues/${leagueId}/membership`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ vibe_mode: vibeMode }),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as Membership;
 }
 
 /** Remove a member from a league (organizer only). Resolves on 204. */

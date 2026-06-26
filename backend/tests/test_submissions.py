@@ -70,8 +70,8 @@ def _build_client(session_factory, *, assembler=None, youtube=None) -> AsyncClie
 # --------------------------------------------------------------------------- #
 
 
-async def _seed_user(db_session, email: str, *, vibe: bool = False) -> User:
-    user = User(email=email, display_name="U", default_vibe_mode=vibe)
+async def _seed_user(db_session, email: str) -> User:
+    user = User(email=email, display_name="U")
     db_session.add(user)
     await db_session.commit()
     await db_session.refresh(user)
@@ -79,12 +79,14 @@ async def _seed_user(db_session, email: str, *, vibe: bool = False) -> User:
 
 
 async def _seed_league_with_round(
-    db_session, organizer: User, *, state: str = "open_submission"
+    db_session, organizer: User, *, state: str = "open_submission", vibe: bool = False
 ) -> Round:
+    # `vibe` seeds the organizer's per-league vibe_mode, so their submission
+    # defaults to that mode (MYS-112).
     league = League(name="L", organizer_id=organizer.id, total_rounds=3, votes_per_player=3)
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id))
+    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id, vibe_mode=vibe))
     round_ = Round(league_id=league.id, round_number=1, theme="late summer", state=state)
     db_session.add(round_)
     await db_session.commit()
@@ -244,8 +246,8 @@ async def test_resubmit_updates_youtube_video_id(session_factory, db_session):
 
 
 async def test_submit_defaults_to_vibing_for_vibe_user(session_factory, db_session):
-    organizer = await _seed_user(db_session, "o@example.com", vibe=True)
-    round_ = await _seed_league_with_round(db_session, organizer)
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer, vibe=True)
     async with _build_client(session_factory) as client:
         resp = await client.post(_sub_url(round_.id), json=_body(), headers=_auth(organizer.id))
     assert resp.status_code == 201
@@ -253,8 +255,8 @@ async def test_submit_defaults_to_vibing_for_vibe_user(session_factory, db_sessi
 
 
 async def test_submit_explicit_mode_overrides_default(session_factory, db_session):
-    organizer = await _seed_user(db_session, "o@example.com", vibe=True)
-    round_ = await _seed_league_with_round(db_session, organizer)
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer, vibe=True)
     async with _build_client(session_factory) as client:
         resp = await client.post(
             _sub_url(round_.id),

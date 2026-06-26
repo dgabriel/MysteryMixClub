@@ -7,9 +7,11 @@ import {
   deleteLeague,
   getLeague,
   getLeagueMembers,
+  getMyMembership,
   getResults,
   getRounds,
   removeMember,
+  setMyVibeMode,
   updateLeague,
   updateRound,
   type League,
@@ -55,18 +57,25 @@ export function LeagueHomeRoute() {
   const [deletingLeague, setDeletingLeague] = useState(false);
   const [deleteLeagueError, setDeleteLeagueError] = useState<string | null>(null);
 
+  // The caller's own per-league "just vibing" setting (MYS-60).
+  const [vibeMode, setVibeMode] = useState<boolean | null>(null);
+  const [savingVibe, setSavingVibe] = useState(false);
+  const [vibeError, setVibeError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!id) return;
     void (async () => {
       try {
-        const [loadedLeague, loadedMembers, loadedRounds] = await Promise.all([
+        const [loadedLeague, loadedMembers, loadedRounds, loadedMembership] = await Promise.all([
           getLeague(id),
           getLeagueMembers(id),
           getRounds(id),
+          getMyMembership(id),
         ]);
         setLeague(loadedLeague);
         setMembers(loadedMembers);
         setRounds(loadedRounds);
+        setVibeMode(loadedMembership.vibe_mode);
       } catch (err) {
         setError(err instanceof ApiError ? err.message : "couldn't load this league.");
       } finally {
@@ -74,6 +83,20 @@ export function LeagueHomeRoute() {
       }
     })();
   }, [id]);
+
+  async function handleSetVibe(next: boolean) {
+    if (!id) return;
+    setSavingVibe(true);
+    setVibeError(null);
+    try {
+      const updated = await setMyVibeMode(id, next);
+      setVibeMode(updated.vibe_mode);
+    } catch (err) {
+      setVibeError(err instanceof ApiError ? err.message : "couldn't save that. try again.");
+    } finally {
+      setSavingVibe(false);
+    }
+  }
 
   // Closed rounds get a winner + most-noted summary on their card. Results live
   // behind a separate endpoint, so fetch them for every closed round in parallel
@@ -223,6 +246,7 @@ export function LeagueHomeRoute() {
     votes_per_player: 0,
     current_round: 0,
     state: "active",
+    default_vibe_mode: false,
     created_at: "",
     completed_at: null,
   };
@@ -254,6 +278,10 @@ export function LeagueHomeRoute() {
       onDeleteLeague={handleDeleteLeague}
       deletingLeague={deletingLeague}
       deleteLeagueError={deleteLeagueError}
+      vibeMode={vibeMode}
+      onSetVibe={handleSetVibe}
+      savingVibe={savingVibe}
+      vibeError={vibeError}
     />
   );
 }

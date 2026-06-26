@@ -213,7 +213,7 @@ async def verify_magic_link(
         if settings.max_users and (total_users or 0) >= settings.max_users:
             await db.commit()
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=_AT_CAPACITY_MESSAGE)
-        user = User(email=email, display_name="", default_vibe_mode=False)
+        user = User(email=email, display_name="")
         db.add(user)
         await db.flush()
 

@@ -51,6 +51,7 @@ const sampleLeague: League = {
   votes_per_player: 3,
   current_round: 0,
   state: "active",
+  default_vibe_mode: false,
   created_at: "2026-06-01T00:00:00Z",
   completed_at: null,
 };
@@ -351,7 +352,6 @@ describe("api.ts", () => {
       display_name: "Ada",
       email: "ada@example.com",
       preferred_service: "spotify",
-      default_vibe_mode: false,
       is_platform_admin: false,
     };
 
@@ -414,7 +414,6 @@ describe("api.ts", () => {
       display_name: "Alice",
       email: "alice@example.com",
       preferred_service: null,
-      default_vibe_mode: false,
       is_platform_admin: false,
     };
 

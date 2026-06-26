@@ -53,6 +53,7 @@ function leagueWith(overrides: Partial<League> = {}): League {
     votes_per_player: 3,
     current_round: 6,
     state: "complete",
+    default_vibe_mode: false,
     created_at: "2026-01-01T00:00:00Z",
     completed_at: "2026-02-01T00:00:00Z",
     ...overrides,
@@ -65,7 +66,6 @@ function profileWith(displayName: string): UserProfile {
     display_name: displayName,
     email: "ada@example.com",
     preferred_service: null,
-    default_vibe_mode: false,
     is_platform_admin: false,
   };
 }

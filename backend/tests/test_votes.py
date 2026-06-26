@@ -27,8 +27,8 @@ from app.models.vote import Vote
 # --------------------------------------------------------------------------- #
 
 
-async def _seed_user(db_session, email: str, *, vibe: bool = False) -> User:
-    user = User(email=email, display_name="U", default_vibe_mode=vibe)
+async def _seed_user(db_session, email: str) -> User:
+    user = User(email=email, display_name="U")
     db_session.add(user)
     await db_session.commit()
     await db_session.refresh(user)

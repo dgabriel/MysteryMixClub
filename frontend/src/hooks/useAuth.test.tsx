@@ -32,7 +32,6 @@ function profileWith(displayName: string): UserProfile {
     display_name: displayName,
     email: "u@example.com",
     preferred_service: null,
-    default_vibe_mode: false,
     is_platform_admin: false,
   };
 }

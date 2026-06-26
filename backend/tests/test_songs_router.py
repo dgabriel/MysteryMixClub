@@ -80,7 +80,7 @@ class _FakeDeezer:
 
 
 async def _seed_user(db_session) -> User:
-    user = User(email="dj@example.com", display_name="DJ", default_vibe_mode=False)
+    user = User(email="dj@example.com", display_name="DJ")
     db_session.add(user)
     await db_session.commit()
     await db_session.refresh(user)

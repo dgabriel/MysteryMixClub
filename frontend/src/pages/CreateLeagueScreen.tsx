@@ -8,6 +8,7 @@ type CreateLeagueInput = {
   description?: string;
   total_rounds: number;
   votes_per_player: number;
+  default_vibe_mode: boolean;
 };
 
 type CreateLeagueScreenProps = {
@@ -27,6 +28,7 @@ export function CreateLeagueScreen({
   const [description, setDescription] = useState("");
   const [totalRounds, setTotalRounds] = useState("6");
   const [votesPerPlayer, setVotesPerPlayer] = useState("3");
+  const [defaultVibeMode, setDefaultVibeMode] = useState(false);
   const [guard, setGuard] = useState<string | null>(null);
 
   function handleSubmit(e: FormEvent) {
@@ -55,6 +57,7 @@ export function CreateLeagueScreen({
       ...(trimmedDescription ? { description: trimmedDescription } : {}),
       total_rounds: rounds,
       votes_per_player: votes,
+      default_vibe_mode: defaultVibeMode,
     });
   }
 
@@ -113,6 +116,25 @@ export function CreateLeagueScreen({
             onChange={(e) => setVotesPerPlayer(e.target.value)}
             disabled={submitting}
           />
+
+          <div>
+            <label className="flex cursor-pointer items-center gap-3">
+              <input
+                type="checkbox"
+                name="default_vibe_mode"
+                checked={defaultVibeMode}
+                onChange={(e) => setDefaultVibeMode(e.target.checked)}
+                disabled={submitting}
+                className="h-4 w-4 rounded-[2px] border border-ink accent-sage"
+              />
+              <span className="font-mono uppercase tracking-ui text-[11px] text-ink">
+                just vibing by default
+              </span>
+            </label>
+            <p className="mt-2 font-mono text-[11px] font-light text-muted">
+              members start out just vibing — anyone can switch to playing anytime.
+            </p>
+          </div>
 
           {guard ? (
             <p role="alert" className="font-mono text-[11px] text-ink">

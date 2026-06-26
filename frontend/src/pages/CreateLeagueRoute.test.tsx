@@ -30,6 +30,7 @@ function leagueWith(overrides: Partial<League> = {}): League {
     current_round: 0,
     state: "active",
     created_at: "2026-01-01T00:00:00Z",
+    default_vibe_mode: false,
     completed_at: null,
     ...overrides,
   };
@@ -68,7 +69,24 @@ describe("CreateLeagueRoute", () => {
         name: "Friday Mixtape",
         total_rounds: 6,
         votes_per_player: 3,
+        default_vibe_mode: false,
       }),
+    );
+  });
+
+  it("just-vibing-by-default checkbox sends default_vibe_mode true (MYS-60)", async () => {
+    mockCreateLeague.mockResolvedValue(leagueWith({ id: "new-league-99" }));
+    const user = userEvent.setup();
+
+    renderCreate();
+
+    await user.type(screen.getByLabelText(/^name$/i), "Vibes Only");
+    await user.click(screen.getByLabelText(/just vibing by default/i));
+    await user.click(screen.getByRole("button", { name: /^create$/i }));
+
+    expect(await screen.findByText("LEAGUE DETAIL CONTENT")).toBeInTheDocument();
+    expect(mockCreateLeague).toHaveBeenCalledWith(
+      expect.objectContaining({ default_vibe_mode: true }),
     );
   });
 

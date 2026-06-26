@@ -33,7 +33,6 @@ async def _seed_user(db_session, **overrides) -> User:
         "email": "alice@example.com",
         "display_name": "Alice",
         "preferred_service": None,
-        "default_vibe_mode": False,
     }
     defaults.update(overrides)
     user = User(**defaults)
@@ -128,7 +127,6 @@ async def test_get_me_returns_exact_profile_shape(client, db_session):
         email="bob@example.com",
         display_name="Bob",
         preferred_service=None,
-        default_vibe_mode=True,
     )
 
     user_id = user.id
@@ -142,7 +140,6 @@ async def test_get_me_returns_exact_profile_shape(client, db_session):
         "display_name",
         "email",
         "preferred_service",
-        "default_vibe_mode",
         "email_notifications",
         "is_platform_admin",
     }
@@ -150,7 +147,6 @@ async def test_get_me_returns_exact_profile_shape(client, db_session):
     assert body["display_name"] == "Bob"
     assert body["email"] == "bob@example.com"
     assert body["preferred_service"] is None
-    assert body["default_vibe_mode"] is True
     # Bob is not on SEED_ADMIN_EMAILS (empty by default in the client fixture).
     assert body["is_platform_admin"] is False
 
@@ -212,7 +208,6 @@ async def test_patch_updates_all_fields_and_persists(client, db_session):
         db_session,
         display_name="Alice",
         preferred_service=None,
-        default_vibe_mode=False,
     )
     user_id = user.id
 
@@ -222,7 +217,6 @@ async def test_patch_updates_all_fields_and_persists(client, db_session):
         json={
             "display_name": "  Alice Cooper  ",
             "preferred_service": "spotify",
-            "default_vibe_mode": True,
         },
     )
 
@@ -231,13 +225,11 @@ async def test_patch_updates_all_fields_and_persists(client, db_session):
     # display_name is trimmed by StringConstraints(strip_whitespace=True).
     assert body["display_name"] == "Alice Cooper"
     assert body["preferred_service"] == "spotify"
-    assert body["default_vibe_mode"] is True
 
     db_session.expire_all()
     fresh = await db_session.scalar(select(User).where(User.id == user_id))
     assert fresh.display_name == "Alice Cooper"
     assert fresh.preferred_service == "spotify"
-    assert fresh.default_vibe_mode is True
 
 
 async def test_patch_partial_leaves_omitted_fields_untouched(client, db_session):
@@ -245,7 +237,6 @@ async def test_patch_partial_leaves_omitted_fields_untouched(client, db_session)
         db_session,
         display_name="Original Name",
         preferred_service="deezer",
-        default_vibe_mode=True,
     )
     user_id = user.id
 
@@ -260,13 +251,11 @@ async def test_patch_partial_leaves_omitted_fields_untouched(client, db_session)
     assert body["display_name"] == "New Name"
     # Omitted fields unchanged.
     assert body["preferred_service"] == "deezer"
-    assert body["default_vibe_mode"] is True
 
     db_session.expire_all()
     fresh = await db_session.scalar(select(User).where(User.id == user_id))
     assert fresh.display_name == "New Name"
     assert fresh.preferred_service == "deezer"
-    assert fresh.default_vibe_mode is True
 
 
 # --------------------------------------------------------------------------- #
@@ -357,9 +346,9 @@ async def test_patch_invalid_preferred_service_returns_422(client, db_session):
 # --------------------------------------------------------------------------- #
 
 
-# display_name and default_vibe_mode map to NOT NULL columns. UserProfileUpdate's
+# display_name maps to a NOT NULL column. UserProfileUpdate's
 # `_reject_explicit_null` model_validator rejects an explicitly provided JSON null
-# for these fields with a 422 (omission is still allowed for partial updates).
+# for it with a 422 (omission is still allowed for partial updates).
 # preferred_service is nullable, so an explicit null is accepted.
 
 
@@ -368,17 +357,6 @@ async def test_patch_explicit_null_display_name_returns_422(client, db_session):
     user = await _seed_user(db_session)
 
     resp = await client.patch(ME_URL, headers=_auth_header(user.id), json={"display_name": None})
-
-    assert resp.status_code == 422
-
-
-async def test_patch_explicit_null_default_vibe_mode_returns_422(client, db_session):
-    """Explicit null on NOT NULL default_vibe_mode is rejected with 422."""
-    user = await _seed_user(db_session)
-
-    resp = await client.patch(
-        ME_URL, headers=_auth_header(user.id), json={"default_vibe_mode": None}
-    )
 
     assert resp.status_code == 422
 

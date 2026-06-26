@@ -49,7 +49,7 @@ async def _seed_legacy_users(session_factory):
     async with session_factory() as db:
         for email in _LEGACY_TEST_EMAILS:
             if await db.scalar(select(User).where(User.email == email)) is None:
-                db.add(User(email=email, display_name="", default_vibe_mode=False))
+                db.add(User(email=email, display_name=""))
         await db.commit()
 
 
@@ -333,7 +333,7 @@ async def test_send_failure_in_production_returns_502(session_factory, db_sessio
 
 async def _seed_invite(db_session, *, expires_at: datetime | None) -> str:
     """Seed an organizer + league + shareable invite and return its token."""
-    organizer = User(email="org@example.com", display_name="Org", default_vibe_mode=False)
+    organizer = User(email="org@example.com", display_name="Org")
     db_session.add(organizer)
     await db_session.flush()
     league = League(
@@ -451,7 +451,6 @@ async def test_soft_deleted_user_without_invite_gets_neutral(client, db_session,
         User(
             email="ghost@example.com",
             display_name="Ghost",
-            default_vibe_mode=False,
             deleted_at=datetime.now(timezone.utc),
         )
     )

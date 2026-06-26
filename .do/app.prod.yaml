@@ -56,6 +56,19 @@ services:
       - key: SPOTIFY_REDIRECT_URI
         scope: RUN_TIME
         type: SECRET
+      # Resend API key for transactional + lifecycle email (MYS-109/123). Without
+      # it the app falls back to ConsoleEmailSender (logs only, no real send). Set
+      # the value in the DO dashboard / doctl, never here.
+      - key: RESEND_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+      # Points the unsubscribe link/header at the API host. Without it the app
+      # falls back to APP_BASE_URL (the frontend host). Bound to this api
+      # component's public URL.
+      - key: API_BASE_URL
+        scope: RUN_TIME
+        type: GENERAL
+        value: ${api.PUBLIC_URL}
       - key: ENVIRONMENT
         scope: RUN_TIME
         type: GENERAL

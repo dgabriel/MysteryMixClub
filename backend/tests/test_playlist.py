@@ -137,6 +137,9 @@ async def test_playlist_entries_are_anonymous(client, db_session):
     # No submitter identity is leaked during voting.
     assert "user_id" not in entry
     assert "submitter" not in entry
+    # Vibing is private: the playlist must not reveal which songs are vibers'
+    # (MYS-112).
+    assert "participation_mode" not in entry
 
 
 async def test_playlist_marks_callers_own_submission(client, db_session):

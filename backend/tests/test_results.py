@@ -297,13 +297,13 @@ async def test_results_per_submission_notes_ordered_and_authored(client, db_sess
 
 
 # --------------------------------------------------------------------------- #
-# Happy path 3 — leaderboard: playing only, ordered votes desc then
-# display_name asc, sequential 1-based ranks, zero-vote player last, vibing
-# submitter excluded from leaderboard but present in submissions.
+# Happy path 3 — leaderboard: every submitter competes (MYS-112), ordered votes
+# desc then display_name asc, sequential 1-based ranks, zero-vote player last,
+# vibing submitter included.
 # --------------------------------------------------------------------------- #
 
 
-async def test_results_leaderboard_playing_only_ranked_and_excludes_vibing(client, db_session):
+async def test_results_leaderboard_ranks_all_submitters_including_vibers(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com", "Org")
     alice = await _seed_user(db_session, "a@example.com", "Alice")
     bob = await _seed_user(db_session, "b@example.com", "Bob")
@@ -320,8 +320,7 @@ async def test_results_leaderboard_playing_only_ranked_and_excludes_vibing(clien
     s_viber = await _seed_submission(db_session, round_, viber, title="V-song", mode="vibing")
 
     # Alice: 2 votes, Bob: 2 votes (tie -> display_name asc: Alice then Bob),
-    # Carol: 0 votes (last). Vibing submission also gets a vote (it's
-    # mode-agnostic for vote storage) to prove it stays out of the leaderboard.
+    # Vera (vibing): 1 vote — she competes now. Carol: 0 votes (last).
     await _seed_vote(db_session, round_id, bob, s_alice)
     await _seed_vote(db_session, round_id, carol, s_alice)
     await _seed_vote(db_session, round_id, alice, s_bob)
@@ -330,27 +329,24 @@ async def test_results_leaderboard_playing_only_ranked_and_excludes_vibing(clien
 
     alice_id, bob_id, carol_id, viber_id = alice.id, bob.id, carol.id, viber.id
 
+    # Viewer is the organizer (a non-submitter → player → full reveal).
     resp = await client.get(_url(round_id), headers=_auth(organizer.id))
     assert resp.status_code == 200, resp.text
     body = resp.json()
     lb = body["leaderboard"]
 
-    # Only playing players: Alice, Bob, Carol — vibing Vera excluded.
+    # Every submitter is ranked, including vibing Vera.
     lb_user_ids = [e["user_id"] for e in lb]
-    assert str(viber_id) not in lb_user_ids
-    assert set(lb_user_ids) == {str(alice_id), str(bob_id), str(carol_id)}
+    assert set(lb_user_ids) == {str(alice_id), str(bob_id), str(carol_id), str(viber_id)}
 
     # Order: votes desc then display_name asc. Alice(2) before Bob(2) on name,
-    # Carol(0) last. Ranks are sequential 1-based ordinals.
+    # Vera(1), Carol(0) last. Ranks are sequential 1-based ordinals.
     assert [(e["user_id"], e["vote_count"], e["rank"]) for e in lb] == [
         (str(alice_id), 2, 1),
         (str(bob_id), 2, 2),
-        (str(carol_id), 0, 3),
+        (str(viber_id), 1, 3),
+        (str(carol_id), 0, 4),
     ]
-
-    # The vibing submitter IS present in submissions even though excluded above.
-    sub_user_ids = {s["user_id"] for s in body["submissions"]}
-    assert str(viber_id) in sub_user_ids
 
 
 # --------------------------------------------------------------------------- #
@@ -410,14 +406,12 @@ async def test_results_most_noted_empty_when_no_notes(client, db_session):
 
 
 # --------------------------------------------------------------------------- #
-# Happy path 5 — a vibing submission with the most notes is still the Most
-# Noted winner (mode-agnostic), and is excluded from the leaderboard.
+# Happy path 5 — a vibing submission with the most notes is the Most Noted
+# winner (mode-agnostic), and now also competes on the leaderboard (MYS-112).
 # --------------------------------------------------------------------------- #
 
 
-async def test_results_vibing_submission_can_be_most_noted_and_not_on_leaderboard(
-    client, db_session
-):
+async def test_results_vibing_submission_can_be_most_noted_and_on_leaderboard(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com", "Org")
     alice = await _seed_user(db_session, "a@example.com", "Alice")
     viber = await _seed_user(db_session, "v@example.com", "Vera")
@@ -447,6 +441,74 @@ async def test_results_vibing_submission_can_be_most_noted_and_not_on_leaderboar
     assert [w["submission_id"] for w in mn["winners"]] == [str(s_viber_id)]
     assert [n["body"] for n in mn["winners"][0]["notes"]] == ["v1", "v2"]
 
-    # The vibing winner is not on the leaderboard, but is in submissions.
-    assert str(viber_id) not in {e["user_id"] for e in body["leaderboard"]}
+    # The vibing submitter now competes — on the leaderboard and in submissions
+    # (the viewer here is the organizer, a non-submitter, so sees the full reveal).
+    assert str(viber_id) in {e["user_id"] for e in body["leaderboard"]}
     assert str(viber_id) in {s["user_id"] for s in body["submissions"]}
+
+
+# --------------------------------------------------------------------------- #
+# Reveal gating by viewer mode (MYS-112)
+# --------------------------------------------------------------------------- #
+
+
+async def test_results_vibing_viewer_gets_trimmed_reveal(client, db_session):
+    """A vibing viewer sees winner(s) + Most Noted + their own song's notes —
+    no leaderboard, no picks list, no vote counts."""
+    organizer = await _seed_user(db_session, "o@example.com", "Org")
+    alice = await _seed_user(db_session, "a@example.com", "Alice")
+    viber = await _seed_user(db_session, "v@example.com", "Vera")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    round_id = round_.id
+    for u in (alice, viber):
+        await _add_member(db_session, round_.league_id, u)
+
+    await _seed_submission(db_session, round_, organizer, title="Org-song")
+    s_alice = await _seed_submission(db_session, round_, alice, title="Winner")
+    s_viber = await _seed_submission(db_session, round_, viber, title="Vibed", mode="vibing")
+    s_alice_id, s_viber_id = s_alice.id, s_viber.id
+
+    # Alice wins the vote; a note is left on the viber's own song.
+    await _seed_vote(db_session, round_id, organizer, s_alice)
+    await _seed_vote(db_session, round_id, viber, s_alice)
+    await _seed_note(db_session, round_id, alice, s_viber, body="love this")
+
+    resp = await client.get(_url(round_id), headers=_auth(viber.id))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+
+    assert body["viewer_is_vibing"] is True
+    # No rankings / picks / counts leak to a viber.
+    assert body["leaderboard"] == []
+    assert body["submissions"] == []
+    # Winner is named, but carries no vote count.
+    assert [w["submission_id"] for w in body["winners"]] == [str(s_alice_id)]
+    assert "vote_count" not in body["winners"][0]
+    # Their own song + its notes survive (the appreciation mechanic).
+    assert body["own_submission"]["submission_id"] == str(s_viber_id)
+    assert [n["body"] for n in body["own_submission"]["notes"]] == ["love this"]
+    # Most Noted is still present.
+    assert "most_noted" in body
+
+
+async def test_results_playing_viewer_gets_full_reveal(client, db_session):
+    """A playing submitter sees the full reveal; the viber-only fields are empty."""
+    organizer = await _seed_user(db_session, "o@example.com", "Org")
+    alice = await _seed_user(db_session, "a@example.com", "Alice")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    round_id = round_.id
+    await _add_member(db_session, round_.league_id, alice)
+
+    s_org = await _seed_submission(db_session, round_, organizer, title="Org-song", mode="playing")
+    await _seed_submission(db_session, round_, alice, title="A-song")
+    await _seed_vote(db_session, round_id, alice, s_org)
+
+    resp = await client.get(_url(round_id), headers=_auth(organizer.id))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+
+    assert body["viewer_is_vibing"] is False
+    assert body["winners"] == []
+    assert body["own_submission"] is None
+    assert {s["title"] for s in body["submissions"]} == {"Org-song", "A-song"}
+    assert len(body["leaderboard"]) == 2

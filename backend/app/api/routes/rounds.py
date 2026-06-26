@@ -359,7 +359,8 @@ class PlaylistEntry(BaseModel):
     artist: str
     album: str | None
     album_art_url: str | None
-    participation_mode: str
+    # participation_mode is intentionally NOT exposed (MYS-112): vibing is private,
+    # so the voting playlist must not reveal which songs are vibers'.
     # Platform links assembled keyless at submission time and stored per
     # submission (may be empty if the upstream lookup failed then).
     platforms: dict[str, str]
@@ -451,7 +452,6 @@ async def get_round_playlist(
                 artist=s.artist,
                 album=s.album,
                 album_art_url=s.album_art_url,
-                participation_mode=s.participation_mode,
                 platforms=platforms,
                 preferred_url=_preferred_url(platforms, current_user.preferred_service),
                 is_own=s.user_id == current_user.id,
@@ -515,7 +515,8 @@ class ResultSubmission(BaseModel):
     artist: str
     album: str | None
     album_art_url: str | None
-    participation_mode: str
+    # participation_mode is intentionally NOT exposed (MYS-112): vibing stays
+    # private — the reveal never shows who vibed.
     # The submitter's own optional note attached at submission time.
     submitter_note: str | None
     vote_count: int
@@ -543,15 +544,43 @@ class MostNotedResult(BaseModel):
     winners: list[MostNotedWinner]
 
 
+class WinnerReveal(BaseModel):
+    # The vibe-safe winner shape (MYS-112): the song(s) with the most votes,
+    # named but WITHOUT a vote count. Sent to a vibing viewer, who sees who won
+    # but no rankings/tallies.
+    submission_id: str
+    title: str
+    artist: str
+    submitter_display_name: str
+
+
+class OwnSubmissionReveal(BaseModel):
+    # A vibing viewer's own submission with the notes left on it (MYS-112): the
+    # appreciation mechanic survives without exposing vote counts.
+    submission_id: str
+    title: str
+    artist: str
+    submitter_note: str | None
+    notes: list[ResultNote]
+
+
 class ResultsResponse(BaseModel):
     round_id: str
     round_number: int
     # Nullable: a round may not have a theme yet (clients fall back to "Round N").
     theme: str | None
     state: str
+    # Reveal is gated by the viewer's participation mode for the round (MYS-112).
+    # A player sees the full reveal below; a viber sees only `winners`,
+    # `own_submission`, and `most_noted` — `submissions` and `leaderboard` are
+    # empty for them so no vote counts/rankings leak. A non-submitter is a player.
+    viewer_is_vibing: bool
     submissions: list[ResultSubmission]
     leaderboard: list[LeaderboardEntry]
     most_noted: MostNotedResult
+    # Vibing-viewer-only fields (empty/None for players).
+    winners: list[WinnerReveal] = []
+    own_submission: OwnSubmissionReveal | None = None
 
 
 @router.get("/rounds/{round_id}/results", response_model=ResultsResponse)
@@ -618,7 +647,6 @@ async def get_round_results(
             artist=s.artist,
             album=s.album,
             album_art_url=s.album_art_url,
-            participation_mode=s.participation_mode,
             submitter_note=s.note,
             vote_count=votes_by_submission.get(s.id, 0),
             notes=notes_by_submission.get(s.id, []),
@@ -628,12 +656,11 @@ async def get_round_results(
     # Deterministic order: most-voted first, then title A->Z as a stable tiebreak.
     submissions.sort(key=lambda s: (-s.vote_count, s.title))
 
-    # Leaderboard: playing submitters only (vibing are excluded). Ranked by votes
-    # received desc, display_name asc as the tiebreak. Rank is 1-based position
-    # (ties take sequential positions, not shared rank). Zero-vote players still
-    # appear, ranked last.
-    playing = [s for s in submissions if s.participation_mode == "playing"]
-    playing.sort(key=lambda s: (-s.vote_count, s.submitter_display_name))
+    # Leaderboard: every submitter competes, including vibers (MYS-112). Ranked by
+    # votes received desc, display_name asc as the tiebreak. Rank is 1-based
+    # position (ties take sequential positions, not shared rank). Zero-vote
+    # submitters still appear, ranked last.
+    ranked = sorted(submissions, key=lambda s: (-s.vote_count, s.submitter_display_name))
     leaderboard = [
         LeaderboardEntry(
             user_id=s.user_id,
@@ -641,7 +668,7 @@ async def get_round_results(
             vote_count=s.vote_count,
             rank=i + 1,
         )
-        for i, s in enumerate(playing)
+        for i, s in enumerate(ranked)
     ]
 
     most_noted = await compute_most_noted(round_id, db)
@@ -666,12 +693,60 @@ async def get_round_results(
         ],
     )
 
+    # Reveal gating (MYS-112). The viewer's mode for this round comes from their
+    # own submission (read from the ORM rows — it's not exposed on the response);
+    # a non-submitter is treated as a player (full reveal).
+    own_sub = next((s for s, _ in submission_rows if s.user_id == current_user.id), None)
+    viewer_is_vibing = own_sub is not None and own_sub.participation_mode == "vibing"
+    own = next((s for s in submissions if s.user_id == str(current_user.id)), None)
+
+    if not viewer_is_vibing:
+        return ResultsResponse(
+            round_id=str(round_.id),
+            round_number=round_.round_number,
+            theme=round_.theme,
+            state=round_.state,
+            viewer_is_vibing=False,
+            submissions=submissions,
+            leaderboard=leaderboard,
+            most_noted=most_noted_result,
+        )
+
+    # Vibing viewer: winner(s) + Most Noted + their own song's notes only. No
+    # leaderboard, no picks list, no vote counts. winners are the top-voted
+    # song(s) (a top of zero means nobody was voted for — no winner).
+    assert own is not None  # viewer_is_vibing implies a submission exists
+    top_votes = max((s.vote_count for s in submissions), default=0)
+    winners = (
+        [
+            WinnerReveal(
+                submission_id=s.submission_id,
+                title=s.title,
+                artist=s.artist,
+                submitter_display_name=s.submitter_display_name,
+            )
+            for s in submissions
+            if s.vote_count == top_votes
+        ]
+        if top_votes > 0
+        else []
+    )
+    own_reveal = OwnSubmissionReveal(
+        submission_id=own.submission_id,
+        title=own.title,
+        artist=own.artist,
+        submitter_note=own.submitter_note,
+        notes=own.notes,
+    )
     return ResultsResponse(
         round_id=str(round_.id),
         round_number=round_.round_number,
         theme=round_.theme,
         state=round_.state,
-        submissions=submissions,
-        leaderboard=leaderboard,
+        viewer_is_vibing=True,
+        submissions=[],
+        leaderboard=[],
         most_noted=most_noted_result,
+        winners=winners,
+        own_submission=own_reveal,
     )

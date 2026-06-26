@@ -1106,6 +1106,9 @@ describe("api.ts", () => {
       round_number: 1,
       theme: "late summer feels",
       state: "closed",
+      viewer_is_vibing: false,
+      winners: [],
+      own_submission: null,
       submissions: [
         {
           submission_id: "sub-1",
@@ -1116,7 +1119,6 @@ describe("api.ts", () => {
           artist: "Pixies",
           album: null,
           album_art_url: null,
-          participation_mode: "playing",
           submitter_note: "a banger",
           vote_count: 3,
           notes: [{ body: "this slaps", author_display_name: "Ada", created_at: "x" }],

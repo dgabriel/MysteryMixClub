@@ -130,7 +130,16 @@ export function RoundDetailRoute() {
         setMyVotes(loadedVotes.submission_ids);
         setMine(loadedMine);
       } else {
-        setResults(await getResults(id));
+        // Closed: the reveal plus a way to still listen to the mix (MYS-133).
+        // The playlist endpoint serves closed rounds too.
+        const [loadedResults, loadedPlaylist] = await Promise.all([
+          getResults(id),
+          getPlaylist(id),
+        ]);
+        setResults(loadedResults);
+        setPlaylist(loadedPlaylist.entries);
+        setYoutubePlaylistUrl(loadedPlaylist.youtube_playlist_url);
+        setYoutubeTrackCount(loadedPlaylist.youtube_track_count);
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "couldn't load this round.");
@@ -355,7 +364,16 @@ export function RoundDetailRoute() {
               onActionError={setActionError}
             />
           ) : (
-            <ResultsSection results={results} userId={userId} />
+            <>
+              {/* Closed rounds keep a way to listen to the mix (MYS-133). */}
+              <ClosedListen
+                roundId={id}
+                youtubePlaylistUrl={youtubePlaylistUrl}
+                youtubeTrackCount={youtubeTrackCount}
+                entryCount={playlist.length}
+              />
+              <ResultsSection results={results} userId={userId} />
+            </>
           )}
         </section>
     </main>
@@ -685,6 +703,38 @@ function VotingProgress({
   );
 }
 
+/**
+ * Listen affordance for a closed round (MYS-133): the whole-mix YouTube +
+ * Spotify links, so members can still play the round after it closes. Reuses the
+ * voting-screen components; renders nothing when the round had no submissions.
+ * Stays in the Sage/Ink family — the reveal reserves its one Rust use for Most
+ * Noted.
+ */
+function ClosedListen({
+  roundId,
+  youtubePlaylistUrl,
+  youtubeTrackCount,
+  entryCount,
+}: {
+  roundId: string;
+  youtubePlaylistUrl: string | null;
+  youtubeTrackCount: number;
+  entryCount: number;
+}) {
+  if (entryCount === 0) return null;
+  return (
+    <div className="mb-10">
+      <h2 className="mb-4 font-mono uppercase tracking-label text-[9px] text-muted">listen back</h2>
+      <YouTubePlaylistLink
+        youtubePlaylistUrl={youtubePlaylistUrl}
+        youtubeTrackCount={youtubeTrackCount}
+        entryCount={entryCount}
+      />
+      <SpotifyPlaylist roundId={roundId} entryCount={entryCount} />
+    </div>
+  );
+}
+
 function VotingSection({
   roundId,
   entries,
@@ -767,6 +817,9 @@ function VotingSection({
                   <p className="mt-1 font-mono text-[11px] font-light text-muted">{entry.artist}</p>
                 ) : null}
                 <PlatformLinks entry={entry} />
+                {/* Vibers don't vote, but they can still leave notes — it's how
+                    they take part (MYS-132). */}
+                <SongNotes submissionId={entry.submission_id} onActionError={onActionError} />
               </Card>
             </li>
           ))}

@@ -534,6 +534,12 @@ export type Playlist = {
   entries: PlaylistEntry[];
   youtube_playlist_url: string | null;
   youtube_track_count: number;
+  /** Voting progress (MYS-102): "X of Y voted or noted · Z just vibing".
+   *  `voting_eligible` = playing participants (eligible voters), `voting_acted`
+   *  = those who've voted or left a note, `vibing_count` = vibing participants. */
+  voting_eligible: number;
+  voting_acted: number;
+  vibing_count: number;
 };
 
 /** Create a round in a league (organizer only). */

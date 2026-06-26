@@ -68,6 +68,10 @@ export function RoundDetailRoute() {
   const [playlist, setPlaylist] = useState<PlaylistEntry[]>([]);
   const [youtubePlaylistUrl, setYoutubePlaylistUrl] = useState<string | null>(null);
   const [youtubeTrackCount, setYoutubeTrackCount] = useState(0);
+  // Voting progress (MYS-102): X of Y voted or noted · Z just vibing.
+  const [votingEligible, setVotingEligible] = useState(0);
+  const [votingActed, setVotingActed] = useState(0);
+  const [vibingCount, setVibingCount] = useState(0);
   const [myVotes, setMyVotes] = useState<string[]>([]);
   const [results, setResults] = useState<RoundResults | null>(null);
   const [loading, setLoading] = useState(true);
@@ -105,6 +109,9 @@ export function RoundDetailRoute() {
         setPlaylist(loadedPlaylist.entries);
         setYoutubePlaylistUrl(loadedPlaylist.youtube_playlist_url);
         setYoutubeTrackCount(loadedPlaylist.youtube_track_count);
+        setVotingEligible(loadedPlaylist.voting_eligible);
+        setVotingActed(loadedPlaylist.voting_acted);
+        setVibingCount(loadedPlaylist.vibing_count);
         setMyVotes(loadedVotes.submission_ids);
         setMine(loadedMine);
       } else {
@@ -164,6 +171,16 @@ export function RoundDetailRoute() {
       const result = await castVotes(id, selected);
       setMyVotes(result.submission_ids);
       setVotesSaved(true);
+      // Refresh voting progress so "X of Y voted or noted" reflects this cast
+      // right away (MYS-102). Non-fatal: the votes already saved.
+      try {
+        const refreshed = await getPlaylist(id);
+        setVotingEligible(refreshed.voting_eligible);
+        setVotingActed(refreshed.voting_acted);
+        setVibingCount(refreshed.vibing_count);
+      } catch {
+        // leave the counter as-is; the cast itself succeeded.
+      }
     } catch (err) {
       setActionError(
         err instanceof ApiError ? err.message : "couldn't save your votes. try again.",
@@ -307,6 +324,9 @@ export function RoundDetailRoute() {
               entries={playlist}
               youtubePlaylistUrl={youtubePlaylistUrl}
               youtubeTrackCount={youtubeTrackCount}
+              votingEligible={votingEligible}
+              votingActed={votingActed}
+              vibingCount={vibingCount}
               votesPerPlayer={round.votes_per_player}
               myVotes={myVotes}
               isVibingParticipant={mine?.participation_mode === "vibing"}
@@ -598,11 +618,38 @@ function YouTubePlaylistLink({
   );
 }
 
+/**
+ * Voting progress (MYS-102): "X of Y voted or noted · Z just vibing". A quiet
+ * muted label so the room can see how participation is filling in. No Rust —
+ * the voting screen reserves its single Rust signal for the selected-vote
+ * outline. Renders nothing until there are eligible (playing) voters.
+ */
+function VotingProgress({
+  acted,
+  eligible,
+  vibing,
+}: {
+  acted: number;
+  eligible: number;
+  vibing: number;
+}) {
+  if (eligible <= 0) return null;
+  return (
+    <p className="mb-6 font-mono uppercase tracking-label text-[9px] text-muted">
+      {acted} of {eligible} voted or noted
+      {vibing > 0 ? ` · ${vibing} just vibing` : ""}
+    </p>
+  );
+}
+
 function VotingSection({
   roundId,
   entries,
   youtubePlaylistUrl,
   youtubeTrackCount,
+  votingEligible,
+  votingActed,
+  vibingCount,
   votesPerPlayer,
   myVotes,
   isVibingParticipant,
@@ -616,6 +663,9 @@ function VotingSection({
   entries: PlaylistEntry[];
   youtubePlaylistUrl: string | null;
   youtubeTrackCount: number;
+  votingEligible: number;
+  votingActed: number;
+  vibingCount: number;
   votesPerPlayer: number;
   myVotes: string[];
   isVibingParticipant: boolean;
@@ -653,6 +703,7 @@ function VotingSection({
   if (isVibingParticipant) {
     return (
       <>
+        <VotingProgress acted={votingActed} eligible={votingEligible} vibing={vibingCount} />
         <p className="font-mono text-[13px] font-light text-muted">
           you&apos;re just vibing this round, so you sit voting out — settle in and enjoy the mix.
         </p>
@@ -693,6 +744,7 @@ function VotingSection({
 
   return (
     <>
+      <VotingProgress acted={votingActed} eligible={votingEligible} vibing={vibingCount} />
       <YouTubePlaylistLink
         youtubePlaylistUrl={youtubePlaylistUrl}
         youtubeTrackCount={youtubeTrackCount}

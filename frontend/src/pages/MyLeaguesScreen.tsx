@@ -103,6 +103,10 @@ export function MyLeaguesScreen({
 
             {/* Permanent home-screen fixture, below the league list (MYS-45). */}
             <section className="mt-12 border-t border-border pt-10">
+                <h2 className="mt-1 font-serif lowercase text-[18px] leading-tight text-ink">
+                  practice your song search skills here — no league required
+                </h2> 
+                <br/>             
               <SongSearchCard />
             </section>
           </div>

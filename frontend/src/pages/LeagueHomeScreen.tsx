@@ -11,6 +11,7 @@ import { Button } from "../components/Button";
 import { Badge } from "../components/Badge";
 import { TextField } from "../components/TextField";
 import { ConcentricRings } from "../components/ConcentricRings";
+import { CrownIcon } from "../components/CrownIcon";
 
 const ROUND_STATE_LABEL: Record<RoundState, string> = {
   pending: "upcoming",
@@ -511,7 +512,8 @@ function ClosedRoundSummary({ results }: { results: RoundResults }) {
     <dl className="mt-3 space-y-2 border-t border-border pt-3">
       {winners.length > 0 ? (
         <div className="flex items-baseline justify-between gap-4">
-          <dt className="shrink-0 font-mono uppercase tracking-label text-[9px] text-muted">
+          <dt className="flex shrink-0 items-center gap-1 font-mono uppercase tracking-label text-[9px] text-muted">
+            <CrownIcon className="text-gold" />
             {winners.length > 1 ? "winners" : "winner"}
           </dt>
           <dd className="min-w-0 text-right font-mono text-[13px] font-light text-ink">
@@ -521,7 +523,8 @@ function ClosedRoundSummary({ results }: { results: RoundResults }) {
       ) : null}
       {mostNoted.length > 0 ? (
         <div className="flex items-baseline justify-between gap-4">
-          <dt className="shrink-0 font-mono uppercase tracking-label text-[9px] text-muted">
+          <dt className="flex shrink-0 items-center gap-1 font-mono uppercase tracking-label text-[9px] text-muted">
+            <CrownIcon className="text-gold" />
             most noted
           </dt>
           <dd className="min-w-0 text-right font-mono text-[13px] font-light text-ink">

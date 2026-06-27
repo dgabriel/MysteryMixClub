@@ -226,7 +226,13 @@ export function RoundDetailRoute() {
       await refreshCount();
       return true;
     } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : "couldn't submit. try again.");
+      if (err instanceof ApiError && err.message.includes("already in this round")) {
+        setActionError(
+          `"${song.title}" by ${song.artist} is already in this round — someone else has great taste too.`,
+        );
+      } else {
+        setActionError(err instanceof ApiError ? err.message : "couldn't submit. try again.");
+      }
       return false;
     } finally {
       setSubmitting(false);
@@ -255,7 +261,15 @@ export function RoundDetailRoute() {
       if (result.league_previously_submitted) setLeagueRepeatWarning(true);
       return true;
     } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : "couldn't save the change. try again.");
+      if (err instanceof ApiError && err.message.includes("already in this round")) {
+        setActionError(
+          `"${song.title}" by ${song.artist} is already in this round — someone else has great taste too.`,
+        );
+      } else {
+        setActionError(
+          err instanceof ApiError ? err.message : "couldn't save the change. try again.",
+        );
+      }
       return false;
     } finally {
       setSubmitting(false);
@@ -434,7 +448,7 @@ export function RoundDetailRoute() {
         ) : null}
 
         {actionError ? (
-          <p role="alert" className="mt-6 font-mono text-[11px] text-ink">
+          <p role="alert" className="mt-6 font-mono text-[13px] text-rust">
             {actionError}
           </p>
         ) : null}
@@ -749,7 +763,7 @@ function ComposerSlot({
         eyebrow="this round"
         heading={heading}
         idPrefix={idPrefix}
-        onSubmit={(song) => void onSubmit(song)}
+        onSubmit={onSubmit}
         submitting={submitting}
       />
       {onCancel ? (

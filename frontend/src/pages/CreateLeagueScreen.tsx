@@ -8,6 +8,7 @@ type CreateLeagueInput = {
   description?: string;
   total_rounds: number;
   votes_per_player: number;
+  songs_per_submission: number;
   default_vibe_mode: boolean;
 };
 
@@ -28,6 +29,7 @@ export function CreateLeagueScreen({
   const [description, setDescription] = useState("");
   const [totalRounds, setTotalRounds] = useState("6");
   const [votesPerPlayer, setVotesPerPlayer] = useState("3");
+  const [songsPerSubmission, setSongsPerSubmission] = useState("1");
   const [defaultVibeMode, setDefaultVibeMode] = useState(false);
   const [guard, setGuard] = useState<string | null>(null);
 
@@ -36,6 +38,7 @@ export function CreateLeagueScreen({
     const trimmedName = name.trim();
     const rounds = Number(totalRounds);
     const votes = Number(votesPerPlayer);
+    const songs = Number(songsPerSubmission);
 
     if (!trimmedName) {
       setGuard("a league needs a name.");
@@ -49,6 +52,10 @@ export function CreateLeagueScreen({
       setGuard("votes per player must be at least 1.");
       return;
     }
+    if (!Number.isFinite(songs) || songs < 1 || songs > 5) {
+      setGuard("songs per submission must be between 1 and 5.");
+      return;
+    }
 
     setGuard(null);
     const trimmedDescription = description.trim();
@@ -57,6 +64,7 @@ export function CreateLeagueScreen({
       ...(trimmedDescription ? { description: trimmedDescription } : {}),
       total_rounds: rounds,
       votes_per_player: votes,
+      songs_per_submission: songs,
       default_vibe_mode: defaultVibeMode,
     });
   }
@@ -116,6 +124,22 @@ export function CreateLeagueScreen({
             onChange={(e) => setVotesPerPlayer(e.target.value)}
             disabled={submitting}
           />
+
+          <div>
+            <TextField
+              id="league-songs-per-submission"
+              label="songs per submission"
+              name="songs_per_submission"
+              type="number"
+              min={1}
+              value={songsPerSubmission}
+              onChange={(e) => setSongsPerSubmission(e.target.value)}
+              disabled={submitting}
+            />
+            <p className="mt-2 font-mono text-[11px] font-light text-muted">
+              how many songs each player can submit per round — 1 to 5.
+            </p>
+          </div>
 
           <div>
             <label className="flex cursor-pointer items-center gap-3">

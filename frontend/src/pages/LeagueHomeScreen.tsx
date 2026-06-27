@@ -59,11 +59,6 @@ type LeagueHomeScreenProps = {
   onDeleteLeague: () => void;
   deletingLeague: boolean;
   deleteLeagueError?: string | null;
-  // --- The caller's own per-league "just vibing" setting (MYS-60) ---
-  vibeMode: boolean | null;
-  onSetVibe: (next: boolean) => void;
-  savingVibe: boolean;
-  vibeError?: string | null;
 };
 
 export function LeagueHomeScreen({
@@ -92,10 +87,6 @@ export function LeagueHomeScreen({
   onDeleteLeague,
   deletingLeague,
   deleteLeagueError,
-  vibeMode,
-  onSetVibe,
-  savingVibe,
-  vibeError,
 }: LeagueHomeScreenProps) {
   if (loading) {
     return (
@@ -136,34 +127,6 @@ export function LeagueHomeScreen({
         <p className="mt-3 font-mono text-[11px] font-light text-muted">
           round {league.current_round} of {league.total_rounds}
         </p>
-
-        {/* The caller's own per-league participation setting (MYS-60). Stays in
-            the Sage/Ink family — the screen's single Rust use is the delete
-            confirm. Rendered once the membership has loaded. */}
-        {vibeMode !== null ? (
-          <section className="mt-6">
-            <label className="flex cursor-pointer items-center gap-3">
-              <input
-                type="checkbox"
-                checked={vibeMode}
-                onChange={(e) => onSetVibe(e.target.checked)}
-                disabled={savingVibe}
-                className="h-4 w-4 rounded-[2px] border border-ink accent-sage"
-              />
-              <span className="font-mono uppercase tracking-ui text-[11px] text-ink">
-                just vibing this league
-              </span>
-            </label>
-            <p className="mt-2 font-mono text-[11px] font-light text-muted">
-              vibing means you sit out voting and leave notes instead. you can change this anytime.
-            </p>
-            {vibeError ? (
-              <p role="alert" className="mt-2 font-mono text-[11px] text-ink">
-                {vibeError}
-              </p>
-            ) : null}
-          </section>
-        ) : null}
 
         {isOrganizer ? (
           <OrganizerEdit

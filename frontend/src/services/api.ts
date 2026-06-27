@@ -238,6 +238,9 @@ export type League = {
   organizer_id: string;
   total_rounds: number;
   votes_per_player: number;
+  /** How many songs a player may submit per round (MYS-116). Fixed at league
+   *  setup; 1 = classic one-song behaviour, max 5. */
+  songs_per_submission: number;
   current_round: number;
   state: string;
   /** Admin-set default participation mode for the league (MYS-112). A member's
@@ -286,6 +289,7 @@ export async function createLeague(input: {
   name: string;
   total_rounds: number;
   votes_per_player?: number;
+  songs_per_submission?: number;
   description?: string;
   default_vibe_mode?: boolean;
 }): Promise<League> {
@@ -645,18 +649,24 @@ export async function updateRound(
   return (await res.json()) as Round;
 }
 
-/** Submit (or replace) your song for a round. Round must be open_submission. */
+/** The fields needed to add or replace a submitted song. Shared by submitSong
+ *  (add) and editSubmission (replace one). `participation_mode` is a per-player
+ *  round stance the backend keeps uniform across all your songs (MYS-116). */
+export type SubmissionInput = {
+  title: string;
+  artist: string;
+  isrc: string;
+  album?: string | null;
+  album_art_url?: string | null;
+  note?: string | null;
+  participation_mode?: "playing" | "vibing";
+};
+
+/** Add a song to a round (MYS-116). Round must be open_submission; the backend
+ *  returns 409 once you've reached the league's songs-per-submission cap. */
 export async function submitSong(
   roundId: string,
-  input: {
-    title: string;
-    artist: string;
-    isrc: string;
-    album?: string | null;
-    album_art_url?: string | null;
-    note?: string | null;
-    participation_mode?: "playing" | "vibing";
-  },
+  input: SubmissionInput,
 ): Promise<SubmissionResult> {
   const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/submissions`, {
     method: "POST",
@@ -669,14 +679,46 @@ export async function submitSong(
   return (await res.json()) as SubmissionResult;
 }
 
-/** Get your submission for a round, or null if you haven't submitted yet. */
-export async function getMySubmission(roundId: string): Promise<SubmissionResult | null> {
-  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/submissions/mine`);
-  if (res.status === 404) return null;
+/** Replace one of your songs in a round wholesale (MYS-116). Setting
+ *  `participation_mode` updates the stance across all your songs (uniform). */
+export async function editSubmission(
+  roundId: string,
+  submissionId: string,
+  input: SubmissionInput,
+): Promise<SubmissionResult> {
+  const res = await authenticatedRequest(
+    `/api/v1/rounds/${roundId}/submissions/${submissionId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
   return (await res.json()) as SubmissionResult;
+}
+
+/** Remove one of your songs from a round (MYS-116). Resolves on 204. */
+export async function deleteSubmission(roundId: string, submissionId: string): Promise<void> {
+  const res = await authenticatedRequest(
+    `/api/v1/rounds/${roundId}/submissions/${submissionId}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+}
+
+/** Get your songs for a round (MYS-116) — a list of up to the league's cap,
+ *  oldest first. Empty when you haven't submitted yet. */
+export async function getMySubmissions(roundId: string): Promise<SubmissionResult[]> {
+  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/submissions/mine`);
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as SubmissionResult[];
 }
 
 /** Get a round's anonymous voting playlist (available once voting opens). */

@@ -31,6 +31,9 @@ class LeagueCreate(BaseModel):
     # Upper-bounded to keep slate sizes sane.
     total_rounds: int = Field(default=6, ge=1, le=50)
     votes_per_player: int = Field(default=3, ge=1)
+    # How many songs a player may submit per round (MYS-116). Fixed for the
+    # league at setup; 1 (default) = classic one-song behaviour, capped at 5.
+    songs_per_submission: int = Field(default=1, ge=1, le=5)
     description: LeagueDescription | None = None
     # Admin-set default participation mode for the league (MYS-112). Seeds every
     # member's vibe_mode at join (including the organizer at creation).
@@ -97,6 +100,7 @@ class LeagueResponse(BaseModel):
     organizer_id: str | None
     total_rounds: int
     votes_per_player: int
+    songs_per_submission: int
     current_round: int
     state: str
     # Admin-set default participation mode for the league (MYS-112). A member's own
@@ -114,6 +118,7 @@ def _to_response(league: League) -> LeagueResponse:
         organizer_id=str(league.organizer_id) if league.organizer_id is not None else None,
         total_rounds=league.total_rounds,
         votes_per_player=league.votes_per_player,
+        songs_per_submission=league.songs_per_submission,
         current_round=league.current_round,
         state=league.state,
         default_vibe_mode=league.default_vibe_mode,
@@ -153,6 +158,7 @@ async def create_league(
         organizer_id=current_user.id,
         total_rounds=payload.total_rounds,
         votes_per_player=payload.votes_per_player,
+        songs_per_submission=payload.songs_per_submission,
         default_vibe_mode=payload.default_vibe_mode,
     )
     db.add(league)

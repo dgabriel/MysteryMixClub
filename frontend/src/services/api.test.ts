@@ -49,6 +49,7 @@ const sampleLeague: League = {
   organizer_id: "user-1",
   total_rounds: 6,
   votes_per_player: 3,
+  songs_per_submission: 1,
   current_round: 0,
   state: "active",
   default_vibe_mode: false,

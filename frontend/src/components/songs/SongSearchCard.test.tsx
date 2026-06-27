@@ -52,14 +52,18 @@ describe("SongSearchCard", () => {
     vi.clearAllMocks();
   });
 
-  it("renders the heading and both mode tabs, defaulting to paste-a-link", () => {
+  it("renders the heading and both mode tabs, with search first and selected by default", () => {
     render(<SongSearchCard />);
     expect(screen.getByText("find a song")).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /paste a link/i })).toHaveAttribute(
+    // Search leads now: it's the first tab and the one active on load.
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs[0]).toHaveTextContent(/search by title/i);
+    expect(tabs[1]).toHaveTextContent(/paste a link/i);
+    expect(screen.getByRole("tab", { name: /search by title/i })).toHaveAttribute(
       "aria-selected",
       "true",
     );
-    expect(screen.getByRole("tab", { name: /search by title/i })).toHaveAttribute(
+    expect(screen.getByRole("tab", { name: /paste a link/i })).toHaveAttribute(
       "aria-selected",
       "false",
     );
@@ -70,6 +74,7 @@ describe("SongSearchCard", () => {
     const user = userEvent.setup();
     render(<SongSearchCard />);
 
+    await user.click(screen.getByRole("tab", { name: /paste a link/i }));
     await user.type(
       screen.getByLabelText(/paste a spotify or youtube link/i),
       "https://open.spotify.com/track/2",
@@ -96,6 +101,7 @@ describe("SongSearchCard", () => {
     const user = userEvent.setup();
     render(<SongSearchCard />);
 
+    await user.click(screen.getByRole("tab", { name: /paste a link/i }));
     await user.type(screen.getByLabelText(/paste a spotify or youtube link/i), "https://bad/link");
     await user.click(screen.getByRole("button", { name: /^resolve$/i }));
 
@@ -154,6 +160,7 @@ describe("SongSearchCard", () => {
     const user = userEvent.setup();
     render(<SongSearchCard />);
 
+    await user.click(screen.getByRole("tab", { name: /paste a link/i }));
     await user.type(screen.getByLabelText(/paste a spotify or youtube link/i), "https://x/y");
     await user.click(screen.getByRole("button", { name: /^resolve$/i }));
 
@@ -169,6 +176,7 @@ describe("SongSearchCard", () => {
     const user = userEvent.setup();
     render(<SongSearchCard />);
 
+    await user.click(screen.getByRole("tab", { name: /paste a link/i }));
     await user.type(screen.getByLabelText(/paste a spotify or youtube link/i), "https://x/y");
     await user.click(screen.getByRole("button", { name: /^resolve$/i }));
     await screen.findByRole("heading", { name: "bad guy" });

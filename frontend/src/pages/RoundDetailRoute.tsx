@@ -4,9 +4,11 @@ import {
   ApiError,
   addNote,
   castVotes,
+  deleteSubmission,
+  editSubmission,
   getLeague,
   getMyMembership,
-  getMySubmission,
+  getMySubmissions,
   getMyVotes,
   getNotes,
   getPlaylist,
@@ -68,7 +70,7 @@ export function RoundDetailRoute() {
 
   const [round, setRound] = useState<Round | null>(null);
   const [league, setLeague] = useState<League | null>(null);
-  const [mine, setMine] = useState<SubmissionResult | null>(null);
+  const [mySubmissions, setMySubmissions] = useState<SubmissionResult[]>([]);
   // Per-round "Just Vibes for this Round" toggle (MYS-60), seeded from the
   // existing submission's mode, else the caller's per-league vibe setting.
   const [roundVibe, setRoundVibe] = useState(false);
@@ -85,6 +87,7 @@ export function RoundDetailRoute() {
   const [error, setError] = useState<string | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [advancing, setAdvancing] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
@@ -107,20 +110,22 @@ export function RoundDetailRoute() {
         // theme/description and open it from here.
       } else if (loadedRound.state === "open_submission") {
         const [loadedMine, membership] = await Promise.all([
-          getMySubmission(id),
+          getMySubmissions(id),
           getMyMembership(loadedRound.league_id),
         ]);
-        setMine(loadedMine);
-        // Seed the round toggle: an existing submission's mode wins, else the
-        // member's per-league default.
+        setMySubmissions(loadedMine);
+        // Seed the round toggle: the player's current stance (uniform across
+        // their songs) wins, else the member's per-league default.
         setRoundVibe(
-          loadedMine ? loadedMine.participation_mode === "vibing" : membership.vibe_mode,
+          loadedMine.length > 0
+            ? loadedMine[0].participation_mode === "vibing"
+            : membership.vibe_mode,
         );
       } else if (loadedRound.state === "open_voting") {
         const [loadedPlaylist, loadedVotes, loadedMine] = await Promise.all([
           getPlaylist(id),
           getMyVotes(id),
-          getMySubmission(id),
+          getMySubmissions(id),
         ]);
         setPlaylist(loadedPlaylist.entries);
         setYoutubePlaylistUrl(loadedPlaylist.youtube_playlist_url);
@@ -129,7 +134,7 @@ export function RoundDetailRoute() {
         setVotingActed(loadedPlaylist.voting_acted);
         setVibingCount(loadedPlaylist.vibing_count);
         setMyVotes(loadedVotes.submission_ids);
-        setMine(loadedMine);
+        setMySubmissions(loadedMine);
       } else {
         // Closed: the reveal plus a way to still listen to the mix (MYS-133).
         // The playlist endpoint serves closed rounds too.
@@ -155,38 +160,95 @@ export function RoundDetailRoute() {
 
   const isOrganizer = !!userId && !!league && league.organizer_id === userId;
 
-  async function handleSubmit(song: ResolvedSong) {
+  // Refresh the round so "X of Y submitted" reflects an add/remove right away
+  // (MYS-101). Refetch rather than locally increment so a *replacement* (which
+  // doesn't change the distinct-player count) stays correct too. Non-fatal: the
+  // mutation already saved; only the counter would lag.
+  const refreshCount = useCallback(async () => {
+    if (!id) return;
+    try {
+      setRound(await getRound(id));
+    } catch {
+      // leave the counter as-is; the submission mutation itself succeeded.
+    }
+  }, [id]);
+
+  function trackPayload(song: ResolvedSong) {
+    return {
+      title: song.title,
+      artist: song.artist ?? "",
+      isrc: song.isrc!,
+      album: song.album,
+      album_art_url: song.thumbnail_url,
+      // The stance is uniform across all your songs; the backend propagates it.
+      participation_mode: (roundVibe ? "vibing" : "playing") as "vibing" | "playing",
+    };
+  }
+
+  async function handleAddSong(song: ResolvedSong): Promise<boolean> {
     if (!id || !song.isrc) {
       setActionError("this song is missing an ID and can't be submitted.");
-      return;
+      return false;
     }
     setSubmitting(true);
     setActionError(null);
     try {
-      const result = await submitSong(id, {
-        title: song.title,
-        artist: song.artist ?? "",
-        isrc: song.isrc,
-        album: song.album,
-        album_art_url: song.thumbnail_url,
-        participation_mode: roundVibe ? "vibing" : "playing",
-      });
-      setMine(result);
-      // Refresh the round so "X of Y submitted" reflects this submission right
-      // away (MYS-101). Refetch rather than locally increment so a *replacement*
-      // (which doesn't change the count) stays correct too. Non-fatal: the
-      // submission already saved; only the counter would lag.
-      try {
-        setRound(await getRound(id));
-      } catch {
-        // leave the counter as-is; the submission itself succeeded.
-      }
+      const result = await submitSong(id, trackPayload(song));
+      setMySubmissions((current) => [...current, result]);
+      await refreshCount();
+      return true;
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : "couldn't submit. try again.");
+      return false;
     } finally {
       setSubmitting(false);
     }
   }
+
+  async function handleEditSong(submissionId: string, song: ResolvedSong): Promise<boolean> {
+    if (!id || !song.isrc) {
+      setActionError("this song is missing an ID and can't be submitted.");
+      return false;
+    }
+    setSubmitting(true);
+    setActionError(null);
+    try {
+      const result = await editSubmission(id, submissionId, trackPayload(song));
+      // Replace the edited song, and keep the stance uniform across the list
+      // (the backend applies an explicit mode change to every song).
+      setMySubmissions((current) =>
+        current.map((s) =>
+          s.id === submissionId
+            ? result
+            : { ...s, participation_mode: result.participation_mode },
+        ),
+      );
+      return true;
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "couldn't save the change. try again.");
+      return false;
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleRemoveSong(submissionId: string): Promise<boolean> {
+    if (!id) return false;
+    setRemovingId(submissionId);
+    setActionError(null);
+    try {
+      await deleteSubmission(id, submissionId);
+      setMySubmissions((current) => current.filter((s) => s.id !== submissionId));
+      await refreshCount();
+      return true;
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "couldn't remove that song. try again.");
+      return false;
+    } finally {
+      setRemovingId(null);
+    }
+  }
+
 
   async function handleCastVotes(selected: string[]) {
     if (!id || selected.length === 0) return;
@@ -335,13 +397,15 @@ export function RoundDetailRoute() {
                 submitted={round.submission_count}
                 total={round.member_count}
               />
-              <SubmissionSection
-                mine={mine}
+              <SubmissionManager
+                submissions={mySubmissions}
+                cap={league?.songs_per_submission ?? 1}
                 submitting={submitting}
-                roundVibe={roundVibe}
-                onRoundVibeChange={setRoundVibe}
-                onSubmit={handleSubmit}
-                onChange={() => setMine(null)}
+                removingId={removingId}
+                onAdd={handleAddSong}
+                onEdit={handleEditSong}
+                onRemove={handleRemoveSong}
+                onConfirm={() => navigate(`/leagues/${round.league_id}`)}
               />
             </>
           ) : round.state === "open_voting" ? (
@@ -357,7 +421,7 @@ export function RoundDetailRoute() {
               vibingCount={vibingCount}
               votesPerPlayer={round.votes_per_player}
               myVotes={myVotes}
-              isVibingParticipant={mine?.participation_mode === "vibing"}
+              isVibingParticipant={mySubmissions[0]?.participation_mode === "vibing"}
               casting={casting}
               votesSaved={votesSaved}
               onCast={handleCastVotes}
@@ -554,71 +618,195 @@ function SubmissionProgress({ submitted, total }: { submitted: number; total: nu
   );
 }
 
-function SubmissionSection({
-  mine,
-  submitting,
-  roundVibe,
-  onRoundVibeChange,
-  onSubmit,
-  onChange,
+/** One of the player's submitted songs, with change/remove affordances. Stays in
+ *  the Sage/Ink family — no Rust on the submission screen. */
+function SubmittedSongCard({
+  submission,
+  eyebrow,
+  busy,
+  removing,
+  onEdit,
+  onRemove,
 }: {
-  mine: SubmissionResult | null;
-  submitting: boolean;
-  roundVibe: boolean;
-  onRoundVibeChange: (next: boolean) => void;
-  onSubmit: (song: ResolvedSong) => void;
-  onChange: () => void;
+  submission: SubmissionResult;
+  eyebrow: string;
+  busy: boolean;
+  removing: boolean;
+  onEdit: () => void;
+  onRemove: () => void;
 }) {
-  if (mine) {
-    return (
-      <Card>
-        <span className="font-mono uppercase tracking-label text-[9px] text-muted">
-          your submission
-        </span>
-        <h2 className="mt-1 font-serif text-[20px] leading-tight text-ink">{mine.title}</h2>
-        {mine.artist ? (
-          <p className="mt-1 font-mono text-[11px] font-light text-muted">{mine.artist}</p>
-        ) : null}
-        <div className="mt-3">
-          <Badge>{mine.participation_mode}</Badge>
-        </div>
+  return (
+    <Card>
+      <span className="font-mono uppercase tracking-label text-[9px] text-muted">{eyebrow}</span>
+      <h2 className="mt-1 font-serif text-[20px] leading-tight text-ink">{submission.title}</h2>
+      {submission.artist ? (
+        <p className="mt-1 font-mono text-[11px] font-light text-muted">{submission.artist}</p>
+      ) : null}
+      {submission.note ? (
+        <p className="mt-3 font-mono text-[11px] font-light text-ink">“{submission.note}”</p>
+      ) : null}
+      <div className="mt-5 flex items-center gap-5">
         <button
           type="button"
-          onClick={onChange}
-          className="mt-5 font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink"
+          onClick={onEdit}
+          disabled={busy}
+          className="font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink disabled:opacity-50"
         >
           change song
         </button>
-      </Card>
-    );
-  }
+        <button
+          type="button"
+          onClick={onRemove}
+          disabled={busy}
+          className="font-mono uppercase tracking-ui text-[11px] text-muted underline underline-offset-[3px] transition-colors duration-150 hover:text-ink disabled:opacity-50"
+        >
+          {removing ? "removing…" : "remove"}
+        </button>
+      </div>
+    </Card>
+  );
+}
+
+/** A submit/change composer in a slot — the search card plus an optional cancel
+ *  (cancel only when editing an existing song, to drop back to its card). */
+function ComposerSlot({
+  heading,
+  idPrefix,
+  submitting,
+  onSubmit,
+  onCancel,
+}: {
+  heading: string;
+  idPrefix: string;
+  submitting: boolean;
+  onSubmit: (song: ResolvedSong) => Promise<boolean> | void;
+  onCancel?: () => void;
+}) {
   return (
     <>
-      {/* Per-round override (MYS-60). Defaults from the member's per-league
-          setting; flipping it changes only this round's submission. */}
-      <div className="mb-6">
-        <label className="flex cursor-pointer items-center gap-3">
-          <input
-            type="checkbox"
-            checked={roundVibe}
-            onChange={(e) => onRoundVibeChange(e.target.checked)}
-            disabled={submitting}
-            className="h-4 w-4 rounded-[2px] border border-ink accent-sage"
-          />
-          <span className="font-mono uppercase tracking-ui text-[11px] text-ink">
-            just vibes for this round
-          </span>
-        </label>
-        <p className="mt-2 font-mono text-[11px] font-light text-muted">
-          vibing means you sit out voting on this round and leave notes instead.
-        </p>
-      </div>
       <SongSearchCard
         eyebrow="this round"
-        heading="submit a song"
-        onSubmit={onSubmit}
+        heading={heading}
+        idPrefix={idPrefix}
+        onSubmit={(song) => void onSubmit(song)}
         submitting={submitting}
       />
+      {onCancel ? (
+        <div className="mt-4">
+          <Button variant="ghost" type="button" onClick={onCancel} disabled={submitting}>
+            cancel
+          </Button>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * Multi-song submission manager (MYS-116/142). Shows one slot per song the
+ * league allows (`cap`): a filled slot is a song card with change/remove, an
+ * empty slot is a submit composer — so a 2-song league shows two submit cards up
+ * front, no "add another" button. At cap 1 it's the classic single submit/edit.
+ * The "just vibes" stance is uniform across a player's songs, set once via the
+ * toggle at the top (it persists across already-submitted songs).
+ *
+ * No Rust here — the round screen reserves its single Rust signal for the
+ * voting/reveal states.
+ */
+function SubmissionManager({
+  submissions,
+  cap,
+  submitting,
+  removingId,
+  onAdd,
+  onEdit,
+  onRemove,
+  onConfirm,
+}: {
+  submissions: SubmissionResult[];
+  cap: number;
+  submitting: boolean;
+  removingId: string | null;
+  onAdd: (song: ResolvedSong) => Promise<boolean>;
+  onEdit: (submissionId: string, song: ResolvedSong) => Promise<boolean>;
+  onRemove: (submissionId: string) => Promise<boolean>;
+  onConfirm: () => void;
+}) {
+  // Which already-submitted song is being changed (its slot shows a composer).
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  const busy = submitting || removingId !== null;
+  const emptySlots = Math.max(0, cap - submissions.length);
+  // Number the slots only when more than one is allowed, so a single-song
+  // league reads exactly as before ("submit a song" / "your song").
+  const numbered = cap > 1;
+  // Once every slot is filled (multi-song only), offer a confirm that returns to
+  // the league — the natural "I'm done submitting" exit.
+  const allSubmitted = numbered && submissions.length === cap;
+
+  return (
+    <>
+      {numbered && submissions.length > 0 ? (
+        <p className="mb-4 font-mono uppercase tracking-label text-[9px] text-muted">
+          your songs · {submissions.length} of {cap}
+        </p>
+      ) : null}
+
+      <ul className="space-y-4">
+        {submissions.map((s, i) =>
+          editingId === s.id ? (
+            <li key={s.id}>
+              <ComposerSlot
+                heading={numbered ? `change song ${i + 1}` : "change your song"}
+                idPrefix={`edit-${s.id}`}
+                submitting={submitting}
+                onSubmit={async (song) => {
+                  const ok = await onEdit(s.id, song);
+                  if (ok) setEditingId(null);
+                  return ok;
+                }}
+                onCancel={() => setEditingId(null)}
+              />
+            </li>
+          ) : (
+            <li key={s.id}>
+              <SubmittedSongCard
+                submission={s}
+                eyebrow={numbered ? `song ${i + 1}` : "your song"}
+                busy={busy}
+                removing={removingId === s.id}
+                onEdit={() => setEditingId(s.id)}
+                onRemove={() => void onRemove(s.id)}
+              />
+            </li>
+          ),
+        )}
+
+        {/* One empty submit slot per remaining song the cap allows. Keyed by
+            absolute slot position so a just-filled slot's composer unmounts
+            cleanly instead of being reused (and carrying its resolved song). */}
+        {Array.from({ length: emptySlots }, (_, i) => {
+          const slot = submissions.length + i;
+          return (
+            <li key={`slot-${slot}`}>
+              <ComposerSlot
+                heading={numbered ? `submit song ${slot + 1}` : "submit a song"}
+                idPrefix={`slot-${slot}`}
+                submitting={submitting}
+                onSubmit={onAdd}
+              />
+            </li>
+          );
+        })}
+      </ul>
+
+      {allSubmitted ? (
+        <div className="mt-6 border-t border-border pt-6">
+          <Button type="button" onClick={onConfirm} disabled={busy}>
+            confirm
+          </Button>
+        </div>
+      ) : null}
     </>
   );
 }
@@ -1112,16 +1300,49 @@ function ResultNoteList({ notes }: { notes: ResultNote[] }) {
   );
 }
 
+/** A player's songs gathered into one standing for the reveal (MYS-116/143):
+ *  their per-song tiles plus the per-player vote total the leaderboard ranks on. */
+type PlayerGroup = {
+  userId: string;
+  displayName: string;
+  total: number;
+  songs: ResultSubmission[];
+};
+
+/** Group a round's submissions by submitter, summing votes across each player's
+ *  songs — so a multi-song player reads as a single entrant (MYS-116). Order
+ *  follows the incoming (vote-sorted) submissions: a player first appears where
+ *  their best song does. */
+function groupByPlayer(submissions: ResultSubmission[]): PlayerGroup[] {
+  const groups = new Map<string, PlayerGroup>();
+  for (const s of submissions) {
+    const existing = groups.get(s.user_id);
+    if (existing) {
+      existing.total += s.vote_count;
+      existing.songs.push(s);
+    } else {
+      groups.set(s.user_id, {
+        userId: s.user_id,
+        displayName: s.submitter_display_name,
+        total: s.vote_count,
+        songs: [s],
+      });
+    }
+  }
+  return [...groups.values()];
+}
+
 /**
- * The winning song(s) of the round — the most votes. A tie shows every winner.
+ * The winning player(s) of the round — the most votes by per-player total, so
+ * the highlight matches the leaderboard (MYS-116). A tie shows every winner.
  * Returns [] when nobody drew a vote. Every submitter competes, vibers included
- * (MYS-112). This stays in the Sage/Ink family — no Rust, which the reveal
- * reserves for Most Noted (MYS-71).
+ * (MYS-112). Stays in the Sage/Ink family — no Rust, which the reveal reserves
+ * for Most Noted (MYS-71).
  */
-function topVotedSubmissions(submissions: ResultSubmission[]): ResultSubmission[] {
-  const top = submissions.reduce((max, s) => Math.max(max, s.vote_count), 0);
+function topPlayers(groups: PlayerGroup[]): PlayerGroup[] {
+  const top = groups.reduce((max, g) => Math.max(max, g.total), 0);
   if (top <= 0) return [];
-  return submissions.filter((s) => s.vote_count === top);
+  return groups.filter((g) => g.total === top);
 }
 
 /**
@@ -1180,9 +1401,9 @@ function ResultsSection({
   }
 
   const { submissions, leaderboard, most_noted } = results;
-  const nameFor = (s: ResultSubmission) =>
-    s.user_id === userId ? "you" : (s.submitter_display_name ?? "someone");
-  const winners = topVotedSubmissions(submissions);
+  const nameFor = (uid: string, displayName: string | null) =>
+    uid === userId ? "you" : (displayName ?? "someone");
+  const winners = topPlayers(groupByPlayer(submissions));
 
   return (
     <div className="animate-fade-in space-y-12">
@@ -1202,7 +1423,7 @@ function ResultsSection({
               <Card>
                 <div className="flex items-start justify-between gap-3">
                   <span className="font-mono uppercase tracking-label text-[9px] text-muted">
-                    {nameFor(s)}
+                    {nameFor(s.user_id, s.submitter_display_name)}
                   </span>
                   <span className="shrink-0 font-mono uppercase tracking-label text-[9px] text-sage">
                     {s.vote_count} {s.vote_count === 1 ? "vote" : "votes"}
@@ -1360,8 +1581,8 @@ function WinnersSection({
   winners,
   nameFor,
 }: {
-  winners: ResultSubmission[];
-  nameFor: (s: ResultSubmission) => string;
+  winners: PlayerGroup[];
+  nameFor: (userId: string, displayName: string | null) => string;
 }) {
   const tie = winners.length > 1;
   return (
@@ -1374,20 +1595,26 @@ function WinnersSection({
       </p>
       <ul className="mt-4 space-y-4">
         {winners.map((w) => (
-          <li key={w.submission_id}>
+          <li key={w.userId}>
             <Card>
               <div className="flex items-start justify-between gap-3">
                 <span className="font-mono uppercase tracking-label text-[9px] text-muted">
-                  {nameFor(w)}
+                  {nameFor(w.userId, w.displayName)}
                 </span>
+                {/* The per-player total — the score the leaderboard ranks on. */}
                 <span className="shrink-0 pt-1 font-mono uppercase tracking-label text-[9px] text-sage">
-                  {w.vote_count} {w.vote_count === 1 ? "vote" : "votes"}
+                  {w.total} {w.total === 1 ? "vote" : "votes"}
                 </span>
               </div>
-              <h3 className="mt-1 font-serif text-[24px] leading-tight text-ink">{w.title}</h3>
-              {w.artist ? (
-                <p className="mt-1 font-mono text-[11px] font-light text-muted">{w.artist}</p>
-              ) : null}
+              {/* A multi-song winner lists every song under their one total. */}
+              {w.songs.map((s, i) => (
+                <div key={s.submission_id} className={i === 0 ? "mt-1" : "mt-3"}>
+                  <h3 className="font-serif text-[24px] leading-tight text-ink">{s.title}</h3>
+                  {s.artist ? (
+                    <p className="mt-1 font-mono text-[11px] font-light text-muted">{s.artist}</p>
+                  ) : null}
+                </div>
+              ))}
             </Card>
           </li>
         ))}

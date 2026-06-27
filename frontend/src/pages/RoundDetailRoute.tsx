@@ -93,6 +93,7 @@ export function RoundDetailRoute() {
   const [submitting, setSubmitting] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [leagueRepeatWarning, setLeagueRepeatWarning] = useState(false);
   const [advancing, setAdvancing] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
@@ -217,9 +218,11 @@ export function RoundDetailRoute() {
     }
     setSubmitting(true);
     setActionError(null);
+    setLeagueRepeatWarning(false);
     try {
       const result = await submitSong(id, trackPayload(song));
       setMySubmissions((current) => [...current, result]);
+      if (result.league_previously_submitted) setLeagueRepeatWarning(true);
       await refreshCount();
       return true;
     } catch (err) {
@@ -237,6 +240,7 @@ export function RoundDetailRoute() {
     }
     setSubmitting(true);
     setActionError(null);
+    setLeagueRepeatWarning(false);
     try {
       const result = await editSubmission(id, submissionId, trackPayload(song));
       // Replace the edited song, and keep the stance uniform across the list
@@ -248,6 +252,7 @@ export function RoundDetailRoute() {
             : { ...s, participation_mode: result.participation_mode },
         ),
       );
+      if (result.league_previously_submitted) setLeagueRepeatWarning(true);
       return true;
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : "couldn't save the change. try again.");
@@ -431,6 +436,11 @@ export function RoundDetailRoute() {
         {actionError ? (
           <p role="alert" className="mt-6 font-mono text-[11px] text-ink">
             {actionError}
+          </p>
+        ) : null}
+        {leagueRepeatWarning ? (
+          <p className="mt-6 font-mono text-[11px] text-muted">
+            this song was submitted in a previous round — submitted anyway.
           </p>
         ) : null}
 

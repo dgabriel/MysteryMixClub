@@ -26,7 +26,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, StringConstraints
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.leagues import _load_league_as_member
@@ -34,6 +34,7 @@ from app.api.routes.rounds import _load_round
 from app.auth.deps import get_current_user
 from app.db.session import get_db
 from app.models.league_member import LeagueMember
+from app.models.round import Round
 from app.models.submission import Submission
 from app.models.user import User
 from app.services.song_links import SongLinkAssembler, get_link_assembler
@@ -73,9 +74,12 @@ class SubmissionResponse(BaseModel):
     note: str | None
     participation_mode: str
     created_at: datetime
+    # True when the ISRC was submitted in a prior round of the same league
+    # (MYS-147). The submission still succeeds; the client shows a soft notice.
+    league_previously_submitted: bool = False
 
 
-def _to_response(s: Submission) -> SubmissionResponse:
+def _to_response(s: Submission, *, league_previously_submitted: bool = False) -> SubmissionResponse:
     return SubmissionResponse(
         id=str(s.id),
         round_id=str(s.round_id),
@@ -88,6 +92,49 @@ def _to_response(s: Submission) -> SubmissionResponse:
         note=s.note,
         participation_mode=s.participation_mode,
         created_at=s.created_at,
+        league_previously_submitted=league_previously_submitted,
+    )
+
+
+async def _isrc_in_round(
+    isrc: str,
+    round_id: uuid.UUID,
+    db: AsyncSession,
+    *,
+    exclude_submission_id: uuid.UUID | None = None,
+) -> bool:
+    """True if the ISRC is already present anywhere in this round.
+
+    Pass ``exclude_submission_id`` on the edit path so the submission being
+    replaced doesn't block itself.
+    """
+    q = select(exists().where(Submission.round_id == round_id, Submission.isrc == isrc))
+    if exclude_submission_id is not None:
+        q = select(
+            exists().where(
+                Submission.round_id == round_id,
+                Submission.isrc == isrc,
+                Submission.id != exclude_submission_id,
+            )
+        )
+    return bool(await db.scalar(q))
+
+
+async def _isrc_in_prior_league_rounds(
+    isrc: str, league_id: uuid.UUID, round_id: uuid.UUID, db: AsyncSession
+) -> bool:
+    """True if the ISRC appeared in any other round of this league (MYS-147)."""
+    return bool(
+        await db.scalar(
+            select(
+                exists().where(
+                    Submission.isrc == isrc,
+                    Submission.round_id == Round.id,
+                    Round.league_id == league_id,
+                    Round.id != round_id,
+                )
+            )
+        )
     )
 
 
@@ -182,6 +229,14 @@ async def submit_song(
             detail=f"you've submitted the maximum of {league.songs_per_submission} song(s)",
         )
 
+    if await _isrc_in_round(payload.isrc, round_id, db):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="oops, someone else has great taste too — this track is already in this round",
+        )
+
+    league_repeat = await _isrc_in_prior_league_rounds(payload.isrc, round_.league_id, round_id, db)
+
     platform_links, youtube_video_id = await _assemble_track(payload, assembler, youtube)
     mode = await _resolve_mode(
         payload.participation_mode, existing, round_.league_id, current_user.id, db
@@ -196,7 +251,7 @@ async def submit_song(
     await db.flush()
     await db.commit()
     await db.refresh(submission)
-    return _to_response(submission)
+    return _to_response(submission, league_previously_submitted=league_repeat)
 
 
 @router.patch("/rounds/{round_id}/submissions/{submission_id}", response_model=SubmissionResponse)
@@ -228,6 +283,14 @@ async def edit_song(
             status_code=status.HTTP_403_FORBIDDEN, detail="that submission isn't yours"
         )
 
+    if await _isrc_in_round(payload.isrc, round_id, db, exclude_submission_id=submission_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="oops, someone else has great taste too — this track is already in this round",
+        )
+
+    league_repeat = await _isrc_in_prior_league_rounds(payload.isrc, round_.league_id, round_id, db)
+
     platform_links, youtube_video_id = await _assemble_track(payload, assembler, youtube)
     _apply_track(submission, payload, platform_links, youtube_video_id)
     # An explicit mode change applies to all the player's songs (uniform stance).
@@ -237,7 +300,7 @@ async def edit_song(
 
     await db.commit()
     await db.refresh(submission)
-    return _to_response(submission)
+    return _to_response(submission, league_previously_submitted=league_repeat)
 
 
 @router.delete(

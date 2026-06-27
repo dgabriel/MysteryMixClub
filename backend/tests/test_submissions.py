@@ -324,13 +324,18 @@ async def test_submit_multiple_up_to_cap(session_factory, db_session):
     round_id = round_.id
     async with _build_client(session_factory) as client:
         for i in range(3):
+            # Each song needs a distinct ISRC (MYS-147: round-level dup block).
             resp = await client.post(
-                _sub_url(round_id), json=_body(title=f"pick {i}"), headers=_auth(organizer.id)
+                _sub_url(round_id),
+                json=_body(isrc=f"ISRC{i:010d}", title=f"pick {i}"),
+                headers=_auth(organizer.id),
             )
             assert resp.status_code == 201, resp.text
         # The 4th exceeds the cap of 3.
         over = await client.post(
-            _sub_url(round_id), json=_body(title="too many"), headers=_auth(organizer.id)
+            _sub_url(round_id),
+            json=_body(isrc="ISRC9999999999", title="too many"),
+            headers=_auth(organizer.id),
         )
     assert over.status_code == 409, over.text
     db_session.expire_all()
@@ -410,10 +415,14 @@ async def test_delete_removes_song(session_factory, db_session):
     round_id = round_.id
     async with _build_client(session_factory) as client:
         a = await client.post(
-            _sub_url(round_id), json=_body(title="keep"), headers=_auth(organizer.id)
+            _sub_url(round_id),
+            json=_body(isrc="ISRC0000000001", title="keep"),
+            headers=_auth(organizer.id),
         )
         b = await client.post(
-            _sub_url(round_id), json=_body(title="drop"), headers=_auth(organizer.id)
+            _sub_url(round_id),
+            json=_body(isrc="ISRC0000000002", title="drop"),
+            headers=_auth(organizer.id),
         )
         resp = await client.delete(
             f"{_sub_url(round_id)}/{b.json()['id']}", headers=_auth(organizer.id)
@@ -450,10 +459,14 @@ async def test_mode_stays_uniform_across_songs(session_factory, db_session):
     round_ = await _seed_league_with_round(db_session, organizer, songs=2)
     round_id = round_.id
     async with _build_client(session_factory) as client:
-        await client.post(_sub_url(round_id), json=_body(title="one"), headers=_auth(organizer.id))
         await client.post(
             _sub_url(round_id),
-            json=_body(title="two", participation_mode="vibing"),
+            json=_body(isrc="ISRC0000000001", title="one"),
+            headers=_auth(organizer.id),
+        )
+        await client.post(
+            _sub_url(round_id),
+            json=_body(isrc="ISRC0000000002", title="two", participation_mode="vibing"),
             headers=_auth(organizer.id),
         )
         mine = await client.get(f"{_sub_url(round_id)}/mine", headers=_auth(organizer.id))
@@ -470,8 +483,16 @@ async def test_get_mine_returns_list(session_factory, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
     round_ = await _seed_league_with_round(db_session, organizer, songs=2)
     async with _build_client(session_factory) as client:
-        await client.post(_sub_url(round_.id), json=_body(title="a"), headers=_auth(organizer.id))
-        await client.post(_sub_url(round_.id), json=_body(title="b"), headers=_auth(organizer.id))
+        await client.post(
+            _sub_url(round_.id),
+            json=_body(isrc="ISRC0000000001", title="a"),
+            headers=_auth(organizer.id),
+        )
+        await client.post(
+            _sub_url(round_.id),
+            json=_body(isrc="ISRC0000000002", title="b"),
+            headers=_auth(organizer.id),
+        )
         resp = await client.get(f"{_sub_url(round_.id)}/mine", headers=_auth(organizer.id))
     assert resp.status_code == 200, resp.text
     titles = sorted(s["title"] for s in resp.json())
@@ -500,6 +521,108 @@ async def test_list_hidden_before_close_409(session_factory, db_session):
     assert resp.status_code == 409
 
 
+# --------------------------------------------------------------------------- #
+# Duplicate-ISRC rules (MYS-147)
+# --------------------------------------------------------------------------- #
+
+
+async def test_submit_blocks_duplicate_isrc_in_same_round(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    member = await _seed_user(db_session, "m@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    await _add_member(db_session, round_.league_id, member)
+    async with _build_client(session_factory) as client:
+        r1 = await client.post(_sub_url(round_.id), json=_body(), headers=_auth(organizer.id))
+        assert r1.status_code == 201, r1.text
+        # Same ISRC from a different player → hard block.
+        r2 = await client.post(_sub_url(round_.id), json=_body(), headers=_auth(member.id))
+    assert r2.status_code == 409
+    assert "great taste" in r2.json()["detail"]
+
+
+async def test_submit_blocks_self_duplicate_in_multi_song_round(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer, songs=2)
+    async with _build_client(session_factory) as client:
+        r1 = await client.post(_sub_url(round_.id), json=_body(), headers=_auth(organizer.id))
+        assert r1.status_code == 201, r1.text
+        # Same ISRC as the second submission by the same player → hard block.
+        r2 = await client.post(_sub_url(round_.id), json=_body(), headers=_auth(organizer.id))
+    assert r2.status_code == 409
+    assert "great taste" in r2.json()["detail"]
+
+
+async def test_edit_blocks_duplicate_isrc_in_same_round(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    member = await _seed_user(db_session, "m@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer, songs=2)
+    await _add_member(db_session, round_.league_id, member)
+    async with _build_client(session_factory) as client:
+        # Organizer submits song A; member submits song B.
+        await client.post(_sub_url(round_.id), json=_body(isrc="A001"), headers=_auth(organizer.id))
+        r_mem = await client.post(
+            _sub_url(round_.id), json=_body(isrc="B001"), headers=_auth(member.id)
+        )
+        mem_sid = r_mem.json()["id"]
+        # Member tries to edit their song to match the organizer's ISRC → blocked.
+        resp = await client.patch(
+            f"{_sub_url(round_.id)}/{mem_sid}",
+            json=_body(isrc="A001"),
+            headers=_auth(member.id),
+        )
+    assert resp.status_code == 409
+    assert "great taste" in resp.json()["detail"]
+
+
+async def test_edit_to_same_isrc_is_not_self_blocked(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    async with _build_client(session_factory) as client:
+        r = await client.post(_sub_url(round_.id), json=_body(), headers=_auth(organizer.id))
+        sid = r.json()["id"]
+        # Edit to the same ISRC: should succeed (self-exclusion prevents self-block).
+        resp = await client.patch(
+            f"{_sub_url(round_.id)}/{sid}", json=_body(note="updated"), headers=_auth(organizer.id)
+        )
+    assert resp.status_code == 200, resp.text
+
+
+async def test_submit_sets_league_previously_submitted_flag(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    # Seed a closed round 2 in the same league that already has this ISRC.
+    prior_round = Round(
+        league_id=round_.league_id, round_number=2, theme="last time", state="closed"
+    )
+    db_session.add(prior_round)
+    await db_session.flush()
+    db_session.add(
+        Submission(
+            round_id=prior_round.id,
+            user_id=organizer.id,
+            isrc=_body()["isrc"],
+            title="bad guy",
+            artist="Billie Eilish",
+            participation_mode="playing",
+        )
+    )
+    await db_session.commit()
+
+    async with _build_client(session_factory) as client:
+        resp = await client.post(_sub_url(round_.id), json=_body(), headers=_auth(organizer.id))
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["league_previously_submitted"] is True
+
+
+async def test_submit_no_warning_for_fresh_isrc(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    async with _build_client(session_factory) as client:
+        resp = await client.post(_sub_url(round_.id), json=_body(), headers=_auth(organizer.id))
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["league_previously_submitted"] is False
+
+
 async def test_list_visible_after_close(session_factory, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
     member = await _seed_user(db_session, "m@example.com")
@@ -510,7 +633,9 @@ async def test_list_visible_after_close(session_factory, db_session):
     async with _build_client(session_factory) as client:
         await client.post(_sub_url(round_id), json=_body(), headers=_auth(organizer.id))
         await client.post(
-            _sub_url(round_id), json=_body(title="member pick"), headers=_auth(member.id)
+            _sub_url(round_id),
+            json=_body(isrc="ISRC0000000002", title="member pick"),
+            headers=_auth(member.id),
         )
         # Close the round (membership read still allowed).
         db_round = await db_session.scalar(select(Round).where(Round.id == round_id))

@@ -89,7 +89,7 @@ export function SongSearchCard({
   heading = "find a song",
   idPrefix = "song",
 }: SongSearchCardProps = {}) {
-  const [mode, setMode] = useState<Mode>("link");
+  const [mode, setMode] = useState<Mode>("search");
 
   // link mode
   const [url, setUrl] = useState("");
@@ -190,13 +190,13 @@ export function SongSearchCard({
         <ResultView song={resolved} onReset={reset} onSubmit={onSubmit} submitting={submitting} />
       ) : (
         <>
-          {/* Mode toggle */}
+          {/* Mode toggle — search leads (the default), paste-a-link second. */}
           <div role="tablist" aria-label="search mode" className="mt-4 flex gap-6">
-            <ModeTab active={mode === "link"} onClick={() => switchMode("link")}>
-              paste a link
-            </ModeTab>
             <ModeTab active={mode === "search"} onClick={() => switchMode("search")}>
               search by title
+            </ModeTab>
+            <ModeTab active={mode === "link"} onClick={() => switchMode("link")}>
+              paste a link
             </ModeTab>
           </div>
 

@@ -299,6 +299,7 @@ describe("RoundDetailRoute", () => {
     renderRound();
     expect(await screen.findByText("0 of 5 submitted")).toBeInTheDocument();
 
+    await user.click(screen.getByRole("tab", { name: /paste a link/i }));
     await user.type(screen.getByLabelText(/paste a spotify or youtube link/i), "https://x");
     await user.click(screen.getByRole("button", { name: /^resolve$/i }));
     await user.click(await screen.findByRole("button", { name: /submit this song/i }));
@@ -343,6 +344,8 @@ describe("RoundDetailRoute", () => {
       slot?: HTMLElement,
     ) {
       const q = slot ? within(slot) : screen;
+      // Search is the default tab now; switch to paste-a-link for the link flow.
+      await user.click(q.getByRole("tab", { name: /paste a link/i }));
       await user.type(q.getByLabelText(/paste a spotify or youtube link/i), "https://x");
       await user.click(q.getByRole("button", { name: /^resolve$/i }));
       await user.click(await q.findByRole("button", { name: /submit this song/i }));

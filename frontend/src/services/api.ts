@@ -362,20 +362,6 @@ export async function getMyMembership(leagueId: string): Promise<Membership> {
   return (await res.json()) as Membership;
 }
 
-/** Set the caller's own per-league "just vibing" setting. Returns the updated
- *  membership. */
-export async function setMyVibeMode(leagueId: string, vibeMode: boolean): Promise<Membership> {
-  const res = await authenticatedRequest(`/api/v1/leagues/${leagueId}/membership`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ vibe_mode: vibeMode }),
-  });
-  if (!res.ok) {
-    throw new ApiError(res.status, await readErrorMessage(res));
-  }
-  return (await res.json()) as Membership;
-}
-
 /** Remove a member from a league (organizer only). Resolves on 204. */
 export async function removeMember(leagueId: string, userId: string): Promise<void> {
   const res = await authenticatedRequest(`/api/v1/leagues/${leagueId}/members/${userId}`, {

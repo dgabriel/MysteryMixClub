@@ -31,6 +31,7 @@ from app.api.routes.leagues import _load_league_as_member, _load_league_as_organ
 from app.auth.deps import get_current_user
 from app.config import Settings, get_settings
 from app.db.session import get_db
+from app.models.league import League
 from app.models.league_member import LeagueMember
 from app.models.note import Note
 from app.models.round import Round
@@ -152,6 +153,115 @@ async def _load_round(round_id: uuid.UUID, db: AsyncSession) -> Round:
     return round_
 
 
+async def advance_round_state(
+    round_: Round, league: League, new_state: str, db: AsyncSession
+) -> list[tuple[Round, RoundEvent]]:
+    """Apply an ALREADY-VALIDATED forward transition of ``round_`` to ``new_state``.
+
+    The caller guarantees ``new_state == _NEXT_STATE[round_.state]`` and owns any
+    higher-level guards (e.g. the "another round is already active" check for the
+    organizer's manual pending->open_submission step). This helper only performs
+    the transition and its side effects:
+
+    * entering ``open_submission`` — stamp ``submission_opened_at`` and make the
+      round the league's ``current_round``;
+    * ``closed`` — stamp ``closed_at``, then either complete the league (final
+      round) or auto-open the next pending round (stamping *its*
+      ``submission_opened_at`` + ``current_round``).
+
+    Returns the ``(round, event)`` notification tuples to dispatch (including the
+    auto-opened next round's ``submission_open``). It does NOT commit.
+    """
+    events: list[tuple[Round, RoundEvent]] = []
+    round_.state = new_state
+    if new_state == "open_submission":
+        round_.submission_opened_at = func.now()
+        league.current_round = round_.round_number
+        events.append((round_, "submission_open"))
+    elif new_state == "open_voting":
+        events.append((round_, "voting_open"))
+    elif new_state == "closed":
+        round_.closed_at = func.now()
+        events.append((round_, "round_closed"))
+        if round_.round_number >= league.total_rounds:
+            # Closing the final round completes the league.
+            league.state = "complete"
+            league.completed_at = func.now()
+            events.append((round_, "league_complete"))
+        else:
+            # Auto-open the next pending round in sequence, if any.
+            next_round = await db.scalar(
+                select(Round).where(
+                    Round.league_id == round_.league_id,
+                    Round.round_number == round_.round_number + 1,
+                    Round.state == "pending",
+                )
+            )
+            if next_round is not None:
+                next_round.state = "open_submission"
+                next_round.submission_opened_at = func.now()
+                league.current_round = next_round.round_number
+                events.append((next_round, "submission_open"))
+    return events
+
+
+async def submission_quorum_met(round_: Round, db: AsyncSession) -> bool:
+    """True iff every member active when submissions opened has at least one song
+    in the round (MYS-69 auto-advance).
+
+    Active-at-open set = league members with ``joined_at <= submission_opened_at``
+    and ``removed_at IS NULL``. Met when that set is a subset of the round's
+    distinct submitters. A NULL ``submission_opened_at`` (shouldn't happen for an
+    open round) is guarded as not met; an empty active-at-open set is treated as
+    NOT met so an empty round is never advanced.
+    """
+    if round_.submission_opened_at is None:
+        return False
+    active_ids = set(
+        await db.scalars(
+            select(LeagueMember.user_id).where(
+                LeagueMember.league_id == round_.league_id,
+                LeagueMember.joined_at <= round_.submission_opened_at,
+                LeagueMember.removed_at.is_(None),
+            )
+        )
+    )
+    if not active_ids:
+        return False
+    submitter_ids = set(
+        await db.scalars(
+            select(Submission.user_id).where(Submission.round_id == round_.id).distinct()
+        )
+    )
+    return active_ids <= submitter_ids
+
+
+async def voting_quorum_met(round_: Round, db: AsyncSession) -> bool:
+    """True iff every playing submitter in the round has cast a vote (MYS-69).
+
+    Playing submitter set = distinct submitters whose ``participation_mode`` is
+    ``playing`` (vibers are excluded — they can't vote). Met when that set is a
+    subset of the round's distinct voters. An empty playing set (everyone vibing)
+    returns True: nobody can vote, so voting can close immediately.
+    """
+    playing_ids = set(
+        await db.scalars(
+            select(Submission.user_id)
+            .where(
+                Submission.round_id == round_.id,
+                Submission.participation_mode == "playing",
+            )
+            .distinct()
+        )
+    )
+    if not playing_ids:
+        return True
+    voter_ids = set(
+        await db.scalars(select(Vote.voter_id).where(Vote.round_id == round_.id).distinct())
+    )
+    return playing_ids <= voter_ids
+
+
 @router.post("/leagues/{league_id}/rounds", status_code=201, response_model=RoundResponse)
 async def create_round(
     league_id: uuid.UUID,
@@ -198,6 +308,10 @@ async def create_round(
             else league.votes_per_player
         ),
     )
+    # A freshly created round opens for submissions immediately (the model's
+    # default state), so stamp when that window opened — auto-advance (MYS-69)
+    # scopes its quorum to the members present at this moment.
+    round_.submission_opened_at = func.now()
     db.add(round_)
     # The newly opened round becomes the league's active round. The
     # (league_id, round_number) unique constraint guards integrity if two
@@ -288,7 +402,9 @@ async def update_round(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"cannot move round from {round_.state} to {new_state}",
             )
-        # Opening a pending round: only one round may be active per league.
+        # Opening a pending round: only one round may be active per league. This
+        # guard is the organizer's manual step only; auto-advance never makes the
+        # pending->open_submission move, so it lives here, not in the helper.
         if new_state == "open_submission":
             active = await db.scalar(
                 select(Round)
@@ -304,33 +420,7 @@ async def update_round(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="another round is already active",
                 )
-            league.current_round = round_.round_number
-        round_.state = new_state
-        if new_state == "open_submission":
-            events.append((round_, "submission_open"))
-        elif new_state == "open_voting":
-            events.append((round_, "voting_open"))
-        elif new_state == "closed":
-            round_.closed_at = func.now()
-            events.append((round_, "round_closed"))
-            if round_.round_number >= league.total_rounds:
-                # Closing the final round completes the league.
-                league.state = "complete"
-                league.completed_at = func.now()
-                events.append((round_, "league_complete"))
-            else:
-                # Auto-open the next pending round in sequence, if any.
-                next_round = await db.scalar(
-                    select(Round).where(
-                        Round.league_id == round_.league_id,
-                        Round.round_number == round_.round_number + 1,
-                        Round.state == "pending",
-                    )
-                )
-                if next_round is not None:
-                    next_round.state = "open_submission"
-                    league.current_round = next_round.round_number
-                    events.append((next_round, "submission_open"))
+        events = await advance_round_state(round_, league, new_state, db)
 
     # Build + schedule notifications before commit, while the ORM objects are
     # loaded (avoids post-commit lazy-loads in async — the expire_on_commit

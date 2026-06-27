@@ -538,6 +538,9 @@ export type SubmissionResult = {
   note: string | null;
   participation_mode: string;
   created_at: string;
+  /** True when this ISRC was used in a prior round of the same league (MYS-147).
+   *  The submission still succeeds; the UI shows a soft "used before" notice. */
+  league_previously_submitted: boolean;
 };
 
 /** One entry in a round's voting playlist. Anonymous for everyone but the

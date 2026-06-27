@@ -1,10 +1,12 @@
-"""Tests for MYS-51: song submission endpoints.
+"""Tests for MYS-51 + MYS-116: song submission endpoints.
 
 The link assembler is overridden with a fake (no live HTTP). Covers
 auth/membership gates, the round-state gate, the happy path + platform_links
-persistence, degraded-links behaviour, replace-in-place (one submission per
-user per round), participation-mode defaulting, and the read endpoints (mine,
-and the reveal-after-close list gate).
+persistence, degraded-links behaviour, the per-league songs_per_submission cap
+(add up to the cap, then 409), edit (PATCH) + delete of individual songs,
+uniform per-player vibe stance across a player's songs, participation-mode
+defaulting, and the read endpoints (mine as a list, and the reveal-after-close
+list gate).
 """
 
 import uuid
@@ -79,11 +81,23 @@ async def _seed_user(db_session, email: str) -> User:
 
 
 async def _seed_league_with_round(
-    db_session, organizer: User, *, state: str = "open_submission", vibe: bool = False
+    db_session,
+    organizer: User,
+    *,
+    state: str = "open_submission",
+    vibe: bool = False,
+    songs: int = 1,
 ) -> Round:
     # `vibe` seeds the organizer's per-league vibe_mode, so their submission
-    # defaults to that mode (MYS-112).
-    league = League(name="L", organizer_id=organizer.id, total_rounds=3, votes_per_player=3)
+    # defaults to that mode (MYS-112). `songs` is the per-league songs_per_submission
+    # cap (MYS-116; default 1 = classic one-song behaviour).
+    league = League(
+        name="L",
+        organizer_id=organizer.id,
+        total_rounds=3,
+        votes_per_player=3,
+        songs_per_submission=songs,
+    )
     db_session.add(league)
     await db_session.flush()
     db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id, vibe_mode=vibe))
@@ -228,18 +242,20 @@ async def test_submit_succeeds_when_youtube_resolution_yields_none(session_facto
     assert stored.youtube_video_id is None
 
 
-async def test_resubmit_updates_youtube_video_id(session_factory, db_session):
+async def test_edit_updates_youtube_video_id(session_factory, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
     round_ = await _seed_league_with_round(db_session, organizer)
     round_id = round_.id
     async with _build_client(session_factory, youtube=_FakeYouTube(video_id="FIRST")) as client:
         first = await client.post(_sub_url(round_id), json=_body(), headers=_auth(organizer.id))
         assert first.status_code == 201
+        sid = first.json()["id"]
     async with _build_client(session_factory, youtube=_FakeYouTube(video_id="SECOND")) as client:
-        second = await client.post(
-            _sub_url(round_id), json=_body(title="new pick"), headers=_auth(organizer.id)
+        edited = await client.patch(
+            f"{_sub_url(round_id)}/{sid}", json=_body(title="new pick"), headers=_auth(organizer.id)
         )
-    assert second.status_code == 200, second.text
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["title"] == "new pick"
     db_session.expire_all()
     stored = await db_session.scalar(select(Submission).where(Submission.round_id == round_id))
     assert stored.youtube_video_id == "SECOND"
@@ -281,29 +297,168 @@ async def test_submit_succeeds_with_degraded_links(session_factory, db_session):
     assert stored.platform_links == {"deezer": "https://www.deezer.com/search/x"}
 
 
-async def test_resubmit_replaces_in_place(session_factory, db_session):
+# --------------------------------------------------------------------------- #
+# POST — songs_per_submission cap (MYS-116)
+# --------------------------------------------------------------------------- #
+
+
+async def test_submit_at_cap_409(session_factory, db_session):
+    # Default cap is 1: a second song from the same player is rejected.
     organizer = await _seed_user(db_session, "o@example.com")
     round_ = await _seed_league_with_round(db_session, organizer)
-    round_id = round_.id
     async with _build_client(session_factory) as client:
         first = await client.post(
-            _sub_url(round_id), json=_body(title="first pick"), headers=_auth(organizer.id)
+            _sub_url(round_.id), json=_body(title="first"), headers=_auth(organizer.id)
         )
         assert first.status_code == 201
         second = await client.post(
-            _sub_url(round_id),
-            json=_body(title="changed my mind", isrc="GBXYZ9999999"),
-            headers=_auth(organizer.id),
+            _sub_url(round_.id), json=_body(title="second"), headers=_auth(organizer.id)
         )
-    assert second.status_code == 200, second.text
-    assert second.json()["title"] == "changed my mind"
-    assert second.json()["isrc"] == "GBXYZ9999999"
-    # Exactly one row for this (round, user).
+    assert second.status_code == 409, second.text
+    assert "maximum" in second.json()["detail"]
+
+
+async def test_submit_multiple_up_to_cap(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer, songs=3)
+    round_id = round_.id
+    async with _build_client(session_factory) as client:
+        for i in range(3):
+            resp = await client.post(
+                _sub_url(round_id), json=_body(title=f"pick {i}"), headers=_auth(organizer.id)
+            )
+            assert resp.status_code == 201, resp.text
+        # The 4th exceeds the cap of 3.
+        over = await client.post(
+            _sub_url(round_id), json=_body(title="too many"), headers=_auth(organizer.id)
+        )
+    assert over.status_code == 409, over.text
     db_session.expire_all()
     count = await db_session.scalar(
         select(func.count()).select_from(Submission).where(Submission.round_id == round_id)
     )
-    assert count == 1
+    assert count == 3
+
+
+# --------------------------------------------------------------------------- #
+# PATCH / DELETE — manage individual songs (MYS-116)
+# --------------------------------------------------------------------------- #
+
+
+async def test_edit_replaces_track(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    async with _build_client(session_factory) as client:
+        first = await client.post(
+            _sub_url(round_.id), json=_body(title="first pick"), headers=_auth(organizer.id)
+        )
+        sid = first.json()["id"]
+        edited = await client.patch(
+            f"{_sub_url(round_.id)}/{sid}",
+            json=_body(title="changed my mind", isrc="GBXYZ9999999"),
+            headers=_auth(organizer.id),
+        )
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["title"] == "changed my mind"
+    assert edited.json()["isrc"] == "GBXYZ9999999"
+    assert edited.json()["id"] == sid
+
+
+async def test_edit_not_your_submission_403(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    member = await _seed_user(db_session, "m@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    await _add_member(db_session, round_.league_id, member)
+    async with _build_client(session_factory) as client:
+        mine = await client.post(_sub_url(round_.id), json=_body(), headers=_auth(organizer.id))
+        sid = mine.json()["id"]
+        resp = await client.patch(
+            f"{_sub_url(round_.id)}/{sid}", json=_body(title="hijack"), headers=_auth(member.id)
+        )
+    assert resp.status_code == 403
+
+
+async def test_edit_unknown_submission_404(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    async with _build_client(session_factory) as client:
+        resp = await client.patch(
+            f"{_sub_url(round_.id)}/{uuid.uuid4()}", json=_body(), headers=_auth(organizer.id)
+        )
+    assert resp.status_code == 404
+
+
+async def test_edit_when_not_open_409(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    round_id = round_.id
+    async with _build_client(session_factory) as client:
+        first = await client.post(_sub_url(round_id), json=_body(), headers=_auth(organizer.id))
+        sid = first.json()["id"]
+        db_round = await db_session.scalar(select(Round).where(Round.id == round_id))
+        db_round.state = "open_voting"
+        await db_session.commit()
+        resp = await client.patch(
+            f"{_sub_url(round_id)}/{sid}", json=_body(title="late"), headers=_auth(organizer.id)
+        )
+    assert resp.status_code == 409
+
+
+async def test_delete_removes_song(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer, songs=2)
+    round_id = round_.id
+    async with _build_client(session_factory) as client:
+        a = await client.post(
+            _sub_url(round_id), json=_body(title="keep"), headers=_auth(organizer.id)
+        )
+        b = await client.post(
+            _sub_url(round_id), json=_body(title="drop"), headers=_auth(organizer.id)
+        )
+        resp = await client.delete(
+            f"{_sub_url(round_id)}/{b.json()['id']}", headers=_auth(organizer.id)
+        )
+        assert resp.status_code == 204, resp.text
+        mine = await client.get(f"{_sub_url(round_id)}/mine", headers=_auth(organizer.id))
+    titles = [s["title"] for s in mine.json()]
+    assert titles == ["keep"]
+    assert a.json()["id"] != b.json()["id"]
+
+
+async def test_delete_not_your_submission_403(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    member = await _seed_user(db_session, "m@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    await _add_member(db_session, round_.league_id, member)
+    async with _build_client(session_factory) as client:
+        mine = await client.post(_sub_url(round_.id), json=_body(), headers=_auth(organizer.id))
+        resp = await client.delete(
+            f"{_sub_url(round_.id)}/{mine.json()['id']}", headers=_auth(member.id)
+        )
+    assert resp.status_code == 403
+
+
+# --------------------------------------------------------------------------- #
+# Uniform per-player vibe stance across a player's songs (MYS-116)
+# --------------------------------------------------------------------------- #
+
+
+async def test_mode_stays_uniform_across_songs(session_factory, db_session):
+    # Adding a second song as "vibing" flips the player's whole stance for the
+    # round — both songs end up vibing.
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer, songs=2)
+    round_id = round_.id
+    async with _build_client(session_factory) as client:
+        await client.post(_sub_url(round_id), json=_body(title="one"), headers=_auth(organizer.id))
+        await client.post(
+            _sub_url(round_id),
+            json=_body(title="two", participation_mode="vibing"),
+            headers=_auth(organizer.id),
+        )
+        mine = await client.get(f"{_sub_url(round_id)}/mine", headers=_auth(organizer.id))
+    modes = {s["participation_mode"] for s in mine.json()}
+    assert modes == {"vibing"}
 
 
 # --------------------------------------------------------------------------- #
@@ -311,22 +466,25 @@ async def test_resubmit_replaces_in_place(session_factory, db_session):
 # --------------------------------------------------------------------------- #
 
 
-async def test_get_mine_returns_submission(session_factory, db_session):
+async def test_get_mine_returns_list(session_factory, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_league_with_round(db_session, organizer)
+    round_ = await _seed_league_with_round(db_session, organizer, songs=2)
     async with _build_client(session_factory) as client:
-        await client.post(_sub_url(round_.id), json=_body(), headers=_auth(organizer.id))
+        await client.post(_sub_url(round_.id), json=_body(title="a"), headers=_auth(organizer.id))
+        await client.post(_sub_url(round_.id), json=_body(title="b"), headers=_auth(organizer.id))
         resp = await client.get(f"{_sub_url(round_.id)}/mine", headers=_auth(organizer.id))
     assert resp.status_code == 200, resp.text
-    assert resp.json()["title"] == "bad guy"
+    titles = sorted(s["title"] for s in resp.json())
+    assert titles == ["a", "b"]
 
 
-async def test_get_mine_404_when_none(session_factory, db_session):
+async def test_get_mine_empty_list_when_none(session_factory, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
     round_ = await _seed_league_with_round(db_session, organizer)
     async with _build_client(session_factory) as client:
         resp = await client.get(f"{_sub_url(round_.id)}/mine", headers=_auth(organizer.id))
-    assert resp.status_code == 404
+    assert resp.status_code == 200
+    assert resp.json() == []
 
 
 # --------------------------------------------------------------------------- #

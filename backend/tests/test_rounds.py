@@ -406,3 +406,22 @@ async def test_list_rounds_includes_per_round_submission_counts(client, db_sessi
     by_number = {r["round_number"]: r for r in resp.json()}
     assert by_number[1]["submission_count"] == 2
     assert by_number[1]["member_count"] == 2
+
+
+async def test_submission_count_is_distinct_submitters(client, db_session):
+    # A player with several songs (MYS-116) still counts once: submission_count
+    # is distinct people, not rows.
+    organizer = await _seed_user(db_session, "org@example.com")
+    member = await _seed_user(db_session, "member@example.com")
+    league = await _seed_league(db_session, organizer)
+    await _add_member(db_session, league.id, member)
+
+    rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
+    # Organizer submits two songs; member submits one — two distinct submitters.
+    await _add_submission(db_session, uuid.UUID(rid), organizer)
+    await _add_submission(db_session, uuid.UUID(rid), organizer)
+    await _add_submission(db_session, uuid.UUID(rid), member)
+
+    detail = await client.get(f"/api/v1/rounds/{rid}", headers=_auth(member.id))
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["submission_count"] == 2  # 3 songs, 2 people

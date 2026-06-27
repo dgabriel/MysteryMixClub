@@ -120,9 +120,13 @@ def _to_response(r: Round, submission_count: int, member_count: int) -> RoundRes
 
 
 async def _submission_count(round_id: uuid.UUID, db: AsyncSession) -> int:
+    # Distinct players who have submitted (a player may hold several songs now —
+    # MYS-116), so "X of Y submitted" counts people, not songs.
     return (
         await db.scalar(
-            select(func.count()).select_from(Submission).where(Submission.round_id == round_id)
+            select(func.count(func.distinct(Submission.user_id))).where(
+                Submission.round_id == round_id
+            )
         )
     ) or 0
 
@@ -219,8 +223,9 @@ async def list_rounds(
     )
     member_count = await _member_count(league_id, db)
     # One grouped count for the whole slate rather than a query per round.
+    # Distinct submitters (people, not songs — MYS-116).
     count_rows = await db.execute(
-        select(Submission.round_id, func.count())
+        select(Submission.round_id, func.count(func.distinct(Submission.user_id)))
         .where(Submission.round_id.in_([r.id for r in rounds]))
         .group_by(Submission.round_id)
     )
@@ -666,19 +671,25 @@ async def get_round_results(
     # Deterministic order: most-voted first, then title A->Z as a stable tiebreak.
     submissions.sort(key=lambda s: (-s.vote_count, s.title))
 
-    # Leaderboard: every submitter competes, including vibers (MYS-112). Ranked by
-    # votes received desc, display_name asc as the tiebreak. Rank is 1-based
-    # position (ties take sequential positions, not shared rank). Zero-vote
-    # submitters still appear, ranked last.
-    ranked = sorted(submissions, key=lambda s: (-s.vote_count, s.submitter_display_name))
+    # Leaderboard: per-player totals, summing a player's votes across all their
+    # songs (MYS-116), so a multi-song player is one standing. Every submitter
+    # competes, including vibers (MYS-112). Ranked by total votes desc,
+    # display_name asc as the tiebreak; rank is 1-based position (ties take
+    # sequential positions). Zero-vote players still appear, ranked last.
+    player_totals: dict[str, int] = {}
+    player_names: dict[str, str] = {}
+    for s in submissions:
+        player_totals[s.user_id] = player_totals.get(s.user_id, 0) + s.vote_count
+        player_names[s.user_id] = s.submitter_display_name
+    ranked_players = sorted(player_totals.items(), key=lambda kv: (-kv[1], player_names[kv[0]]))
     leaderboard = [
         LeaderboardEntry(
-            user_id=s.user_id,
-            display_name=s.submitter_display_name,
-            vote_count=s.vote_count,
+            user_id=uid,
+            display_name=player_names[uid],
+            vote_count=total,
             rank=i + 1,
         )
-        for i, s in enumerate(ranked)
+        for i, (uid, total) in enumerate(ranked_players)
     ]
 
     most_noted = await compute_most_noted(round_id, db)
@@ -722,24 +733,26 @@ async def get_round_results(
         )
 
     # Vibing viewer (MYS-134): winner(s) + Most Noted + the full tracklist, but no
-    # leaderboard and no vote counts. winners are the top-voted song(s) (a top of
-    # zero means nobody was voted for — no winner). picks is the same song set as
-    # the player reveal, stripped of scores and ordered by title (no vote signal).
-    top_votes = max((s.vote_count for s in submissions), default=0)
-    winners = (
-        [
-            WinnerReveal(
-                submission_id=s.submission_id,
-                title=s.title,
-                artist=s.artist,
-                submitter_display_name=s.submitter_display_name,
-            )
-            for s in submissions
-            if s.vote_count == top_votes
-        ]
-        if top_votes > 0
-        else []
+    # leaderboard and no vote counts. The winner is the top-scoring *player* by
+    # total votes (MYS-116), matching the leaderboard; we surface that player's
+    # song(s). A top of zero means nobody was voted for — no winner. picks is the
+    # same song set as the player reveal, stripped of scores and ordered by title.
+    top_total = max(player_totals.values(), default=0)
+    winning_user_ids = (
+        {uid for uid, total in player_totals.items() if total == top_total}
+        if top_total > 0
+        else set()
     )
+    winners = [
+        WinnerReveal(
+            submission_id=s.submission_id,
+            title=s.title,
+            artist=s.artist,
+            submitter_display_name=s.submitter_display_name,
+        )
+        for s in submissions
+        if s.user_id in winning_user_ids
+    ]
     picks = [
         RevealPick(
             submission_id=s.submission_id,

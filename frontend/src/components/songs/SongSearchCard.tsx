@@ -71,8 +71,10 @@ function Loader({ label }: { label: string }) {
 
 type SongSearchCardProps = {
   /** When provided, the resolved result card shows a submit affordance (e.g.
-   *  "submit to this round") that calls back with the resolved song. */
-  onSubmit?: (song: ResolvedSong) => void;
+   *  "submit to this round") that calls back with the resolved song. Return
+   *  false (or a Promise resolving to false) to signal failure — the card will
+   *  reset to empty search so the user can try a different song. */
+  onSubmit?: (song: ResolvedSong) => Promise<boolean> | boolean | void;
   submitting?: boolean;
   eyebrow?: string;
   heading?: string;
@@ -196,7 +198,14 @@ export function SongSearchCard({
         <ResultView
           song={resolved}
           onReset={reset}
-          onSubmit={onSubmit}
+          onSubmit={
+            onSubmit
+              ? async (song) => {
+                  const ok = await Promise.resolve(onSubmit(song));
+                  if (ok === false) reset();
+                }
+              : undefined
+          }
           submitting={submitting}
           noteText={noteText}
           onNoteChange={onNoteChange}

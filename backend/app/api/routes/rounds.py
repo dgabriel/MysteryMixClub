@@ -533,6 +533,9 @@ class PlaylistEntry(BaseModel):
     # everyone else — this only lets the UI mark/lock the viewer's own pick
     # (they can't vote for it) without revealing any other submitter.
     is_own: bool
+    # The submitter's optional context note. Shown to all voters; never includes
+    # the submitter's identity (anonymity is preserved through the voting phase).
+    submitter_note: str | None
 
 
 class PlaylistResponse(BaseModel):
@@ -617,6 +620,7 @@ async def get_round_playlist(
                 platforms=platforms,
                 preferred_url=_preferred_url(platforms, current_user.preferred_service),
                 is_own=s.user_id == current_user.id,
+                submitter_note=s.note,
             )
         )
         # YouTube ids are resolved at submit time. Lazily backfill any submission

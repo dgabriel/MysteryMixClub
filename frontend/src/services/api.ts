@@ -555,6 +555,7 @@ export type PlaylistEntry = {
   platforms: Partial<Record<PlatformKey, string>>;
   preferred_url: string | null;
   is_own: boolean;
+  submitter_note: string | null;
 };
 
 /** A round's voting playlist (GET /rounds/:id/playlist). `youtube_playlist_url`
@@ -682,6 +683,27 @@ export async function editSubmission(
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
+    },
+  );
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as SubmissionResult;
+}
+
+/** Update only the submitter note on an existing submission without replacing the
+ *  track. The round must still be open_submission. Pass null to clear the note. */
+export async function updateSubmissionNote(
+  roundId: string,
+  submissionId: string,
+  note: string | null,
+): Promise<SubmissionResult> {
+  const res = await authenticatedRequest(
+    `/api/v1/rounds/${roundId}/submissions/${submissionId}/note`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ note }),
     },
   );
   if (!res.ok) {

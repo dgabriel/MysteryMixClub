@@ -826,6 +826,8 @@ function ComposerSlot({
         heading={heading}
         idPrefix={idPrefix}
         submitting={submitting}
+        noteText={noteText}
+        onNoteChange={setNoteText}
         onSubmit={async (song) => {
           const note = noteText.trim() || null;
           const ok = await Promise.resolve(onSubmit(song, note));
@@ -833,20 +835,6 @@ function ComposerSlot({
           return ok ?? true;
         }}
       />
-      <div className="mt-4">
-        <label className="block font-mono uppercase tracking-label text-[9px] text-muted">
-          note <span className="lowercase">(optional)</span>
-        </label>
-        <textarea
-          maxLength={280}
-          placeholder="say something about this pick…"
-          rows={2}
-          value={noteText}
-          onChange={(e) => setNoteText(e.target.value)}
-          disabled={submitting}
-          className="mt-1 w-full resize-none border-b border-ink bg-transparent font-mono text-[13px] font-light text-ink placeholder:text-muted focus:outline-none disabled:opacity-50"
-        />
-      </div>
       {onCancel ? (
         <div className="mt-4">
           <Button variant="ghost" type="button" onClick={onCancel} disabled={submitting}>

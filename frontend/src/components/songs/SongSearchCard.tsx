@@ -80,6 +80,10 @@ type SongSearchCardProps = {
    *  without colliding ids (MYS-142 multi-slot submit). Defaults to "song" for
    *  the single-instance usages. */
   idPrefix?: string;
+  /** When provided, a note textarea appears inside the resolved-song card before
+   *  the submit button. Only used in submission contexts. */
+  noteText?: string;
+  onNoteChange?: (text: string) => void;
 };
 
 export function SongSearchCard({
@@ -88,6 +92,8 @@ export function SongSearchCard({
   eyebrow = "song search",
   heading = "find a song",
   idPrefix = "song",
+  noteText,
+  onNoteChange,
 }: SongSearchCardProps = {}) {
   const [mode, setMode] = useState<Mode>("search");
 
@@ -187,7 +193,14 @@ export function SongSearchCard({
       <h2 className="mt-1 font-serif text-[20px] leading-tight text-ink">{heading}</h2>
 
       {resolved ? (
-        <ResultView song={resolved} onReset={reset} onSubmit={onSubmit} submitting={submitting} />
+        <ResultView
+          song={resolved}
+          onReset={reset}
+          onSubmit={onSubmit}
+          submitting={submitting}
+          noteText={noteText}
+          onNoteChange={onNoteChange}
+        />
       ) : (
         <>
           {/* Mode toggle — search leads (the default), paste-a-link second. */}
@@ -330,11 +343,15 @@ function ResultView({
   onReset,
   onSubmit,
   submitting,
+  noteText,
+  onNoteChange,
 }: {
   song: ResolvedSong;
   onReset: () => void;
   onSubmit?: (song: ResolvedSong) => void;
   submitting?: boolean;
+  noteText?: string;
+  onNoteChange?: (text: string) => void;
 }) {
   const available = PLATFORMS.filter((p) => song.platforms[p.key]);
   return (
@@ -383,6 +400,23 @@ function ResultView({
           no streaming links available for this song
         </p>
       )}
+
+      {onNoteChange !== undefined ? (
+        <div className="mt-5">
+          <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
+            note <span className="lowercase">(optional)</span>
+          </span>
+          <textarea
+            maxLength={280}
+            placeholder="say something about this pick…"
+            rows={2}
+            value={noteText ?? ""}
+            onChange={(e) => onNoteChange(e.target.value)}
+            disabled={submitting}
+            className="mt-1 w-full resize-none border-b border-ink bg-transparent font-mono text-[13px] font-light text-ink placeholder:text-muted focus:outline-none disabled:opacity-50"
+          />
+        </div>
+      ) : null}
 
       <div className="mt-6 flex items-center gap-5">
         {onSubmit ? (

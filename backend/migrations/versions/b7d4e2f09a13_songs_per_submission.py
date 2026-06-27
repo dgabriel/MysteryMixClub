@@ -42,6 +42,22 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """Downgrade schema."""
+    """Downgrade schema.
+
+    Lossy by necessity: the multi-song model can't survive a return to the
+    single-song schema. Before re-creating the (round_id, user_id) unique
+    constraint we must drop the extra submissions a player holds in a round,
+    keeping exactly one per (round_id, user_id) — the earliest by created_at,
+    tie-broken by id. Those extra rows are unrecoverable after this runs.
+    """
+    op.execute(
+        """
+        DELETE FROM submissions s
+        USING submissions keep
+        WHERE s.round_id = keep.round_id
+          AND s.user_id = keep.user_id
+          AND (s.created_at, s.id) > (keep.created_at, keep.id)
+        """
+    )
     op.create_unique_constraint("uq_submissions_round_user", "submissions", ["round_id", "user_id"])
     op.drop_column("leagues", "songs_per_submission")

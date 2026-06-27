@@ -707,8 +707,9 @@ function ComposerSlot({
  * league allows (`cap`): a filled slot is a song card with change/remove, an
  * empty slot is a submit composer — so a 2-song league shows two submit cards up
  * front, no "add another" button. At cap 1 it's the classic single submit/edit.
- * The "just vibes" stance is uniform across a player's songs, set once via the
- * toggle at the top (it persists across already-submitted songs).
+ * The "just vibes" stance is a league-level setting chosen by the organizer at
+ * league creation; there is no per-player toggle here, so the stance is uniform
+ * across all of a player's songs.
  *
  * No Rust here — the round screen reserves its single Rust signal for the
  * voting/reveal states.

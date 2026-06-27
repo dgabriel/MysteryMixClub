@@ -1,5 +1,5 @@
 import { type FormEvent, useCallback, useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useBlocker, useNavigate, useParams } from "react-router-dom";
 import {
   ApiError,
   addNote,
@@ -94,6 +94,23 @@ export function RoundDetailRoute() {
   const [editError, setEditError] = useState<string | null>(null);
   const [casting, setCasting] = useState(false);
   const [votesSaved, setVotesSaved] = useState(false);
+
+  const submissionCap = league?.songs_per_submission ?? 1;
+  const partiallySubmitted =
+    round?.state === "open_submission" &&
+    mySubmissions.length > 0 &&
+    mySubmissions.length < submissionCap;
+
+  const blocker = useBlocker(partiallySubmitted);
+
+  useEffect(() => {
+    if (!partiallySubmitted) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [partiallySubmitted]);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -332,9 +349,27 @@ export function RoundDetailRoute() {
   }
 
   return (
-    // Content-only: the shared TopNav is rendered once by AuthedLayout. The
-    // round's league is reached via a named link above the title (not a generic
-    // "← league" in the nav), so members always see which league they're in.
+    <>
+    {blocker.state === "blocked" ? (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 px-4">
+        <div className="w-full max-w-sm border border-border bg-cream p-6">
+          <p className="font-mono text-[13px] font-light text-ink">
+            you&apos;ve submitted {mySubmissions.length} of {submissionCap} songs. leave anyway?
+          </p>
+          <div className="mt-6 flex gap-4">
+            <Button type="button" onClick={() => blocker.proceed()}>
+              leave
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => blocker.reset()}>
+              stay
+            </Button>
+          </div>
+        </div>
+      </div>
+    ) : null}
+    {/* Content-only: the shared TopNav is rendered once by AuthedLayout. The
+        round's league is reached via a named link above the title (not a generic
+        "← league" in the nav), so members always see which league they're in. */}
     <main className="mx-auto w-full max-w-lg px-4 pb-16 sm:px-8">
       {league ? (
         <button
@@ -442,6 +477,7 @@ export function RoundDetailRoute() {
           )}
         </section>
     </main>
+    </>
   );
 }
 
@@ -737,7 +773,9 @@ function SubmissionManager({
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const busy = submitting || removingId !== null;
-  const emptySlots = Math.max(0, cap - submissions.length);
+  // Show only the next empty slot — revealing all remaining slots simultaneously
+  // lets users submit out of order, which confuses the positional slot labels.
+  const emptySlots = submissions.length < cap ? 1 : 0;
   // Number the slots only when more than one is allowed, so a single-song
   // league reads exactly as before ("submit a song" / "your song").
   const numbered = cap > 1;

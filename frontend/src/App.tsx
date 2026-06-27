@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, RouterProvider, createBrowserRouter } from "react-router-dom";
 import { AuthProvider } from "./hooks/useAuth";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { LoginRoute } from "./pages/LoginRoute";
@@ -37,47 +37,50 @@ import { AuthedLayout } from "./components/AuthedLayout";
  *                    Both self-guard the unauthenticated case via the stored
  *                    pendingInvitePath.
  *   *              → redirect to /login
+ *
+ * createBrowserRouter (data router) is required for useBlocker support.
  */
+const router = createBrowserRouter([
+  { path: "/", element: <Navigate to="/login" replace /> },
+  { path: "/login", element: <LoginRoute /> },
+  { path: "/auth/verify", element: <VerifyRoute /> },
+  { path: "/onboarding", element: <OnboardingRoute /> },
+
+  // Authed screens share the TopNav via AuthedLayout (mounted once).
+  {
+    element: (
+      <ProtectedRoute>
+        <AuthedLayout />
+      </ProtectedRoute>
+    ),
+    children: [
+      { path: "/home", element: <HomeRoute /> },
+      { path: "/leagues/:id", element: <LeagueHomeRoute /> },
+      { path: "/rounds/:id", element: <RoundDetailRoute /> },
+      { path: "/profile", element: <ProfileRoute /> },
+      { path: "/admin", element: <AdminRoute /> },
+    ],
+  },
+
+  // Authed but outside the nav shell — a focused create form.
+  {
+    path: "/leagues/new",
+    element: (
+      <ProtectedRoute>
+        <CreateLeagueRoute />
+      </ProtectedRoute>
+    ),
+  },
+
+  { path: "/invite/:token", element: <JoinLeagueRoute /> },
+  { path: "/join/:token", element: <JoinLeagueRoute /> },
+  { path: "*", element: <Navigate to="/login" replace /> },
+]);
+
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Navigate to="/login" replace />} />
-          <Route path="/login" element={<LoginRoute />} />
-          <Route path="/auth/verify" element={<VerifyRoute />} />
-          <Route path="/onboarding" element={<OnboardingRoute />} />
-
-          {/* Authed screens share the TopNav via AuthedLayout (mounted once). */}
-          <Route
-            element={
-              <ProtectedRoute>
-                <AuthedLayout />
-              </ProtectedRoute>
-            }
-          >
-            <Route path="/home" element={<HomeRoute />} />
-            <Route path="/leagues/:id" element={<LeagueHomeRoute />} />
-            <Route path="/rounds/:id" element={<RoundDetailRoute />} />
-            <Route path="/profile" element={<ProfileRoute />} />
-            <Route path="/admin" element={<AdminRoute />} />
-          </Route>
-
-          {/* Authed but outside the nav shell — a focused create form. */}
-          <Route
-            path="/leagues/new"
-            element={
-              <ProtectedRoute>
-                <CreateLeagueRoute />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route path="/invite/:token" element={<JoinLeagueRoute />} />
-          <Route path="/join/:token" element={<JoinLeagueRoute />} />
-          <Route path="*" element={<Navigate to="/login" replace />} />
-        </Routes>
-      </BrowserRouter>
+      <RouterProvider router={router} />
     </AuthProvider>
   );
 }

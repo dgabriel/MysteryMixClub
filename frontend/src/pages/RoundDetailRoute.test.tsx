@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { RoundDetailRoute } from "./RoundDetailRoute";
 import {
   addNote,
@@ -172,14 +172,14 @@ function setAuth(userId: string) {
 }
 
 function renderRound() {
-  return render(
-    <MemoryRouter initialEntries={["/rounds/r1"]}>
-      <Routes>
-        <Route path="/rounds/:id" element={<RoundDetailRoute />} />
-        <Route path="/leagues/:id" element={<div>LEAGUE PAGE</div>} />
-      </Routes>
-    </MemoryRouter>,
+  const router = createMemoryRouter(
+    [
+      { path: "/rounds/:id", element: <RoundDetailRoute /> },
+      { path: "/leagues/:id", element: <div>LEAGUE PAGE</div> },
+    ],
+    { initialEntries: ["/rounds/r1"] },
   );
+  return render(<RouterProvider router={router} />);
 }
 
 describe("RoundDetailRoute", () => {
@@ -365,27 +365,29 @@ describe("RoundDetailRoute", () => {
       expect(screen.queryByText(/your songs ·/i)).not.toBeInTheDocument();
     });
 
-    it("cap > 1: shows an empty submit slot per remaining song, with an N-of-M header", async () => {
+    it("cap > 1: shows only the next empty submit slot, with an N-of-M header", async () => {
       mockGetLeague.mockResolvedValue({ ...league(), songs_per_submission: 3 });
       mockGetMine.mockResolvedValue([mine({ id: "s1", title: "Song One" })]);
       renderRound();
 
       expect(await screen.findByText("Song One")).toBeInTheDocument();
       expect(screen.getByText("your songs · 1 of 3")).toBeInTheDocument();
-      // one filled card + two empty submit slots up front — no "add another" button
-      expect(screen.getAllByRole("heading", { name: /submit song \d/i })).toHaveLength(2);
+      // only the next slot is shown — not all remaining slots at once
+      expect(screen.getAllByRole("heading", { name: /submit song \d/i })).toHaveLength(1);
+      expect(screen.getByRole("heading", { name: /submit song 2/i })).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /add another song/i })).not.toBeInTheDocument();
     });
 
-    it("cap > 1 with no songs: shows one empty submit slot per song the cap allows", async () => {
+    it("cap > 1 with no songs: shows only the first empty submit slot", async () => {
       mockGetLeague.mockResolvedValue({ ...league(), songs_per_submission: 2 });
       mockGetMine.mockResolvedValue([]);
       renderRound();
 
-      // two submit cards up front for a 2-song league
+      // only song 1 slot shown — song 2 appears only after song 1 is submitted
       await waitFor(() =>
-        expect(screen.getAllByRole("heading", { name: /submit song \d/i })).toHaveLength(2),
+        expect(screen.getByRole("heading", { name: /submit song 1/i })).toBeInTheDocument(),
       );
+      expect(screen.queryByRole("heading", { name: /submit song 2/i })).not.toBeInTheDocument();
     });
 
     it("cap > 1: slots are numbered (Submit Song N; a filled slot reads Song N)", async () => {

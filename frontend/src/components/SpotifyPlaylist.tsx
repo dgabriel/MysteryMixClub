@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { MusicNoteIcon } from "./MusicNoteIcon";
 import {
   ApiError,
   connectSpotify,
@@ -125,8 +126,9 @@ function SpotifyResult({
         href={result.playlist_url}
         target="_blank"
         rel="noopener noreferrer"
-        className={ACTION_CLASS}
+        className={`inline-flex items-center gap-1.5 ${ACTION_CLASS}`}
       >
+        <MusicNoteIcon />
         open playlist in Spotify
       </a>
       <span className={META_CLASS}>

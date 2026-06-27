@@ -43,6 +43,7 @@ import { ConcentricRings } from "../components/ConcentricRings";
 import { SongSearchCard } from "../components/songs/SongSearchCard";
 import { SpotifyPlaylist } from "../components/SpotifyPlaylist";
 import { CrownIcon } from "../components/CrownIcon";
+import { MusicNoteIcon } from "../components/MusicNoteIcon";
 
 const STATE_LABEL: Record<RoundState, string> = {
   pending: "upcoming",
@@ -917,8 +918,9 @@ function YouTubePlaylistLink({
         href={youtubePlaylistUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink"
+        className="inline-flex items-center gap-1.5 font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink"
       >
+        <MusicNoteIcon />
         open playlist in YouTube
       </a>
       <span className="mt-1 block font-mono uppercase tracking-label text-[9px] text-muted">

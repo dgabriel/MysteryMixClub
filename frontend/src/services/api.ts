@@ -519,6 +519,10 @@ export type Round = {
    *  members. Shown as "X of Y submitted" while submissions are open. */
   submission_count: number;
   member_count: number;
+  /** Whether the current viewer has submitted / voted in this round. Used for
+   *  confirmation indicators on the league-home round tile. */
+  viewer_submitted: boolean;
+  viewer_voted: boolean;
 };
 
 /** A song submitted to a round (GET .../submissions, .../submissions/mine). */

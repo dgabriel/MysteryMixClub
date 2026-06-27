@@ -10,9 +10,6 @@ import path from "node:path";
 const frontendRelative = (files) =>
   files.map((file) => path.relative("frontend", file)).join(" ");
 
-// Backend hooks need the venv on PATH (see docs/git-hygiene.md, "Hook PATH gotcha")
-const backendCmd = (cmd: string) => `PATH="$PWD/backend/.venv/bin:$PATH" ${cmd}`;
-
 export default {
   "frontend/**/*.{ts,tsx}": (files) => {
     const rel = frontendRelative(files);
@@ -21,5 +18,6 @@ export default {
       `cd frontend && npx --no-install prettier --write ${rel}`,
     ];
   },
-  "backend/**/*.py": [backendCmd("ruff check --fix"), backendCmd("ruff format")],
+  // ruff resolves via the venv on PATH (set by the caller: PATH="$PWD/backend/.venv/bin:$PATH")
+  "backend/**/*.py": ["ruff check --fix", "ruff format"],
 };

@@ -17,18 +17,23 @@ is idempotent — mirroring the submission replace-in-place pattern.
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.leagues import _load_league_as_member
-from app.api.routes.rounds import _load_round
+from app.api.routes.rounds import _load_round, advance_round_state, voting_quorum_met
 from app.auth.deps import get_current_user
+from app.config import Settings, get_settings
 from app.db.session import get_db
+from app.models.league import League
+from app.models.round import Round
 from app.models.submission import Submission
 from app.models.user import User
 from app.models.vote import Vote
+from app.services.email import EmailSender, get_email_sender
+from app.services.notifications import gather_recipients, queue_round_event
 
 router = APIRouter(tags=["votes"])
 
@@ -48,8 +53,11 @@ class VotesResponse(BaseModel):
 async def cast_votes(
     round_id: uuid.UUID,
     payload: VotesCast,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    sender: EmailSender = Depends(get_email_sender),
+    settings: Settings = Depends(get_settings),
 ) -> VotesResponse:
     round_ = await _load_round(round_id, db)
     await _load_league_as_member(round_.league_id, current_user, db)
@@ -123,6 +131,36 @@ async def cast_votes(
     await db.flush()
     for sid in target_ids:
         db.add(Vote(round_id=round_id, voter_id=current_user.id, submission_id=sid))
+    # Flush the inserts so the just-cast votes count toward the voting quorum.
+    await db.flush()
+
+    # Auto-advance (MYS-69): once every playing submitter has voted, the round
+    # closes itself — auto-opening the next round or completing the league. Lock
+    # the round row FIRST, then evaluate the quorum UNDER the lock. Two concurrent
+    # final votes each only see their own uncommitted votes before locking (READ
+    # COMMITTED hides the other's), so checking before the lock would have both see
+    # N-1 and neither advance — the round would stall. Serialized on the lock, the
+    # last committer re-reads the now-committed votes and closes the round.
+    if round_.state == "open_voting":
+        locked = await db.scalar(
+            select(Round)
+            .where(Round.id == round_.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if (
+            locked is not None
+            and locked.state == "open_voting"
+            and await voting_quorum_met(round_, db)
+        ):
+            league = await db.scalar(select(League).where(League.id == round_.league_id))
+            if league is not None:
+                events = await advance_round_state(round_, league, "closed", db)
+                recipients = await gather_recipients(db, round_.league_id)
+                for event_round, event in events:
+                    queue_round_event(
+                        background_tasks, sender, settings, recipients, league, event_round, event
+                    )
 
     await db.commit()
 

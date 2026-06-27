@@ -52,4 +52,10 @@ class Round(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    # When the round entered open_submission (MYS-69). Auto-advance scopes its
+    # quorum to members present at this moment; nullable because pending rounds
+    # have not opened yet.
+    submission_opened_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

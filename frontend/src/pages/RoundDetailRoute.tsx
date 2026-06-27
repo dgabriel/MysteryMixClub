@@ -1768,15 +1768,22 @@ function WinnersSection({
                   {w.total} {w.total === 1 ? "vote" : "votes"}
                 </span>
               </div>
-              {/* A multi-song winner lists every song under their one total. */}
-              {w.songs.map((s, i) => (
-                <div key={s.submission_id} className={i === 0 ? "mt-1" : "mt-3"}>
-                  <h3 className="font-serif text-[24px] leading-tight text-ink">{s.title}</h3>
-                  {s.artist ? (
-                    <p className="mt-1 font-mono text-[11px] font-light text-muted">{s.artist}</p>
-                  ) : null}
-                </div>
-              ))}
+              {/* Show only the player's top-voted song(s), not every submission. */}
+              {(() => {
+                const peak = Math.max(...w.songs.map((s) => s.vote_count));
+                return w.songs
+                  .filter((s) => s.vote_count === peak)
+                  .map((s, i) => (
+                    <div key={s.submission_id} className={i === 0 ? "mt-1" : "mt-3"}>
+                      <h3 className="font-serif text-[24px] leading-tight text-ink">{s.title}</h3>
+                      {s.artist ? (
+                        <p className="mt-1 font-mono text-[11px] font-light text-muted">
+                          {s.artist}
+                        </p>
+                      ) : null}
+                    </div>
+                  ));
+              })()}
             </Card>
           </li>
         ))}

@@ -57,6 +57,8 @@ the structured template below is only there if you want to be precise.
 - ~~[P1] round - viber cannot see links to songs on the tiles~~ → fixed in PR #78 (MYS-134 follow-up: per-song platform links now on every reveal tile, player + viber)
 - ~~[P2] league - new rule, admin can delete a league at any time, no matter the state~~ → **MYS-137**
 - enabler added: **MYS-68** — voting playlist marks the caller's own entry (blocks MYS-73, MYS-74)
+- [P2] spotify playlist — playlist title should be "MysteryMixClub: League Name, Round theme" → **MYS-86**
+- [P1] spotify playlist - login should be a pop up or modal, not a whole page redirect → **MYS-85**
 
 ---
 

@@ -628,7 +628,8 @@ describe("RoundDetailRoute", () => {
       }),
     );
     renderRound();
-    expect(await screen.findByText("Bad Guy")).toBeInTheDocument();
+    // "Bad Guy" appears in both the song leaderboard and the picks card.
+    expect((await screen.findAllByText("Bad Guy")).length).toBeGreaterThan(0);
     expect(screen.getByText("Bob")).toBeInTheDocument();
     expect(screen.getByText(/a banger/)).toBeInTheDocument();
   });

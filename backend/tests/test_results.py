@@ -349,6 +349,48 @@ async def test_results_leaderboard_ranks_all_submitters_including_vibers(client,
     ]
 
 
+async def test_results_leaderboard_sums_votes_per_player_across_songs(client, db_session):
+    # MYS-116: a player with multiple songs is one leaderboard standing whose
+    # total sums their songs' votes; the submissions list keeps per-song counts.
+    organizer = await _seed_user(db_session, "o@example.com", "Org")
+    alice = await _seed_user(db_session, "a@example.com", "Alice")
+    bob = await _seed_user(db_session, "b@example.com", "Bob")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    round_id = round_.id
+    for u in (alice, bob):
+        await _add_member(db_session, round_.league_id, u)
+
+    # Alice submits two songs, Bob one.
+    a1 = await _seed_submission(db_session, round_, alice, title="A-one")
+    a2 = await _seed_submission(db_session, round_, alice, title="A-two")
+    b1 = await _seed_submission(db_session, round_, bob, title="B-one")
+    # Alice: a1=1 + a2=2 = 3 total; Bob: b1=2.
+    await _seed_vote(db_session, round_id, bob, a1)
+    await _seed_vote(db_session, round_id, organizer, a2)
+    await _seed_vote(db_session, round_id, bob, a2)
+    await _seed_vote(db_session, round_id, alice, b1)
+    await _seed_vote(db_session, round_id, organizer, b1)
+
+    alice_id, bob_id = alice.id, bob.id
+    a1_id, a2_id, b1_id = a1.id, a2.id, b1.id
+
+    resp = await client.get(_url(round_id), headers=_auth(organizer.id))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+
+    # One row per player; Alice (3) ahead of Bob (2).
+    lb = body["leaderboard"]
+    assert [(e["user_id"], e["vote_count"], e["rank"]) for e in lb] == [
+        (str(alice_id), 3, 1),
+        (str(bob_id), 2, 2),
+    ]
+    # Per-song vote counts are preserved in the submissions list.
+    by_id = {s["submission_id"]: s for s in body["submissions"]}
+    assert by_id[str(a1_id)]["vote_count"] == 1
+    assert by_id[str(a2_id)]["vote_count"] == 2
+    assert by_id[str(b1_id)]["vote_count"] == 2
+
+
 # --------------------------------------------------------------------------- #
 # Happy path 4 — Most Noted: clear winner with notes + count; and empty case.
 # --------------------------------------------------------------------------- #

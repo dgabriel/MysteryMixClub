@@ -24,6 +24,12 @@ class League(Base):
     votes_per_player: Mapped[int] = mapped_column(
         Integer, nullable=False, default=3, server_default=text("3")
     )
+    # Admin-set cap on how many songs a player may submit per round (MYS-116).
+    # Chosen once at league setup and applied to every round; 1..5, default 1
+    # (one song = today's behavior). Enforced in the submission endpoint.
+    songs_per_submission: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default=text("1")
+    )
     current_round: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=text("0")
     )

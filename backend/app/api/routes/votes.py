@@ -61,11 +61,13 @@ async def cast_votes(
 
     # Decision (MYS-20): only players who are themselves Playing may vote. A
     # member with no submission for the round cannot vote, and a member whose
-    # own submission is `vibing` cannot vote — they leave a note instead.
+    # own submission is `vibing` cannot vote — they leave a note instead. A
+    # player may have several songs now (MYS-116) but their stance is uniform,
+    # so any one of their submissions answers both questions.
     own_submission = await db.scalar(
-        select(Submission).where(
-            Submission.round_id == round_id, Submission.user_id == current_user.id
-        )
+        select(Submission)
+        .where(Submission.round_id == round_id, Submission.user_id == current_user.id)
+        .limit(1)
     )
     if own_submission is None:
         raise HTTPException(

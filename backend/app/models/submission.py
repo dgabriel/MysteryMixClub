@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, func, text
+from sqlalchemy import DateTime, ForeignKey, String, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -14,8 +14,9 @@ PARTICIPATION_MODES = ("playing", "vibing")
 
 class Submission(Base):
     __tablename__ = "submissions"
-    # One submission per player per round (replace-in-place while the round is open).
-    __table_args__ = (UniqueConstraint("round_id", "user_id", name="uq_submissions_round_user"),)
+    # A player may submit up to the league's songs_per_submission cap per round
+    # (MYS-116), so (round_id, user_id) is no longer unique. The per-column
+    # indexes below cover the lookups; the cap is enforced in the endpoint.
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     round_id: Mapped[uuid.UUID] = mapped_column(

@@ -1248,7 +1248,7 @@ function VotingSection({
                     </p>
                   ) : null}
                   {entry.submitter_note ? (
-                    <p className="mt-2 font-mono text-[11px] font-light text-ink">
+                    <p className="mt-3 border-l-2 border-sage pl-3 font-mono text-[12px] font-light text-ink">
                       &ldquo;{entry.submitter_note}&rdquo;
                     </p>
                   ) : null}
@@ -1288,7 +1288,7 @@ function VotingSection({
                   <p className="mt-1 font-mono text-[11px] font-light text-muted">{entry.artist}</p>
                 ) : null}
                 {entry.submitter_note ? (
-                  <p className="mt-2 font-mono text-[11px] font-light text-ink">
+                  <p className="mt-3 border-l-2 border-sage pl-3 font-mono text-[12px] font-light text-ink">
                     &ldquo;{entry.submitter_note}&rdquo;
                   </p>
                 ) : null}

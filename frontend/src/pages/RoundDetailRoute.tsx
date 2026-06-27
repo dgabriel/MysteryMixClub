@@ -213,7 +213,7 @@ export function RoundDetailRoute() {
     };
   }
 
-  async function handleAddSong(song: ResolvedSong): Promise<boolean> {
+  async function handleAddSong(song: ResolvedSong, note: string | null): Promise<boolean> {
     if (!id || !song.isrc) {
       setActionError("this song is missing an ID and can't be submitted.");
       return false;
@@ -221,7 +221,7 @@ export function RoundDetailRoute() {
     setSubmitting(true);
     setActionError(null);
     try {
-      const result = await submitSong(id, trackPayload(song));
+      const result = await submitSong(id, { ...trackPayload(song), note });
       setMySubmissions((current) => [...current, result]);
       await refreshCount();
       return true;
@@ -233,7 +233,11 @@ export function RoundDetailRoute() {
     }
   }
 
-  async function handleEditSong(submissionId: string, song: ResolvedSong): Promise<boolean> {
+  async function handleEditSong(
+    submissionId: string,
+    song: ResolvedSong,
+    note: string | null,
+  ): Promise<boolean> {
     if (!id || !song.isrc) {
       setActionError("this song is missing an ID and can't be submitted.");
       return false;
@@ -241,7 +245,7 @@ export function RoundDetailRoute() {
     setSubmitting(true);
     setActionError(null);
     try {
-      const result = await editSubmission(id, submissionId, trackPayload(song));
+      const result = await editSubmission(id, submissionId, { ...trackPayload(song), note });
       // Replace the edited song, and keep the stance uniform across the list
       // (the backend applies an explicit mode change to every song).
       setMySubmissions((current) =>
@@ -810,18 +814,39 @@ function ComposerSlot({
   heading: string;
   idPrefix: string;
   submitting: boolean;
-  onSubmit: (song: ResolvedSong) => Promise<boolean> | void;
+  onSubmit: (song: ResolvedSong, note: string | null) => Promise<boolean> | void;
   onCancel?: () => void;
 }) {
+  const [noteText, setNoteText] = useState("");
+
   return (
     <>
       <SongSearchCard
         eyebrow="this round"
         heading={heading}
         idPrefix={idPrefix}
-        onSubmit={(song) => void onSubmit(song)}
         submitting={submitting}
+        onSubmit={async (song) => {
+          const note = noteText.trim() || null;
+          const ok = await Promise.resolve(onSubmit(song, note));
+          if (ok !== false) setNoteText("");
+          return ok ?? true;
+        }}
       />
+      <div className="mt-4">
+        <label className="block font-mono uppercase tracking-label text-[9px] text-muted">
+          note <span className="lowercase">(optional)</span>
+        </label>
+        <textarea
+          maxLength={280}
+          placeholder="say something about this pick…"
+          rows={2}
+          value={noteText}
+          onChange={(e) => setNoteText(e.target.value)}
+          disabled={submitting}
+          className="mt-1 w-full resize-none border-b border-ink bg-transparent font-mono text-[13px] font-light text-ink placeholder:text-muted focus:outline-none disabled:opacity-50"
+        />
+      </div>
       {onCancel ? (
         <div className="mt-4">
           <Button variant="ghost" type="button" onClick={onCancel} disabled={submitting}>
@@ -860,8 +885,8 @@ function SubmissionManager({
   cap: number;
   submitting: boolean;
   removingId: string | null;
-  onAdd: (song: ResolvedSong) => Promise<boolean>;
-  onEdit: (submissionId: string, song: ResolvedSong) => Promise<boolean>;
+  onAdd: (song: ResolvedSong, note: string | null) => Promise<boolean>;
+  onEdit: (submissionId: string, song: ResolvedSong, note: string | null) => Promise<boolean>;
   onRemove: (submissionId: string) => Promise<boolean>;
   onSaveNote: (submissionId: string, note: string | null) => Promise<void>;
   onConfirm: () => void;
@@ -896,8 +921,8 @@ function SubmissionManager({
                 heading={numbered ? `change song ${i + 1}` : "change your song"}
                 idPrefix={`edit-${s.id}`}
                 submitting={submitting}
-                onSubmit={async (song) => {
-                  const ok = await onEdit(s.id, song);
+                onSubmit={async (song, note) => {
+                  const ok = await onEdit(s.id, song, note);
                   if (ok) setEditingId(null);
                   return ok;
                 }}

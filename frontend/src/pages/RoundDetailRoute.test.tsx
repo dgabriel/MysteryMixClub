@@ -253,37 +253,18 @@ describe("RoundDetailRoute", () => {
     expect(screen.queryByText(/submitted$/i)).not.toBeInTheDocument();
   });
 
-  it("open_submission: round vibe toggle seeds from membership and submit sends participation_mode (MYS-60)", async () => {
-    const user = userEvent.setup();
-    mockGetMyMembership.mockResolvedValue({
-      league_id: "lg1",
-      user_id: ORGANIZER,
-      vibe_mode: true,
-    });
-    mockResolveSong.mockResolvedValue({
-      title: "Debaser",
-      artist: "Pixies",
-      isrc: "I1",
-      album: null,
-      thumbnail_url: null,
-      platforms: {},
-    } as Awaited<ReturnType<typeof resolveSong>>);
-    mockSubmitSong.mockResolvedValue(mine({ participation_mode: "vibing" }));
-
+  it("open_submission: hides the vibing UI from players (toggle + mode badge)", async () => {
+    // Vibing isn't ready for players yet — the submit screen must not surface the
+    // "just vibes" toggle, and a submitted song must not show a playing/vibing
+    // badge. (Backend mode handling is untouched; this is a UI-only hide.)
+    mockGetMine.mockResolvedValue([mine({ participation_mode: "playing" })]);
     renderRound();
 
-    // Seeded checked from the member's per-league vibe_mode.
-    const toggle = await screen.findByLabelText(/just vibes for this round/i);
-    expect(toggle).toBeChecked();
-
-    await user.type(screen.getByLabelText(/paste a spotify or youtube link/i), "https://x");
-    await user.click(screen.getByRole("button", { name: /^resolve$/i }));
-    await user.click(await screen.findByRole("button", { name: /submit this song/i }));
-
-    expect(mockSubmitSong).toHaveBeenCalledWith(
-      "r1",
-      expect.objectContaining({ participation_mode: "vibing" }),
-    );
+    expect(await screen.findByText("My Song")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/just vibes for this round/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/just vibes/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("playing")).not.toBeInTheDocument();
+    expect(screen.queryByText("vibing")).not.toBeInTheDocument();
   });
 
   it("open_submission: submitting a song refreshes the X of Y count — MYS-101", async () => {
@@ -346,11 +327,25 @@ describe("RoundDetailRoute", () => {
       } as Awaited<ReturnType<typeof resolveSong>>;
     }
 
-    /** Drive the composer: paste a link, resolve, then submit the resolved song. */
-    async function composeAndSubmit(user: ReturnType<typeof userEvent.setup>) {
-      await user.type(screen.getByLabelText(/paste a spotify or youtube link/i), "https://x");
-      await user.click(screen.getByRole("button", { name: /^resolve$/i }));
-      await user.click(await screen.findByRole("button", { name: /submit this song/i }));
+    /** The <li> of the first empty submit slot, located by its composer heading
+     *  (numbered "submit song N" at cap > 1, plain "submit a song" at cap 1). */
+    function firstComposerSlot(): HTMLElement {
+      const heading = screen.getAllByRole("heading", { name: /submit (a song|song \d+)/i })[0];
+      const li = heading.closest("li");
+      if (!li) throw new Error("no empty submit slot found");
+      return li as HTMLElement;
+    }
+
+    /** Drive a composer: paste a link, resolve, then submit the resolved song.
+     *  Scoped to `slot` when several composers are on screen (multiple slots). */
+    async function composeAndSubmit(
+      user: ReturnType<typeof userEvent.setup>,
+      slot?: HTMLElement,
+    ) {
+      const q = slot ? within(slot) : screen;
+      await user.type(q.getByLabelText(/paste a spotify or youtube link/i), "https://x");
+      await user.click(q.getByRole("button", { name: /^resolve$/i }));
+      await user.click(await q.findByRole("button", { name: /submit this song/i }));
     }
 
     it("cap 1: at the cap shows only the song with change/remove — no add affordance", async () => {
@@ -367,14 +362,71 @@ describe("RoundDetailRoute", () => {
       expect(screen.queryByText(/your songs ·/i)).not.toBeInTheDocument();
     });
 
-    it("cap > 1: offers 'add another song' below the cap with an N-of-M header", async () => {
+    it("cap > 1: shows an empty submit slot per remaining song, with an N-of-M header", async () => {
       mockGetLeague.mockResolvedValue({ ...league(), songs_per_submission: 3 });
       mockGetMine.mockResolvedValue([mine({ id: "s1", title: "Song One" })]);
       renderRound();
 
       expect(await screen.findByText("Song One")).toBeInTheDocument();
       expect(screen.getByText("your songs · 1 of 3")).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /add another song/i })).toBeInTheDocument();
+      // one filled card + two empty submit slots up front — no "add another" button
+      expect(screen.getAllByRole("heading", { name: /submit song \d/i })).toHaveLength(2);
+      expect(screen.queryByRole("button", { name: /add another song/i })).not.toBeInTheDocument();
+    });
+
+    it("cap > 1 with no songs: shows one empty submit slot per song the cap allows", async () => {
+      mockGetLeague.mockResolvedValue({ ...league(), songs_per_submission: 2 });
+      mockGetMine.mockResolvedValue([]);
+      renderRound();
+
+      // two submit cards up front for a 2-song league
+      await waitFor(() =>
+        expect(screen.getAllByRole("heading", { name: /submit song \d/i })).toHaveLength(2),
+      );
+    });
+
+    it("cap > 1: slots are numbered (Submit Song N; a filled slot reads Song N)", async () => {
+      mockGetLeague.mockResolvedValue({ ...league(), songs_per_submission: 2 });
+      mockGetMine.mockResolvedValue([mine({ id: "s1", title: "Song One" })]);
+      renderRound();
+
+      await screen.findByText("Song One");
+      // filled slot 1 carries its number; the empty slot 2 prompts "submit song 2"
+      expect(screen.getByText("song 1")).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: /^submit song 2$/i })).toBeInTheDocument();
+    });
+
+    it("cap > 1: confirm appears once every slot is filled and returns to the league", async () => {
+      const user = userEvent.setup();
+      mockGetLeague.mockResolvedValue({ ...league(), songs_per_submission: 2 });
+      mockGetMine.mockResolvedValue([
+        mine({ id: "s1", title: "Song One" }),
+        mine({ id: "s2", title: "Song Two" }),
+      ]);
+      renderRound();
+
+      await screen.findByText("Song One");
+      await user.click(screen.getByRole("button", { name: /^confirm$/i }));
+      expect(await screen.findByText("LEAGUE PAGE")).toBeInTheDocument();
+    });
+
+    it("cap > 1: confirm stays hidden until every slot is filled", async () => {
+      mockGetLeague.mockResolvedValue({ ...league(), songs_per_submission: 2 });
+      mockGetMine.mockResolvedValue([mine({ id: "s1", title: "Song One" })]);
+      renderRound();
+
+      await screen.findByText("Song One");
+      expect(screen.queryByRole("button", { name: /^confirm$/i })).not.toBeInTheDocument();
+    });
+
+    it("cap 1: no confirm button and no slot numbering (single-song parity)", async () => {
+      mockGetMine.mockResolvedValue([mine({ id: "s1", title: "Only Song" })]);
+      renderRound();
+
+      await screen.findByText("Only Song");
+      expect(screen.queryByRole("button", { name: /^confirm$/i })).not.toBeInTheDocument();
+      expect(screen.getByText("your song")).toBeInTheDocument();
+      expect(screen.queryByText(/^song 1$/i)).not.toBeInTheDocument();
     });
 
     it("cap > 1: at the cap, the add affordance is gone", async () => {
@@ -390,7 +442,7 @@ describe("RoundDetailRoute", () => {
       expect(screen.queryByRole("button", { name: /add another song/i })).not.toBeInTheDocument();
     });
 
-    it("cap > 1: adding another song calls submitSong and appends it", async () => {
+    it("cap > 1: submitting an empty slot calls submitSong and fills it", async () => {
       const user = userEvent.setup();
       mockGetLeague.mockResolvedValue({ ...league(), songs_per_submission: 3 });
       mockGetMine.mockResolvedValue([mine({ id: "s1", title: "Song One" })]);
@@ -399,8 +451,7 @@ describe("RoundDetailRoute", () => {
       renderRound();
 
       await screen.findByText("Song One");
-      await user.click(screen.getByRole("button", { name: /add another song/i }));
-      await composeAndSubmit(user);
+      await composeAndSubmit(user, firstComposerSlot());
 
       expect(mockSubmitSong).toHaveBeenCalledWith("r1", expect.objectContaining({ isrc: "I2" }));
       expect(await screen.findByText("Song Two")).toBeInTheDocument();
@@ -473,8 +524,7 @@ describe("RoundDetailRoute", () => {
       renderRound();
 
       await screen.findByText("Song One");
-      await user.click(screen.getByRole("button", { name: /add another song/i }));
-      await composeAndSubmit(user);
+      await composeAndSubmit(user, firstComposerSlot());
 
       const alert = await screen.findByRole("alert");
       expect(alert).toHaveTextContent(/maximum of 2 song/i);

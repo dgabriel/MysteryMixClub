@@ -76,6 +76,10 @@ type SongSearchCardProps = {
   submitting?: boolean;
   eyebrow?: string;
   heading?: string;
+  /** Namespaces this card's input ids so several cards can share a screen
+   *  without colliding ids (MYS-142 multi-slot submit). Defaults to "song" for
+   *  the single-instance usages. */
+  idPrefix?: string;
 };
 
 export function SongSearchCard({
@@ -83,6 +87,7 @@ export function SongSearchCard({
   submitting = false,
   eyebrow = "song search",
   heading = "find a song",
+  idPrefix = "song",
 }: SongSearchCardProps = {}) {
   const [mode, setMode] = useState<Mode>("link");
 
@@ -198,7 +203,7 @@ export function SongSearchCard({
           {mode === "link" ? (
             <form onSubmit={handleResolveLink} className="mt-5">
               <TextField
-                id="song-link"
+                id={`${idPrefix}-link`}
                 label="paste a spotify or youtube link"
                 placeholder="https://open.spotify.com/track/…"
                 value={url}
@@ -216,7 +221,7 @@ export function SongSearchCard({
           ) : (
             <form onSubmit={handleSearch} className="mt-5 space-y-5">
               <TextField
-                id="song-title"
+                id={`${idPrefix}-title`}
                 label="song title"
                 placeholder="song title"
                 value={title}
@@ -226,7 +231,7 @@ export function SongSearchCard({
                 required
               />
               <TextField
-                id="song-artist"
+                id={`${idPrefix}-artist`}
                 label="artist (optional)"
                 placeholder="artist"
                 value={artist}

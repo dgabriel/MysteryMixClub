@@ -249,6 +249,7 @@ export function RoundDetailRoute() {
     }
   }
 
+
   async function handleCastVotes(selected: string[]) {
     if (!id || selected.length === 0) return;
     setCasting(true);
@@ -401,11 +402,10 @@ export function RoundDetailRoute() {
                 cap={league?.songs_per_submission ?? 1}
                 submitting={submitting}
                 removingId={removingId}
-                roundVibe={roundVibe}
-                onRoundVibeChange={setRoundVibe}
                 onAdd={handleAddSong}
                 onEdit={handleEditSong}
                 onRemove={handleRemoveSong}
+                onConfirm={() => navigate(`/leagues/${round.league_id}`)}
               />
             </>
           ) : round.state === "open_voting" ? (
@@ -618,51 +618,18 @@ function SubmissionProgress({ submitted, total }: { submitted: number; total: nu
   );
 }
 
-/**
- * Per-round "just vibes" toggle (MYS-60). The stance is uniform across all of a
- * player's songs this round (MYS-116); flipping it here applies when they add or
- * save a song. Defaults from the member's per-league setting.
- */
-function VibeToggle({
-  checked,
-  onChange,
-  disabled,
-}: {
-  checked: boolean;
-  onChange: (next: boolean) => void;
-  disabled: boolean;
-}) {
-  return (
-    <div className="mb-6">
-      <label className="flex cursor-pointer items-center gap-3">
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={(e) => onChange(e.target.checked)}
-          disabled={disabled}
-          className="h-4 w-4 rounded-[2px] border border-ink accent-sage"
-        />
-        <span className="font-mono uppercase tracking-ui text-[11px] text-ink">
-          just vibes for this round
-        </span>
-      </label>
-      <p className="mt-2 font-mono text-[11px] font-light text-muted">
-        vibing means you sit out voting on this round and leave notes instead.
-      </p>
-    </div>
-  );
-}
-
 /** One of the player's submitted songs, with change/remove affordances. Stays in
  *  the Sage/Ink family — no Rust on the submission screen. */
 function SubmittedSongCard({
   submission,
+  eyebrow,
   busy,
   removing,
   onEdit,
   onRemove,
 }: {
   submission: SubmissionResult;
+  eyebrow: string;
   busy: boolean;
   removing: boolean;
   onEdit: () => void;
@@ -670,14 +637,11 @@ function SubmittedSongCard({
 }) {
   return (
     <Card>
-      <span className="font-mono uppercase tracking-label text-[9px] text-muted">your song</span>
+      <span className="font-mono uppercase tracking-label text-[9px] text-muted">{eyebrow}</span>
       <h2 className="mt-1 font-serif text-[20px] leading-tight text-ink">{submission.title}</h2>
       {submission.artist ? (
         <p className="mt-1 font-mono text-[11px] font-light text-muted">{submission.artist}</p>
       ) : null}
-      <div className="mt-3">
-        <Badge>{submission.participation_mode}</Badge>
-      </div>
       {submission.note ? (
         <p className="mt-3 font-mono text-[11px] font-light text-ink">“{submission.note}”</p>
       ) : null}
@@ -703,12 +667,48 @@ function SubmittedSongCard({
   );
 }
 
+/** A submit/change composer in a slot — the search card plus an optional cancel
+ *  (cancel only when editing an existing song, to drop back to its card). */
+function ComposerSlot({
+  heading,
+  idPrefix,
+  submitting,
+  onSubmit,
+  onCancel,
+}: {
+  heading: string;
+  idPrefix: string;
+  submitting: boolean;
+  onSubmit: (song: ResolvedSong) => Promise<boolean> | void;
+  onCancel?: () => void;
+}) {
+  return (
+    <>
+      <SongSearchCard
+        eyebrow="this round"
+        heading={heading}
+        idPrefix={idPrefix}
+        onSubmit={(song) => void onSubmit(song)}
+        submitting={submitting}
+      />
+      {onCancel ? (
+        <div className="mt-4">
+          <Button variant="ghost" type="button" onClick={onCancel} disabled={submitting}>
+            cancel
+          </Button>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 /**
- * Multi-song submission manager (MYS-116/142). Lists the player's songs for the
- * round and lets them add up to the league's `cap`, change, or remove each. At
- * cap 1 it collapses to the classic single edit-in-place flow (parity): one card
- * with change/remove, and the composer shown directly when nothing is submitted.
- * The vibe stance is uniform across all songs, set via the composer's toggle.
+ * Multi-song submission manager (MYS-116/142). Shows one slot per song the
+ * league allows (`cap`): a filled slot is a song card with change/remove, an
+ * empty slot is a submit composer — so a 2-song league shows two submit cards up
+ * front, no "add another" button. At cap 1 it's the classic single submit/edit.
+ * The "just vibes" stance is uniform across a player's songs, set once via the
+ * toggle at the top (it persists across already-submitted songs).
  *
  * No Rust here — the round screen reserves its single Rust signal for the
  * voting/reveal states.
@@ -718,89 +718,94 @@ function SubmissionManager({
   cap,
   submitting,
   removingId,
-  roundVibe,
-  onRoundVibeChange,
   onAdd,
   onEdit,
   onRemove,
+  onConfirm,
 }: {
   submissions: SubmissionResult[];
   cap: number;
   submitting: boolean;
   removingId: string | null;
-  roundVibe: boolean;
-  onRoundVibeChange: (next: boolean) => void;
   onAdd: (song: ResolvedSong) => Promise<boolean>;
   onEdit: (submissionId: string, song: ResolvedSong) => Promise<boolean>;
   onRemove: (submissionId: string) => Promise<boolean>;
+  onConfirm: () => void;
 }) {
-  const [composing, setComposing] = useState<
-    { mode: "add" } | { mode: "edit"; id: string } | null
-  >(null);
+  // Which already-submitted song is being changed (its slot shows a composer).
+  const [editingId, setEditingId] = useState<string | null>(null);
 
-  const hasSongs = submissions.length > 0;
-  const atCap = submissions.length >= cap;
-  // With no songs yet, the composer is always open (parity with the classic
-  // single-submission screen). With songs, it opens on demand (add / change).
-  const composer = composing ?? (hasSongs ? null : { mode: "add" as const });
-
-  async function submitComposer(song: ResolvedSong) {
-    const ok =
-      composer?.mode === "edit" ? await onEdit(composer.id, song) : await onAdd(song);
-    if (ok) setComposing(null);
-  }
+  const busy = submitting || removingId !== null;
+  const emptySlots = Math.max(0, cap - submissions.length);
+  // Number the slots only when more than one is allowed, so a single-song
+  // league reads exactly as before ("submit a song" / "your song").
+  const numbered = cap > 1;
+  // Once every slot is filled (multi-song only), offer a confirm that returns to
+  // the league — the natural "I'm done submitting" exit.
+  const allSubmitted = numbered && submissions.length === cap;
 
   return (
     <>
-      {hasSongs ? (
-        <div className="mb-6">
-          {cap > 1 ? (
-            <p className="mb-4 font-mono uppercase tracking-label text-[9px] text-muted">
-              your songs · {submissions.length} of {cap}
-            </p>
-          ) : null}
-          <ul className="space-y-4">
-            {submissions.map((s) => (
-              <li key={s.id}>
-                <SubmittedSongCard
-                  submission={s}
-                  busy={submitting || removingId !== null}
-                  removing={removingId === s.id}
-                  onEdit={() => setComposing({ mode: "edit", id: s.id })}
-                  onRemove={() => void onRemove(s.id)}
-                />
-              </li>
-            ))}
-          </ul>
-        </div>
+      {numbered && submissions.length > 0 ? (
+        <p className="mb-4 font-mono uppercase tracking-label text-[9px] text-muted">
+          your songs · {submissions.length} of {cap}
+        </p>
       ) : null}
 
-      {composer ? (
-        <>
-          <VibeToggle checked={roundVibe} onChange={onRoundVibeChange} disabled={submitting} />
-          <SongSearchCard
-            eyebrow="this round"
-            heading={composer.mode === "edit" ? "change your song" : "submit a song"}
-            onSubmit={(song) => void submitComposer(song)}
-            submitting={submitting}
-          />
-          {hasSongs ? (
-            <div className="mt-4">
-              <Button
-                variant="ghost"
-                type="button"
-                onClick={() => setComposing(null)}
-                disabled={submitting}
-              >
-                cancel
-              </Button>
-            </div>
-          ) : null}
-        </>
-      ) : !atCap ? (
-        <Button type="button" onClick={() => setComposing({ mode: "add" })}>
-          add another song
-        </Button>
+      <ul className="space-y-4">
+        {submissions.map((s, i) =>
+          editingId === s.id ? (
+            <li key={s.id}>
+              <ComposerSlot
+                heading={numbered ? `change song ${i + 1}` : "change your song"}
+                idPrefix={`edit-${s.id}`}
+                submitting={submitting}
+                onSubmit={async (song) => {
+                  const ok = await onEdit(s.id, song);
+                  if (ok) setEditingId(null);
+                  return ok;
+                }}
+                onCancel={() => setEditingId(null)}
+              />
+            </li>
+          ) : (
+            <li key={s.id}>
+              <SubmittedSongCard
+                submission={s}
+                eyebrow={numbered ? `song ${i + 1}` : "your song"}
+                busy={busy}
+                removing={removingId === s.id}
+                onEdit={() => setEditingId(s.id)}
+                onRemove={() => void onRemove(s.id)}
+              />
+            </li>
+          ),
+        )}
+
+        {/* One empty submit slot per remaining song the cap allows. Keyed by
+            absolute slot position so a just-filled slot's composer unmounts
+            cleanly instead of being reused (and carrying its resolved song). */}
+        {Array.from({ length: emptySlots }, (_, i) => {
+          const slot = submissions.length + i;
+          return (
+            <li key={`slot-${slot}`}>
+              <ComposerSlot
+                heading={numbered ? `submit song ${slot + 1}` : "submit a song"}
+                idPrefix={`slot-${slot}`}
+                submitting={submitting}
+                onSubmit={onAdd}
+              />
+            </li>
+          );
+        })}
+      </ul>
+
+      {allSubmitted ? (
+        <div className="mt-6 border-t border-border pt-6">
+          <Button type="button" onClick={onConfirm} disabled={busy}>
+            confirm
+          </Button>
+        </div>
       ) : null}
     </>
   );

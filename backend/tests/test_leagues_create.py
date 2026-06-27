@@ -29,6 +29,7 @@ _LEAGUE_KEYS = {
     "organizer_id",
     "total_rounds",
     "votes_per_player",
+    "songs_per_submission",
     "current_round",
     "default_vibe_mode",
     "state",
@@ -166,6 +167,48 @@ async def test_votes_per_player_defaults_to_3_when_omitted(client, db_session):
 
     assert resp.status_code == 201, resp.text
     assert resp.json()["votes_per_player"] == 3
+
+
+async def test_songs_per_submission_defaults_to_1_when_omitted(client, db_session):
+    user = await _seed_user(db_session)
+    body = _valid_body()
+    body.pop("songs_per_submission", None)
+
+    resp = await client.post(LEAGUES_URL, headers=_auth_header(user.id), json=body)
+
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["songs_per_submission"] == 1
+
+
+async def test_songs_per_submission_accepts_up_to_5(client, db_session):
+    user = await _seed_user(db_session)
+
+    resp = await client.post(
+        LEAGUES_URL, headers=_auth_header(user.id), json=_valid_body(songs_per_submission=5)
+    )
+
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["songs_per_submission"] == 5
+
+
+async def test_songs_per_submission_below_1_returns_422(client, db_session):
+    user = await _seed_user(db_session)
+
+    resp = await client.post(
+        LEAGUES_URL, headers=_auth_header(user.id), json=_valid_body(songs_per_submission=0)
+    )
+
+    assert resp.status_code == 422, resp.text
+
+
+async def test_songs_per_submission_above_5_returns_422(client, db_session):
+    user = await _seed_user(db_session)
+
+    resp = await client.post(
+        LEAGUES_URL, headers=_auth_header(user.id), json=_valid_body(songs_per_submission=6)
+    )
+
+    assert resp.status_code == 422, resp.text
 
 
 async def test_description_optional_defaults_to_null(client, db_session):

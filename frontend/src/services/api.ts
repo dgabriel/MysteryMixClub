@@ -238,6 +238,9 @@ export type League = {
   organizer_id: string;
   total_rounds: number;
   votes_per_player: number;
+  /** How many songs a player may submit per round (MYS-116). Fixed at league
+   *  setup; 1 = classic one-song behaviour, max 5. */
+  songs_per_submission: number;
   current_round: number;
   state: string;
   /** Admin-set default participation mode for the league (MYS-112). A member's
@@ -286,6 +289,7 @@ export async function createLeague(input: {
   name: string;
   total_rounds: number;
   votes_per_player?: number;
+  songs_per_submission?: number;
   description?: string;
   default_vibe_mode?: boolean;
 }): Promise<League> {

@@ -31,6 +31,7 @@ _LEAGUE_KEYS = {
     "organizer_id",
     "total_rounds",
     "votes_per_player",
+    "songs_per_submission",
     "current_round",
     "default_vibe_mode",
     "state",

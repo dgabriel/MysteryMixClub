@@ -244,6 +244,7 @@ export function LeagueHomeRoute() {
     organizer_id: "",
     total_rounds: 0,
     votes_per_player: 0,
+    songs_per_submission: 1,
     current_round: 0,
     state: "active",
     default_vibe_mode: false,

@@ -51,6 +51,7 @@ function leagueWith(overrides: Partial<League> = {}): League {
     organizer_id: "org-1",
     total_rounds: 6,
     votes_per_player: 3,
+    songs_per_submission: 1,
     current_round: 6,
     state: "complete",
     default_vibe_mode: false,

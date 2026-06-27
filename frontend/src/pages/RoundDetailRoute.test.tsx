@@ -90,6 +90,7 @@ function league(): League {
     organizer_id: ORGANIZER,
     total_rounds: 6,
     votes_per_player: 3,
+    songs_per_submission: 1,
     current_round: 1,
     state: "active",
     created_at: "2026-01-01T00:00:00Z",

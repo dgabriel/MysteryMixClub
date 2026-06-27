@@ -1,18 +1,17 @@
 """Tests for MYS-69: auto-advance round lifecycle.
 
-When every member active at submission-open has submitted, the round advances
-itself open_submission -> open_voting with no organizer action; when every
-playing submitter has voted, it advances open_voting -> closed (auto-opening the
-next pending round or completing the league). An all-vibing round chains
-open_submission -> open_voting -> closed in a single submit request because there
-are no votes to wait on.
+Voting must be opened manually by the organizer (PATCH state=open_voting).
+Auto-advance only fires on the voting side: when every playing submitter has
+voted, the round advances open_voting -> closed (auto-opening the next pending
+round or completing the league). An all-vibing round chains open_voting -> closed
+in the same PATCH request because voting quorum is immediately met (empty playing
+set) and vibers never cast votes.
 
-These exercise the shared ``advance_round_state`` helper plus the two quorum
-predicates (``submission_quorum_met``/``voting_quorum_met``) through the real
-submit/vote endpoints, and assert the lifecycle notifications fire on the same
-path the manual PATCH uses. The link assembler + YouTube resolver are faked so
-the suite stays offline; the email sender is the shared spy so we can assert on
-the lifecycle emails.
+These exercise the shared ``advance_round_state`` helper plus the voting quorum
+predicate (``voting_quorum_met``) through the real submit/vote/PATCH endpoints,
+and assert the lifecycle notifications fire on the same path. The link assembler
++ YouTube resolver are faked so the suite stays offline; the email sender is the
+shared spy so we can assert on the lifecycle emails.
 
 ``submission_opened_at`` and ``joined_at`` are set explicitly (fixed timestamps)
 so the active-at-open quorum window is deterministic and late joiners / removed
@@ -144,13 +143,13 @@ def _subjects(email_spy) -> list[str]:
 
 
 # --------------------------------------------------------------------------- #
-# Submission quorum -> auto-open voting
+# Submission does NOT auto-open voting (voting is manual)
 # --------------------------------------------------------------------------- #
 
 
-async def test_last_submit_auto_opens_voting(session_factory, db_session, email_spy):
-    # Scenario 1: organizer + 1 member, both playing. The second submit completes
-    # the quorum -> round flips to open_voting and a voting_open email fires.
+async def test_last_submit_stays_open_no_auto_advance(session_factory, db_session, email_spy):
+    # Scenario 1: all members submit — round stays open_submission. Voting must
+    # be opened manually; no voting_open email fires on submit.
     organizer = await _seed_user(db_session, "org@example.com")
     member = await _seed_user(db_session, "m@example.com")
     league = League(name="L", organizer_id=organizer.id, total_rounds=1, votes_per_player=3)
@@ -172,15 +171,12 @@ async def test_last_submit_auto_opens_voting(session_factory, db_session, email_
     async with _build_client(session_factory, email_spy) as client:
         first = await _submit(client, round_id, org_id, title="a")
         assert first.status_code == 201, first.text
-        # Not yet at quorum after the first submit.
-        assert (await _round(db_session, round_id)).state == "open_submission"
-
         email_spy.sends.clear()
         second = await _submit(client, round_id, member_id, title="b")
         assert second.status_code == 201, second.text
 
-    assert (await _round(db_session, round_id)).state == "open_voting"
-    assert any("voting is open" in s for s in _subjects(email_spy))
+    assert (await _round(db_session, round_id)).state == "open_submission"
+    assert not any("voting is open" in s for s in _subjects(email_spy))
 
 
 async def test_partial_submission_stays_open(session_factory, db_session, email_spy):
@@ -212,10 +208,9 @@ async def test_partial_submission_stays_open(session_factory, db_session, email_
     assert not any("voting is open" in s for s in _subjects(email_spy))
 
 
-async def test_late_joiner_does_not_block_quorum(session_factory, db_session, email_spy):
-    # Scenario 3: a member who joined AFTER the window opened isn't in the
-    # active-at-open set, so the round advances once the at-open members submit
-    # even though the late joiner hasn't.
+async def test_late_joiner_can_submit_round_stays_open(session_factory, db_session, email_spy):
+    # Scenario 3: a late joiner submitting doesn't trigger any advance — the
+    # round stays open_submission regardless of who has submitted.
     organizer = await _seed_user(db_session, "org@example.com")
     member = await _seed_user(db_session, "m@example.com")
     latecomer = await _seed_user(db_session, "late@example.com")
@@ -240,11 +235,12 @@ async def test_late_joiner_does_not_block_quorum(session_factory, db_session, em
         await _submit(client, round_id, org_id, title="a")
         await _submit(client, round_id, member_id, title="b")
 
-    assert (await _round(db_session, round_id)).state == "open_voting"
+    assert (await _round(db_session, round_id)).state == "open_submission"
 
 
-async def test_removed_member_does_not_block_quorum(session_factory, db_session, email_spy):
-    # Scenario 4: a removed member is excluded from the active-at-open set.
+async def test_removed_member_can_submit_round_stays_open(session_factory, db_session, email_spy):
+    # Scenario 4: even with a removed member present, all submitting keeps the
+    # round in open_submission — no auto-advance on submit.
     organizer = await _seed_user(db_session, "org@example.com")
     member = await _seed_user(db_session, "m@example.com")
     gone = await _seed_user(db_session, "gone@example.com")
@@ -271,12 +267,12 @@ async def test_removed_member_does_not_block_quorum(session_factory, db_session,
         await _submit(client, round_id, org_id, title="a")
         await _submit(client, round_id, member_id, title="b")
 
-    assert (await _round(db_session, round_id)).state == "open_voting"
+    assert (await _round(db_session, round_id)).state == "open_submission"
 
 
-async def test_viber_counts_toward_submission_quorum(session_factory, db_session, email_spy):
-    # Scenario 5: a vibing member must still submit. The round stays open until
-    # the viber's song is in, then advances.
+async def test_viber_submit_round_stays_open(session_factory, db_session, email_spy):
+    # Scenario 5: a vibing member submitting doesn't trigger an advance —
+    # the round stays open_submission regardless.
     organizer = await _seed_user(db_session, "org@example.com")
     viber = await _seed_user(db_session, "v@example.com")
     league = League(name="L", organizer_id=organizer.id, total_rounds=1, votes_per_player=3)
@@ -299,14 +295,11 @@ async def test_viber_counts_toward_submission_quorum(session_factory, db_session
 
     async with _build_client(session_factory, email_spy) as client:
         await _submit(client, round_id, org_id, title="a")
-        # Organizer in, viber not yet -> still open.
-        assert (await _round(db_session, round_id)).state == "open_submission"
-
         vibe_resp = await _submit(client, round_id, viber_id, title="b")
         assert vibe_resp.status_code == 201, vibe_resp.text
         assert vibe_resp.json()["participation_mode"] == "vibing"
 
-    assert (await _round(db_session, round_id)).state == "open_voting"
+    assert (await _round(db_session, round_id)).state == "open_submission"
 
 
 # --------------------------------------------------------------------------- #
@@ -463,10 +456,12 @@ async def test_partial_votes_stay_open(session_factory, db_session, email_spy):
 
 
 async def test_all_vibing_round_chains_to_closed(session_factory, db_session, email_spy):
-    # Scenario 10: every active member is vibing, so the last submit chains
-    # open_submission -> open_voting -> closed in one request, auto-opening the
-    # next round. Voting can't be satisfied later (vibers never vote), so it must
-    # close immediately.
+    # Scenario 10: every active member is vibing. Submission stays open until the
+    # organizer manually opens voting (PATCH state=open_voting). At that point,
+    # voting quorum is immediately met (empty playing set), so the round chains
+    # open_voting -> closed in the same request, auto-opening the next round.
+    # Vibers never cast votes so the chain must happen at the manual advance, not
+    # in cast_votes.
     organizer = await _seed_user(db_session, "org@example.com")
     viber = await _seed_user(db_session, "v@example.com")
     league = League(
@@ -501,20 +496,25 @@ async def test_all_vibing_round_chains_to_closed(session_factory, db_session, em
 
     async with _build_client(session_factory, email_spy) as client:
         await _submit(client, round_id, org_id, title="a")
+        await _submit(client, round_id, viber_id, title="b")
+        # All submitted, but round must stay open_submission — no auto-advance.
         assert (await _round(db_session, round_id)).state == "open_submission"
 
         email_spy.sends.clear()
-        last = await _submit(client, round_id, viber_id, title="b")
-        assert last.status_code == 201, last.text
+        # Organizer manually opens voting — quorum immediately met, chains to closed.
+        resp = await client.patch(
+            f"/api/v1/rounds/{round_id}",
+            json={"state": "open_voting"},
+            headers=_auth(org_id),
+        )
+        assert resp.status_code == 200, resp.text
 
     assert (await _round(db_session, round_id)).state == "closed"
     assert (await _round(db_session, round2_id)).state == "open_submission"
     assert (await _league(db_session, league_id)).current_round == 2
     subjects = _subjects(email_spy)
-    # The voting_open email is intentionally SUPPRESSED in a chained close: nobody
-    # could vote in a round that closed in the same instant, so recipients must NOT
-    # get a "voting is open / cast your votes" email. Only the close (round_closed)
-    # and the next round's submission_open go out.
+    # voting_open is suppressed — the round closed in the same breath as it opened
+    # for voting, so nobody could have voted. Only round_closed + next submission_open.
     assert not any("voting is open" in s for s in subjects)
     assert any("results are in" in s for s in subjects)
     assert any("open for submissions" in s for s in subjects)

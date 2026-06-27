@@ -899,6 +899,23 @@ export type Votes = {
   votes_per_player: number;
 };
 
+/** One entry in the vote counts tally — shows the song and how many votes it has,
+ *  but NOT who voted or any notes (notes revealed only at round close). */
+export type VoteCountEntry = {
+  submission_id: string;
+  title: string;
+  artist: string;
+  vote_count: number;
+};
+
+/** Vote counts for all songs in a round (GET .../vote-counts). Shows the running
+ *  tally during voting. The caller can see how many votes each song has, but
+ *  notes remain hidden until the round closes. */
+export type VoteCounts = {
+  round_id: string;
+  entries: VoteCountEntry[];
+};
+
 /** Replace the caller's votes for a round with `submissionIds` (idempotent).
  *  Round must be open_voting. Backend rejects an empty set (409). */
 export async function castVotes(roundId: string, submissionIds: string[]): Promise<Votes> {
@@ -920,6 +937,16 @@ export async function getMyVotes(roundId: string): Promise<Votes> {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
   return (await res.json()) as Votes;
+}
+
+/** Get vote counts for all songs in a round. Shows running tally during voting
+ *  without revealing notes (notes appear only after round closes). */
+export async function getVoteCounts(roundId: string): Promise<VoteCounts> {
+  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/vote-counts`);
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as VoteCounts;
 }
 
 // --------------------------------------------------------------------------- //

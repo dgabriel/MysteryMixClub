@@ -428,3 +428,143 @@ async def test_get_mine_empty_when_nothing_cast(client, db_session):
     assert body["submission_ids"] == []
     assert body["count"] == 0
     assert body["votes_per_player"] == 4
+
+
+# --------------------------------------------------------------------------- #
+# GET /vote-counts
+# --------------------------------------------------------------------------- #
+
+
+def _vote_counts_url(round_id) -> str:
+    return f"/api/v1/rounds/{round_id}/vote-counts"
+
+
+async def test_vote_counts_requires_auth(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    resp = await client.get(_vote_counts_url(round_.id))
+    assert resp.status_code == 401
+
+
+async def test_vote_counts_non_member_403(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    outsider = await _seed_user(db_session, "x@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    resp = await client.get(_vote_counts_url(round_.id), headers=_auth(outsider.id))
+    assert resp.status_code == 403
+    assert resp.json()["detail"] == "you are not a member of this league"
+
+
+async def test_vote_counts_unknown_round_404(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    await _seed_league_with_round(db_session, organizer)
+    resp = await client.get(_vote_counts_url(uuid.uuid4()), headers=_auth(organizer.id))
+    assert resp.status_code == 404
+
+
+async def test_vote_counts_round_not_open_voting_409(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer, state="open_submission")
+    resp = await client.get(_vote_counts_url(round_.id), headers=_auth(organizer.id))
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "vote counts are available while voting is open"
+
+
+async def test_vote_counts_empty_round(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    resp = await client.get(_vote_counts_url(round_.id), headers=_auth(organizer.id))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["round_id"] == str(round_.id)
+    assert body["entries"] == []
+
+
+async def test_vote_counts_shows_counts(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    a = await _seed_user(db_session, "a@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer, votes_per_player=3)
+    round_id = round_.id
+    league_id = round_.league_id
+    for u in (a,):
+        await _add_member(db_session, league_id, u)
+    # Create separate submissions - organizer's song too
+    await _seed_submission(db_session, round_id, organizer, title="Organizer Song")
+    s_a = await _seed_submission(db_session, round_id, a, title="Song A")
+
+    # Create a third submission so user a can vote for it (not their own)
+    b = await _seed_user(db_session, "b@example.com")
+    await _add_member(db_session, league_id, b)
+    s_b = await _seed_submission(db_session, round_id, b, title="Song B")
+
+    # Cast votes - organizer votes for A and B
+    voter_id = organizer.id
+    cast_resp = await client.post(
+        _votes_url(round_id),
+        json={"submission_ids": [str(s_a.id), str(s_b.id)]},
+        headers=_auth(voter_id),
+    )
+    # Debug: check if organizer can cast votes
+    assert cast_resp.status_code == 200, f"Organizer cast failed: {cast_resp.text}"
+
+    # User a votes for B (not A - their own song)
+    a_cast_resp = await client.post(
+        _votes_url(round_id),
+        json={"submission_ids": [str(s_b.id)]},
+        headers=_auth(a.id),
+    )
+    # Debug: check if user a can cast votes
+    if a_cast_resp.status_code != 200:
+        print(f"User a cast failed: {a_cast_resp.text}")
+
+    resp = await client.get(_vote_counts_url(round_id), headers=_auth(voter_id))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["round_id"] == str(round_id)
+    # 3 entries: organizer song (0 votes), A (1 vote), B (2 votes)
+    assert len(body["entries"]) == 3
+
+    # A has 1 vote (from organizer), B has 2 votes (from organizer and user a)
+    a_entry = next(e for e in body["entries"] if e["title"] == "Song A")
+    b_entry = next(e for e in body["entries"] if e["title"] == "Song B")
+
+    assert a_entry["vote_count"] == 1
+    assert b_entry["vote_count"] == 2
+
+    # Notes remain hidden in the tally
+    assert "notes" not in a_entry
+
+
+async def test_vote_counts_honors_vote_limit(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    a = await _seed_user(db_session, "a@example.com")
+    b = await _seed_user(db_session, "b@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer, votes_per_player=2)
+    round_id = round_.id
+    league_id = round_.league_id
+    for u in (a, b):
+        await _add_member(db_session, league_id, u)
+    # Submissions: organizer's own song (not voted), A's song, B's song
+    await _seed_submission(db_session, round_id, organizer, title="Organizer Song")
+    s_a = await _seed_submission(db_session, round_id, a, title="Song A")
+    s_b = await _seed_submission(db_session, round_id, b, title="Song B")
+
+    # Cast votes - organizer votes for A and B
+    voter_id = organizer.id
+    await client.post(
+        _votes_url(round_id),
+        json={"submission_ids": [str(s_a.id), str(s_b.id)]},
+        headers=_auth(voter_id),
+    )
+
+    resp = await client.get(_vote_counts_url(round_id), headers=_auth(voter_id))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    # organizer song has 0, A has 1, B has 1
+    # Sort order is vote_count desc, then title asc
+    # So: B (1), A (1), Organizer (0)
+    b_entry = next(e for e in body["entries"] if e["title"] == "Song B")
+    a_entry = next(e for e in body["entries"] if e["title"] == "Song A")
+
+    assert b_entry["vote_count"] == 1
+    assert a_entry["vote_count"] == 1

@@ -24,27 +24,18 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, StringConstraints
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.leagues import _load_league_as_member
-from app.api.routes.rounds import (
-    _load_round,
-    advance_round_state,
-    submission_quorum_met,
-    voting_quorum_met,
-)
+from app.api.routes.rounds import _load_round
 from app.auth.deps import get_current_user
-from app.config import Settings, get_settings
 from app.db.session import get_db
 from app.models.league_member import LeagueMember
-from app.models.round import Round
 from app.models.submission import Submission
 from app.models.user import User
-from app.services.email import EmailSender, get_email_sender
-from app.services.notifications import gather_recipients, queue_round_event
 from app.services.song_links import SongLinkAssembler, get_link_assembler
 from app.services.youtube_resolver import YouTubeResolver, get_youtube_resolver
 
@@ -172,13 +163,10 @@ async def _resolve_mode(
 async def submit_song(
     round_id: uuid.UUID,
     payload: SubmissionCreate,
-    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     assembler: SongLinkAssembler = Depends(get_link_assembler),
     youtube: YouTubeResolver = Depends(get_youtube_resolver),
-    sender: EmailSender = Depends(get_email_sender),
-    settings: Settings = Depends(get_settings),
 ) -> SubmissionResponse:
     round_ = await _load_round(round_id, db)
     league = await _load_league_as_member(round_.league_id, current_user, db)
@@ -205,46 +193,7 @@ async def submit_song(
     submission = Submission(round_id=round_id, user_id=current_user.id, participation_mode=mode)
     _apply_track(submission, payload, platform_links, youtube_video_id)
     db.add(submission)
-    # Flush so the new row is visible to this transaction's quorum check below.
     await db.flush()
-
-    # Auto-advance (MYS-69): once every member active when the window opened has a
-    # song in, submissions close and voting opens with no organizer action. Lock
-    # the round row FIRST, then evaluate the quorum UNDER the lock. Two concurrent
-    # final submits each only see their own uncommitted row before locking (READ
-    # COMMITTED hides the other's), so checking the quorum before the lock would
-    # have both see N-1 and neither advance — the round would stall. Serialized on
-    # the lock, the last committer re-reads the now-committed rows and advances.
-    if round_.state == "open_submission":
-        locked = await db.scalar(
-            select(Round)
-            .where(Round.id == round_.id)
-            .with_for_update()
-            .execution_options(populate_existing=True)
-        )
-        if (
-            locked is not None
-            and locked.state == "open_submission"
-            and await submission_quorum_met(round_, db)
-        ):
-            events = await advance_round_state(round_, league, "open_voting", db)
-            # All-vibing edge (MYS-69): if no one in the round is playing there are
-            # no votes to wait on, so voting can't be satisfied by cast_votes (vibers
-            # never call it). Close immediately in the same transaction — advancing
-            # straight through to closed, auto-opening the next round / completing the
-            # league like a normal close. We still hold the FOR UPDATE lock here.
-            # Drop the voting_open event we just queued for this round: nobody could
-            # vote in a round that closes in the same breath, so only the close
-            # (and next-round) events should go out.
-            if round_.state == "open_voting" and await voting_quorum_met(round_, db):
-                events = [e for e in events if e != (round_, "voting_open")]
-                events += await advance_round_state(round_, league, "closed", db)
-            recipients = await gather_recipients(db, round_.league_id)
-            for event_round, event in events:
-                queue_round_event(
-                    background_tasks, sender, settings, recipients, league, event_round, event
-                )
-
     await db.commit()
     await db.refresh(submission)
     return _to_response(submission)

@@ -4,6 +4,7 @@ Casting and reading a player's votes for a round:
 
 * ``POST /api/v1/rounds/:id/votes``      — cast (replace) your votes for the round
 * ``GET  /api/v1/rounds/:id/votes/mine`` — your current votes for the round
+* ``GET  /api/v1/rounds/:id/vote-counts`` — vote counts per song (no notes yet)
 
 Voting is open only while the round is in ``open_voting``. Only a Playing
 participant may vote: the caller must have a submission in the round, and a
@@ -19,7 +20,7 @@ import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.leagues import _load_league_as_member
@@ -194,3 +195,60 @@ async def get_my_votes(
         count=len(votes),
         votes_per_player=round_.votes_per_player,
     )
+
+
+class VoteCountEntry(BaseModel):
+    submission_id: str
+    title: str
+    artist: str
+    vote_count: int
+
+
+class VoteCountsResponse(BaseModel):
+    round_id: str
+    entries: list[VoteCountEntry]
+
+
+@router.get("/rounds/{round_id}/vote-counts", response_model=VoteCountsResponse)
+async def get_vote_counts(
+    round_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> VoteCountsResponse:
+    """Vote counts per song for the round (no notes yet — notes revealed only at close).
+
+    Available while the round is in ``open_voting``. Shows how many votes each song
+    has received so far, without revealing any notes or the submitter identity.
+    This is the "running tally" that players see after they've cast their votes.
+    """
+    round_ = await _load_round(round_id, db)
+    await _load_league_as_member(round_.league_id, current_user, db)
+
+    if round_.state != "open_voting":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="vote counts are available while voting is open"
+        )
+
+    # Get all submissions in this round with their vote counts.
+    # The vote count is 0 for songs with no votes.
+    submission_rows = (
+        await db.execute(
+            select(Submission, func.count(Vote.id).label("vote_count"))
+            .outerjoin(Vote, Vote.submission_id == Submission.id)
+            .where(Submission.round_id == round_id)
+            .group_by(Submission.id)
+            .order_by(Submission.created_at.asc())
+        )
+    ).all()
+
+    entries = [
+        VoteCountEntry(
+            submission_id=str(s.id),
+            title=s.title,
+            artist=s.artist,
+            vote_count=vote_count,
+        )
+        for s, vote_count in submission_rows
+    ]
+
+    return VoteCountsResponse(round_id=str(round_id), entries=entries)

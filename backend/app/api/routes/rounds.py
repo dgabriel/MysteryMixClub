@@ -237,12 +237,14 @@ async def submission_quorum_met(round_: Round, db: AsyncSession) -> bool:
 
 
 async def voting_quorum_met(round_: Round, db: AsyncSession) -> bool:
-    """True iff every playing submitter in the round has cast a vote (MYS-69).
+    """True iff every playing submitter in the round has cast a vote.
 
     Playing submitter set = distinct submitters whose ``participation_mode`` is
     ``playing`` (vibers are excluded — they can't vote). Met when that set is a
-    subset of the round's distinct voters. An empty playing set (everyone vibing)
-    returns True: nobody can vote, so voting can close immediately.
+    subset of the round's distinct voters. An empty playing set is treated as met
+    only when there is at least one submission (i.e. everyone submitted as vibing);
+    a round with no submissions at all returns False so an empty round is never
+    auto-closed.
     """
     playing_ids = set(
         await db.scalars(
@@ -255,7 +257,11 @@ async def voting_quorum_met(round_: Round, db: AsyncSession) -> bool:
         )
     )
     if not playing_ids:
-        return True
+        # Guard: only treat all-vibing as quorum-met when there are actual submissions.
+        total = await db.scalar(
+            select(func.count()).select_from(Submission).where(Submission.round_id == round_.id)
+        )
+        return (total or 0) > 0
     voter_ids = set(
         await db.scalars(select(Vote.voter_id).where(Vote.round_id == round_.id).distinct())
     )
@@ -421,6 +427,13 @@ async def update_round(
                     detail="another round is already active",
                 )
         events = await advance_round_state(round_, league, new_state, db)
+        # All-vibing edge: if voting just opened but every participant is vibing,
+        # nobody will ever call cast_votes, so voting quorum is immediately met.
+        # Close in the same transaction and suppress the voting_open notification
+        # (nobody could vote in a round that closes in the same breath).
+        if round_.state == "open_voting" and await voting_quorum_met(round_, db):
+            events = [e for e in events if e != (round_, "voting_open")]
+            events += await advance_round_state(round_, league, "closed", db)
 
     # Build + schedule notifications before commit, while the ORM objects are
     # loaded (avoids post-commit lazy-loads in async — the expire_on_commit

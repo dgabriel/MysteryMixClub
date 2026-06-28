@@ -123,6 +123,7 @@ function entry(overrides: Partial<PlaylistEntry> = {}): PlaylistEntry {
     platforms: { spotify: "https://s" },
     preferred_url: "https://s",
     is_own: false,
+    submitter_note: null,
     ...overrides,
   };
 }
@@ -589,6 +590,7 @@ describe("RoundDetailRoute", () => {
         platforms: { spotify: "https://s", deezer: "https://d" },
         preferred_url: "https://s",
         is_own: false,
+        submitter_note: null,
       },
     ];
     mockGetPlaylist.mockResolvedValue({
@@ -632,9 +634,42 @@ describe("RoundDetailRoute", () => {
       }),
     );
     renderRound();
-    expect(await screen.findByText("Bad Guy")).toBeInTheDocument();
+    // "Bad Guy" now appears in both the per-song leaderboard and the picks list.
+    expect((await screen.findAllByText("Bad Guy")).length).toBeGreaterThan(0);
     expect(screen.getByText("Bob")).toBeInTheDocument();
     expect(screen.getByText(/a banger/)).toBeInTheDocument();
+  });
+
+  it("closed: per-song leaderboard ranks by votes with shared-rank ties", async () => {
+    const sub = (id: string, title: string, vote_count: number) => ({
+      submission_id: id,
+      user_id: OTHER,
+      submitter_display_name: "Bob",
+      isrc: id,
+      title,
+      artist: "",
+      album: null,
+      album_art_url: null,
+      platforms: {},
+      submitter_note: null,
+      vote_count,
+      notes: [],
+    });
+    mockGetRound.mockResolvedValue(round({ state: "closed" }));
+    mockGetResults.mockResolvedValue(
+      results({
+        submissions: [sub("a", "Alpha", 7), sub("b", "Bravo", 7), sub("c", "Charlie", 4)],
+      }),
+    );
+    renderRound();
+    // Scope to the "songs (N)" section so titles shared with the picks list don't collide.
+    const heading = await screen.findByText("songs (3)");
+    const section = heading.closest("section") as HTMLElement;
+    const songs = within(section);
+    // Two songs tie at rank 1, the next distinct score is rank 3 (not 2).
+    expect(songs.getByText("Charlie").closest("li")).toHaveTextContent("3");
+    expect(songs.getAllByText("7 votes")).toHaveLength(2);
+    expect(songs.getByText("4 votes")).toBeInTheDocument();
   });
 
   describe("open_voting voting UX (MYS-20)", () => {

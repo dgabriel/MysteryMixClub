@@ -523,6 +523,10 @@ export type Round = {
    *  confirmation indicators on the league-home round tile. */
   viewer_submitted: boolean;
   viewer_voted: boolean;
+  /** Voting progress (MYS-110): distinct voters and eligible voters (playing
+   *  submitters). Shown as "X of Y voted" while voting is open. */
+  voted_count: number;
+  voting_eligible_count: number;
 };
 
 /** A song submitted to a round (GET .../submissions, .../submissions/mine). */

@@ -104,12 +104,20 @@ class RoundResponse(BaseModel):
     # in this round. Used on the league-home tile to show confirmation indicators.
     viewer_submitted: bool = False
     viewer_voted: bool = False
+    # Voting progress (MYS-110): how many playing submitters have cast a vote,
+    # out of the total playing submitters. The client shows "X of Y voted" while
+    # voting is open. voting_eligible_count = distinct playing submitters;
+    # voted_count = distinct voters.
+    voted_count: int = 0
+    voting_eligible_count: int = 0
 
 
 def _to_response(
     r: Round,
     submission_count: int,
     member_count: int,
+    voted_count: int = 0,
+    voting_eligible_count: int = 0,
     *,
     viewer_submitted: bool = False,
     viewer_voted: bool = False,
@@ -128,6 +136,8 @@ def _to_response(
         closed_at=r.closed_at,
         submission_count=submission_count,
         member_count=member_count,
+        voted_count=voted_count,
+        voting_eligible_count=voting_eligible_count,
         viewer_submitted=viewer_submitted,
         viewer_voted=viewer_voted,
     )
@@ -171,6 +181,27 @@ async def _viewer_voted(round_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSessio
     return bool(
         await db.scalar(select(exists().where(Vote.round_id == round_id, Vote.voter_id == user_id)))
     )
+
+
+async def _voted_count(round_id: uuid.UUID, db: AsyncSession) -> int:
+    """Distinct voters in a round — the "X" in X of Y voted."""
+    return (
+        await db.scalar(
+            select(func.count(func.distinct(Vote.voter_id))).where(Vote.round_id == round_id)
+        )
+    ) or 0
+
+
+async def _voting_eligible_count(round_id: uuid.UUID, db: AsyncSession) -> int:
+    """Distinct playing submitters in a round — the "Y" in X of Y voted."""
+    return (
+        await db.scalar(
+            select(func.count(func.distinct(Submission.user_id))).where(
+                Submission.round_id == round_id,
+                Submission.participation_mode == "playing",
+            )
+        )
+    ) or 0
 
 
 async def _load_round(round_id: uuid.UUID, db: AsyncSession) -> Round:
@@ -370,7 +401,7 @@ async def list_rounds(
     )
     member_count = await _member_count(league_id, db)
     round_ids = [r.id for r in rounds]
-    # One grouped count for the whole slate rather than a query per round.
+    # One grouped count per field for the whole slate rather than a query per round.
     # Distinct submitters (people, not songs — MYS-116).
     count_rows = await db.execute(
         select(Submission.round_id, func.count(func.distinct(Submission.user_id)))
@@ -391,11 +422,30 @@ async def list_rounds(
         .distinct()
     )
     viewer_voted_ids = {row[0] for row in vote_rows.all()}
+    # Distinct voters per round (MYS-110).
+    voted_rows = await db.execute(
+        select(Vote.round_id, func.count(func.distinct(Vote.voter_id)))
+        .where(Vote.round_id.in_(round_ids))
+        .group_by(Vote.round_id)
+    )
+    voted_counts = {round_id: count for round_id, count in voted_rows.all()}
+    # Distinct playing submitters per round — the voting denominator (MYS-110).
+    eligible_rows = await db.execute(
+        select(Submission.round_id, func.count(func.distinct(Submission.user_id)))
+        .where(
+            Submission.round_id.in_(round_ids),
+            Submission.participation_mode == "playing",
+        )
+        .group_by(Submission.round_id)
+    )
+    eligible_counts = {round_id: count for round_id, count in eligible_rows.all()}
     return [
         _to_response(
             r,
             counts.get(r.id, 0),
             member_count,
+            voted_counts.get(r.id, 0),
+            eligible_counts.get(r.id, 0),
             viewer_submitted=r.id in viewer_submitted_ids,
             viewer_voted=r.id in viewer_voted_ids,
         )
@@ -415,6 +465,8 @@ async def get_round(
         round_,
         await _submission_count(round_id, db),
         await _member_count(round_.league_id, db),
+        await _voted_count(round_id, db),
+        await _voting_eligible_count(round_id, db),
         viewer_submitted=await _viewer_submitted(round_id, current_user.id, db),
         viewer_voted=await _viewer_voted(round_id, current_user.id, db),
     )
@@ -504,6 +556,8 @@ async def update_round(
         round_,
         await _submission_count(round_.id, db),
         await _member_count(round_.league_id, db),
+        await _voted_count(round_.id, db),
+        await _voting_eligible_count(round_.id, db),
         viewer_submitted=await _viewer_submitted(round_.id, current_user.id, db),
         viewer_voted=await _viewer_voted(round_.id, current_user.id, db),
     )

@@ -432,6 +432,12 @@ function RoundRow({
             {round.submission_count} of {round.member_count} submitted
           </p>
         ) : null}
+        {/* Voting progress while the round is open for voting (MYS-110). */}
+        {round.state === "open_voting" && round.voting_eligible_count > 0 ? (
+          <p className="mt-2 font-mono uppercase tracking-label text-[9px] text-muted">
+            {round.voted_count} of {round.voting_eligible_count} voted
+          </p>
+        ) : null}
         {/* Viewer participation indicators — subtle sage checkmarks. */}
         {round.viewer_submitted || round.viewer_voted ? (
           <p className="mt-1.5 flex items-center gap-3 font-mono uppercase tracking-label text-[9px] text-sage">

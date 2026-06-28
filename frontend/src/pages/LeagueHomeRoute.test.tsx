@@ -116,6 +116,8 @@ function closedRound(overrides: Partial<Round> = {}): Round {
     member_count: 0,
     viewer_submitted: false,
     viewer_voted: false,
+    voted_count: 0,
+    voting_eligible_count: 0,
     ...overrides,
   };
 }
@@ -420,5 +422,37 @@ describe("LeagueHomeRoute", () => {
 
     expect(await screen.findByText(/couldn't delete the league/i)).toBeInTheDocument();
     expect(screen.queryByText("HOME CONTENT")).not.toBeInTheDocument();
+  });
+
+  it("open_voting round: shows voting progress (X of Y voted) on the card — MYS-110", async () => {
+    mockGetRounds.mockResolvedValue([
+      closedRound({
+        id: "round-voting",
+        state: "open_voting",
+        closed_at: null,
+        voted_count: 2,
+        voting_eligible_count: 5,
+      }),
+    ]);
+
+    renderLeague();
+    await screen.findByText("Friday Mixtape");
+    expect(await screen.findByText("2 of 5 voted")).toBeInTheDocument();
+  });
+
+  it("open_voting round: hides voting progress when eligible count is zero — MYS-110", async () => {
+    mockGetRounds.mockResolvedValue([
+      closedRound({
+        id: "round-voting-empty",
+        state: "open_voting",
+        closed_at: null,
+        voted_count: 0,
+        voting_eligible_count: 0,
+      }),
+    ]);
+
+    renderLeague();
+    await screen.findByText("Friday Mixtape");
+    expect(screen.queryByText(/of 0 voted/i)).not.toBeInTheDocument();
   });
 });

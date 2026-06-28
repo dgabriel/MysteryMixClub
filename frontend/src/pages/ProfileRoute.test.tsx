@@ -24,6 +24,7 @@ const mockGetLeagues = vi.mocked(getLeagues);
 const mockUpdateDisplayName = vi.mocked(updateDisplayName);
 const mockUseAuth = vi.mocked(useAuth);
 const applyDisplayName = vi.fn();
+const mockLogoutAll = vi.fn();
 
 function setAuth(displayName: string | null = "Ada") {
   mockUseAuth.mockReturnValue({
@@ -32,7 +33,7 @@ function setAuth(displayName: string | null = "Ada") {
     setAccessToken: vi.fn(),
     clear: vi.fn(),
     logout: vi.fn(),
-    logoutAll: vi.fn(),
+    logoutAll: mockLogoutAll,
     displayName,
     email: "ada@example.com",
     userId: "user-1",
@@ -202,5 +203,17 @@ describe("ProfileRoute", () => {
     await user.click(screen.getAllByRole("button", { name: /^home$/i })[1]);
 
     expect(await screen.findByText("HOME CONTENT")).toBeInTheDocument();
+  });
+
+  it("security: log out of all devices button calls logoutAll", async () => {
+    mockLogoutAll.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+
+    renderProfile();
+    await screen.findByText(/archived/i);
+
+    await user.click(screen.getByRole("button", { name: /log out of all devices/i }));
+
+    expect(mockLogoutAll).toHaveBeenCalledOnce();
   });
 });

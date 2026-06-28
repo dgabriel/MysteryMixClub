@@ -12,7 +12,7 @@ import { useAuth } from "../hooks/useAuth";
  */
 export function ProfileRoute() {
   const navigate = useNavigate();
-  const { displayName, email, applyDisplayName } = useAuth();
+  const { displayName, email, applyDisplayName, logoutAll } = useAuth();
 
   const [archived, setArchived] = useState<League[]>([]);
   const [loading, setLoading] = useState(true);
@@ -21,6 +21,7 @@ export function ProfileRoute() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [logoutAllBusy, setLogoutAllBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -54,6 +55,15 @@ export function ProfileRoute() {
     return () => window.clearTimeout(timer);
   }, [saved]);
 
+  async function handleLogoutAll() {
+    setLogoutAllBusy(true);
+    try {
+      await logoutAll();
+    } finally {
+      setLogoutAllBusy(false);
+    }
+  }
+
   async function handleSaveName(name: string) {
     setSaving(true);
     setSaveError(null);
@@ -81,6 +91,8 @@ export function ProfileRoute() {
       saving={saving}
       saveError={saveError}
       saved={saved}
+      onLogoutAll={handleLogoutAll}
+      logoutAllBusy={logoutAllBusy}
     />
   );
 }

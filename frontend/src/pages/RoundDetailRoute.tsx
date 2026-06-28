@@ -324,11 +324,20 @@ export function RoundDetailRoute() {
         setVotingEligible(refreshed.voting_eligible);
         setVotingActed(refreshed.voting_acted);
         setVibingCount(refreshed.vibing_count);
-        // Also fetch the updated vote counts so the player sees their impact
-        const counts = await getVoteCounts(id);
-        setVoteCounts(counts.entries);
-        // Votes are now locked - can't change after casting
-        setIsVotesLocked(true);
+        try {
+          // Also fetch the updated vote counts so the player sees their impact
+          const counts = await getVoteCounts(id);
+          setVoteCounts(counts.entries);
+          setIsVotesLocked(true);
+        } catch {
+          // vote-counts 409 means the round auto-advanced to closed (last voter).
+          // Re-fetch round + results so the UI transitions to the reveal.
+          const updatedRound = await getRound(id);
+          setRound(updatedRound);
+          if (updatedRound.state !== "open_voting") {
+            setResults(await getResults(id));
+          }
+        }
       } catch {
         // leave the counter as-is; the cast itself succeeded.
       }

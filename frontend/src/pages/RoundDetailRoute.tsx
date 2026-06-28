@@ -17,6 +17,7 @@ import {
   getVoteCounts,
   submitSong,
   updateRound,
+  updateSubmissionNote,
   type League,
   type LeaderboardEntry,
   type MostNotedWinner,
@@ -297,6 +298,15 @@ export function RoundDetailRoute() {
     }
   }
 
+  async function handleSaveNote(submissionId: string, note: string | null) {
+    if (!id) return;
+    try {
+      const result = await updateSubmissionNote(id, submissionId, note);
+      setMySubmissions((current) => current.map((s) => (s.id === submissionId ? result : s)));
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "couldn't save the note. try again.");
+    }
+  }
 
   async function handleCastVotes(selected: string[]) {
     if (!id || selected.length === 0) return;
@@ -481,6 +491,7 @@ export function RoundDetailRoute() {
                 onAdd={handleAddSong}
                 onEdit={handleEditSong}
                 onRemove={handleRemoveSong}
+                onSaveNote={handleSaveNote}
                 onConfirm={() => navigate(`/leagues/${round.league_id}`)}
               />
             </>
@@ -706,6 +717,7 @@ function SubmittedSongCard({
   removing,
   onEdit,
   onRemove,
+  onSaveNote,
 }: {
   submission: SubmissionResult;
   eyebrow: string;
@@ -713,7 +725,27 @@ function SubmittedSongCard({
   removing: boolean;
   onEdit: () => void;
   onRemove: () => void;
+  onSaveNote: (note: string | null) => Promise<void>;
 }) {
+  const [editingNote, setEditingNote] = useState(false);
+  const [noteText, setNoteText] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
+
+  function openNoteEditor() {
+    setNoteText(submission.note ?? "");
+    setEditingNote(true);
+  }
+
+  async function handleNoteSave() {
+    setSavingNote(true);
+    try {
+      await onSaveNote(noteText.trim() || null);
+      setEditingNote(false);
+    } finally {
+      setSavingNote(false);
+    }
+  }
+
   return (
     <Card>
       <span className="font-mono uppercase tracking-label text-[9px] text-muted">{eyebrow}</span>
@@ -721,11 +753,57 @@ function SubmittedSongCard({
       {submission.artist ? (
         <p className="mt-1 font-mono text-[11px] font-light text-muted">{submission.artist}</p>
       ) : null}
-      {submission.note ? (
-        <p className="mt-3 border-l-2 border-sage pl-3 font-mono text-[12px] font-light text-ink">
-          &ldquo;{submission.note}&rdquo;
-        </p>
-      ) : null}
+
+      {editingNote ? (
+        <div className="mt-3">
+          <textarea
+            maxLength={280}
+            placeholder="add a note about this pick…"
+            rows={2}
+            value={noteText}
+            onChange={(e) => setNoteText(e.target.value)}
+            autoFocus
+            className="w-full resize-none border-b border-ink bg-transparent font-mono text-[12px] font-light text-ink placeholder:text-muted focus:border-sage focus:outline-none"
+          />
+          <div className="mt-2 flex items-center gap-4">
+            <button
+              type="button"
+              disabled={savingNote}
+              onClick={() => void handleNoteSave()}
+              className="font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink disabled:opacity-50"
+            >
+              {savingNote ? "saving…" : "save note"}
+            </button>
+            <button
+              type="button"
+              disabled={savingNote}
+              onClick={() => setEditingNote(false)}
+              className="font-mono uppercase tracking-ui text-[11px] text-muted underline underline-offset-[3px] transition-colors duration-150 hover:text-ink disabled:opacity-50"
+            >
+              cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          {submission.note ? (
+            <p className="mt-3 border-l-2 border-sage pl-3 font-mono text-[12px] font-light text-ink">
+              &ldquo;{submission.note}&rdquo;
+            </p>
+          ) : null}
+          <div className="mt-3">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={openNoteEditor}
+              className="font-mono uppercase tracking-ui text-[11px] text-muted underline underline-offset-[3px] transition-colors duration-150 hover:text-ink disabled:opacity-50"
+            >
+              {submission.note ? "edit note" : "add a note"}
+            </button>
+          </div>
+        </>
+      )}
+
       <div className="mt-5 flex items-center gap-5">
         <button
           type="button"
@@ -811,6 +889,7 @@ function SubmissionManager({
   onAdd,
   onEdit,
   onRemove,
+  onSaveNote,
   onConfirm,
 }: {
   submissions: SubmissionResult[];
@@ -820,6 +899,7 @@ function SubmissionManager({
   onAdd: (song: ResolvedSong, note: string | null) => Promise<boolean>;
   onEdit: (submissionId: string, song: ResolvedSong, note: string | null) => Promise<boolean>;
   onRemove: (submissionId: string) => Promise<boolean>;
+  onSaveNote: (submissionId: string, note: string | null) => Promise<void>;
   onConfirm: () => void;
 }) {
   // Which already-submitted song is being changed (its slot shows a composer).
@@ -869,6 +949,7 @@ function SubmissionManager({
                 removing={removingId === s.id}
                 onEdit={() => setEditingId(s.id)}
                 onRemove={() => void onRemove(s.id)}
+                onSaveNote={(note) => onSaveNote(s.id, note)}
               />
             </li>
           ),
@@ -1111,6 +1192,11 @@ function VotingSection({
                 {entry.artist ? (
                   <p className="mt-1 font-mono text-[11px] font-light text-muted">{entry.artist}</p>
                 ) : null}
+                {entry.submitter_note ? (
+                  <p className="mt-3 border-l-2 border-sage pl-3 font-mono text-[12px] font-light text-ink">
+                    &ldquo;{entry.submitter_note}&rdquo;
+                  </p>
+                ) : null}
                 <PlatformLinks platforms={entry.platforms} title={entry.title} />
                 {/* Vibers don't vote, but they can still leave notes — it's how
                     they take part (MYS-132). */}
@@ -1166,6 +1252,11 @@ function VotingSection({
                       {entry.artist}
                     </p>
                   ) : null}
+                  {entry.submitter_note ? (
+                    <p className="mt-3 border-l-2 border-sage pl-3 font-mono text-[12px] font-light text-ink">
+                      &ldquo;{entry.submitter_note}&rdquo;
+                    </p>
+                  ) : null}
                   <p className="mt-2 font-mono text-[11px] font-light text-muted">
                     you can&apos;t vote for your own song
                   </p>
@@ -1200,6 +1291,11 @@ function VotingSection({
                 </div>
                 {entry.artist ? (
                   <p className="mt-1 font-mono text-[11px] font-light text-muted">{entry.artist}</p>
+                ) : null}
+                {entry.submitter_note ? (
+                  <p className="mt-3 border-l-2 border-sage pl-3 font-mono text-[12px] font-light text-ink">
+                    &ldquo;{entry.submitter_note}&rdquo;
+                  </p>
                 ) : null}
               </button>
               <PlatformLinks platforms={entry.platforms} title={entry.title} />
@@ -1804,15 +1900,24 @@ function WinnersSection({
                   {w.total} {w.total === 1 ? "vote" : "votes"}
                 </span>
               </div>
-              {/* A multi-song winner lists every song under their one total. */}
-              {w.songs.map((s, i) => (
-                <div key={s.submission_id} className={i === 0 ? "mt-1" : "mt-3"}>
-                  <h3 className="font-serif text-[24px] leading-tight text-ink">{s.title}</h3>
-                  {s.artist ? (
-                    <p className="mt-1 font-mono text-[11px] font-light text-muted">{s.artist}</p>
-                  ) : null}
-                </div>
-              ))}
+              {/* Show only the player's top-voted song(s), not every submission
+                  (MYS-150). A multi-song winner lists their peak songs under one
+                  total; ties at the peak show each. */}
+              {(() => {
+                const peak = Math.max(...w.songs.map((s) => s.vote_count));
+                return w.songs
+                  .filter((s) => s.vote_count === peak)
+                  .map((s, i) => (
+                    <div key={s.submission_id} className={i === 0 ? "mt-1" : "mt-3"}>
+                      <h3 className="font-serif text-[24px] leading-tight text-ink">{s.title}</h3>
+                      {s.artist ? (
+                        <p className="mt-1 font-mono text-[11px] font-light text-muted">
+                          {s.artist}
+                        </p>
+                      ) : null}
+                    </div>
+                  ));
+              })()}
             </Card>
           </li>
         ))}

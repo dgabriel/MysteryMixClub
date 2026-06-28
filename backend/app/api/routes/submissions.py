@@ -62,6 +62,12 @@ class SubmissionCreate(BaseModel):
     participation_mode: Literal["playing", "vibing"] | None = None
 
 
+class NoteUpdate(BaseModel):
+    # Edit only the submitter note on an existing submission, leaving the track
+    # untouched. `None` clears the note.
+    note: Note | None = None
+
+
 class SubmissionResponse(BaseModel):
     id: str
     round_id: str
@@ -320,6 +326,45 @@ async def delete_song(
 
     await db.delete(submission)
     await db.commit()
+
+
+@router.patch(
+    "/rounds/{round_id}/submissions/{submission_id}/note", response_model=SubmissionResponse
+)
+async def update_submission_note(
+    round_id: uuid.UUID,
+    submission_id: uuid.UUID,
+    payload: NoteUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> SubmissionResponse:
+    """Edit only the submitter note on one of your submissions (MYS-150).
+
+    Lets a player add, change, or clear the context note on a song they've
+    already submitted without re-picking the track. Only the owner may edit, and
+    only while the round is still accepting submissions.
+    """
+    round_ = await _load_round(round_id, db)
+    await _load_league_as_member(round_.league_id, current_user, db)
+    if round_.state != "open_submission":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="this round is not accepting submissions"
+        )
+    submission = await db.scalar(
+        select(Submission).where(Submission.id == submission_id, Submission.round_id == round_id)
+    )
+    if submission is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="submission not found in this round"
+        )
+    if submission.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="that submission isn't yours"
+        )
+    submission.note = payload.note
+    await db.commit()
+    await db.refresh(submission)
+    return _to_response(submission)
 
 
 @router.get("/rounds/{round_id}/submissions/mine", response_model=list[SubmissionResponse])

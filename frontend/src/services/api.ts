@@ -560,6 +560,8 @@ export type PlaylistEntry = {
   platforms: Partial<Record<PlatformKey, string>>;
   preferred_url: string | null;
   is_own: boolean;
+  /** The submitter's optional context note, shown to all voters (MYS-150). */
+  submitter_note: string | null;
 };
 
 /** A round's voting playlist (GET /rounds/:id/playlist). `youtube_playlist_url`
@@ -687,6 +689,27 @@ export async function editSubmission(
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
+    },
+  );
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as SubmissionResult;
+}
+
+/** Update only the submitter note on an existing submission without replacing the
+ *  track (MYS-150). The round must still be open_submission. Pass null to clear. */
+export async function updateSubmissionNote(
+  roundId: string,
+  submissionId: string,
+  note: string | null,
+): Promise<SubmissionResult> {
+  const res = await authenticatedRequest(
+    `/api/v1/rounds/${roundId}/submissions/${submissionId}/note`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ note }),
     },
   );
   if (!res.ok) {

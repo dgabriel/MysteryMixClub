@@ -440,6 +440,81 @@ async def test_delete_not_your_submission_403(session_factory, db_session):
 
 
 # --------------------------------------------------------------------------- #
+# PATCH note — edit only the submitter note without replacing the track (MYS-150)
+# --------------------------------------------------------------------------- #
+
+
+async def test_update_note_sets_and_clears(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    async with _build_client(session_factory) as client:
+        sub = await client.post(_sub_url(round_.id), json=_body(), headers=_auth(organizer.id))
+        sub_id = sub.json()["id"]
+        # Set a note, leaving the track untouched.
+        set_resp = await client.patch(
+            f"{_sub_url(round_.id)}/{sub_id}/note",
+            json={"note": "a quiet banger"},
+            headers=_auth(organizer.id),
+        )
+        assert set_resp.status_code == 200, set_resp.text
+        assert set_resp.json()["note"] == "a quiet banger"
+        assert set_resp.json()["title"] == sub.json()["title"]
+        # Clearing with null removes it.
+        clear_resp = await client.patch(
+            f"{_sub_url(round_.id)}/{sub_id}/note",
+            json={"note": None},
+            headers=_auth(organizer.id),
+        )
+        assert clear_resp.status_code == 200, clear_resp.text
+        assert clear_resp.json()["note"] is None
+
+
+async def test_update_note_not_your_submission_403(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    member = await _seed_user(db_session, "m@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    await _add_member(db_session, round_.league_id, member)
+    async with _build_client(session_factory) as client:
+        sub = await client.post(_sub_url(round_.id), json=_body(), headers=_auth(organizer.id))
+        resp = await client.patch(
+            f"{_sub_url(round_.id)}/{sub.json()['id']}/note",
+            json={"note": "not mine"},
+            headers=_auth(member.id),
+        )
+    assert resp.status_code == 403
+
+
+async def test_update_note_when_not_open_409(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    async with _build_client(session_factory) as client:
+        sub = await client.post(_sub_url(round_.id), json=_body(), headers=_auth(organizer.id))
+        sub_id = sub.json()["id"]
+        # Move the round past submissions.
+        round_.state = "open_voting"
+        await db_session.commit()
+        resp = await client.patch(
+            f"{_sub_url(round_.id)}/{sub_id}/note",
+            json={"note": "too late"},
+            headers=_auth(organizer.id),
+        )
+    assert resp.status_code == 409
+
+
+async def test_update_note_too_long_422(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    async with _build_client(session_factory) as client:
+        sub = await client.post(_sub_url(round_.id), json=_body(), headers=_auth(organizer.id))
+        resp = await client.patch(
+            f"{_sub_url(round_.id)}/{sub.json()['id']}/note",
+            json={"note": "x" * 281},
+            headers=_auth(organizer.id),
+        )
+    assert resp.status_code == 422
+
+
+# --------------------------------------------------------------------------- #
 # Uniform per-player vibe stance across a player's songs (MYS-116)
 # --------------------------------------------------------------------------- #
 

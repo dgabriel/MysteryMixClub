@@ -87,6 +87,8 @@ function round(overrides: Partial<Round> = {}): Round {
     closed_at: null,
     submission_count: 0,
     member_count: 0,
+    viewer_submitted: false,
+    viewer_voted: false,
     voted_count: 0,
     voting_eligible_count: 0,
     ...overrides,
@@ -121,6 +123,7 @@ function entry(overrides: Partial<PlaylistEntry> = {}): PlaylistEntry {
     platforms: { spotify: "https://s" },
     preferred_url: "https://s",
     is_own: false,
+    submitter_note: null,
     ...overrides,
   };
 }
@@ -138,6 +141,7 @@ function mine(overrides: Partial<SubmissionResult> = {}): SubmissionResult {
     note: null,
     participation_mode: "playing",
     created_at: "2026-01-01T00:00:00Z",
+    league_previously_submitted: false,
     ...overrides,
   };
 }
@@ -303,6 +307,7 @@ describe("RoundDetailRoute", () => {
       note: null,
       participation_mode: "playing",
       created_at: "2026-01-01T00:00:00Z",
+      league_previously_submitted: false,
     });
 
     renderRound();
@@ -585,6 +590,7 @@ describe("RoundDetailRoute", () => {
         platforms: { spotify: "https://s", deezer: "https://d" },
         preferred_url: "https://s",
         is_own: false,
+        submitter_note: null,
       },
     ];
     mockGetPlaylist.mockResolvedValue({
@@ -628,7 +634,8 @@ describe("RoundDetailRoute", () => {
       }),
     );
     renderRound();
-    expect(await screen.findByText("Bad Guy")).toBeInTheDocument();
+    // "Bad Guy" appears in both the song leaderboard and the picks card.
+    expect((await screen.findAllByText("Bad Guy")).length).toBeGreaterThan(0);
     expect(screen.getByText("Bob")).toBeInTheDocument();
     expect(screen.getByText(/a banger/)).toBeInTheDocument();
   });

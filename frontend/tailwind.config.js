@@ -10,6 +10,7 @@ export default {
         "sage-light": "#A8C4AD",
         "sage-pale": "#D4E3D7",
         rust: "#B5533C",
+        gold: "#C9A028",
         muted: "#8A8680",
         border: "#D6D2CA",
       },

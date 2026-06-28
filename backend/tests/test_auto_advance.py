@@ -109,7 +109,14 @@ def _auth(user_id: uuid.UUID) -> dict[str, str]:
 
 
 def _body(**over) -> dict:
-    body = {"isrc": "USABC1234567", "title": "bad guy", "artist": "Billie Eilish"}
+    # Derive a unique ISRC from the title so multi-player test calls don't
+    # accidentally reuse the same track (MYS-147: round-level dup block).
+    title = over.get("title", "bad guy")
+    body = {
+        "isrc": f"USABC{abs(hash(title)):07d}",
+        "title": "bad guy",
+        "artist": "Billie Eilish",
+    }
     body.update(over)
     return body
 

@@ -11,6 +11,7 @@ import { Button } from "../components/Button";
 import { Badge } from "../components/Badge";
 import { TextField } from "../components/TextField";
 import { ConcentricRings } from "../components/ConcentricRings";
+import { CrownIcon } from "../components/CrownIcon";
 
 const ROUND_STATE_LABEL: Record<RoundState, string> = {
   pending: "upcoming",
@@ -437,6 +438,13 @@ function RoundRow({
             {round.voted_count} of {round.voting_eligible_count} voted
           </p>
         ) : null}
+        {/* Viewer participation indicators — subtle sage checkmarks. */}
+        {round.viewer_submitted || round.viewer_voted ? (
+          <p className="mt-1.5 flex items-center gap-3 font-mono uppercase tracking-label text-[9px] text-sage">
+            {round.viewer_submitted ? <ViewerCheck label="you submitted" /> : null}
+            {round.viewer_voted ? <ViewerCheck label="you voted" /> : null}
+          </p>
+        ) : null}
         {round.state === "closed" && results ? <ClosedRoundSummary results={results} /> : null}
       </button>
 
@@ -458,6 +466,29 @@ function RoundRow({
         </div>
       ) : null}
     </div>
+  );
+}
+
+/** Small checkmark with a visible label — sage-coloured, screened from AT so
+ *  only the label text is announced. */
+function ViewerCheck({ label }: { label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      <svg
+        width="9"
+        height="9"
+        viewBox="0 0 12 12"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <polyline points="1.5 6.5 4.5 9.5 10.5 2.5" />
+      </svg>
+      {label}
+    </span>
   );
 }
 
@@ -487,7 +518,8 @@ function ClosedRoundSummary({ results }: { results: RoundResults }) {
     <dl className="mt-3 space-y-2 border-t border-border pt-3">
       {winners.length > 0 ? (
         <div className="flex items-baseline justify-between gap-4">
-          <dt className="shrink-0 font-mono uppercase tracking-label text-[9px] text-muted">
+          <dt className="flex shrink-0 items-center gap-1 font-mono uppercase tracking-label text-[9px] text-muted">
+            <CrownIcon className="text-gold" />
             {winners.length > 1 ? "winners" : "winner"}
           </dt>
           <dd className="min-w-0 text-right font-mono text-[13px] font-light text-ink">
@@ -497,7 +529,8 @@ function ClosedRoundSummary({ results }: { results: RoundResults }) {
       ) : null}
       {mostNoted.length > 0 ? (
         <div className="flex items-baseline justify-between gap-4">
-          <dt className="shrink-0 font-mono uppercase tracking-label text-[9px] text-muted">
+          <dt className="flex shrink-0 items-center gap-1 font-mono uppercase tracking-label text-[9px] text-muted">
+            <CrownIcon className="text-gold" />
             most noted
           </dt>
           <dd className="min-w-0 text-right font-mono text-[13px] font-light text-ink">

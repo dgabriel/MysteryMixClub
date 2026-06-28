@@ -18,5 +18,6 @@ export default {
       `cd frontend && npx --no-install prettier --write ${rel}`,
     ];
   },
+  // ruff resolves via the venv on PATH (set by the caller: PATH="$PWD/backend/.venv/bin:$PATH")
   "backend/**/*.py": ["ruff check --fix", "ruff format"],
 };

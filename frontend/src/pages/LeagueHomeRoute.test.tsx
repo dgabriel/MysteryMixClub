@@ -114,6 +114,8 @@ function closedRound(overrides: Partial<Round> = {}): Round {
     closed_at: "2026-01-05T00:00:00Z",
     submission_count: 0,
     member_count: 0,
+    viewer_submitted: false,
+    viewer_voted: false,
     voted_count: 0,
     voting_eligible_count: 0,
     ...overrides,

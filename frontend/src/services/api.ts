@@ -519,6 +519,10 @@ export type Round = {
    *  members. Shown as "X of Y submitted" while submissions are open. */
   submission_count: number;
   member_count: number;
+  /** Whether the current viewer has submitted / voted in this round. Used for
+   *  confirmation indicators on the league-home round tile. */
+  viewer_submitted: boolean;
+  viewer_voted: boolean;
   /** Voting progress (MYS-110): distinct voters and eligible voters (playing
    *  submitters). Shown as "X of Y voted" while voting is open. */
   voted_count: number;
@@ -538,6 +542,9 @@ export type SubmissionResult = {
   note: string | null;
   participation_mode: string;
   created_at: string;
+  /** True when this ISRC was used in a prior round of the same league (MYS-147).
+   *  The submission still succeeds; the UI shows a soft "used before" notice. */
+  league_previously_submitted: boolean;
 };
 
 /** One entry in a round's voting playlist. Anonymous for everyone but the
@@ -555,6 +562,7 @@ export type PlaylistEntry = {
   platforms: Partial<Record<PlatformKey, string>>;
   preferred_url: string | null;
   is_own: boolean;
+  submitter_note: string | null;
 };
 
 /** A round's voting playlist (GET /rounds/:id/playlist). `youtube_playlist_url`
@@ -682,6 +690,27 @@ export async function editSubmission(
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
+    },
+  );
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as SubmissionResult;
+}
+
+/** Update only the submitter note on an existing submission without replacing the
+ *  track. The round must still be open_submission. Pass null to clear the note. */
+export async function updateSubmissionNote(
+  roundId: string,
+  submissionId: string,
+  note: string | null,
+): Promise<SubmissionResult> {
+  const res = await authenticatedRequest(
+    `/api/v1/rounds/${roundId}/submissions/${submissionId}/note`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ note }),
     },
   );
   if (!res.ok) {

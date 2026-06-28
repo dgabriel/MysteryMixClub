@@ -1264,37 +1264,52 @@ function VotingSection({
           const disabled = !isSelected && atLimit;
           return (
             <li key={entry.submission_id}>
-              <button
-                type="button"
-                aria-pressed={isSelected}
-                disabled={disabled}
-                onClick={() => toggle(entry.submission_id)}
+              {/* Outer card div so SongNotes (which has its own buttons) can
+                  live inside the card without nesting buttons in a button. */}
+              <div
                 className={[
-                  "block w-full rounded-[3px] border bg-white px-6 py-5 text-left transition-colors duration-150",
+                  "rounded-[3px] border bg-white transition-colors duration-150",
                   // A selected song wears the screen's one Rust signal: a Rust
                   // outline marks the picks you've chosen to vote for. No other
                   // element on the voting screen uses Rust.
-                  isSelected ? "border-rust" : "border-border hover:bg-sage-pale/60",
-                  disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
+                  isSelected ? "border-rust" : "border-border",
                 ].join(" ")}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <h3 className="font-serif text-[18px] leading-tight text-ink">{entry.title}</h3>
-                  <span className="shrink-0 pt-1 font-mono uppercase tracking-label text-[9px] text-rust">
-                    {isSelected ? "voted" : ""}
-                  </span>
+                <button
+                  type="button"
+                  aria-pressed={isSelected}
+                  disabled={disabled}
+                  onClick={() => toggle(entry.submission_id)}
+                  className={[
+                    "block w-full px-6 pb-4 pt-5 text-left",
+                    isSelected ? "" : "hover:bg-sage-pale/60",
+                    disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
+                  ].join(" ")}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <h3 className="font-serif text-[18px] leading-tight text-ink">
+                      {entry.title}
+                    </h3>
+                    <span className="shrink-0 pt-1 font-mono uppercase tracking-label text-[9px] text-rust">
+                      {isSelected ? "voted" : ""}
+                    </span>
+                  </div>
+                  {entry.artist ? (
+                    <p className="mt-1 font-mono text-[11px] font-light text-muted">
+                      {entry.artist}
+                    </p>
+                  ) : null}
+                  {entry.submitter_note ? (
+                    <p className="mt-3 border-l-2 border-sage pl-3 font-mono text-[12px] font-light text-ink">
+                      &ldquo;{entry.submitter_note}&rdquo;
+                    </p>
+                  ) : null}
+                </button>
+                <div className="border-t border-border px-6 pb-5 pt-3">
+                  <SongNotes submissionId={entry.submission_id} onActionError={onActionError} />
                 </div>
-                {entry.artist ? (
-                  <p className="mt-1 font-mono text-[11px] font-light text-muted">{entry.artist}</p>
-                ) : null}
-                {entry.submitter_note ? (
-                  <p className="mt-3 border-l-2 border-sage pl-3 font-mono text-[12px] font-light text-ink">
-                    &ldquo;{entry.submitter_note}&rdquo;
-                  </p>
-                ) : null}
-              </button>
+              </div>
               <PlatformLinks platforms={entry.platforms} title={entry.title} />
-              <SongNotes submissionId={entry.submission_id} onActionError={onActionError} />
             </li>
           );
         })}

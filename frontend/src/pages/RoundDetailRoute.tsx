@@ -332,7 +332,19 @@ export function RoundDetailRoute() {
         // Votes are now locked - can't change after casting
         setIsVotesLocked(true);
       } catch {
-        // leave the counter as-is; the cast itself succeeded.
+        // A 409 from vote-counts means the round auto-advanced to closed because
+        // this was the last voter (MYS-69). Re-fetch the round and, if it's no
+        // longer in voting, pull results so the final voter transitions straight
+        // to the reveal instead of being stranded on a stale voting screen.
+        try {
+          const updatedRound = await getRound(id);
+          setRound(updatedRound);
+          if (updatedRound.state !== "open_voting") {
+            setResults(await getResults(id));
+          }
+        } catch {
+          // best-effort; the cast itself already succeeded.
+        }
       }
     } catch (err) {
       setActionError(

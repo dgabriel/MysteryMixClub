@@ -12,6 +12,7 @@ import { Badge } from "../components/Badge";
 import { TextField } from "../components/TextField";
 import { ConcentricRings } from "../components/ConcentricRings";
 import { CrownIcon } from "../components/CrownIcon";
+import { Confetti } from "../components/Confetti";
 
 const ROUND_STATE_LABEL: Record<RoundState, string> = {
   pending: "upcoming",
@@ -114,8 +115,11 @@ export function LeagueHomeScreen({
   // destructive delete-league confirm (DeleteLeagueSection below). Every other
   // element — including the league-state badge — stays in the Sage family. The
   // shared TopNav is rendered by AuthedLayout, so this is content-only.
+  const isComplete = league.state === "complete";
+
   return (
     <main className="mx-auto w-full max-w-lg px-4 pb-16 sm:px-8">
+      {isComplete ? <Confetti /> : null}
       <div className="flex items-start justify-between gap-4">
         <h1 className="font-serif text-[32px] leading-tight text-ink">{league.name}</h1>
         <div className="shrink-0 pt-2">
@@ -128,6 +132,11 @@ export function LeagueHomeScreen({
         <p className="mt-3 font-mono text-[11px] font-light text-muted">
           round {league.current_round} of {league.total_rounds}
         </p>
+        {isComplete ? (
+          <p className="mt-4 font-serif italic text-[18px] text-muted">
+            the league is complete.
+          </p>
+        ) : null}
 
         {isOrganizer ? (
           <OrganizerEdit

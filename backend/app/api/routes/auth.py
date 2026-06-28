@@ -145,6 +145,7 @@ async def request_magic_link(
         MagicLinkToken(
             email=email,
             token_hash=hash_token(raw_token),
+            created_at=now,
             expires_at=now + _TOKEN_TTL,
             used=False,
         )

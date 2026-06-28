@@ -226,7 +226,8 @@ async def get_vote_counts(
 
     if round_.state != "open_voting":
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="vote counts are available while voting is open"
+            status_code=status.HTTP_409_CONFLICT,
+            detail="vote counts are available while voting is open",
         )
 
     # Get all submissions in this round with their vote counts.

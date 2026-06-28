@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.leagues import LeagueResponse, _to_response
@@ -35,10 +36,12 @@ async def _join_via_invite(db: AsyncSession, user_id: uuid.UUID, invite: Invite)
 
     Returns True if the user actually joined or rejoined (False = already active, no-op)."""
     membership = await db.scalar(
-        select(LeagueMember).where(
+        select(LeagueMember)
+        .where(
             LeagueMember.league_id == invite.league_id,
             LeagueMember.user_id == user_id,
         )
+        .with_for_update()
     )
     if membership is not None:
         if membership.removed_at is not None:
@@ -52,13 +55,21 @@ async def _join_via_invite(db: AsyncSession, user_id: uuid.UUID, invite: Invite)
         # Seed the new member's per-league vibe_mode from the league default
         # (MYS-112).
         league = await db.scalar(select(League).where(League.id == invite.league_id))
-        db.add(
-            LeagueMember(
-                league_id=invite.league_id,
-                user_id=user_id,
-                vibe_mode=league.default_vibe_mode if league is not None else False,
+        try:
+            db.add(
+                LeagueMember(
+                    league_id=invite.league_id,
+                    user_id=user_id,
+                    vibe_mode=league.default_vibe_mode if league is not None else False,
+                )
             )
-        )
+            # Flush now so IntegrityError surfaces here rather than at caller's
+            # commit — lets us recover cleanly inside this function (MYS-32).
+            await db.flush()
+        except IntegrityError:
+            # A concurrent request beat us to the insert; treat as already joined.
+            await db.rollback()
+            return False
         return True
 
 
@@ -125,17 +136,18 @@ async def accept_invite(
     # membership needs the join + commit.
     already_active = membership is not None and membership.removed_at is None
     if not already_active:
-        await _join_via_invite(db, current_user.id, invite)
+        joined = await _join_via_invite(db, current_user.id, invite)
         await db.commit()
-        queue_league_joined(
-            background_tasks,
-            email_sender,
-            settings,
-            current_user.email,
-            current_user.id,
-            league.id,
-            league.name,
-        )
+        if joined:
+            queue_league_joined(
+                background_tasks,
+                email_sender,
+                settings,
+                current_user.email,
+                current_user.id,
+                league.id,
+                league.name,
+            )
 
     await db.refresh(league)
     return _to_response(league)

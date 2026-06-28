@@ -79,6 +79,9 @@ def _schema() -> None:
     async def _create() -> None:
         eng = create_async_engine(TEST_ASYNC_DATABASE_URL, future=True)
         async with eng.begin() as conn:
+            # Drop first so schema changes (new columns, constraints, indexes)
+            # are always applied — create_all silently skips existing tables.
+            await conn.run_sync(Base.metadata.drop_all)
             await conn.run_sync(Base.metadata.create_all)
         await eng.dispose()
 

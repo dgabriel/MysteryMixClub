@@ -1,8 +1,18 @@
 import logging
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
-from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Cookie,
+    Depends,
+    Header,
+    HTTPException,
+    Response,
+    status,
+)
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,10 +23,12 @@ from app.auth.tokens import generate_token, hash_token
 from app.config import Settings, get_settings
 from app.db.session import get_db
 from app.models.invite import Invite
+from app.models.league import League
 from app.models.magic_link_token import MagicLinkToken
 from app.models.session import Session
 from app.models.user import User
 from app.services.email import EmailSender, get_email_sender
+from app.services.notifications import queue_league_joined
 
 logger = logging.getLogger("app.api.routes.auth")
 
@@ -170,8 +182,10 @@ async def request_magic_link(
 async def verify_magic_link(
     token: str,
     response: Response,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    email_sender: EmailSender = Depends(get_email_sender),
     user_agent: str | None = Header(default=None),
     invite: str | None = None,
 ) -> VerifyResponse:
@@ -221,8 +235,14 @@ async def verify_magic_link(
     # Capture user.id into a local before any further async work to avoid the
     # expire_all/MissingGreenlet trap.
     user_id = user.id
+    welcome_email: tuple[uuid.UUID, str] | None = None
     if invite_row is not None:
-        await _join_via_invite(db, user_id, invite_row)
+        joined = await _join_via_invite(db, user_id, invite_row)
+        if joined:
+            league = await db.scalar(select(League).where(League.id == invite_row.league_id))
+            if league is not None:
+                # Capture before commit so ORM expiry can't affect the bg task.
+                welcome_email = (league.id, league.name)
 
     raw_refresh_token = generate_token()
     device_hint = user_agent[:_DEVICE_HINT_MAX_LENGTH] if user_agent else None
@@ -240,6 +260,17 @@ async def verify_magic_link(
     access_token = create_access_token(user.id)
 
     await db.commit()
+
+    if welcome_email is not None:
+        queue_league_joined(
+            background_tasks,
+            email_sender,
+            settings,
+            email,
+            user_id,
+            welcome_email[0],
+            welcome_email[1],
+        )
 
     response.set_cookie(
         key=_REFRESH_COOKIE_NAME,

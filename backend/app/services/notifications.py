@@ -1,4 +1,4 @@
-"""Round-lifecycle email notifications (MYS-109).
+"""Round-lifecycle email notifications (MYS-109) and league-join welcome email (MYS-148).
 
 Generalizes the magic-link mailer into per-event notifications fired when a
 round changes state. Recipients are the league's current members who have email
@@ -6,10 +6,9 @@ notifications enabled; sending is best-effort and runs in a background task so a
 slow or failing mail provider never blocks (or fails) the state-transition
 request that triggered it.
 
-The single entry point is :func:`queue_round_event` — the rounds route gathers
-recipients while its DB session is open, then schedules delivery. When MYS-69
-(auto-advance) lands it should call the same helper so there is one notification
-path, not two.
+Entry points:
+- :func:`queue_round_event` — one notification per member per round state change.
+- :func:`queue_league_joined` — welcome email fired once when a user joins a league.
 """
 
 from __future__ import annotations
@@ -70,34 +69,41 @@ def _round_label(round_: Round) -> str:
     return f"Round {round_.round_number}"
 
 
-def _subject_and_body(event: RoundEvent, league: League, round_: Round) -> tuple[str, str]:
+def _subject_and_body(
+    event: RoundEvent, league: League, round_: Round, league_url: str
+) -> tuple[str, str]:
     """Return (subject, body_html_fragment) for an event, sans the unsubscribe
     footer (added per-recipient)."""
     label = _round_label(round_)
+    link = f'<a href="{league_url}">Go to {league.name} →</a>'
     if event == "submission_open":
         return (
             f"{league.name} — {label} is open for submissions",
             f"<p><strong>{label}</strong> is open in <strong>{league.name}</strong>. "
-            "Pick your song and submit it before the deadline.</p>",
+            f"Pick your song and submit it before the deadline. {link}</p>",
         )
     if event == "voting_open":
         return (
             f"{league.name} — voting is open for {label}",
             f"<p>Submissions are in for <strong>{label}</strong> in "
-            f"<strong>{league.name}</strong>. Listen to the playlist and cast your votes.</p>",
+            f"<strong>{league.name}</strong>. Listen to the playlist and cast your votes. {link}</p>",
         )
     if event == "round_closed":
         return (
             f"{league.name} — {label} results are in",
             f"<p><strong>{label}</strong> in <strong>{league.name}</strong> has closed. "
-            "The results and reveal are ready — see who picked what.</p>",
+            f"The results and reveal are ready — see who picked what. {link}</p>",
         )
     # league_complete
     return (
         f"{league.name} — the league is complete",
         f"<p><strong>{league.name}</strong> has wrapped after its final round. "
-        "Check the standings for the final results.</p>",
+        f"Check the standings for the final results. {link}</p>",
     )
+
+
+def _league_url(settings: Settings, league_id: uuid.UUID) -> str:
+    return f"{settings.app_base_url.rstrip('/')}/leagues/{league_id}"
 
 
 def _unsubscribe_url(settings: Settings, user_id: uuid.UUID) -> str:
@@ -131,7 +137,8 @@ def queue_round_event(
     recipients (e.g. everyone unsubscribed)."""
     if not recipients:
         return
-    subject, body = _subject_and_body(event, league, round_)
+    league_url = _league_url(settings, league.id)
+    subject, body = _subject_and_body(event, league, round_, league_url)
     for r in recipients:
         url = _unsubscribe_url(settings, r.user_id)
         html = _wrap_html(body, url)
@@ -142,6 +149,31 @@ def queue_round_event(
             "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
         }
         background_tasks.add_task(_safe_send, sender, r.email, subject, html, headers)
+
+
+def queue_league_joined(
+    background_tasks: BackgroundTasks,
+    sender: EmailSender,
+    settings: Settings,
+    email: str,
+    user_id: uuid.UUID,
+    league_id: uuid.UUID,
+    league_name: str,
+) -> None:
+    """Schedule a welcome email for a user who just joined (or rejoined) a league."""
+    url = _league_url(settings, league_id)
+    unsub_url = _unsubscribe_url(settings, user_id)
+    subject = f"You've joined {league_name}"
+    body = (
+        f"<p>You're in! You've joined <strong>{league_name}</strong>. "
+        f'<a href="{url}">View {league_name} →</a></p>'
+    )
+    html = _wrap_html(body, unsub_url)
+    headers = {
+        "List-Unsubscribe": f"<{unsub_url}>",
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    }
+    background_tasks.add_task(_safe_send, sender, email, subject, html, headers)
 
 
 def _safe_send(

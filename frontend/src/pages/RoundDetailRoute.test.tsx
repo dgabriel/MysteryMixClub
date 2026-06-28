@@ -17,6 +17,7 @@ import {
   getResults,
   getRound,
   getSpotifyStatus,
+  getVoteCounts,
   resolveSong,
   submitSong,
   updateRound,
@@ -44,6 +45,7 @@ vi.mock("../services/api", async () => {
     getNotes: vi.fn(),
     addNote: vi.fn(),
     getSpotifyStatus: vi.fn(),
+    getVoteCounts: vi.fn(),
   };
 });
 vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
@@ -62,6 +64,7 @@ const mockCastVotes = vi.mocked(castVotes);
 const mockGetNotes = vi.mocked(getNotes);
 const mockAddNote = vi.mocked(addNote);
 const mockGetSpotifyStatus = vi.mocked(getSpotifyStatus);
+const mockGetVoteCounts = vi.mocked(getVoteCounts);
 const mockResolveSong = vi.mocked(resolveSong);
 const mockSubmitSong = vi.mocked(submitSong);
 const mockUseAuth = vi.mocked(useAuth);
@@ -84,6 +87,8 @@ function round(overrides: Partial<Round> = {}): Round {
     closed_at: null,
     submission_count: 0,
     member_count: 0,
+    voted_count: 0,
+    voting_eligible_count: 0,
     ...overrides,
   };
 }
@@ -229,6 +234,10 @@ describe("RoundDetailRoute", () => {
       author_display_name: "Bob",
       body: "lovely pick",
       created_at: "2026-01-01T00:00:00Z",
+    });
+    mockGetVoteCounts.mockResolvedValue({
+      round_id: "r1",
+      entries: [],
     });
     setAuth(ORGANIZER);
   });
@@ -748,6 +757,16 @@ describe("RoundDetailRoute", () => {
         casted = true;
         return { round_id: "r1", submission_ids: ["p1"], count: 1, votes_per_player: 3 };
       });
+      // After casting, the playlist shows 2 voted and the vote counts update
+      mockGetVoteCounts.mockImplementation(async () => ({
+        round_id: "r1",
+        entries: casted
+          ? [
+              { submission_id: "p1", title: "Debaser", artist: "Pixies", vote_count: 1 },
+              { submission_id: "p2", title: "Hey", artist: "Pixies", vote_count: 0 },
+            ]
+          : [],
+      }));
       mockGetPlaylist.mockImplementation(async () => ({
         round_id: "r1",
         round_number: 1,
@@ -769,7 +788,10 @@ describe("RoundDetailRoute", () => {
       await user.click(await screen.findByRole("button", { name: /Debaser/i }));
       await user.click(screen.getByRole("button", { name: /cast votes/i }));
 
-      expect(await screen.findByText("2 of 4 voted or noted")).toBeInTheDocument();
+      // After casting, the voting controls are replaced by the vote tally
+      expect(await screen.findByText(/votes saved/i)).toBeInTheDocument();
+      expect(await screen.findByText(/you've locked in your votes/i)).toBeInTheDocument();
+      expect(screen.getByText(/vote tally/i)).toBeInTheDocument();
     });
 
     it("playing voter sees votable entries as toggles, a counter, and pre-selection from getMyVotes", async () => {
@@ -778,17 +800,17 @@ describe("RoundDetailRoute", () => {
           entry({ submission_id: "p1", title: "Debaser" }),
           entry({ submission_id: "p2", title: "Hey", artist: "Pixies" }),
         ],
-        myVotes: ["p1"],
+        myVotes: [], // User hasn't voted yet - voting controls shown
       });
       renderRound();
 
       const debaser = await screen.findByRole("button", { name: /Debaser/i });
       const hey = screen.getByRole("button", { name: /Hey/i });
-      // pre-selected from getMyVotes
-      expect(debaser).toHaveAttribute("aria-pressed", "true");
+      // pre-selected from getMyVotes (empty in this case)
+      expect(debaser).toHaveAttribute("aria-pressed", "false");
       expect(hey).toHaveAttribute("aria-pressed", "false");
       // live counter reflects the seeded selection
-      expect(screen.getByText("1 / 3 selected")).toBeInTheDocument();
+      expect(screen.getByText("0 / 3 selected")).toBeInTheDocument();
     });
 
     it("own song (is_own): marked as yours, not a vote toggle, no notes affordance, not selectable (MYS-73/74/75/77)", async () => {
@@ -854,22 +876,28 @@ describe("RoundDetailRoute", () => {
           entry({ submission_id: "p2", title: "Hey" }),
         ],
         votesPerPlayer: 1,
-        myVotes: ["p1"],
+        myVotes: [], // User hasn't voted yet
       });
       renderRound();
 
       const debaser = await screen.findByRole("button", { name: /Debaser/i });
       const hey = screen.getByRole("button", { name: /Hey/i });
+      expect(screen.getByText("0 / 1 selected")).toBeInTheDocument();
+      // at limit (0 selected, 1 allowed), no songs are disabled yet
+      expect(hey).not.toBeDisabled();
+      expect(debaser).not.toBeDisabled();
+
+      await user.click(debaser);
+      expect(debaser).toHaveAttribute("aria-pressed", "true");
       expect(screen.getByText("1 / 1 selected")).toBeInTheDocument();
-      // at limit: the unselected entry is disabled
+      // now at limit: hey is disabled, debaser can be deselected
       expect(hey).toBeDisabled();
-      // the selected entry can still be deselected
       expect(debaser).not.toBeDisabled();
 
       await user.click(debaser);
       expect(debaser).toHaveAttribute("aria-pressed", "false");
       expect(screen.getByText("0 / 1 selected")).toBeInTheDocument();
-      // now under the limit, the previously-disabled toggle is enabled again
+      // now under the limit, hey is enabled again
       expect(hey).not.toBeDisabled();
     });
 
@@ -923,7 +951,10 @@ describe("RoundDetailRoute", () => {
       expect(screen.queryByRole("button", { name: /^…$/ })).not.toBeInTheDocument();
 
       resolveCast?.();
-      expect(await screen.findByText(/votes saved/i)).toBeInTheDocument();
+      // Wait for the component to update after isVotesLocked becomes true
+      await waitFor(() => {
+        expect(screen.getByText(/votes saved/i)).toBeInTheDocument();
+      });
     });
 
     it("cast votes button is disabled when nothing is selected", async () => {

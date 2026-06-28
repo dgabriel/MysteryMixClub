@@ -17,6 +17,7 @@ from app.models.league import League
 from app.models.league_member import LeagueMember
 from app.models.submission import Submission
 from app.models.user import User
+from app.models.vote import Vote
 
 
 # --------------------------------------------------------------------------- #
@@ -425,3 +426,117 @@ async def test_submission_count_is_distinct_submitters(client, db_session):
     detail = await client.get(f"/api/v1/rounds/{rid}", headers=_auth(member.id))
     assert detail.status_code == 200, detail.text
     assert detail.json()["submission_count"] == 2  # 3 songs, 2 people
+
+
+# --------------------------------------------------------------------------- #
+# Voting progress (MYS-110)
+# --------------------------------------------------------------------------- #
+
+
+async def _add_vote(db_session, round_id: uuid.UUID, voter: User, submission_id: uuid.UUID) -> None:
+    db_session.add(Vote(round_id=round_id, voter_id=voter.id, submission_id=submission_id))
+    await db_session.commit()
+
+
+async def _add_submission_ret(
+    db_session, round_id: uuid.UUID, user: User, mode: str = "playing"
+) -> uuid.UUID:
+    sub = Submission(
+        round_id=round_id,
+        user_id=user.id,
+        isrc=f"ISRC-{uuid.uuid4()}",
+        title="A song",
+        artist="An artist",
+        participation_mode=mode,
+    )
+    db_session.add(sub)
+    await db_session.commit()
+    await db_session.refresh(sub)
+    return sub.id
+
+
+async def test_round_reports_zero_voted_counts_before_voting(client, db_session):
+    organizer = await _seed_user(db_session, "org@example.com")
+    member = await _seed_user(db_session, "member@example.com")
+    league = await _seed_league(db_session, organizer)
+    await _add_member(db_session, league.id, member)
+
+    rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
+
+    detail = await client.get(f"/api/v1/rounds/{rid}", headers=_auth(member.id))
+    body = detail.json()
+    assert body["voted_count"] == 0
+    assert body["voting_eligible_count"] == 0
+
+
+async def test_round_reports_voted_and_eligible_counts(client, db_session):
+    organizer = await _seed_user(db_session, "org@example.com")
+    member = await _seed_user(db_session, "member@example.com")
+    league = await _seed_league(db_session, organizer)
+    await _add_member(db_session, league.id, member)
+
+    rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
+    round_id = uuid.UUID(rid)
+
+    org_sub = await _add_submission_ret(db_session, round_id, organizer)
+    mem_sub = await _add_submission_ret(db_session, round_id, member)
+
+    # Both playing — eligible count should be 2, voted count 0 before any votes.
+    detail = await client.get(f"/api/v1/rounds/{rid}", headers=_auth(member.id))
+    body = detail.json()
+    assert body["voting_eligible_count"] == 2
+    assert body["voted_count"] == 0
+
+    # Organizer casts a vote for member's song.
+    await _add_vote(db_session, round_id, organizer, mem_sub)
+
+    detail2 = await client.get(f"/api/v1/rounds/{rid}", headers=_auth(member.id))
+    body2 = detail2.json()
+    assert body2["voting_eligible_count"] == 2
+    assert body2["voted_count"] == 1
+
+    # Member votes too — both have voted.
+    await _add_vote(db_session, round_id, member, org_sub)
+
+    detail3 = await client.get(f"/api/v1/rounds/{rid}", headers=_auth(member.id))
+    body3 = detail3.json()
+    assert body3["voted_count"] == 2
+
+
+async def test_voting_eligible_excludes_vibing_submitters(client, db_session):
+    organizer = await _seed_user(db_session, "org@example.com")
+    viber = await _seed_user(db_session, "viber@example.com")
+    league = await _seed_league(db_session, organizer)
+    await _add_member(db_session, league.id, viber)
+
+    rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
+    round_id = uuid.UUID(rid)
+
+    await _add_submission_ret(db_session, round_id, organizer, mode="playing")
+    await _add_submission_ret(db_session, round_id, viber, mode="vibing")
+
+    detail = await client.get(f"/api/v1/rounds/{rid}", headers=_auth(organizer.id))
+    body = detail.json()
+    # Only the playing submitter counts as eligible; the viber is excluded.
+    assert body["voting_eligible_count"] == 1
+    assert body["voted_count"] == 0
+
+
+async def test_list_rounds_includes_voted_counts(client, db_session):
+    organizer = await _seed_user(db_session, "org@example.com")
+    member = await _seed_user(db_session, "member@example.com")
+    league = await _seed_league(db_session, organizer)
+    await _add_member(db_session, league.id, member)
+
+    rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
+    round_id = uuid.UUID(rid)
+
+    await _add_submission_ret(db_session, round_id, organizer)
+    mem_sub = await _add_submission_ret(db_session, round_id, member)
+    await _add_vote(db_session, round_id, organizer, mem_sub)
+
+    resp = await client.get(_rounds_url(league.id), headers=_auth(member.id))
+    assert resp.status_code == 200, resp.text
+    by_number = {r["round_number"]: r for r in resp.json()}
+    assert by_number[1]["voting_eligible_count"] == 2
+    assert by_number[1]["voted_count"] == 1

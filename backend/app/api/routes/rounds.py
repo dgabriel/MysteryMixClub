@@ -100,9 +100,21 @@ class RoundResponse(BaseModel):
     # round-detail screen needn't also fetch the member list.
     submission_count: int
     member_count: int
+    # Voting progress (MYS-110): how many playing submitters have cast a vote,
+    # out of the total playing submitters. The client shows "X of Y voted" while
+    # voting is open. voting_eligible_count = distinct playing submitters;
+    # voted_count = distinct voters.
+    voted_count: int
+    voting_eligible_count: int
 
 
-def _to_response(r: Round, submission_count: int, member_count: int) -> RoundResponse:
+def _to_response(
+    r: Round,
+    submission_count: int,
+    member_count: int,
+    voted_count: int,
+    voting_eligible_count: int,
+) -> RoundResponse:
     return RoundResponse(
         id=str(r.id),
         league_id=str(r.league_id),
@@ -117,6 +129,8 @@ def _to_response(r: Round, submission_count: int, member_count: int) -> RoundRes
         closed_at=r.closed_at,
         submission_count=submission_count,
         member_count=member_count,
+        voted_count=voted_count,
+        voting_eligible_count=voting_eligible_count,
     )
 
 
@@ -141,6 +155,27 @@ async def _member_count(league_id: uuid.UUID, db: AsyncSession) -> int:
             .where(
                 LeagueMember.league_id == league_id,
                 LeagueMember.removed_at.is_(None),
+            )
+        )
+    ) or 0
+
+
+async def _voted_count(round_id: uuid.UUID, db: AsyncSession) -> int:
+    """Distinct voters in a round — the "X" in X of Y voted."""
+    return (
+        await db.scalar(
+            select(func.count(func.distinct(Vote.voter_id))).where(Vote.round_id == round_id)
+        )
+    ) or 0
+
+
+async def _voting_eligible_count(round_id: uuid.UUID, db: AsyncSession) -> int:
+    """Distinct playing submitters in a round — the "Y" in X of Y voted."""
+    return (
+        await db.scalar(
+            select(func.count(func.distinct(Submission.user_id))).where(
+                Submission.round_id == round_id,
+                Submission.participation_mode == "playing",
             )
         )
     ) or 0
@@ -237,12 +272,14 @@ async def submission_quorum_met(round_: Round, db: AsyncSession) -> bool:
 
 
 async def voting_quorum_met(round_: Round, db: AsyncSession) -> bool:
-    """True iff every playing submitter in the round has cast a vote (MYS-69).
+    """True iff every playing submitter in the round has cast a vote.
 
     Playing submitter set = distinct submitters whose ``participation_mode`` is
     ``playing`` (vibers are excluded — they can't vote). Met when that set is a
-    subset of the round's distinct voters. An empty playing set (everyone vibing)
-    returns True: nobody can vote, so voting can close immediately.
+    subset of the round's distinct voters. An empty playing set is treated as met
+    only when there is at least one submission (i.e. everyone submitted as vibing);
+    a round with no submissions at all returns False so an empty round is never
+    auto-closed.
     """
     playing_ids = set(
         await db.scalars(
@@ -255,7 +292,11 @@ async def voting_quorum_met(round_: Round, db: AsyncSession) -> bool:
         )
     )
     if not playing_ids:
-        return True
+        # Guard: only treat all-vibing as quorum-met when there are actual submissions.
+        total = await db.scalar(
+            select(func.count()).select_from(Submission).where(Submission.round_id == round_.id)
+        )
+        return (total or 0) > 0
     voter_ids = set(
         await db.scalars(select(Vote.voter_id).where(Vote.round_id == round_.id).distinct())
     )
@@ -319,8 +360,8 @@ async def create_round(
     league.current_round = next_number
     await db.commit()
     await db.refresh(round_)
-    # A freshly created round has no submissions yet.
-    return _to_response(round_, 0, await _member_count(league_id, db))
+    # A freshly created round has no submissions or votes yet.
+    return _to_response(round_, 0, await _member_count(league_id, db), 0, 0)
 
 
 @router.get("/leagues/{league_id}/rounds", response_model=list[RoundResponse])
@@ -336,15 +377,42 @@ async def list_rounds(
         )
     )
     member_count = await _member_count(league_id, db)
-    # One grouped count for the whole slate rather than a query per round.
+    round_ids = [r.id for r in rounds]
+    # One grouped count per field for the whole slate rather than a query per round.
     # Distinct submitters (people, not songs — MYS-116).
     count_rows = await db.execute(
         select(Submission.round_id, func.count(func.distinct(Submission.user_id)))
-        .where(Submission.round_id.in_([r.id for r in rounds]))
+        .where(Submission.round_id.in_(round_ids))
         .group_by(Submission.round_id)
     )
     counts = {round_id: count for round_id, count in count_rows.all()}
-    return [_to_response(r, counts.get(r.id, 0), member_count) for r in rounds]
+    # Distinct voters per round (MYS-110).
+    voted_rows = await db.execute(
+        select(Vote.round_id, func.count(func.distinct(Vote.voter_id)))
+        .where(Vote.round_id.in_(round_ids))
+        .group_by(Vote.round_id)
+    )
+    voted_counts = {round_id: count for round_id, count in voted_rows.all()}
+    # Distinct playing submitters per round — the voting denominator (MYS-110).
+    eligible_rows = await db.execute(
+        select(Submission.round_id, func.count(func.distinct(Submission.user_id)))
+        .where(
+            Submission.round_id.in_(round_ids),
+            Submission.participation_mode == "playing",
+        )
+        .group_by(Submission.round_id)
+    )
+    eligible_counts = {round_id: count for round_id, count in eligible_rows.all()}
+    return [
+        _to_response(
+            r,
+            counts.get(r.id, 0),
+            member_count,
+            voted_counts.get(r.id, 0),
+            eligible_counts.get(r.id, 0),
+        )
+        for r in rounds
+    ]
 
 
 @router.get("/rounds/{round_id}", response_model=RoundResponse)
@@ -359,6 +427,8 @@ async def get_round(
         round_,
         await _submission_count(round_id, db),
         await _member_count(round_.league_id, db),
+        await _voted_count(round_id, db),
+        await _voting_eligible_count(round_id, db),
     )
 
 
@@ -421,6 +491,13 @@ async def update_round(
                     detail="another round is already active",
                 )
         events = await advance_round_state(round_, league, new_state, db)
+        # All-vibing edge: if voting just opened but every participant is vibing,
+        # nobody will ever call cast_votes, so voting quorum is immediately met.
+        # Close in the same transaction and suppress the voting_open notification
+        # (nobody could vote in a round that closes in the same breath).
+        if round_.state == "open_voting" and await voting_quorum_met(round_, db):
+            events = [e for e in events if e != (round_, "voting_open")]
+            events += await advance_round_state(round_, league, "closed", db)
 
     # Build + schedule notifications before commit, while the ORM objects are
     # loaded (avoids post-commit lazy-loads in async — the expire_on_commit
@@ -439,6 +516,8 @@ async def update_round(
         round_,
         await _submission_count(round_.id, db),
         await _member_count(round_.league_id, db),
+        await _voted_count(round_.id, db),
+        await _voting_eligible_count(round_.id, db),
     )
 
 

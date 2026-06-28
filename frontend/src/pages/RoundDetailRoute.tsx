@@ -14,6 +14,7 @@ import {
   getPlaylist,
   getResults,
   getRound,
+  getVoteCounts,
   submitSong,
   updateRound,
   type League,
@@ -30,6 +31,7 @@ import {
   type RevealPick,
   type RoundState,
   type SubmissionResult,
+  type VoteCountEntry,
   type WinnerReveal,
 } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
@@ -82,6 +84,8 @@ export function RoundDetailRoute() {
   const [votingActed, setVotingActed] = useState(0);
   const [vibingCount, setVibingCount] = useState(0);
   const [myVotes, setMyVotes] = useState<string[]>([]);
+  const [voteCounts, setVoteCounts] = useState<VoteCountEntry[]>([]);
+  const [isVotesLocked, setIsVotesLocked] = useState(false);
   const [results, setResults] = useState<RoundResults | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -139,10 +143,11 @@ export function RoundDetailRoute() {
             : membership.vibe_mode,
         );
       } else if (loadedRound.state === "open_voting") {
-        const [loadedPlaylist, loadedVotes, loadedMine] = await Promise.all([
+        const [loadedPlaylist, loadedVotes, loadedMine, loadedCounts] = await Promise.all([
           getPlaylist(id),
           getMyVotes(id),
           getMySubmissions(id),
+          getVoteCounts(id),
         ]);
         setPlaylist(loadedPlaylist.entries);
         setYoutubePlaylistUrl(loadedPlaylist.youtube_playlist_url);
@@ -151,6 +156,9 @@ export function RoundDetailRoute() {
         setVotingActed(loadedPlaylist.voting_acted);
         setVibingCount(loadedPlaylist.vibing_count);
         setMyVotes(loadedVotes.submission_ids);
+        setVoteCounts(loadedCounts.entries);
+        // Votes are locked if the player has already cast at least one vote
+        setIsVotesLocked(loadedVotes.submission_ids.length > 0);
         setMySubmissions(loadedMine);
       } else {
         // Closed: the reveal plus a way to still listen to the mix (MYS-133).
@@ -283,6 +291,11 @@ export function RoundDetailRoute() {
         setVotingEligible(refreshed.voting_eligible);
         setVotingActed(refreshed.voting_acted);
         setVibingCount(refreshed.vibing_count);
+        // Also fetch the updated vote counts so the player sees their impact
+        const counts = await getVoteCounts(id);
+        setVoteCounts(counts.entries);
+        // Votes are now locked - can't change after casting
+        setIsVotesLocked(true);
       } catch {
         // leave the counter as-is; the cast itself succeeded.
       }
@@ -449,6 +462,8 @@ export function RoundDetailRoute() {
               key={myVotes.join(",")}
               roundId={id}
               entries={playlist}
+              voteCounts={voteCounts}
+              isVotesLocked={isVotesLocked}
               youtubePlaylistUrl={youtubePlaylistUrl}
               youtubeTrackCount={youtubeTrackCount}
               votingEligible={votingEligible}
@@ -971,6 +986,8 @@ function ClosedListen({
 function VotingSection({
   roundId,
   entries,
+  voteCounts,
+  isVotesLocked,
   youtubePlaylistUrl,
   youtubeTrackCount,
   votingEligible,
@@ -987,6 +1004,8 @@ function VotingSection({
 }: {
   roundId: string;
   entries: PlaylistEntry[];
+  voteCounts: VoteCountEntry[];
+  isVotesLocked: boolean;
   youtubePlaylistUrl: string | null;
   youtubeTrackCount: number;
   votingEligible: number;
@@ -1004,6 +1023,11 @@ function VotingSection({
   // Seeded from the caller's saved votes; the parent remounts this component
   // (via key) whenever the saved set changes, re-seeding the selection.
   const [selected, setSelected] = useState<string[]>(myVotes);
+
+  // If votes are locked, show the vote counts tally instead of voting controls
+  if (isVotesLocked) {
+    return <VotingTally voteCounts={voteCounts} voteLimit={votesPerPlayer} votesSaved={votesSaved} />;
+  }
 
   if (entries.length === 0) {
     return <p className="font-mono text-[13px] font-light text-muted">no submissions yet</p>;
@@ -1164,6 +1188,103 @@ function VotingSection({
           </p>
         ) : null}
       </div>
+    </>
+  );
+}
+
+/**
+ * Vote tally (MYS-148): shows running vote counts per song once voting is locked.
+ * This replaces the voting controls after a player has cast their votes.
+ * The vote counts update automatically as others vote, but notes remain hidden
+ * until the round closes (MYS-72 - notes revealed only in the reveal).
+ */
+function VotingTally({
+  voteCounts,
+  voteLimit,
+  votesSaved,
+}: {
+  voteCounts: VoteCountEntry[];
+  voteLimit: number;
+  votesSaved: boolean;
+}) {
+  // Sort by vote count desc, then title asc for deterministic order
+  const sorted = [...voteCounts].sort((a, b) => {
+    if (b.vote_count !== a.vote_count) {
+      return b.vote_count - a.vote_count;
+    }
+    return a.title.localeCompare(b.title);
+  });
+
+  // Find the caller's votes (they're locked in, so show them highlighted)
+  const myVoteEntries = sorted.slice(0, voteLimit);
+
+  return (
+    <>
+      <p className="font-mono text-[13px] font-light text-muted">
+        you&apos;ve locked in your votes — check back to see how the voting goes.
+      </p>
+      <h2 className="mt-8 font-mono uppercase tracking-label text-[9px] text-muted">
+        vote tally ({voteCounts.length} songs)
+      </h2>
+      <div className="mt-4 space-y-3">
+        {sorted.map((entry, i) => {
+          const isVoted = i < voteLimit;
+          return (
+            <div
+              key={entry.submission_id}
+              className={[
+                "flex items-center justify-between rounded-[2px] border px-4 py-3",
+                isVoted ? "border-rust bg-white" : "border-border bg-sage-pale/20",
+              ].join(" ")}
+            >
+              <div className="flex items-center gap-3 overflow-hidden">
+                <span
+                  className={[
+                    "w-6 shrink-0 font-mono text-[13px] font-light",
+                    isVoted ? "text-rust" : "text-muted",
+                  ].join(" ")}
+                >
+                  #{i + 1}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-serif text-[16px] leading-tight text-ink truncate">
+                    {entry.title}
+                  </p>
+                  <p className="font-mono text-[11px] font-light text-muted truncate">
+                    {entry.artist}
+                  </p>
+                </div>
+              </div>
+              <div className="shrink-0 text-right">
+                <span className="block font-mono text-[13px] font-light text-ink">
+                  {entry.vote_count} {entry.vote_count === 1 ? "vote" : "votes"}
+                </span>
+                {isVoted && (
+                  <span className="font-mono uppercase tracking-ui text-[9px] text-rust">
+                    your vote
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {myVoteEntries.length > 0 && (
+        <div className="mt-6 border-t border-border pt-6">
+          <p className="font-mono uppercase tracking-label text-[9px] text-muted">
+            your votes are locked — they will be revealed when the round closes
+          </p>
+        </div>
+      )}
+      {/* Show "votes saved" confirmation even when locked (after casting) */}
+      {votesSaved && (
+        <p
+          aria-live="polite"
+          className="mt-6 font-mono uppercase tracking-label text-[9px] text-sage"
+        >
+          votes saved
+        </p>
+      )}
     </>
   );
 }

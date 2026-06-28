@@ -87,6 +87,10 @@ function round(overrides: Partial<Round> = {}): Round {
     closed_at: null,
     submission_count: 0,
     member_count: 0,
+    viewer_submitted: false,
+    viewer_voted: false,
+    voted_count: 0,
+    voting_eligible_count: 0,
     ...overrides,
   };
 }

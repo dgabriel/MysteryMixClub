@@ -26,7 +26,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, StringConstraints
-from sqlalchemy import exists, select
+from sqlalchemy import exists, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.leagues import _load_league_as_member
@@ -216,6 +216,12 @@ async def submit_song(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="this round is not accepting submissions"
         )
+
+    # Serialize concurrent submissions for the same (round, user) pair so two
+    # racing requests can't both pass the cap check and both insert (MYS-144).
+    # XOR of the two UUID ints gives a cheap, deterministic per-(round, user) key.
+    lock_key = (round_id.int ^ current_user.id.int) & 0x7FFFFFFFFFFFFFFF
+    await db.execute(text("SELECT pg_advisory_xact_lock(:k)").bindparams(k=lock_key))
 
     existing = await _own_round_submissions(round_id, current_user.id, db)
     if len(existing) >= league.songs_per_submission:

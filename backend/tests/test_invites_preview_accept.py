@@ -3,12 +3,14 @@
 Covers:
   GET  /api/v1/invites/{token}         — unauthenticated league preview
   POST /api/v1/invites/{token}/accept  — authenticated join
+  MYS-32: concurrent accepts must not create duplicate membership rows
 
 TDD-first: written before the Invite model and the invite endpoints exist, so
 they are expected to FAIL (red) until the developer implements them. See
 technical-design.md §6 (invites, league_members) and §7 (Invites API).
 """
 
+import asyncio
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -353,3 +355,30 @@ async def test_unexpired_dated_link_still_previews_200(client, db_session):
     resp = await client.get(_preview_url(invite.token))
 
     assert resp.status_code == 200, resp.text
+
+
+# ========================================================================== #
+# MYS-32: concurrent accept must not produce duplicate membership rows
+# ========================================================================== #
+
+
+async def test_concurrent_accept_produces_exactly_one_membership(client, db_session):
+    organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
+    league = await _seed_league(db_session, organizer)
+    invite = await _seed_invite(db_session, league, organizer)
+    joiner = await _seed_user(db_session, email="join@example.com", display_name="Joiner")
+
+    resp1, resp2 = await asyncio.gather(
+        client.post(_accept_url(invite.token), headers=_auth_header(joiner.id)),
+        client.post(_accept_url(invite.token), headers=_auth_header(joiner.id)),
+    )
+
+    assert resp1.status_code == 200, resp1.text
+    assert resp2.status_code == 200, resp2.text
+
+    league_id = league.id
+    joiner_id = joiner.id
+    db_session.expire_all()
+
+    count = await _active_membership_count(db_session, league_id, joiner_id)
+    assert count == 1, "concurrent accepts must not duplicate the membership row"

@@ -9,6 +9,7 @@ defaulting, and the read endpoints (mine as a list, and the reveal-after-close
 list gate).
 """
 
+import asyncio
 import uuid
 from collections.abc import AsyncGenerator
 
@@ -596,3 +597,40 @@ async def test_list_visible_after_close(session_factory, db_session):
     assert resp.status_code == 200, resp.text
     titles = sorted(s["title"] for s in resp.json())
     assert titles == ["bad guy", "member pick"]
+
+
+# --------------------------------------------------------------------------- #
+# MYS-144: concurrent submissions must not exceed the per-league cap
+# --------------------------------------------------------------------------- #
+
+
+async def test_concurrent_submit_at_cap_1_produces_exactly_one_submission(
+    session_factory, db_session
+):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer, songs=1)
+    round_id = round_.id
+    organizer_id = organizer.id
+
+    async with _build_client(session_factory) as client:
+        resp1, resp2 = await asyncio.gather(
+            client.post(
+                _sub_url(round_id),
+                json=_body(title="song a", isrc="USAAA0000001"),
+                headers=_auth(organizer_id),
+            ),
+            client.post(
+                _sub_url(round_id),
+                json=_body(title="song b", isrc="USAAA0000002"),
+                headers=_auth(organizer_id),
+            ),
+        )
+
+    statuses = sorted([resp1.status_code, resp2.status_code])
+    assert statuses == [201, 409], f"expected one success and one cap rejection, got {statuses}"
+
+    db_session.expire_all()
+    count = await db_session.scalar(
+        select(func.count()).select_from(Submission).where(Submission.round_id == round_id)
+    )
+    assert count == 1, "concurrent submissions must not exceed the cap"

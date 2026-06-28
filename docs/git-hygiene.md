@@ -16,12 +16,16 @@ Related: branch model in `docs/ci-cd.md`. Hook PATH gotcha at the bottom of this
 2. **Never commit directly to `main` or `develop`.** All work happens on a
    `feature/*` (or `fix/*`) branch and reaches them only through a PR. `main` =
    production, `develop` = staging.
-3. **Branch off the right base.** Cut feature branches from an up-to-date
-   `develop`, never from `main`:
+3. **Every branch is based off `develop` — no exceptions.** Cut every `feature/*`
+   or `fix/*` branch from an **up-to-date** `develop`. Never branch off `main`,
+   and never branch off another feature branch (stacked branches drift and are
+   how merges silently drop code). Always pull first so you start from the latest:
    ```
    git checkout develop && git pull --ff-only origin develop
    git checkout -b feature/mys-XX-short-slug
    ```
+   If a branch ends up based on anything other than current `develop`, rebase it
+   onto `develop` before continuing (`git rebase origin/develop`).
 4. **Never force-push a shared branch** (`main`, `develop`, or any branch with an
    open PR / other readers). `--force-with-lease` only ever on your own private
    feature branch, and only when you understand why.

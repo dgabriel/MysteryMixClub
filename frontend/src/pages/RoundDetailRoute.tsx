@@ -1722,6 +1722,8 @@ function ResultsSection({
 
       {leaderboard.length > 0 ? <LeaderboardSection entries={leaderboard} /> : null}
 
+      {submissions.length > 0 ? <SongLeaderboardSection submissions={submissions} /> : null}
+
       <section>
         <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
           the picks ({submissions.length})
@@ -1939,6 +1941,53 @@ function WinnersSection({
                   ));
               })()}
             </Card>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** Attach a competition rank to each song: ties share the same rank number and
+ *  the next distinct score gets the position it would occupy if the tied entries
+ *  were counted separately (1, 1, 3 — not 1, 1, 2). */
+function rankSongs(submissions: ResultSubmission[]): Array<ResultSubmission & { rank: number }> {
+  const sorted = [...submissions].sort((a, b) => b.vote_count - a.vote_count);
+  let rank = 1;
+  return sorted.map((s, i) => {
+    if (i > 0 && sorted[i - 1].vote_count > s.vote_count) rank = i + 1;
+    return { ...s, rank };
+  });
+}
+
+/** Every song ranked by votes (MYS-116) — the per-song complement to the
+ *  per-player leaderboard. Shared-rank ties; calm Sage/Ink family, no Rust. */
+function SongLeaderboardSection({ submissions }: { submissions: ResultSubmission[] }) {
+  const ranked = rankSongs(submissions);
+  return (
+    <section>
+      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
+        songs ({submissions.length})
+      </h2>
+      <ul className="mt-4 divide-y divide-border border-y border-border">
+        {ranked.map((s) => (
+          <li key={s.submission_id} className="flex items-start justify-between gap-4 py-3">
+            <div className="flex items-start gap-4">
+              <span className="w-6 shrink-0 pt-0.5 font-mono text-[13px] font-light text-muted">
+                {s.rank}
+              </span>
+              <span>
+                <span className="block font-mono text-[13px] font-light text-ink">{s.title}</span>
+                {s.artist ? (
+                  <span className="mt-0.5 block font-mono text-[11px] font-light text-muted">
+                    {s.artist}
+                  </span>
+                ) : null}
+              </span>
+            </div>
+            <span className="shrink-0 pt-0.5 font-mono uppercase tracking-label text-[9px] text-sage">
+              {s.vote_count} {s.vote_count === 1 ? "vote" : "votes"}
+            </span>
           </li>
         ))}
       </ul>

@@ -3,6 +3,7 @@ import { Button } from "../components/Button";
 import { Badge } from "../components/Badge";
 import { Card } from "../components/Card";
 import { ConcentricRings } from "../components/ConcentricRings";
+import { CrownIcon } from "../components/CrownIcon";
 import { SongSearchCard } from "../components/songs/SongSearchCard";
 
 type MyLeaguesScreenProps = {
@@ -22,6 +23,8 @@ export function MyLeaguesScreen({
   onCreateLeague,
   onOpenLeague,
 }: MyLeaguesScreenProps) {
+  const activeLeagues = leagues.filter((l) => l.state !== "complete");
+  const completedLeagues = leagues.filter((l) => l.state === "complete");
   return (
     // The shared TopNav is rendered by AuthedLayout; this screen is just content.
     <main className="flex flex-1 flex-col px-4 py-8 sm:px-8">
@@ -71,33 +74,30 @@ export function MyLeaguesScreen({
                   </p>
                 ) : null}
 
+                {/* Active leagues first; completed ones drop below under their
+                    own heading with the gold achievement treatment (MYS-149). */}
                 <ul className="mt-8 space-y-4">
-                  {leagues.map((league) => (
+                  {activeLeagues.map((league) => (
                     <li key={league.id}>
-                      {/* Default (Sage) badge only — no Rust on populated cards. */}
-                      <Card className="transition-colors duration-150 hover:bg-sage-pale">
-                        <button
-                          type="button"
-                          onClick={() => onOpenLeague(league.id)}
-                          className="block w-full text-left"
-                        >
-                          <span className="font-mono uppercase tracking-label text-[9px] text-muted">
-                            league
-                          </span>
-                          <h2 className="mt-1 font-serif text-[20px] leading-tight text-ink">
-                            {league.name}
-                          </h2>
-                          <div className="mt-3 flex items-center justify-between">
-                            <span className="font-mono text-[11px] font-light text-muted">
-                              round {league.current_round} of {league.total_rounds}
-                            </span>
-                            <Badge>{league.state}</Badge>
-                          </div>
-                        </button>
-                      </Card>
+                      <LeagueCard league={league} complete={false} onOpen={onOpenLeague} />
                     </li>
                   ))}
                 </ul>
+
+                {completedLeagues.length > 0 ? (
+                  <section className="mt-10">
+                    <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
+                      completed
+                    </h2>
+                    <ul className="mt-4 space-y-4">
+                      {completedLeagues.map((league) => (
+                        <li key={league.id}>
+                          <LeagueCard league={league} complete onOpen={onOpenLeague} />
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ) : null}
               </>
             )}
 
@@ -112,5 +112,41 @@ export function MyLeaguesScreen({
           </div>
         )}
     </main>
+  );
+}
+
+/** A league row on the home list. Completed leagues wear the gold achievement
+ *  treatment — a crown by the eyebrow and a thin gold left accent — matching the
+ *  reveal's winner/most-noted moments (MYS-149). Active leagues stay in the
+ *  Sage family with no accent. */
+function LeagueCard({
+  league,
+  complete,
+  onOpen,
+}: {
+  league: League;
+  complete: boolean;
+  onOpen: (id: string) => void;
+}) {
+  return (
+    <Card
+      className={`transition-colors duration-150 hover:bg-sage-pale${
+        complete ? " border-l-[3px] border-l-gold" : ""
+      }`}
+    >
+      <button type="button" onClick={() => onOpen(league.id)} className="block w-full text-left">
+        <span className="flex items-center gap-1.5 font-mono uppercase tracking-label text-[9px] text-muted">
+          {complete ? <CrownIcon className="text-gold" /> : null}
+          league
+        </span>
+        <h2 className="mt-1 font-serif text-[20px] leading-tight text-ink">{league.name}</h2>
+        <div className="mt-3 flex items-center justify-between">
+          <span className="font-mono text-[11px] font-light text-muted">
+            round {league.current_round} of {league.total_rounds}
+          </span>
+          <Badge>{league.state}</Badge>
+        </div>
+      </button>
+    </Card>
   );
 }

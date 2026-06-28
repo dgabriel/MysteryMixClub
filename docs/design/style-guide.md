@@ -31,7 +31,7 @@
 
 - **Rust is a signal.** Use it for the single most important piece of information or action on a screen — a status badge, a card accent line, a CTA arrow. Never use it twice in the same view.
   - **Exception — the nav brand mark.** The concentric-rings mark in the shared top nav may carry its single off-center Rust dot ("the fish") as persistent *brand identity*. Because the nav is global chrome, this dot does **not** count against a screen's one-Rust budget: a screen may still use Rust once in its own content. This is the only standing exception to the one-use rule.
-- **Gold is an achievement signal.** Use it exclusively for winner and most-noted moments — currently the crown icon on section headings. Do not use Gold decoratively or expand it to other contexts without updating this guide.
+- **Gold is an achievement signal.** Use it exclusively for achievement moments: winner and most-noted reveals (the crown icon on section headings) and a **completed league** (the crown + thin left accent on a finished league's card). Do not use Gold decoratively or expand it to other contexts without updating this guide.
 - **No pure black or pure white.** Cream is the lightest surface; Ink is the darkest text.
 - **Sage family handles hierarchy.** Sage for primary, Sage Light for hover/secondary, Sage Pale for background tags.
 

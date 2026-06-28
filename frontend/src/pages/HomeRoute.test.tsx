@@ -99,6 +99,30 @@ describe("HomeRoute (My Leagues)", () => {
     expect(mockGetLeagues).toHaveBeenCalledTimes(1);
   });
 
+  it("groups completed leagues below active ones under a 'completed' heading with gold accent", async () => {
+    mockGetLeagues.mockResolvedValue([
+      leagueWith({ id: "a1", name: "Active One", state: "active" }),
+      leagueWith({ id: "c1", name: "Finished One", state: "complete", current_round: 6 }),
+    ]);
+    renderHome();
+
+    const completedHeading = await screen.findByText("completed");
+    const active = screen.getByText("Active One");
+    const done = screen.getByText("Finished One");
+
+    // Active league precedes the "completed" heading, which precedes the completed league.
+    expect(
+      active.compareDocumentPosition(completedHeading) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      completedHeading.compareDocumentPosition(done) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    // Only the completed card wears the gold achievement accent.
+    expect(done.closest(".border-l-gold")).not.toBeNull();
+    expect(active.closest(".border-l-gold")).toBeNull();
+  });
+
   it("empty list: renders the empty-state copy", async () => {
     mockGetLeagues.mockResolvedValue([]);
     renderHome();

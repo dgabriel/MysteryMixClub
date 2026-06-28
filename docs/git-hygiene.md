@@ -85,6 +85,30 @@ Related: branch model in `docs/ci-cd.md`. Hook PATH gotcha at the bottom of this
 - Keep the branch current with `git pull --rebase` (your own branch) or a merge
   from `develop`; don't let it drift far behind.
 
+### Merging without losing code (the squash-merge trap)
+
+Hand-resolving a squash-merge conflict has silently dropped feature code into the
+void more than once. A squash collapses a branch to a single new commit, so any
+hunk you fail to carry over leaves **no trace** in `develop`'s history — the
+branch looks merged, the code is gone. Rules:
+
+1. **Never hand-resolve a squash conflict.** If `gh pr merge --squash` reports a
+   conflict, stop. Rebase the feature branch onto the latest `develop` first
+   (`git rebase origin/develop`, resolve there with full context), push, and let
+   the squash apply cleanly with zero manual resolution at merge time.
+2. **Mandatory post-merge reconciliation gate.** Before deleting any branch,
+   prove nothing was lost:
+   ```
+   git diff <feature-branch> origin/develop -- <each changed file>
+   ```
+   The only remaining differences may be the squash's own collapsing — every
+   functional line the branch added must be present in `develop`. If anything is
+   missing, the merge ate it: recover from the branch (still un-deleted) before
+   doing anything else. Do **not** delete the branch until this diff is clean.
+3. **Recover, don't recreate.** A "lost" feature is almost always still reachable
+   via `git log --all` / `git reflog` on its original branch. Port the missing
+   hunks forward; never rewrite the feature from scratch.
+
 ---
 
 ## Pre-flight before pushing (catch CI failures locally)

@@ -7,6 +7,7 @@ happy paths use a local app wired with a ``FakeSpotifyClient`` so nothing touche
 the network.
 """
 
+import random
 import uuid
 from collections.abc import AsyncGenerator
 
@@ -414,3 +415,55 @@ async def test_generate_recreates_when_stored_playlist_deleted_in_spotify(
     # Stored ID updated to the new playlist, not the deleted one.
     assert stored is not None
     assert stored.playlist_id == "pl1"
+
+
+async def test_playlist_track_order_matches_seeded_shuffle(session_factory, db_session):
+    # Spotify track order must match random.Random(round_id.int) applied to
+    # id-sorted submissions — same algorithm as get_round_playlist (MYS-151).
+    # Two known ISRCs both resolve; the shuffle determines which comes first.
+    id_a = uuid.UUID("00000000-0000-0000-0000-000000000001")
+    id_b = uuid.UUID("00000000-0000-0000-0000-000000000002")
+    isrc_a, uri_a = "ISRC-A", "spotify:track:aaa"
+    isrc_b, uri_b = "ISRC-B", "spotify:track:bbb"
+    fake = FakeSpotifyClient(isrc_map={isrc_a: uri_a, isrc_b: uri_b})
+
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    await _connect(db_session, organizer.id)
+    other = await _seed_member(db_session, round_, "m2@example.com")
+
+    # Insert in reverse id order so insertion order ≠ id-sorted order.
+    db_session.add(
+        Submission(
+            id=id_b,
+            round_id=round_.id,
+            user_id=other.id,
+            isrc=isrc_b,
+            title="B",
+            artist="A",
+            platform_links={},
+        )
+    )
+    db_session.add(
+        Submission(
+            id=id_a,
+            round_id=round_.id,
+            user_id=organizer.id,
+            isrc=isrc_a,
+            title="A",
+            artist="A",
+            platform_links={},
+        )
+    )
+    await db_session.commit()
+
+    # Compute expected order: sort by id, then seed-shuffle.
+    subs_sorted = sorted([id_a, id_b])
+    rng = random.Random(round_.id.int)
+    rng.shuffle(subs_sorted)
+    expected_uris = [uri_a if sid == id_a else uri_b for sid in subs_sorted]
+
+    async with _client_with_spotify(session_factory, fake) as c:
+        resp = await c.post(_playlist_url(round_.id), headers=_auth(organizer.id))
+    assert resp.status_code == 200, resp.text
+    assert fake.added == expected_uris

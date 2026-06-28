@@ -18,6 +18,7 @@ reach the browser.
 
 from __future__ import annotations
 
+import random
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -229,6 +230,10 @@ async def create_round_spotify_playlist(
     access_token = await _user_access_token(client, db, connection)
 
     submissions = list(await db.scalars(select(Submission).where(Submission.round_id == round_id)))
+    # Same seeded shuffle as get_round_playlist so Spotify and YouTube always agree (MYS-151).
+    # Sort first for a stable input — Postgres order without ORDER BY is not guaranteed.
+    submissions.sort(key=lambda s: s.id)
+    random.Random(round_id.int).shuffle(submissions)
 
     matched_uris: list[str] = []
     unmatched: list[UnmatchedTrack] = []

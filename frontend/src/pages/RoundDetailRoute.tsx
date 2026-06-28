@@ -43,6 +43,8 @@ import { TextField } from "../components/TextField";
 import { ConcentricRings } from "../components/ConcentricRings";
 import { SongSearchCard } from "../components/songs/SongSearchCard";
 import { SpotifyPlaylist } from "../components/SpotifyPlaylist";
+import { CrownIcon } from "../components/CrownIcon";
+import { MusicNoteIcon } from "../components/MusicNoteIcon";
 
 const STATE_LABEL: Record<RoundState, string> = {
   pending: "upcoming",
@@ -1035,8 +1037,9 @@ function YouTubePlaylistLink({
         href={youtubePlaylistUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink"
+        className="inline-flex items-center gap-1.5 font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink"
       >
+        <MusicNoteIcon />
         open playlist in YouTube
       </a>
       <span className="mt-1 block font-mono uppercase tracking-label text-[9px] text-muted">
@@ -1766,7 +1769,8 @@ function VibeWinnersSection({ winners }: { winners: WinnerReveal[] }) {
   const tie = winners.length > 1;
   return (
     <section>
-      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
+      <h2 className="inline-flex items-center gap-1.5 font-mono uppercase tracking-label text-[9px] text-muted">
+        <CrownIcon className="text-gold" />
         {tie ? "winners" : "winner"}
       </h2>
       <p className="mt-2 font-mono text-[13px] font-light text-muted">
@@ -1835,7 +1839,10 @@ function MostNotedSection({ winners }: { winners: MostNotedWinner[] }) {
   const tie = winners.length > 1;
   return (
     <section>
-      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">most noted</h2>
+      <h2 className="inline-flex items-center gap-1.5 font-mono uppercase tracking-label text-[9px] text-muted">
+        <CrownIcon className="text-gold" />
+        most noted
+      </h2>
       <p className="mt-2 font-mono text-[13px] font-light text-muted">
         {tie ? "the picks that got everyone talking" : "the pick that got everyone talking"}
       </p>
@@ -1881,7 +1888,8 @@ function WinnersSection({
   const tie = winners.length > 1;
   return (
     <section>
-      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
+      <h2 className="inline-flex items-center gap-1.5 font-mono uppercase tracking-label text-[9px] text-muted">
+        <CrownIcon className="text-gold" />
         {tie ? "winners" : "winner"}
       </h2>
       <p className="mt-2 font-mono text-[13px] font-light text-muted">

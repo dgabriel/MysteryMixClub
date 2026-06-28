@@ -20,6 +20,8 @@ type ProfileScreenProps = {
   saveError?: string | null;
   /** Brief "saved" acknowledgement after a successful name change. */
   saved: boolean;
+  onLogoutAll: () => void;
+  logoutAllBusy?: boolean;
 };
 
 /**
@@ -40,6 +42,8 @@ export function ProfileScreen({
   saving,
   saveError,
   saved,
+  onLogoutAll,
+  logoutAllBusy = false,
 }: ProfileScreenProps) {
   if (loading) {
     return (
@@ -74,6 +78,22 @@ export function ProfileScreen({
           />
 
           <ArchivedLeagues leagues={archivedLeagues} onOpenLeague={onOpenLeague} />
+
+          <section className="mt-12 border-t border-border pt-10">
+            <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">security</h2>
+            <p className="mt-2 font-mono text-[11px] font-light text-muted">
+              signs you out on every device and browser.
+            </p>
+            <div className="mt-4">
+              <Button
+                variant="ghost"
+                onClick={onLogoutAll}
+                disabled={logoutAllBusy}
+              >
+                {logoutAllBusy ? "signing out…" : "log out of all devices"}
+              </Button>
+            </div>
+          </section>
         </div>
       )}
     </main>

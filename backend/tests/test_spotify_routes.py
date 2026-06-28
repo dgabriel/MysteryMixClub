@@ -21,9 +21,10 @@ from app.models.league import League
 from app.models.league_member import LeagueMember
 from app.models.round import Round
 from app.models.spotify_connection import SpotifyConnection
+from app.models.spotify_round_playlist import SpotifyRoundPlaylist
 from app.models.submission import Submission
 from app.models.user import User
-from app.services.spotify_client import SpotifyTokens, get_spotify_client
+from app.services.spotify_client import SpotifyNotFoundError, SpotifyTokens, get_spotify_client
 from app.services.spotify_token_crypto import encrypt_refresh_token
 from app.services.youtube_resolver import get_youtube_resolver
 
@@ -103,18 +104,16 @@ def _playlist_url(round_id) -> str:
 
 class FakeSpotifyClient:
     """Stands in for SpotifyClient. Resolves ISRCs from a fixed map and records
-    the playlist it was asked to create."""
+    the playlist operations it was asked to perform."""
 
-    def __init__(self, *, isrc_map=None, configured=True, existing_playlist_id=None):
+    def __init__(self, *, isrc_map=None, configured=True, replace_raises_not_found=False):
         self._isrc_map = isrc_map or {}
         self._configured = configured
-        # When set, find_playlist_id_by_name returns this id (reuse path).
-        self._existing_playlist_id = existing_playlist_id
+        # When True, replace_tracks raises SpotifyNotFoundError (simulates deleted playlist).
+        self._replace_raises_not_found = replace_raises_not_found
         self.created: dict | None = None
         self.added: list[str] = []
         self.replaced: dict | None = None
-        self.looked_up_name: str | None = None
-        self.looked_up_owner: str | None = None
 
     @property
     def is_configured(self) -> bool:
@@ -137,11 +136,6 @@ class FakeSpotifyClient:
     async def get_current_user_id(self, access_token) -> str:
         return "spuser"
 
-    async def find_playlist_id_by_name(self, access_token, name, owner_id) -> str | None:
-        self.looked_up_name = name
-        self.looked_up_owner = owner_id
-        return self._existing_playlist_id
-
     async def create_playlist(self, access_token, name, description, *, public=False):
         self.created = {"name": name, "description": description}
         return "pl1", "https://open.spotify.com/playlist/pl1"
@@ -150,6 +144,8 @@ class FakeSpotifyClient:
         self.added.extend(uris)
 
     async def replace_tracks(self, access_token, playlist_id, uris) -> None:
+        if self._replace_raises_not_found:
+            raise SpotifyNotFoundError("spotify /playlists/xxx/items returned 404")
         self.replaced = {"playlist_id": playlist_id, "uris": list(uris)}
 
 
@@ -297,11 +293,9 @@ async def test_create_builds_playlist_and_reports_unmatched(
     assert body["total_count"] == 2
     assert len(body["unmatched"]) == 1
     assert body["unmatched"][0]["title"] == "miss"
-    # The matched uri was added; the title carries league name + theme (MYS-86),
-    # and we looked it up first (reuse check, MYS-87).
+    # The matched uri was added and a playlist with the right name was created.
     assert fake_spotify.added == ["spotify:track:matched"]
     assert fake_spotify.created["name"] == "MysteryMixClub: L, Late Summer"
-    assert fake_spotify.looked_up_name == "MysteryMixClub: L, Late Summer"
 
 
 async def test_create_caches_resolved_uri_on_submission(spotify_client, db_session, fake_spotify):
@@ -334,22 +328,89 @@ async def test_create_no_matches_returns_no_playlist(spotify_client, db_session,
     assert fake_spotify.created is None  # no empty playlist created
 
 
-async def test_create_reuses_existing_playlist_instead_of_duplicating(session_factory, db_session):
-    # When a same-named playlist already exists, reuse it (replace tracks) rather
-    # than creating a duplicate (MYS-87).
-    fake = FakeSpotifyClient(
-        isrc_map={"I-MATCH": "spotify:track:matched"}, existing_playlist_id="pl-existing"
-    )
+async def test_first_generate_stores_playlist_id_in_db(spotify_client, db_session, fake_spotify):
+    # First generate: creates the playlist and writes a SpotifyRoundPlaylist row (MYS-89).
+    from sqlalchemy import select
+
     organizer = await _seed_user(db_session, "o@example.com")
     round_ = await _seed_round(db_session, organizer)
     await _connect(db_session, organizer.id)
     await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
 
+    resp = await spotify_client.post(_playlist_url(round_.id), headers=_auth(organizer.id))
+    assert resp.status_code == 200, resp.text
+
+    organizer_id = organizer.id
+    round_id = round_.id
+    db_session.expire_all()
+
+    stored = await db_session.scalar(
+        select(SpotifyRoundPlaylist).where(
+            SpotifyRoundPlaylist.round_id == round_id,
+            SpotifyRoundPlaylist.user_id == organizer_id,
+        )
+    )
+    assert stored is not None
+    assert stored.playlist_id == "pl1"
+
+
+async def test_second_generate_reuses_stored_id_without_creating(session_factory, db_session):
+    # Second generate: DB row exists → replace_tracks on stored ID, no new playlist (MYS-89).
+    fake = FakeSpotifyClient(isrc_map={"I-MATCH": "spotify:track:matched"})
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    await _connect(db_session, organizer.id)
+    await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
+    # Seed the stored playlist ID directly.
+    db_session.add(
+        SpotifyRoundPlaylist(round_id=round_.id, user_id=organizer.id, playlist_id="pl-stored")
+    )
+    await db_session.commit()
+
     async with _client_with_spotify(session_factory, fake) as c:
         resp = await c.post(_playlist_url(round_.id), headers=_auth(organizer.id))
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert fake.created is None  # did NOT create a new playlist
-    assert fake.replaced == {"playlist_id": "pl-existing", "uris": ["spotify:track:matched"]}
-    assert body["playlist_url"] == "https://open.spotify.com/playlist/pl-existing"
-    assert body["track_count"] == 1
+    assert fake.created is None
+    assert fake.replaced == {"playlist_id": "pl-stored", "uris": ["spotify:track:matched"]}
+    assert body["playlist_url"] == "https://open.spotify.com/playlist/pl-stored"
+
+
+async def test_generate_recreates_when_stored_playlist_deleted_in_spotify(
+    session_factory, db_session
+):
+    # replace_tracks 404s (user deleted the playlist in Spotify) → recreate + update stored ID.
+    from sqlalchemy import select
+
+    fake = FakeSpotifyClient(
+        isrc_map={"I-MATCH": "spotify:track:matched"}, replace_raises_not_found=True
+    )
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    await _connect(db_session, organizer.id)
+    await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
+    db_session.add(
+        SpotifyRoundPlaylist(round_id=round_.id, user_id=organizer.id, playlist_id="pl-deleted")
+    )
+    await db_session.commit()
+
+    organizer_id = organizer.id
+    round_id = round_.id
+
+    async with _client_with_spotify(session_factory, fake) as c:
+        resp = await c.post(_playlist_url(round_.id), headers=_auth(organizer.id))
+    assert resp.status_code == 200, resp.text
+    # A new playlist was created (the fake always returns "pl1").
+    assert fake.created is not None
+    assert fake.added == ["spotify:track:matched"]
+
+    db_session.expire_all()
+    stored = await db_session.scalar(
+        select(SpotifyRoundPlaylist).where(
+            SpotifyRoundPlaylist.round_id == round_id,
+            SpotifyRoundPlaylist.user_id == organizer_id,
+        )
+    )
+    # Stored ID updated to the new playlist, not the deleted one.
+    assert stored is not None
+    assert stored.playlist_id == "pl1"

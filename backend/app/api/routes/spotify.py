@@ -33,12 +33,14 @@ from app.auth.jwt import JWTError, create_oauth_state, decode_oauth_state
 from app.config import Settings, get_settings
 from app.db.session import get_db
 from app.models.spotify_connection import SpotifyConnection
+from app.models.spotify_round_playlist import SpotifyRoundPlaylist
 from app.models.submission import Submission
 from app.models.user import User
 from app.services.spotify_client import (
     SpotifyApiError,
     SpotifyAuthError,
     SpotifyClient,
+    SpotifyNotFoundError,
     get_spotify_client,
 )
 from app.services.spotify_playlist import playlist_description, playlist_name
@@ -258,22 +260,40 @@ async def create_round_spotify_playlist(
     name = playlist_name(league.name, round_.round_number, round_.theme)
     description = playlist_description(league.name, round_.round_number, round_.theme)
 
+    stored = await db.scalar(
+        select(SpotifyRoundPlaylist).where(
+            SpotifyRoundPlaylist.round_id == round_id,
+            SpotifyRoundPlaylist.user_id == current_user.id,
+        )
+    )
+
     playlist_url: str | None = None
     if matched_uris:
         try:
-            # Idempotent: reuse an existing same-named playlist (replacing its
-            # tracks) instead of creating a duplicate on every generate (MYS-87).
-            existing_id = await client.find_playlist_id_by_name(
-                access_token, name, connection.spotify_user_id
-            )
-            if existing_id is not None:
-                await client.replace_tracks(access_token, existing_id, matched_uris)
-                playlist_url = f"https://open.spotify.com/playlist/{existing_id}"
+            if stored is not None:
+                try:
+                    # Reuse by stored ID — O(1), rename-proof, collision-free (MYS-89).
+                    await client.replace_tracks(access_token, stored.playlist_id, matched_uris)
+                    playlist_url = f"https://open.spotify.com/playlist/{stored.playlist_id}"
+                except SpotifyNotFoundError:
+                    # User deleted the playlist in Spotify; recreate and update stored ID.
+                    playlist_id, playlist_url = await client.create_playlist(
+                        access_token, name, description
+                    )
+                    await client.add_tracks(access_token, playlist_id, matched_uris)
+                    stored.playlist_id = playlist_id
+                    await db.commit()
             else:
                 playlist_id, playlist_url = await client.create_playlist(
                     access_token, name, description
                 )
                 await client.add_tracks(access_token, playlist_id, matched_uris)
+                db.add(
+                    SpotifyRoundPlaylist(
+                        round_id=round_id, user_id=current_user.id, playlist_id=playlist_id
+                    )
+                )
+                await db.commit()
         except SpotifyAuthError as exc:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,

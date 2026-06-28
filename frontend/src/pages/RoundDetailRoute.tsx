@@ -6,7 +6,6 @@ import {
   castVotes,
   deleteSubmission,
   editSubmission,
-  updateSubmissionNote,
   getLeague,
   getMyMembership,
   getMySubmissions,
@@ -43,8 +42,6 @@ import { TextField } from "../components/TextField";
 import { ConcentricRings } from "../components/ConcentricRings";
 import { SongSearchCard } from "../components/songs/SongSearchCard";
 import { SpotifyPlaylist } from "../components/SpotifyPlaylist";
-import { CrownIcon } from "../components/CrownIcon";
-import { MusicNoteIcon } from "../components/MusicNoteIcon";
 
 const STATE_LABEL: Record<RoundState, string> = {
   pending: "upcoming",
@@ -273,7 +270,9 @@ export function RoundDetailRoute() {
           `"${song.title}" by ${song.artist} is already in this round — someone else has great taste too.`,
         );
       } else {
-        setActionError(err instanceof ApiError ? err.message : "couldn't save the change. try again.");
+        setActionError(
+          err instanceof ApiError ? err.message : "couldn't save the change. try again.",
+        );
       }
       return false;
     } finally {
@@ -298,15 +297,6 @@ export function RoundDetailRoute() {
     }
   }
 
-  async function handleSaveNote(submissionId: string, note: string | null) {
-    if (!id) return;
-    try {
-      const result = await updateSubmissionNote(id, submissionId, note);
-      setMySubmissions((current) => current.map((s) => (s.id === submissionId ? result : s)));
-    } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : "couldn't save the note. try again.");
-    }
-  }
 
   async function handleCastVotes(selected: string[]) {
     if (!id || selected.length === 0) return;
@@ -324,20 +314,11 @@ export function RoundDetailRoute() {
         setVotingEligible(refreshed.voting_eligible);
         setVotingActed(refreshed.voting_acted);
         setVibingCount(refreshed.vibing_count);
-        try {
-          // Also fetch the updated vote counts so the player sees their impact
-          const counts = await getVoteCounts(id);
-          setVoteCounts(counts.entries);
-          setIsVotesLocked(true);
-        } catch {
-          // vote-counts 409 means the round auto-advanced to closed (last voter).
-          // Re-fetch round + results so the UI transitions to the reveal.
-          const updatedRound = await getRound(id);
-          setRound(updatedRound);
-          if (updatedRound.state !== "open_voting") {
-            setResults(await getResults(id));
-          }
-        }
+        // Also fetch the updated vote counts so the player sees their impact
+        const counts = await getVoteCounts(id);
+        setVoteCounts(counts.entries);
+        // Votes are now locked - can't change after casting
+        setIsVotesLocked(true);
       } catch {
         // leave the counter as-is; the cast itself succeeded.
       }
@@ -475,7 +456,7 @@ export function RoundDetailRoute() {
             {actionError}
           </p>
         ) : null}
-        {leagueRepeatWarning ? (
+        {leagueRepeatWarning && !actionError ? (
           <p className="mt-6 font-mono text-[11px] text-muted">
             this song was submitted in a previous round — submitted anyway.
           </p>
@@ -500,7 +481,6 @@ export function RoundDetailRoute() {
                 onAdd={handleAddSong}
                 onEdit={handleEditSong}
                 onRemove={handleRemoveSong}
-                onSaveNote={handleSaveNote}
                 onConfirm={() => navigate(`/leagues/${round.league_id}`)}
               />
             </>
@@ -726,7 +706,6 @@ function SubmittedSongCard({
   removing,
   onEdit,
   onRemove,
-  onSaveNote,
 }: {
   submission: SubmissionResult;
   eyebrow: string;
@@ -734,27 +713,7 @@ function SubmittedSongCard({
   removing: boolean;
   onEdit: () => void;
   onRemove: () => void;
-  onSaveNote: (note: string | null) => Promise<void>;
 }) {
-  const [editingNote, setEditingNote] = useState(false);
-  const [noteText, setNoteText] = useState("");
-  const [savingNote, setSavingNote] = useState(false);
-
-  function openNoteEditor() {
-    setNoteText(submission.note ?? "");
-    setEditingNote(true);
-  }
-
-  async function handleNoteSave() {
-    setSavingNote(true);
-    try {
-      await onSaveNote(noteText.trim() || null);
-      setEditingNote(false);
-    } finally {
-      setSavingNote(false);
-    }
-  }
-
   return (
     <Card>
       <span className="font-mono uppercase tracking-label text-[9px] text-muted">{eyebrow}</span>
@@ -762,55 +721,11 @@ function SubmittedSongCard({
       {submission.artist ? (
         <p className="mt-1 font-mono text-[11px] font-light text-muted">{submission.artist}</p>
       ) : null}
-
-      {editingNote ? (
-        <div className="mt-3">
-          <textarea
-            maxLength={280}
-            placeholder="add a note about this pick…"
-            rows={2}
-            value={noteText}
-            onChange={(e) => setNoteText(e.target.value)}
-            autoFocus
-            className="w-full resize-none border-b border-ink bg-transparent font-mono text-[11px] font-light text-ink placeholder:text-muted focus:outline-none"
-          />
-          <div className="mt-2 flex items-center gap-4">
-            <button
-              type="button"
-              disabled={savingNote}
-              onClick={handleNoteSave}
-              className="font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink disabled:opacity-50"
-            >
-              {savingNote ? "saving…" : "save"}
-            </button>
-            <button
-              type="button"
-              disabled={savingNote}
-              onClick={() => setEditingNote(false)}
-              className="font-mono uppercase tracking-ui text-[11px] text-muted underline underline-offset-[3px] transition-colors duration-150 hover:text-ink disabled:opacity-50"
-            >
-              cancel
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="mt-3">
-          {submission.note ? (
-            <p className="mb-1 font-mono text-[11px] font-light text-ink">
-              &ldquo;{submission.note}&rdquo;
-            </p>
-          ) : null}
-          <button
-            type="button"
-            disabled={busy}
-            onClick={openNoteEditor}
-            className="font-mono uppercase tracking-ui text-[11px] text-muted underline underline-offset-[3px] transition-colors duration-150 hover:text-ink disabled:opacity-50"
-          >
-            {submission.note ? "edit note" : "add a note"}
-          </button>
-        </div>
-      )}
-
+      {submission.note ? (
+        <p className="mt-3 border-l-2 border-sage pl-3 font-mono text-[12px] font-light text-ink">
+          &ldquo;{submission.note}&rdquo;
+        </p>
+      ) : null}
       <div className="mt-5 flex items-center gap-5">
         <button
           type="button"
@@ -849,7 +764,6 @@ function ComposerSlot({
   onCancel?: () => void;
 }) {
   const [noteText, setNoteText] = useState("");
-
   return (
     <>
       <SongSearchCard
@@ -897,7 +811,6 @@ function SubmissionManager({
   onAdd,
   onEdit,
   onRemove,
-  onSaveNote,
   onConfirm,
 }: {
   submissions: SubmissionResult[];
@@ -907,7 +820,6 @@ function SubmissionManager({
   onAdd: (song: ResolvedSong, note: string | null) => Promise<boolean>;
   onEdit: (submissionId: string, song: ResolvedSong, note: string | null) => Promise<boolean>;
   onRemove: (submissionId: string) => Promise<boolean>;
-  onSaveNote: (submissionId: string, note: string | null) => Promise<void>;
   onConfirm: () => void;
 }) {
   // Which already-submitted song is being changed (its slot shows a composer).
@@ -957,7 +869,6 @@ function SubmissionManager({
                 removing={removingId === s.id}
                 onEdit={() => setEditingId(s.id)}
                 onRemove={() => void onRemove(s.id)}
-                onSaveNote={(note) => onSaveNote(s.id, note)}
               />
             </li>
           ),
@@ -1043,9 +954,8 @@ function YouTubePlaylistLink({
         href={youtubePlaylistUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex items-center gap-1.5 font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink"
+        className="font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink"
       >
-        <MusicNoteIcon />
         open playlist in YouTube
       </a>
       <span className="mt-1 block font-mono uppercase tracking-label text-[9px] text-muted">
@@ -1256,11 +1166,6 @@ function VotingSection({
                       {entry.artist}
                     </p>
                   ) : null}
-                  {entry.submitter_note ? (
-                    <p className="mt-3 border-l-2 border-sage pl-3 font-mono text-[12px] font-light text-ink">
-                      &ldquo;{entry.submitter_note}&rdquo;
-                    </p>
-                  ) : null}
                   <p className="mt-2 font-mono text-[11px] font-light text-muted">
                     you can&apos;t vote for your own song
                   </p>
@@ -1273,52 +1178,32 @@ function VotingSection({
           const disabled = !isSelected && atLimit;
           return (
             <li key={entry.submission_id}>
-              {/* Outer card div so SongNotes (which has its own buttons) can
-                  live inside the card without nesting buttons in a button. */}
-              <div
+              <button
+                type="button"
+                aria-pressed={isSelected}
+                disabled={disabled}
+                onClick={() => toggle(entry.submission_id)}
                 className={[
-                  "rounded-[3px] border bg-white transition-colors duration-150",
+                  "block w-full rounded-[3px] border bg-white px-6 py-5 text-left transition-colors duration-150",
                   // A selected song wears the screen's one Rust signal: a Rust
                   // outline marks the picks you've chosen to vote for. No other
                   // element on the voting screen uses Rust.
-                  isSelected ? "border-rust" : "border-border",
+                  isSelected ? "border-rust" : "border-border hover:bg-sage-pale/60",
+                  disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
                 ].join(" ")}
               >
-                <button
-                  type="button"
-                  aria-pressed={isSelected}
-                  disabled={disabled}
-                  onClick={() => toggle(entry.submission_id)}
-                  className={[
-                    "block w-full px-6 pb-4 pt-5 text-left",
-                    isSelected ? "" : "hover:bg-sage-pale/60",
-                    disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
-                  ].join(" ")}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <h3 className="font-serif text-[18px] leading-tight text-ink">
-                      {entry.title}
-                    </h3>
-                    <span className="shrink-0 pt-1 font-mono uppercase tracking-label text-[9px] text-rust">
-                      {isSelected ? "voted" : ""}
-                    </span>
-                  </div>
-                  {entry.artist ? (
-                    <p className="mt-1 font-mono text-[11px] font-light text-muted">
-                      {entry.artist}
-                    </p>
-                  ) : null}
-                  {entry.submitter_note ? (
-                    <p className="mt-3 border-l-2 border-sage pl-3 font-mono text-[12px] font-light text-ink">
-                      &ldquo;{entry.submitter_note}&rdquo;
-                    </p>
-                  ) : null}
-                </button>
-                <div className="border-t border-border px-6 pb-5 pt-3">
-                  <SongNotes submissionId={entry.submission_id} onActionError={onActionError} />
+                <div className="flex items-start justify-between gap-3">
+                  <h3 className="font-serif text-[18px] leading-tight text-ink">{entry.title}</h3>
+                  <span className="shrink-0 pt-1 font-mono uppercase tracking-label text-[9px] text-rust">
+                    {isSelected ? "voted" : ""}
+                  </span>
                 </div>
-              </div>
+                {entry.artist ? (
+                  <p className="mt-1 font-mono text-[11px] font-light text-muted">{entry.artist}</p>
+                ) : null}
+              </button>
               <PlatformLinks platforms={entry.platforms} title={entry.title} />
+              <SongNotes submissionId={entry.submission_id} onActionError={onActionError} />
             </li>
           );
         })}
@@ -1724,8 +1609,6 @@ function ResultsSection({
 
       {winners.length > 0 ? <WinnersSection winners={winners} nameFor={nameFor} /> : null}
 
-      <SongLeaderboardSection submissions={submissions} />
-
       {leaderboard.length > 0 ? <LeaderboardSection entries={leaderboard} /> : null}
 
       <section>
@@ -1750,7 +1633,7 @@ function ResultsSection({
                 ) : null}
                 {s.submitter_note ? (
                   <p className="mt-2 font-mono text-[11px] font-light text-ink">
-                    &ldquo;{s.submitter_note}&rdquo;
+                    “{s.submitter_note}”
                   </p>
                 ) : null}
                 <PlatformLinks platforms={s.platforms} title={s.title} />
@@ -1834,7 +1717,7 @@ function VibePicksSection({ picks }: { picks: RevealPick[] }) {
               ) : null}
               {p.submitter_note ? (
                 <p className="mt-2 font-mono text-[11px] font-light text-ink">
-                  &ldquo;{p.submitter_note}&rdquo;
+                  “{p.submitter_note}”
                 </p>
               ) : null}
               <PlatformLinks platforms={p.platforms} title={p.title} />
@@ -1856,10 +1739,7 @@ function MostNotedSection({ winners }: { winners: MostNotedWinner[] }) {
   const tie = winners.length > 1;
   return (
     <section>
-      <h2 className="inline-flex items-center gap-1.5 font-mono uppercase tracking-label text-[9px] text-muted">
-        <CrownIcon className="text-gold" />
-        most noted
-      </h2>
+      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">most noted</h2>
       <p className="mt-2 font-mono text-[13px] font-light text-muted">
         {tie ? "the picks that got everyone talking" : "the pick that got everyone talking"}
       </p>
@@ -1905,8 +1785,7 @@ function WinnersSection({
   const tie = winners.length > 1;
   return (
     <section>
-      <h2 className="inline-flex items-center gap-1.5 font-mono uppercase tracking-label text-[9px] text-muted">
-        <CrownIcon className="text-gold" />
+      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
         {tie ? "winners" : "winner"}
       </h2>
       <p className="mt-2 font-mono text-[13px] font-light text-muted">
@@ -1925,22 +1804,15 @@ function WinnersSection({
                   {w.total} {w.total === 1 ? "vote" : "votes"}
                 </span>
               </div>
-              {/* Show only the player's top-voted song(s), not every submission. */}
-              {(() => {
-                const peak = Math.max(...w.songs.map((s) => s.vote_count));
-                return w.songs
-                  .filter((s) => s.vote_count === peak)
-                  .map((s, i) => (
-                    <div key={s.submission_id} className={i === 0 ? "mt-1" : "mt-3"}>
-                      <h3 className="font-serif text-[24px] leading-tight text-ink">{s.title}</h3>
-                      {s.artist ? (
-                        <p className="mt-1 font-mono text-[11px] font-light text-muted">
-                          {s.artist}
-                        </p>
-                      ) : null}
-                    </div>
-                  ));
-              })()}
+              {/* A multi-song winner lists every song under their one total. */}
+              {w.songs.map((s, i) => (
+                <div key={s.submission_id} className={i === 0 ? "mt-1" : "mt-3"}>
+                  <h3 className="font-serif text-[24px] leading-tight text-ink">{s.title}</h3>
+                  {s.artist ? (
+                    <p className="mt-1 font-mono text-[11px] font-light text-muted">{s.artist}</p>
+                  ) : null}
+                </div>
+              ))}
             </Card>
           </li>
         ))}
@@ -1951,51 +1823,6 @@ function WinnersSection({
 
 /** The Playing leaderboard — already ranked, vibing excluded. Calm and compact;
  *  no Rust (rank #1 included stays in the Sage/Ink family). */
-/** Attach a competition rank to each song: ties share the same rank number and
- *  the next distinct score gets the position it would occupy if the tied entries
- *  were counted separately (1, 1, 3 — not 1, 1, 2). */
-function rankSongs(submissions: ResultSubmission[]): Array<ResultSubmission & { rank: number }> {
-  const sorted = [...submissions].sort((a, b) => b.vote_count - a.vote_count);
-  let rank = 1;
-  return sorted.map((s, i) => {
-    if (i > 0 && sorted[i - 1].vote_count > s.vote_count) rank = i + 1;
-    return { ...s, rank };
-  });
-}
-
-function SongLeaderboardSection({ submissions }: { submissions: ResultSubmission[] }) {
-  const ranked = rankSongs(submissions);
-  return (
-    <section>
-      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
-        songs ({submissions.length})
-      </h2>
-      <ul className="mt-4 divide-y divide-border border-y border-border">
-        {ranked.map((s) => (
-          <li key={s.submission_id} className="flex items-start justify-between gap-4 py-3">
-            <div className="flex items-start gap-4">
-              <span className="w-6 shrink-0 pt-0.5 font-mono text-[13px] font-light text-muted">
-                {s.rank}
-              </span>
-              <span>
-                <span className="block font-mono text-[13px] font-light text-ink">{s.title}</span>
-                {s.artist ? (
-                  <span className="mt-0.5 block font-mono text-[11px] font-light text-muted">
-                    {s.artist}
-                  </span>
-                ) : null}
-              </span>
-            </div>
-            <span className="shrink-0 pt-0.5 font-mono uppercase tracking-label text-[9px] text-sage">
-              {s.vote_count} {s.vote_count === 1 ? "vote" : "votes"}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
 function LeaderboardSection({ entries }: { entries: LeaderboardEntry[] }) {
   return (
     <section>

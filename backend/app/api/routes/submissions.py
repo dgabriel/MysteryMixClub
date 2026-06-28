@@ -62,10 +62,6 @@ class SubmissionCreate(BaseModel):
     participation_mode: Literal["playing", "vibing"] | None = None
 
 
-class NoteUpdate(BaseModel):
-    note: Note | None = None
-
-
 class SubmissionResponse(BaseModel):
     id: str
     round_id: str
@@ -78,8 +74,6 @@ class SubmissionResponse(BaseModel):
     note: str | None
     participation_mode: str
     created_at: datetime
-    # True when the ISRC was submitted in a prior round of the same league
-    # (MYS-147). The submission still succeeds; the client shows a soft notice.
     league_previously_submitted: bool = False
 
 
@@ -97,49 +91,6 @@ def _to_response(s: Submission, *, league_previously_submitted: bool = False) ->
         participation_mode=s.participation_mode,
         created_at=s.created_at,
         league_previously_submitted=league_previously_submitted,
-    )
-
-
-async def _isrc_in_round(
-    isrc: str,
-    round_id: uuid.UUID,
-    db: AsyncSession,
-    *,
-    exclude_submission_id: uuid.UUID | None = None,
-) -> bool:
-    """True if the ISRC is already present anywhere in this round.
-
-    Pass ``exclude_submission_id`` on the edit path so the submission being
-    replaced doesn't block itself.
-    """
-    if exclude_submission_id is not None:
-        q = select(
-            exists().where(
-                Submission.round_id == round_id,
-                Submission.isrc == isrc,
-                Submission.id != exclude_submission_id,
-            )
-        )
-    else:
-        q = select(exists().where(Submission.round_id == round_id, Submission.isrc == isrc))
-    return bool(await db.scalar(q))
-
-
-async def _isrc_in_prior_league_rounds(
-    isrc: str, league_id: uuid.UUID, round_id: uuid.UUID, db: AsyncSession
-) -> bool:
-    """True if the ISRC appeared in any other round of this league (MYS-147)."""
-    return bool(
-        await db.scalar(
-            select(
-                exists().where(
-                    Submission.isrc == isrc,
-                    Submission.round_id == Round.id,
-                    Round.league_id == league_id,
-                    Round.id != round_id,
-                )
-            )
-        )
     )
 
 
@@ -170,6 +121,39 @@ def _apply_track(
     s.platform_links = links
     s.youtube_video_id = yt
     s.note = payload.note
+
+
+async def _isrc_in_round(
+    isrc: str,
+    round_id: uuid.UUID,
+    db: AsyncSession,
+    *,
+    exclude_submission_id: uuid.UUID | None = None,
+) -> bool:
+    clause = [Submission.isrc == isrc, Submission.round_id == round_id]
+    if exclude_submission_id is not None:
+        clause.append(Submission.id != exclude_submission_id)
+    return bool(await db.scalar(select(exists().where(*clause))))
+
+
+async def _isrc_in_prior_league_rounds(
+    isrc: str,
+    league_id: uuid.UUID,
+    round_id: uuid.UUID,
+    db: AsyncSession,
+) -> bool:
+    return bool(
+        await db.scalar(
+            select(
+                exists().where(
+                    Submission.isrc == isrc,
+                    Submission.round_id == Round.id,
+                    Round.league_id == league_id,
+                    Round.id != round_id,
+                )
+            )
+        )
+    )
 
 
 async def _own_round_submissions(
@@ -239,7 +223,6 @@ async def submit_song(
             status_code=status.HTTP_409_CONFLICT,
             detail="oops, someone else has great taste too — this track is already in this round",
         )
-
     league_repeat = await _isrc_in_prior_league_rounds(payload.isrc, round_.league_id, round_id, db)
 
     platform_links, youtube_video_id = await _assemble_track(payload, assembler, youtube)
@@ -293,7 +276,6 @@ async def edit_song(
             status_code=status.HTTP_409_CONFLICT,
             detail="oops, someone else has great taste too — this track is already in this round",
         )
-
     league_repeat = await _isrc_in_prior_league_rounds(payload.isrc, round_.league_id, round_id, db)
 
     platform_links, youtube_video_id = await _assemble_track(payload, assembler, youtube)
@@ -338,39 +320,6 @@ async def delete_song(
 
     await db.delete(submission)
     await db.commit()
-
-
-@router.patch(
-    "/rounds/{round_id}/submissions/{submission_id}/note", response_model=SubmissionResponse
-)
-async def update_submission_note(
-    round_id: uuid.UUID,
-    submission_id: uuid.UUID,
-    payload: NoteUpdate,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> SubmissionResponse:
-    round_ = await _load_round(round_id, db)
-    await _load_league_as_member(round_.league_id, current_user, db)
-    if round_.state != "open_submission":
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="this round is not accepting submissions"
-        )
-    submission = await db.scalar(
-        select(Submission).where(Submission.id == submission_id, Submission.round_id == round_id)
-    )
-    if submission is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="submission not found in this round"
-        )
-    if submission.user_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="that submission isn't yours"
-        )
-    submission.note = payload.note
-    await db.commit()
-    await db.refresh(submission)
-    return _to_response(submission)
 
 
 @router.get("/rounds/{round_id}/submissions/mine", response_model=list[SubmissionResponse])

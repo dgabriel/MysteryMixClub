@@ -71,9 +71,9 @@ function Loader({ label }: { label: string }) {
 
 type SongSearchCardProps = {
   /** When provided, the resolved result card shows a submit affordance (e.g.
-   *  "submit to this round") that calls back with the resolved song. Return
-   *  false (or a Promise resolving to false) to signal failure — the card will
-   *  reset to empty search so the user can try a different song. */
+   *  "submit to this round") that calls back with the resolved song. Returning
+   *  false resets the card to the empty search state (used by duplicate-ISRC
+   *  rejection — MYS-147). */
   onSubmit?: (song: ResolvedSong) => Promise<boolean> | boolean | void;
   submitting?: boolean;
   eyebrow?: string;
@@ -82,8 +82,8 @@ type SongSearchCardProps = {
    *  without colliding ids (MYS-142 multi-slot submit). Defaults to "song" for
    *  the single-instance usages. */
   idPrefix?: string;
-  /** When provided, a note textarea appears inside the resolved-song card before
-   *  the submit button. Only used in submission contexts. */
+  /** Controlled note text — when provided, a textarea appears in the resolved
+   *  view so the submitter can add context before submitting. */
   noteText?: string;
   onNoteChange?: (text: string) => void;
 };
@@ -412,17 +412,17 @@ function ResultView({
 
       {onNoteChange !== undefined ? (
         <div className="mt-5">
-          <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
-            note <span className="lowercase">(optional)</span>
-          </span>
+          <label className="block font-mono uppercase tracking-label text-[9px] text-muted">
+            leave a note (optional)
+          </label>
           <textarea
-            maxLength={280}
-            placeholder="say something about this pick…"
-            rows={2}
             value={noteText ?? ""}
             onChange={(e) => onNoteChange(e.target.value)}
+            maxLength={280}
+            rows={2}
             disabled={submitting}
-            className="mt-1 w-full resize-none border-b border-ink bg-transparent font-mono text-[13px] font-light text-ink placeholder:text-muted focus:outline-none disabled:opacity-50"
+            placeholder="why this song?"
+            className="mt-2 w-full resize-none border-b border-border bg-transparent font-mono text-[12px] font-light text-ink placeholder:text-muted focus:border-ink focus:outline-none disabled:opacity-50"
           />
         </div>
       ) : null}

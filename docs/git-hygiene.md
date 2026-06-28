@@ -26,15 +26,21 @@ Related: branch model in `docs/ci-cd.md`. Hook PATH gotcha at the bottom of this
    ```
    If a branch ends up based on anything other than current `develop`, rebase it
    onto `develop` before continuing (`git rebase origin/develop`).
-4. **Never force-push a shared branch** (`main`, `develop`, or any branch with an
+   **Create the branch before writing a single line of code.** Never edit files
+   on `develop` and branch after — you will end up with uncommitted changes on a
+   shared branch. Branch first, then code.
+4. **One branch at a time.** Finish and merge the current branch before starting
+   the next piece of work. Do not begin new feature code while a PR is open and
+   unmerged — even if asked. Stack depth = 1.
+5. **Never force-push a shared branch** (`main`, `develop`, or any branch with an
    open PR / other readers). `--force-with-lease` only ever on your own private
    feature branch, and only when you understand why.
-5. **Never rewrite published history.** Don't `rebase`, `amend`, or `reset` commits
+6. **Never rewrite published history.** Don't `rebase`, `amend`, or `reset` commits
    that have already been pushed to a shared branch. Amend only local, unpushed
    commits.
-6. **Don't fast-forward `main` to `develop`.** The gap is intentional (un-promoted
+7. **Don't fast-forward `main` to `develop`.** The gap is intentional (un-promoted
    staging work). See [[project_branch-topology]].
-7. **Don't cherry-pick app/tooling changes into `main`.** They reach prod only via
+8. **Don't cherry-pick app/tooling changes into `main`.** They reach prod only via
    a deliberate `develop → main` promotion PR. Until the official beta, the only
    thing promoted to `main` is README docs (preserve main's pre-launch banner).
 
@@ -86,8 +92,15 @@ Related: branch model in `docs/ci-cd.md`. Hook PATH gotcha at the bottom of this
   typecheck) must be green before merge.
 - `develop → main` is a separate, deliberate promotion PR with a manual approval
   gate (deploys to prod).
+- **Always target `develop`** when creating a PR. Pass `--base develop` explicitly
+  (`gh pr create --base develop …`) — never let the CLI default to `main`.
 - Keep the branch current with `git pull --rebase` (your own branch) or a merge
   from `develop`; don't let it drift far behind.
+- **Test before merging.** Run the app and verify the feature works end-to-end
+  manually. Get explicit confirmation from the person who requested the work
+  before running `gh pr merge`. Never merge on green CI alone.
+- **Merge promptly.** Once approved and CI is green, merge immediately. Open PRs
+  drift from `develop` and compound conflict risk for every other branch in flight.
 
 ### Merging without losing code (the squash-merge trap)
 

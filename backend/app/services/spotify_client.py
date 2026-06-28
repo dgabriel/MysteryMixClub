@@ -69,6 +69,10 @@ class SpotifyApiError(RuntimeError):
     """A Spotify API call failed in a way the caller should surface."""
 
 
+class SpotifyNotFoundError(SpotifyApiError):
+    """A Spotify resource was not found (404) — e.g. a stored playlist was deleted."""
+
+
 @dataclass(frozen=True)
 class SpotifyTokens:
     """Tokens returned by an authorization-code exchange or refresh."""
@@ -428,6 +432,8 @@ class SpotifyClient:
     def _json_or_raise(response: httpx.Response, path: str) -> dict:
         if response.status_code == 401:
             raise SpotifyAuthError("spotify access token rejected")
+        if response.status_code == 404:
+            raise SpotifyNotFoundError(f"spotify {path} returned 404")
         if response.status_code not in (200, 201):
             raise SpotifyApiError(f"spotify {path} returned {response.status_code}")
         try:

@@ -641,8 +641,10 @@ async def get_round_playlist(
         )
 
     submissions = list(await db.scalars(select(Submission).where(Submission.round_id == round_id)))
-    # Anonymous + shuffled (technical-design §8). Seed the shuffle on the round id
-    # so the order is stable per round but hides submission/creation order.
+    # Anonymous + shuffled (technical-design §8). Sort by id first so Postgres heap
+    # order doesn't affect the result, then seed the shuffle on the round id for a
+    # stable per-round order that's consistent across all playlist platforms (MYS-151).
+    submissions.sort(key=lambda s: s.id)
     random.Random(round_id.int).shuffle(submissions)
 
     # Voting progress (MYS-102). Playing participants are the eligible voters;

@@ -19,7 +19,7 @@ import { useAuth } from "../hooks/useAuth";
  */
 export function ProfileRoute() {
   const navigate = useNavigate();
-  const { displayName, email, applyDisplayName, logout, logoutAll } = useAuth();
+  const { userId, displayName, email, applyDisplayName, logout, logoutAll } = useAuth();
 
   const [preferredService, setPreferredService] = useState<
     "spotify" | "youtube" | "deezer" | null
@@ -145,6 +145,7 @@ export function ProfileRoute() {
 
   return (
     <ProfileScreen
+      userId={userId}
       displayName={displayName}
       email={email}
       preferredService={preferredService}

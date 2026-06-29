@@ -5,8 +5,10 @@ import { TextField } from "../components/TextField";
 import { Badge } from "../components/Badge";
 import { Card } from "../components/Card";
 import { ConcentricRings } from "../components/ConcentricRings";
+import { UserAvatar } from "../components/avatars/UserAvatar";
 
 type ProfileScreenProps = {
+  userId: string | null;
   displayName: string | null;
   email: string | null;
   preferredService: "spotify" | "youtube" | "deezer" | null;
@@ -37,6 +39,7 @@ type ProfileScreenProps = {
  * archived league card. The delete-account confirm uses ghost/ink styling only.
  */
 export function ProfileScreen({
+  userId,
   displayName,
   email,
   preferredService,
@@ -68,7 +71,10 @@ export function ProfileScreen({
 
   return (
     <main className="mx-auto w-full max-w-lg px-4 pb-16 sm:px-8">
-      <h1 className="font-serif lowercase text-[28px] leading-tight text-ink">profile</h1>
+      <div className="flex items-center gap-5">
+        {userId ? <UserAvatar userId={userId} size={56} /> : null}
+        <h1 className="font-serif lowercase text-[28px] leading-tight text-ink">profile</h1>
+      </div>
       {error ? (
         <p role="alert" className="mt-6 font-mono text-[13px] font-light text-muted">
           {error}

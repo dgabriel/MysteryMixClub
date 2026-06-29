@@ -5,12 +5,13 @@ import { TextField } from "../components/TextField";
 import { Badge } from "../components/Badge";
 import { Card } from "../components/Card";
 import { ConcentricRings } from "../components/ConcentricRings";
+import { UserAvatar } from "../components/avatars/UserAvatar";
 
 type ProfileScreenProps = {
+  userId: string | null;
   displayName: string | null;
-  /** The user's account email — read-only identity, shown above the name editor. */
   email: string | null;
-  /** Completed leagues, most-recently-completed first. Linkable to the league home. */
+  preferredService: "spotify" | "youtube" | "deezer" | null;
   archivedLeagues: League[];
   loading: boolean;
   error?: string | null;
@@ -18,22 +19,30 @@ type ProfileScreenProps = {
   onSaveName: (name: string) => void;
   saving: boolean;
   saveError?: string | null;
-  /** Brief "saved" acknowledgement after a successful name change. */
   saved: boolean;
+  onSavePreferredService: (service: "spotify" | "youtube" | "deezer" | null) => void;
+  savingService: boolean;
+  saveServiceError?: string | null;
+  savedService: boolean;
   onLogoutAll: () => void;
   logoutAllBusy?: boolean;
+  onDeleteAccount: () => void;
+  deletingAccount: boolean;
+  deleteAccountError?: string | null;
 };
 
 /**
- * Profile screen: edit the display name and browse archived (completed) leagues.
- * Content-only — the shared TopNav is rendered by AuthedLayout. The single Rust
- * signal on this screen is the left accent bar on the most-recently-completed
- * league card; everything else stays in the Sage/Ink family. Underline-only
- * input, ALL-CAPS labels, calm copy.
+ * Profile screen: edit display name, preferred service, browse archived leagues,
+ * and manage account (log out all devices, delete account).
+ *
+ * Rust budget: the single Rust use is the accent bar on the most-recently-completed
+ * archived league card. The delete-account confirm uses ghost/ink styling only.
  */
 export function ProfileScreen({
+  userId,
   displayName,
   email,
+  preferredService,
   archivedLeagues,
   loading,
   error,
@@ -42,8 +51,15 @@ export function ProfileScreen({
   saving,
   saveError,
   saved,
+  onSavePreferredService,
+  savingService,
+  saveServiceError,
+  savedService,
   onLogoutAll,
   logoutAllBusy = false,
+  onDeleteAccount,
+  deletingAccount,
+  deleteAccountError,
 }: ProfileScreenProps) {
   if (loading) {
     return (
@@ -55,7 +71,11 @@ export function ProfileScreen({
 
   return (
     <main className="mx-auto w-full max-w-lg px-4 pb-16 sm:px-8">
-      <h1 className="font-serif lowercase text-[28px] leading-tight text-ink">profile</h1>
+      <div className="flex items-center gap-5">
+        {userId ? <UserAvatar userId={userId} size={56} /> : null}
+        <h1 className="font-serif lowercase text-[28px] leading-tight text-ink">profile</h1>
+      </div>
+
       {error ? (
         <p role="alert" className="mt-6 font-mono text-[13px] font-light text-muted">
           {error}
@@ -77,6 +97,14 @@ export function ProfileScreen({
             saved={saved}
           />
 
+          <PreferredServicePicker
+            current={preferredService}
+            onSave={onSavePreferredService}
+            saving={savingService}
+            saveError={saveServiceError}
+            saved={savedService}
+          />
+
           <ArchivedLeagues leagues={archivedLeagues} onOpenLeague={onOpenLeague} />
 
           <section className="mt-12 border-t border-border pt-10">
@@ -85,26 +113,23 @@ export function ProfileScreen({
               signs you out on every device and browser.
             </p>
             <div className="mt-4">
-              <Button
-                variant="ghost"
-                onClick={onLogoutAll}
-                disabled={logoutAllBusy}
-              >
+              <Button variant="ghost" onClick={onLogoutAll} disabled={logoutAllBusy}>
                 {logoutAllBusy ? "signing out…" : "log out of all devices"}
               </Button>
             </div>
           </section>
+
+          <DeleteAccountSection
+            onDeleteAccount={onDeleteAccount}
+            deletingAccount={deletingAccount}
+            deleteAccountError={deleteAccountError}
+          />
         </div>
       )}
     </main>
   );
 }
 
-/**
- * Display-name editor. Seeds from the current name; saves only when it changed
- * and is non-empty. No Rust — this screen's single Rust use is the archived-league
- * accent below.
- */
 function NameForm({
   displayName,
   onSaveName,
@@ -142,13 +167,11 @@ function NameForm({
           disabled={saving}
           aria-invalid={saveError ? true : undefined}
         />
-
         {saveError ? (
           <p role="alert" className="font-mono text-[11px] text-ink">
             {saveError}
           </p>
         ) : null}
-
         <div className="flex items-center gap-4">
           <Button type="submit" disabled={saving}>
             {saving ? "saving…" : "save"}
@@ -162,11 +185,67 @@ function NameForm({
   );
 }
 
-/**
- * Archived (completed) leagues, linkable to each league home. The most-recent
- * one carries the screen's single Rust accent bar; the rest are plain cards. An
- * empty archive shows a calm note.
- */
+const SERVICES = [
+  { value: "spotify", label: "spotify" },
+  { value: "youtube", label: "youtube" },
+  { value: "deezer", label: "deezer" },
+  { value: null, label: "none" },
+] as const;
+
+function PreferredServicePicker({
+  current,
+  onSave,
+  saving,
+  saveError,
+  saved,
+}: {
+  current: "spotify" | "youtube" | "deezer" | null;
+  onSave: (service: "spotify" | "youtube" | "deezer" | null) => void;
+  saving: boolean;
+  saveError?: string | null;
+  saved: boolean;
+}) {
+  return (
+    <section className="mt-12">
+      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
+        preferred service
+      </h2>
+      <p className="mt-1 font-mono text-[11px] font-light text-muted">
+        platform links show this service first.
+      </p>
+      <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2">
+        {SERVICES.map(({ value, label }) => {
+          const isActive = current === value;
+          return (
+            <button
+              key={label}
+              type="button"
+              disabled={saving || isActive}
+              onClick={() => onSave(value)}
+              className={[
+                "font-mono uppercase tracking-ui text-[11px] transition-colors duration-150",
+                isActive
+                  ? "text-ink underline underline-offset-[3px] cursor-default"
+                  : "text-muted hover:text-ink disabled:opacity-50",
+              ].join(" ")}
+            >
+              {label}
+            </button>
+          );
+        })}
+        {saved ? (
+          <span className="font-mono text-[11px] font-light text-muted">saved</span>
+        ) : null}
+      </div>
+      {saveError ? (
+        <p role="alert" className="mt-2 font-mono text-[11px] text-ink">
+          {saveError}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 function ArchivedLeagues({
   leagues,
   onOpenLeague,
@@ -179,15 +258,14 @@ function ArchivedLeagues({
       <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
         archived ({leagues.length})
       </h2>
-
       {leagues.length === 0 ? (
         <p className="mt-4 font-mono text-[13px] font-light text-muted">no completed leagues yet</p>
       ) : (
         <ul className="mt-4 space-y-4">
           {leagues.map((league, index) => (
             <li key={league.id}>
-              {/* The screen's single Rust use: an accent bar on the most-recently
-                  completed league only (index 0); the rest stay plain. */}
+              {/* The screen's single Rust use: accent bar on the most-recently
+                  completed league only (index 0). */}
               <Card
                 accent={index === 0}
                 className="transition-colors duration-150 hover:bg-sage-pale"
@@ -215,6 +293,62 @@ function ArchivedLeagues({
           ))}
         </ul>
       )}
+    </section>
+  );
+}
+
+function DeleteAccountSection({
+  onDeleteAccount,
+  deletingAccount,
+  deleteAccountError,
+}: {
+  onDeleteAccount: () => void;
+  deletingAccount: boolean;
+  deleteAccountError?: string | null;
+}) {
+  const [confirming, setConfirming] = useState(false);
+
+  return (
+    <section className="mt-12 border-t border-border pt-10">
+      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
+        delete account
+      </h2>
+      {!confirming ? (
+        <div className="mt-4">
+          <Button variant="ghost" type="button" onClick={() => setConfirming(true)}>
+            delete my account
+          </Button>
+        </div>
+      ) : (
+        <div className="mt-4 space-y-4">
+          <p className="font-mono text-[12px] font-light text-ink">
+            this permanently deletes your account and all your data. are you sure?
+          </p>
+          <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              type="button"
+              onClick={onDeleteAccount}
+              disabled={deletingAccount}
+            >
+              {deletingAccount ? "deleting…" : "yes, delete my account"}
+            </Button>
+            <button
+              type="button"
+              onClick={() => setConfirming(false)}
+              disabled={deletingAccount}
+              className="font-mono uppercase tracking-ui text-[11px] text-muted hover:text-ink disabled:opacity-50"
+            >
+              cancel
+            </button>
+          </div>
+        </div>
+      )}
+      {deleteAccountError ? (
+        <p role="alert" className="mt-3 font-mono text-[11px] text-ink">
+          {deleteAccountError}
+        </p>
+      ) : null}
     </section>
   );
 }

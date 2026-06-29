@@ -230,6 +230,30 @@ export async function updateDisplayName(displayName: string): Promise<UserProfil
   return (await res.json()) as UserProfile;
 }
 
+/** Set the current user's preferred streaming service (or null to clear). */
+export async function updatePreferredService(
+  service: "spotify" | "youtube" | "deezer" | null,
+): Promise<UserProfile> {
+  const res = await authenticatedRequest("/api/v1/users/me", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ preferred_service: service }),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as UserProfile;
+}
+
+/** Delete the current user's account (right to be forgotten). Throws 409 if
+ *  the user organizes an active league. */
+export async function deleteAccount(): Promise<void> {
+  const res = await authenticatedRequest("/api/v1/users/me", { method: "DELETE" });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+}
+
 /** A league as returned by the backend (GET/POST /api/v1/leagues). */
 export type League = {
   id: string;

@@ -11,6 +11,7 @@ export default {
         "sage-pale": "#D4E3D7",
         rust: "#B5533C",
         gold: "#C9A028",
+        vinyl: "#6B7EB5",
         muted: "#8A8680",
         border: "#D6D2CA",
       },

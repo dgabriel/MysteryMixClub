@@ -1255,7 +1255,7 @@ function VotingSection({
           if (entry.is_own) {
             return (
               <li key={entry.submission_id}>
-                <div className="block w-full rounded-[3px] border border-border bg-sage-pale/40 px-6 py-5 text-left">
+                <div className="rounded-[3px] border border-border bg-sage-pale/40 px-6 py-5">
                   <div className="flex items-start justify-between gap-3">
                     <h3 className="font-serif text-[18px] leading-tight text-ink">{entry.title}</h3>
                     <span className="shrink-0">
@@ -1275,8 +1275,8 @@ function VotingSection({
                   <p className="mt-2 font-mono text-[11px] font-light text-muted">
                     you can&apos;t vote for your own song
                   </p>
+                  <PlatformLinks platforms={entry.platforms} title={entry.title} />
                 </div>
-                <PlatformLinks platforms={entry.platforms} title={entry.title} />
               </li>
             );
           }
@@ -1284,37 +1284,48 @@ function VotingSection({
           const disabled = !isSelected && atLimit;
           return (
             <li key={entry.submission_id}>
-              <button
-                type="button"
-                aria-pressed={isSelected}
-                disabled={disabled}
-                onClick={() => toggle(entry.submission_id)}
+              {/* Card wrapper — owns the border/radius so notes can live inside
+                  without nesting interactive elements inside the vote button. */}
+              <div
                 className={[
-                  "block w-full rounded-[3px] border bg-white px-6 py-5 text-left transition-colors duration-150",
-                  // A selected song wears the screen's one Rust signal: a Rust
-                  // outline marks the picks you've chosen to vote for. No other
-                  // element on the voting screen uses Rust.
-                  isSelected ? "border-rust" : "border-border hover:bg-sage-pale/60",
-                  disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
+                  "rounded-[3px] border bg-white transition-colors duration-150",
+                  isSelected ? "border-rust" : "border-border",
+                  disabled ? "opacity-50" : "",
                 ].join(" ")}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <h3 className="font-serif text-[18px] leading-tight text-ink">{entry.title}</h3>
-                  <span className="shrink-0 pt-1 font-mono uppercase tracking-label text-[9px] text-rust">
-                    {isSelected ? "voted" : ""}
-                  </span>
+                {/* Vote toggle — only the top portion of the card is clickable. */}
+                <button
+                  type="button"
+                  aria-pressed={isSelected}
+                  disabled={disabled}
+                  onClick={() => toggle(entry.submission_id)}
+                  className={[
+                    "block w-full px-6 pt-5 pb-3 text-left",
+                    disabled ? "cursor-not-allowed" : "cursor-pointer",
+                    !isSelected && !disabled ? "hover:bg-sage-pale/60" : "",
+                  ].join(" ")}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <h3 className="font-serif text-[18px] leading-tight text-ink">{entry.title}</h3>
+                    <span className="shrink-0 pt-1 font-mono uppercase tracking-label text-[9px] text-rust">
+                      {isSelected ? "voted" : ""}
+                    </span>
+                  </div>
+                  {entry.artist ? (
+                    <p className="mt-1 font-mono text-[11px] font-light text-muted">{entry.artist}</p>
+                  ) : null}
+                  {entry.submitter_note ? (
+                    <p className="mt-3 border-l-2 border-sage pl-3 font-mono text-[12px] font-light text-ink">
+                      &ldquo;{entry.submitter_note}&rdquo;
+                    </p>
+                  ) : null}
+                </button>
+                {/* Platform links + notes live inside the card, below the vote area. */}
+                <div className="px-6 pb-5">
+                  <PlatformLinks platforms={entry.platforms} title={entry.title} />
+                  <SongNotes submissionId={entry.submission_id} onActionError={onActionError} />
                 </div>
-                {entry.artist ? (
-                  <p className="mt-1 font-mono text-[11px] font-light text-muted">{entry.artist}</p>
-                ) : null}
-                {entry.submitter_note ? (
-                  <p className="mt-3 border-l-2 border-sage pl-3 font-mono text-[12px] font-light text-ink">
-                    &ldquo;{entry.submitter_note}&rdquo;
-                  </p>
-                ) : null}
-              </button>
-              <PlatformLinks platforms={entry.platforms} title={entry.title} />
-              <SongNotes submissionId={entry.submission_id} onActionError={onActionError} />
+              </div>
             </li>
           );
         })}

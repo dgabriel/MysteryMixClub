@@ -187,7 +187,7 @@ export function LeagueHomeScreen({
                 >
                   <span className="flex items-center gap-3">
                     <span className="w-6 shrink-0 font-mono text-[11px] text-muted">
-                      #{entry.rank}
+                      {entry.rank === 1 ? <CrownIcon className="h-3.5 w-3.5 text-muted" /> : `#${entry.rank}`}
                     </span>
                     <span
                       className={`font-mono text-[13px] ${isMe ? "font-semibold text-sage" : "text-ink"}`}

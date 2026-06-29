@@ -18,6 +18,7 @@ import {
   type RoundResults,
 } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
+import { usePolling } from "../hooks/usePolling";
 
 /**
  * Protected league-home route. Loads the league and its members in parallel,
@@ -78,6 +79,24 @@ export function LeagueHomeRoute() {
       }
     })();
   }, [id]);
+
+  // Silently refresh league + round state every 60s so round transitions
+  // (e.g. organizer opens voting) surface without a manual page reload.
+  usePolling(() => {
+    if (!id) return;
+    void (async () => {
+      try {
+        const [updatedLeague, updatedRounds] = await Promise.all([
+          getLeague(id),
+          getRounds(id),
+        ]);
+        setLeague(updatedLeague);
+        setRounds(updatedRounds);
+      } catch {
+        // Non-fatal — stale data beats an error flash on a background refresh.
+      }
+    })();
+  });
 
   // Closed rounds get a winner + most-noted summary on their card. Results live
   // behind a separate endpoint, so fetch them for every closed round in parallel

@@ -36,6 +36,7 @@ import {
   type WinnerReveal,
 } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
+import { usePolling } from "../hooks/usePolling";
 import { Button } from "../components/Button";
 import { Badge } from "../components/Badge";
 import { Card } from "../components/Card";
@@ -186,6 +187,33 @@ export function RoundDetailRoute() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Poll every 60s so state transitions (submission → voting → closed) and
+  // progress counts update without a manual reload. Fetches only the round on
+  // each tick; triggers a full load() only when the state actually changes.
+  usePolling(() => {
+    if (!id) return;
+    void (async () => {
+      try {
+        const refreshed = await getRound(id);
+        if (refreshed.state !== round?.state) {
+          void load();
+          return;
+        }
+        setRound(refreshed);
+        if (refreshed.state === "open_voting") {
+          try {
+            const counts = await getVoteCounts(id);
+            setVoteCounts(counts.entries);
+          } catch {
+            // non-fatal
+          }
+        }
+      } catch {
+        // non-fatal
+      }
+    })();
+  });
 
   const isOrganizer = !!userId && !!league && league.organizer_id === userId;
 

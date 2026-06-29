@@ -445,13 +445,23 @@ async def remove_member(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    league = await _load_league_as_organizer(
-        league_id, current_user, db, "only the organizer can remove members"
-    )
-    if user_id == league.organizer_id:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="cannot remove the organizer"
+    if user_id == current_user.id:
+        # Self-leave: any active member except the organizer may leave.
+        league = await _load_league_as_member(league_id, current_user, db)
+        if user_id == league.organizer_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="organizers cannot leave their own league",
+            )
+    else:
+        # Organizer removing another member.
+        league = await _load_league_as_organizer(
+            league_id, current_user, db, "only the organizer can remove members"
         )
+        if user_id == league.organizer_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail="cannot remove the organizer"
+            )
 
     membership = await db.scalar(
         select(LeagueMember).where(

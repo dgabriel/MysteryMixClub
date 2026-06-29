@@ -331,6 +331,16 @@ export async function getLeagueMembers(id: string): Promise<LeagueMember[]> {
   return (await res.json()) as LeagueMember[];
 }
 
+/** All-time vote leaderboard for a league (MYS-157): ranked members by total
+ *  votes received across all closed rounds, with 0-vote members included. */
+export async function getLeagueLeaderboard(id: string): Promise<LeaderboardEntry[]> {
+  const res = await authenticatedRequest(`/api/v1/leagues/${id}/leaderboard`);
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as LeaderboardEntry[];
+}
+
 /** Update a league (organizer only). An explicit null description is sent as-is;
  *  only undefined keys are dropped by JSON.stringify. Returns the updated League. */
 export async function updateLeague(

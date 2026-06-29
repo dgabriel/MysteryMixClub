@@ -6,6 +6,7 @@ import {
   createInvite,
   deleteLeague,
   getLeague,
+  getLeagueLeaderboard,
   getLeagueMembers,
   getResults,
   getRounds,
@@ -13,6 +14,7 @@ import {
   updateLeague,
   updateRound,
   type League,
+  type LeaderboardEntry,
   type LeagueMember,
   type Round,
   type RoundResults,
@@ -35,6 +37,7 @@ export function LeagueHomeRoute() {
   const [league, setLeague] = useState<League | null>(null);
   const [members, setMembers] = useState<LeagueMember[]>([]);
   const [rounds, setRounds] = useState<Round[]>([]);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [roundResults, setRoundResults] = useState<Record<string, RoundResults>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -64,14 +67,16 @@ export function LeagueHomeRoute() {
     if (!id) return;
     void (async () => {
       try {
-        const [loadedLeague, loadedMembers, loadedRounds] = await Promise.all([
+        const [loadedLeague, loadedMembers, loadedRounds, loadedLeaderboard] = await Promise.all([
           getLeague(id),
           getLeagueMembers(id),
           getRounds(id),
+          getLeagueLeaderboard(id),
         ]);
         setLeague(loadedLeague);
         setMembers(loadedMembers);
         setRounds(loadedRounds);
+        setLeaderboard(loadedLeaderboard);
       } catch (err) {
         setError(err instanceof ApiError ? err.message : "couldn't load this league.");
       } finally {
@@ -86,12 +91,14 @@ export function LeagueHomeRoute() {
     if (!id) return;
     void (async () => {
       try {
-        const [updatedLeague, updatedRounds] = await Promise.all([
+        const [updatedLeague, updatedRounds, updatedLeaderboard] = await Promise.all([
           getLeague(id),
           getRounds(id),
+          getLeagueLeaderboard(id),
         ]);
         setLeague(updatedLeague);
         setRounds(updatedRounds);
+        setLeaderboard(updatedLeaderboard);
       } catch {
         // Non-fatal — stale data beats an error flash on a background refresh.
       }
@@ -272,6 +279,8 @@ export function LeagueHomeRoute() {
       league={league ?? placeholderLeague}
       members={members}
       rounds={rounds}
+      leaderboard={leaderboard}
+      userId={userId}
       roundResults={roundResults}
       isOrganizer={isOrganizer}
       loading={loading || (!league && !error)}

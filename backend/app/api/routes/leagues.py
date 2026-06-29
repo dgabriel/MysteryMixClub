@@ -5,7 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, StringConstraints, model_validator
-from sqlalchemy import delete, func, select
+from sqlalchemy import and_, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
@@ -275,6 +275,75 @@ async def list_league_members(
         .order_by(LeagueMember.joined_at.asc())
     )
     return [_to_member_response(member, user, league.organizer_id) for member, user in rows.all()]
+
+
+class LeagueLeaderboardEntry(BaseModel):
+    user_id: str
+    display_name: str
+    vote_count: int
+    rank: int
+
+
+@router.get("/{league_id}/leaderboard", response_model=list[LeagueLeaderboardEntry])
+async def get_league_leaderboard(
+    league_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[LeagueLeaderboardEntry]:
+    """All-time vote totals per member, across closed rounds only (MYS-157).
+
+    Every active member appears — those with no closed-round submissions show 0.
+    Ordered by votes descending, then display_name ascending for stable tie-breaking.
+    """
+    await _load_league_as_member(league_id, current_user, db)
+
+    closed_round_ids = select(Round.id).where(
+        Round.league_id == league_id,
+        Round.state == "closed",
+    )
+
+    rows = (
+        await db.execute(
+            select(
+                User.id.label("user_id"),
+                User.display_name,
+                func.count(Vote.id).label("vote_count"),
+            )
+            .select_from(LeagueMember)
+            .join(User, User.id == LeagueMember.user_id)
+            .outerjoin(
+                Submission,
+                and_(
+                    Submission.user_id == LeagueMember.user_id,
+                    Submission.round_id.in_(closed_round_ids),
+                ),
+            )
+            .outerjoin(Vote, Vote.submission_id == Submission.id)
+            .where(
+                LeagueMember.league_id == league_id,
+                LeagueMember.removed_at.is_(None),
+            )
+            .group_by(User.id, User.display_name)
+            .order_by(func.count(Vote.id).desc(), User.display_name.asc())
+        )
+    ).all()
+
+    entries: list[LeagueLeaderboardEntry] = []
+    rank = 0
+    prev_votes: int | None = None
+    for i, row in enumerate(rows):
+        if row.vote_count != prev_votes:
+            rank = i + 1
+            prev_votes = row.vote_count
+        entries.append(
+            LeagueLeaderboardEntry(
+                user_id=str(row.user_id),
+                display_name=row.display_name,
+                vote_count=row.vote_count,
+                rank=rank,
+            )
+        )
+    return entries
 
 
 class MembershipResponse(BaseModel):

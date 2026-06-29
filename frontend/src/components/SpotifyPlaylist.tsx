@@ -87,13 +87,15 @@ export function SpotifyPlaylist({ roundId, entryCount }: { roundId: string; entr
   return (
     <div className="mb-8">
       {!status.connected ? (
-        <button type="button" onClick={handleConnect} disabled={busy} className={ACTION_CLASS}>
+        <button type="button" onClick={handleConnect} disabled={busy} className={`inline-flex items-center gap-1.5 ${ACTION_CLASS}`}>
+          <MusicNoteIcon />
           connect spotify to make a playlist
         </button>
       ) : result ? (
         <SpotifyResult result={result} entryCount={entryCount} />
       ) : (
-        <button type="button" onClick={handleGenerate} disabled={busy} className={ACTION_CLASS}>
+        <button type="button" onClick={handleGenerate} disabled={busy} className={`inline-flex items-center gap-1.5 ${ACTION_CLASS}`}>
+          <MusicNoteIcon />
           {busy ? "creating playlist…" : "make a spotify playlist"}
         </button>
       )}

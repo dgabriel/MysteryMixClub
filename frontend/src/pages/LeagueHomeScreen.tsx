@@ -65,6 +65,9 @@ type LeagueHomeScreenProps = {
   onLeaveLeague: () => void;
   leavingLeague: boolean;
   leaveLeagueError?: string | null;
+  // --- All-time vote leaderboard (MYS-157) ---
+  leaderboard: LeaderboardEntry[];
+  userId: string | null;
 };
 
 export function LeagueHomeScreen({
@@ -96,6 +99,8 @@ export function LeagueHomeScreen({
   onLeaveLeague,
   leavingLeague,
   leaveLeagueError,
+  leaderboard,
+  userId,
 }: LeagueHomeScreenProps) {
   if (loading) {
     return (
@@ -165,30 +170,47 @@ export function LeagueHomeScreen({
           updateRoundError={updateRoundError}
         />
 
-        {/* Members */}
+        {/* Members / all-time leaderboard (MYS-157) */}
         <section className="mt-12">
           <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
             members ({members.length})
           </h2>
           <ul className="mt-4 divide-y divide-border border-t border-border">
-            {members.map((member) => {
-              const showRemove = isOrganizer && !member.is_organizer;
+            {leaderboard.map((entry) => {
+              const member = members.find((m) => m.user_id === entry.user_id);
+              const isMe = entry.user_id === userId;
+              const showRemove = isOrganizer && member && !member.is_organizer;
               return (
-                <li key={member.user_id} className="flex items-center justify-between gap-4 py-3">
+                <li
+                  key={entry.user_id}
+                  className="flex items-center justify-between gap-4 py-3"
+                >
                   <span className="flex items-center gap-3">
-                    <span className="font-mono text-[13px] text-ink">{member.display_name}</span>
-                    {member.is_organizer ? <Badge>organizer</Badge> : null}
-                  </span>
-                  {showRemove ? (
-                    <button
-                      type="button"
-                      onClick={() => onRemoveMember(member.user_id)}
-                      disabled={removingUserId === member.user_id}
-                      className="font-mono uppercase tracking-ui text-[11px] text-ink underline underline-offset-[3px] hover:text-sage disabled:opacity-50 disabled:cursor-not-allowed"
+                    <span className="w-6 shrink-0 font-mono text-[11px] text-muted">
+                      {entry.rank === 1 ? <CrownIcon className="h-3.5 w-3.5 text-muted" /> : `#${entry.rank}`}
+                    </span>
+                    <span
+                      className={`font-mono text-[13px] ${isMe ? "font-semibold text-sage" : "text-ink"}`}
                     >
-                      {removingUserId === member.user_id ? "removing…" : "remove"}
-                    </button>
-                  ) : null}
+                      {entry.display_name}
+                    </span>
+                    {member?.is_organizer ? <Badge>organizer</Badge> : null}
+                  </span>
+                  <span className="flex items-center gap-4">
+                    <span className="font-mono text-[11px] text-muted">
+                      {entry.vote_count} {entry.vote_count === 1 ? "vote" : "votes"}
+                    </span>
+                    {showRemove ? (
+                      <button
+                        type="button"
+                        onClick={() => onRemoveMember(entry.user_id)}
+                        disabled={removingUserId === entry.user_id}
+                        className="font-mono uppercase tracking-ui text-[11px] text-ink underline underline-offset-[3px] hover:text-sage disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {removingUserId === entry.user_id ? "removing…" : "remove"}
+                      </button>
+                    ) : null}
+                  </span>
                 </li>
               );
             })}

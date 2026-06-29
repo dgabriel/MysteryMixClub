@@ -75,6 +75,7 @@ export function ProfileScreen({
         {userId ? <UserAvatar userId={userId} size={56} /> : null}
         <h1 className="font-serif lowercase text-[28px] leading-tight text-ink">profile</h1>
       </div>
+
       {error ? (
         <p role="alert" className="mt-6 font-mono text-[13px] font-light text-muted">
           {error}

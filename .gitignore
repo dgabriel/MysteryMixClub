@@ -50,3 +50,6 @@ build/
 
 # Local dev runtime (pids/logs from scripts/dev-up.sh)
 .dev/
+
+# Scratch / temp files
+tmp/

@@ -1,15 +1,11 @@
-"""Tests for MYS-14: DELETE /api/v1/leagues/{league_id}/members/{user_id}.
+"""Tests for DELETE /api/v1/leagues/{league_id}/members/{user_id}.
 
-TDD-first: written before the endpoint exists, so they are expected to FAIL
-(red) until the developer implements the route on the existing leagues router.
-
-Covers auth (401), not-found (404), organizer-only authorization (403),
+Covers the organizer-remove path (MYS-14) and the self-leave path (MYS-97):
+auth (401), not-found (404), organizer-only authorization (403),
 organizer-removes-self conflict (409), removing a non-member / already-removed
-member (404), the happy-path soft delete (204 + removed_at set), and the
-integration proof that a removed member loses access (their subsequent invite
-generation is rejected by the existing active-member gate). See
-technical-design.md §6 (league_members) and §7 (Leagues API: DELETE
-/leagues/:id/members/:userId — organizer only).
+member (404), happy-path soft delete (204 + removed_at set), integration proof
+that a removed member loses access, and the full self-leave flow (member leaves
+their own league, blocked for organizers).
 """
 
 import uuid
@@ -242,6 +238,64 @@ async def test_organizer_removes_active_member_returns_204_and_soft_deletes(clie
 # ========================================================================== #
 # Integration — removed member loses access
 # ========================================================================== #
+
+
+# ========================================================================== #
+# Self-leave (MYS-97)
+# ========================================================================== #
+
+
+async def test_member_can_leave_own_league(client, db_session):
+    organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
+    league = await _seed_league(db_session, organizer)
+    member = await _seed_user(db_session, email="member@example.com", display_name="Member")
+    await _seed_member(db_session, league, member)
+
+    resp = await client.delete(
+        _remove_url(league.id, member.id),
+        headers=_auth_header(member.id),
+    )
+
+    assert resp.status_code == 204, resp.text
+
+    league_id = league.id
+    member_id = member.id
+    db_session.expire_all()
+
+    row = await db_session.scalar(
+        select(LeagueMember).where(
+            LeagueMember.league_id == league_id,
+            LeagueMember.user_id == member_id,
+        )
+    )
+    assert row is not None
+    assert row.removed_at is not None
+
+
+async def test_organizer_cannot_self_leave(client, db_session):
+    organizer = await _seed_user(db_session)
+    league = await _seed_league(db_session, organizer)
+
+    resp = await client.delete(
+        _remove_url(league.id, organizer.id),
+        headers=_auth_header(organizer.id),
+    )
+
+    assert resp.status_code == 409, resp.text
+    assert "organizer" in resp.json()["detail"]
+
+
+async def test_non_member_self_leave_returns_403(client, db_session):
+    organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
+    league = await _seed_league(db_session, organizer)
+    stranger = await _seed_user(db_session, email="stranger@example.com", display_name="Stranger")
+
+    resp = await client.delete(
+        _remove_url(league.id, stranger.id),
+        headers=_auth_header(stranger.id),
+    )
+
+    assert resp.status_code == 403, resp.text
 
 
 async def test_removed_member_loses_access_to_invites(client, db_session):

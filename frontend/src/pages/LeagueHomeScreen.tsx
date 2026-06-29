@@ -61,6 +61,10 @@ type LeagueHomeScreenProps = {
   onDeleteLeague: () => void;
   deletingLeague: boolean;
   deleteLeagueError?: string | null;
+  // --- Member self-leave (MYS-97) ---
+  onLeaveLeague: () => void;
+  leavingLeague: boolean;
+  leaveLeagueError?: string | null;
 };
 
 export function LeagueHomeScreen({
@@ -89,6 +93,9 @@ export function LeagueHomeScreen({
   onDeleteLeague,
   deletingLeague,
   deleteLeagueError,
+  onLeaveLeague,
+  leavingLeague,
+  leaveLeagueError,
 }: LeagueHomeScreenProps) {
   if (loading) {
     return (
@@ -218,14 +225,20 @@ export function LeagueHomeScreen({
           ) : null}
         </section>
 
-        {/* Organizer-only destructive action. */}
+        {/* Destructive actions — organizers delete, members leave. Never both. */}
         {isOrganizer ? (
           <DeleteLeagueSection
             onDeleteLeague={onDeleteLeague}
             deletingLeague={deletingLeague}
             deleteLeagueError={deleteLeagueError}
           />
-        ) : null}
+        ) : (
+          <LeaveLeagueSection
+            onLeaveLeague={onLeaveLeague}
+            leavingLeague={leavingLeague}
+            leaveLeagueError={leaveLeagueError}
+          />
+        )}
     </main>
   );
 }
@@ -288,6 +301,66 @@ function DeleteLeagueSection({
       {deleteLeagueError ? (
         <p role="alert" className="mt-3 font-mono text-[11px] text-ink">
           {deleteLeagueError}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+/**
+ * Non-organizer destructive action. Two-step confirm, mirrors DeleteLeagueSection.
+ * Rust is safe here: organizers (who have their own Rust confirm) never see this.
+ */
+function LeaveLeagueSection({
+  onLeaveLeague,
+  leavingLeague,
+  leaveLeagueError,
+}: {
+  onLeaveLeague: () => void;
+  leavingLeague: boolean;
+  leaveLeagueError?: string | null;
+}) {
+  const [confirming, setConfirming] = useState(false);
+
+  return (
+    <section className="mt-12 border-t border-border pt-6">
+      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">leave league</h2>
+
+      {confirming ? (
+        <div className="mt-4 space-y-4">
+          <p className="font-mono text-[13px] font-light text-muted">
+            you'll lose access to this league's rounds and results.
+          </p>
+          <div className="flex items-center gap-4">
+            <Button
+              variant="link"
+              type="button"
+              onClick={onLeaveLeague}
+              disabled={leavingLeague}
+            >
+              {leavingLeague ? "leaving…" : "leave this league"}
+            </Button>
+            <Button
+              variant="ghost"
+              type="button"
+              onClick={() => setConfirming(false)}
+              disabled={leavingLeague}
+            >
+              cancel
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-4">
+          <Button variant="ghost" type="button" onClick={() => setConfirming(true)}>
+            leave league
+          </Button>
+        </div>
+      )}
+
+      {leaveLeagueError ? (
+        <p role="alert" className="mt-3 font-mono text-[11px] text-ink">
+          {leaveLeagueError}
         </p>
       ) : null}
     </section>

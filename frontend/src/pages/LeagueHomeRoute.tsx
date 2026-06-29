@@ -55,6 +55,10 @@ export function LeagueHomeRoute() {
   const [deletingLeague, setDeletingLeague] = useState(false);
   const [deleteLeagueError, setDeleteLeagueError] = useState<string | null>(null);
 
+  // Member self-leave (MYS-97).
+  const [leavingLeague, setLeavingLeague] = useState(false);
+  const [leaveLeagueError, setLeaveLeagueError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!id) return;
     void (async () => {
@@ -195,6 +199,21 @@ export function LeagueHomeRoute() {
     }
   }
 
+  async function handleLeaveLeague() {
+    if (!id || !userId) return;
+    setLeavingLeague(true);
+    setLeaveLeagueError(null);
+    try {
+      await removeMember(id, userId);
+      navigate("/home");
+    } catch (err) {
+      setLeaveLeagueError(
+        err instanceof ApiError ? err.message : "couldn't leave the league. try again.",
+      );
+      setLeavingLeague(false);
+    }
+  }
+
   async function handleRemoveMember(memberUserId: string) {
     if (!id) return;
     setRemovingUserId(memberUserId);
@@ -256,6 +275,9 @@ export function LeagueHomeRoute() {
       onDeleteLeague={handleDeleteLeague}
       deletingLeague={deletingLeague}
       deleteLeagueError={deleteLeagueError}
+      onLeaveLeague={handleLeaveLeague}
+      leavingLeague={leavingLeague}
+      leaveLeagueError={leaveLeagueError}
     />
   );
 }

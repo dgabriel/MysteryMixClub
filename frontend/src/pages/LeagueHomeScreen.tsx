@@ -180,6 +180,7 @@ export function LeagueHomeScreen({
               const member = members.find((m) => m.user_id === entry.user_id);
               const isMe = entry.user_id === userId;
               const showRemove = isOrganizer && member && !member.is_organizer;
+              const anyVotes = leaderboard.some((e) => e.vote_count > 0);
               return (
                 <li
                   key={entry.user_id}
@@ -187,7 +188,11 @@ export function LeagueHomeScreen({
                 >
                   <span className="flex items-center gap-3">
                     <span className="w-6 shrink-0 font-mono text-[11px] text-muted">
-                      {entry.rank === 1 ? <CrownIcon className="h-3.5 w-3.5 text-muted" /> : `#${entry.rank}`}
+                      {anyVotes
+                        ? entry.rank === 1
+                          ? <CrownIcon className="h-3.5 w-3.5 text-muted" />
+                          : `#${entry.rank}`
+                        : null}
                     </span>
                     <span
                       className={`font-mono text-[13px] ${isMe ? "font-semibold text-sage" : "text-ink"}`}

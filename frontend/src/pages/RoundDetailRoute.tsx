@@ -46,7 +46,7 @@ import { SongSearchCard } from "../components/songs/SongSearchCard";
 import { SpotifyPlaylist } from "../components/SpotifyPlaylist";
 import { CrownIcon } from "../components/CrownIcon";
 import { MusicNoteIcon } from "../components/MusicNoteIcon";
-import { formatDeadline } from "../utils/deadline";
+import { DeadlineChip } from "../components/DeadlineChip";
 
 const STATE_LABEL: Record<RoundState, string> = {
   pending: "upcoming",
@@ -498,13 +498,9 @@ export function RoundDetailRoute() {
           </p>
         ) : null}
 
-        {/* Static, phase-appropriate deadline (MYS-161) — viewer-local time.
-            Renders nothing for legacy rounds with no deadline set. */}
-        {formatDeadline(round) ? (
-          <p className="mt-3 font-mono uppercase tracking-label text-[9px] text-muted">
-            {formatDeadline(round)}
-          </p>
-        ) : null}
+        {/* Prominent, phase-appropriate deadline chip (MYS-161) — viewer-local
+            time. Renders nothing for legacy rounds with no deadline set. */}
+        <DeadlineChip round={round} className="mt-4" />
 
         {isOrganizer ? (
           <>

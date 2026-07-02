@@ -14,7 +14,7 @@ import { useAuth } from "../hooks/useAuth";
  */
 export function HomeRoute() {
   const navigate = useNavigate();
-  const { displayName } = useAuth();
+  const { displayName, preferredService } = useAuth();
   const [leagues, setLeagues] = useState<League[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +47,7 @@ export function HomeRoute() {
       leagues={leagues}
       loading={loading}
       error={error}
+      preferredService={preferredService}
       onCreateLeague={() => navigate("/leagues/new")}
       onOpenLeague={(id) => navigate(`/leagues/${id}`)}
     />

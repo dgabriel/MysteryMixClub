@@ -85,6 +85,7 @@ describe("HomeRoute (My Leagues)", () => {
       needsOnboarding: false,
       isPlatformAdmin: false,
       applyDisplayName: vi.fn(),
+    preferredService: null,
     });
   });
 
@@ -197,6 +198,7 @@ describe("HomeRoute (My Leagues)", () => {
       needsOnboarding: false,
       isPlatformAdmin: true,
       applyDisplayName: vi.fn(),
+    preferredService: null,
     });
     const user = userEvent.setup();
     renderHome();

@@ -11,6 +11,7 @@ type MyLeaguesScreenProps = {
   leagues: League[];
   loading: boolean;
   error?: string | null;
+  preferredService?: string | null;
   onCreateLeague: () => void;
   onOpenLeague: (id: string) => void;
 };
@@ -20,6 +21,7 @@ export function MyLeaguesScreen({
   leagues,
   loading,
   error,
+  preferredService,
   onCreateLeague,
   onOpenLeague,
 }: MyLeaguesScreenProps) {
@@ -107,7 +109,7 @@ export function MyLeaguesScreen({
                   practice your song search skills here — no league required
                 </h2> 
                 <br/>             
-              <SongSearchCard />
+              <SongSearchCard preferredService={preferredService} />
             </section>
           </div>
         )}

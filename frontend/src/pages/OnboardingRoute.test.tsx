@@ -50,6 +50,7 @@ function setAuth(
     profileStatus,
     needsOnboarding: overrides.needsOnboarding ?? false,
     applyDisplayName,
+    preferredService: null,
   });
 }
 

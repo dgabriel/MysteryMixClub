@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { ProfileRoute } from "./ProfileRoute";
 import { AuthedLayout } from "../components/AuthedLayout";
-import { ApiError, getLeagues, updateDisplayName } from "../services/api";
+import { ApiError, getLeagues, getMe, updateDisplayName } from "../services/api";
 import type { League, UserProfile } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 
@@ -14,6 +14,7 @@ vi.mock("../services/api", async () => {
   return {
     ...actual,
     getLeagues: vi.fn(),
+    getMe: vi.fn(),
     updateDisplayName: vi.fn(),
   };
 });
@@ -21,6 +22,7 @@ vi.mock("../services/api", async () => {
 vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
 
 const mockGetLeagues = vi.mocked(getLeagues);
+const mockGetMe = vi.mocked(getMe);
 const mockUpdateDisplayName = vi.mocked(updateDisplayName);
 const mockUseAuth = vi.mocked(useAuth);
 const applyDisplayName = vi.fn();
@@ -41,6 +43,7 @@ function setAuth(displayName: string | null = "Ada") {
     profileStatus: "ready",
     needsOnboarding: false,
     applyDisplayName,
+    preferredService: null,
   });
 }
 
@@ -93,6 +96,7 @@ describe("ProfileRoute", () => {
     vi.clearAllMocks();
     setAuth("Ada");
     mockGetLeagues.mockResolvedValue([]);
+    mockGetMe.mockResolvedValue(profileWith("Ada"));
   });
 
   it("renders the current display name and only the completed leagues, newest first", async () => {

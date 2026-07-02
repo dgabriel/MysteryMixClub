@@ -9,13 +9,14 @@ import {
   createInvite,
   deleteLeague,
   getLeague,
+  getLeagueLeaderboard,
   getLeagueMembers,
   getResults,
   getRounds,
   removeMember,
   updateLeague,
 } from "../services/api";
-import type { Invite, League, LeagueMember, Round, RoundResults } from "../services/api";
+import type { Invite, League, LeaderboardEntry, LeagueMember, Round, RoundResults } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 
 // Mock the API module (no network). Keep ApiError real.
@@ -24,6 +25,7 @@ vi.mock("../services/api", async () => {
   return {
     ...actual,
     getLeague: vi.fn(),
+    getLeagueLeaderboard: vi.fn(),
     getLeagueMembers: vi.fn(),
     getRounds: vi.fn(),
     getResults: vi.fn(),
@@ -41,6 +43,7 @@ vi.mock("../hooks/useAuth", () => ({
 }));
 
 const mockGetLeague = vi.mocked(getLeague);
+const mockGetLeagueLeaderboard = vi.mocked(getLeagueLeaderboard);
 const mockGetLeagueMembers = vi.mocked(getLeagueMembers);
 const mockGetRounds = vi.mocked(getRounds);
 const mockGetResults = vi.mocked(getResults);
@@ -167,6 +170,7 @@ function setAuth(userId: string | null) {
     profileStatus: "ready",
     needsOnboarding: false,
     applyDisplayName: vi.fn(),
+    preferredService: null,
   });
 }
 
@@ -189,6 +193,10 @@ describe("LeagueHomeRoute", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetLeague.mockResolvedValue(leagueWith());
+    mockGetLeagueLeaderboard.mockResolvedValue([
+      { user_id: ORGANIZER_ID, display_name: "Ada", vote_count: 0, rank: 1 },
+      { user_id: MEMBER_ID, display_name: "Bo", vote_count: 0, rank: 2 },
+    ] satisfies LeaderboardEntry[]);
     mockGetLeagueMembers.mockResolvedValue(members());
     mockGetRounds.mockResolvedValue([]);
     mockGetResults.mockResolvedValue(resultsWith());

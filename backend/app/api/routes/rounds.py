@@ -238,7 +238,7 @@ async def advance_round_state(
         # organizer already set one explicitly at round creation — don't clobber it.
         if round_.submission_deadline is None:
             round_.submission_deadline = datetime.now(timezone.utc) + timedelta(
-                days=league.submission_deadline_days
+                hours=league.submission_window_hours
             )
         league.current_round = round_.round_number
         events.append((round_, "submission_open"))
@@ -247,7 +247,7 @@ async def advance_round_state(
         # organizer already set one explicitly — don't clobber a manual value.
         if round_.voting_deadline is None:
             round_.voting_deadline = datetime.now(timezone.utc) + timedelta(
-                days=league.voting_deadline_days
+                hours=league.voting_window_hours
             )
         events.append((round_, "voting_open"))
     elif new_state == "closed":
@@ -274,7 +274,7 @@ async def advance_round_state(
                 # round's submission deadline unless it was set explicitly.
                 if next_round.submission_deadline is None:
                     next_round.submission_deadline = datetime.now(timezone.utc) + timedelta(
-                        days=league.submission_deadline_days
+                        hours=league.submission_window_hours
                     )
                 league.current_round = next_round.round_number
                 events.append((next_round, "submission_open"))

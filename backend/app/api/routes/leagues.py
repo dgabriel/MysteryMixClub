@@ -38,10 +38,11 @@ class LeagueCreate(BaseModel):
     # Admin-set default participation mode for the league (MYS-112). Seeds every
     # member's vibe_mode at join (including the organizer at creation).
     default_vibe_mode: bool = False
-    # Deadline windows (in days) for the league's rounds (MYS-159). Seed each
-    # round's submission/voting deadline when it opens; 1..14, default 3.
-    submission_deadline_days: int = Field(default=3, ge=1, le=14)
-    voting_deadline_days: int = Field(default=3, ge=1, le=14)
+    # Deadline windows (in hours) for the league's rounds (MYS-159). Seed each
+    # round's submission/voting deadline when it opens; hour-granular, 4..168 (1
+    # week), default 72 (3 days).
+    submission_window_hours: int = Field(default=72, ge=4, le=168)
+    voting_window_hours: int = Field(default=72, ge=4, le=168)
 
 
 class LeagueUpdate(BaseModel):
@@ -54,10 +55,10 @@ class LeagueUpdate(BaseModel):
     # Changing the league default only affects members who join afterward; it does
     # not re-seed existing members' settings (MYS-112).
     default_vibe_mode: bool | None = None
-    # Deadline windows (in days) for the league's rounds (MYS-159); 1..14. Only
+    # Deadline windows (in hours) for the league's rounds (MYS-159); 4..168. Only
     # affects rounds opened after the change — deadlines already stamped stay put.
-    submission_deadline_days: int | None = Field(default=None, ge=1, le=14)
-    voting_deadline_days: int | None = Field(default=None, ge=1, le=14)
+    submission_window_hours: int | None = Field(default=None, ge=4, le=168)
+    voting_window_hours: int | None = Field(default=None, ge=4, le=168)
 
     # These all map to NOT NULL columns: allow omission (partial update) but reject
     # an explicitly provided null with a 422. description is nullable, so an
@@ -70,8 +71,8 @@ class LeagueUpdate(BaseModel):
                 "name",
                 "total_rounds",
                 "default_vibe_mode",
-                "submission_deadline_days",
-                "voting_deadline_days",
+                "submission_window_hours",
+                "voting_window_hours",
             ):
                 if field in data and data[field] is None:
                     raise ValueError(f"{field} may not be null")
@@ -120,9 +121,9 @@ class LeagueResponse(BaseModel):
     # Admin-set default participation mode for the league (MYS-112). A member's own
     # setting lives on their membership (GET /leagues/:id/membership), not here.
     default_vibe_mode: bool
-    # Deadline windows (in days) for the league's rounds (MYS-159).
-    submission_deadline_days: int
-    voting_deadline_days: int
+    # Deadline windows (in hours) for the league's rounds (MYS-159).
+    submission_window_hours: int
+    voting_window_hours: int
     created_at: datetime
     completed_at: datetime | None
 
@@ -139,8 +140,8 @@ def _to_response(league: League) -> LeagueResponse:
         current_round=league.current_round,
         state=league.state,
         default_vibe_mode=league.default_vibe_mode,
-        submission_deadline_days=league.submission_deadline_days,
-        voting_deadline_days=league.voting_deadline_days,
+        submission_window_hours=league.submission_window_hours,
+        voting_window_hours=league.voting_window_hours,
         created_at=league.created_at,
         completed_at=league.completed_at,
     )
@@ -179,8 +180,8 @@ async def create_league(
         votes_per_player=payload.votes_per_player,
         songs_per_submission=payload.songs_per_submission,
         default_vibe_mode=payload.default_vibe_mode,
-        submission_deadline_days=payload.submission_deadline_days,
-        voting_deadline_days=payload.voting_deadline_days,
+        submission_window_hours=payload.submission_window_hours,
+        voting_window_hours=payload.voting_window_hours,
     )
     db.add(league)
     # Flush to populate league.id for the membership and round rows below.

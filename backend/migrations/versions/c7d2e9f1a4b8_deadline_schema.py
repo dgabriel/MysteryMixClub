@@ -5,11 +5,16 @@ Revises: b1e4f8c3d2a9
 Create Date: 2026-07-01
 
 MYS-159: rounds close on quorum OR a configurable deadline (epic MYS-158). Adds
-the per-league deadline windows (in days) used to stamp each round's
+the per-league deadline windows (in hours) used to stamp each round's
 submission/voting deadline when it opens, plus the per-round "already notified"
 timestamps the later deadline cron (MYS-145) will use to fire warnings exactly
 once. Additive only — real beta users live on staging, so no destructive ops
 and no backfill.
+
+Reworked 2026-07-02: the per-league windows are hour-granular (min 4h, max 168h;
+default 72h = 3 days), not whole days — the original days columns are renamed to
+``submission_window_hours`` / ``voting_window_hours``. PR #111 never merged and
+staging never applied the days version, so this edits the migration in place.
 """
 
 from typing import Sequence, Union
@@ -27,19 +32,19 @@ def upgrade() -> None:
     op.add_column(
         "leagues",
         sa.Column(
-            "submission_deadline_days",
+            "submission_window_hours",
             sa.Integer(),
             nullable=False,
-            server_default="3",
+            server_default="72",
         ),
     )
     op.add_column(
         "leagues",
         sa.Column(
-            "voting_deadline_days",
+            "voting_window_hours",
             sa.Integer(),
             nullable=False,
-            server_default="3",
+            server_default="72",
         ),
     )
     op.add_column(
@@ -60,5 +65,5 @@ def downgrade() -> None:
     op.drop_column("rounds", "empty_round_notice_sent_at")
     op.drop_column("rounds", "voting_warning_sent_at")
     op.drop_column("rounds", "submission_warning_sent_at")
-    op.drop_column("leagues", "voting_deadline_days")
-    op.drop_column("leagues", "submission_deadline_days")
+    op.drop_column("leagues", "voting_window_hours")
+    op.drop_column("leagues", "submission_window_hours")

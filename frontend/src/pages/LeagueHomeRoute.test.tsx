@@ -326,6 +326,24 @@ describe("LeagueHomeRoute", () => {
     expect(await screen.findByText("3 of 6 submitted")).toBeInTheDocument();
   });
 
+  it("active round: shows the static deadline line on the card — MYS-161", async () => {
+    // An open round with a deadline shows "closes …" (lowercase DOM; uppercase CSS).
+    mockGetRounds.mockResolvedValue([
+      closedRound({
+        id: "round-open",
+        state: "open_submission",
+        closed_at: null,
+        submission_count: 1,
+        member_count: 6,
+        submission_deadline: "2026-07-05T12:00:00Z",
+      }),
+    ]);
+
+    renderLeague();
+    await screen.findByText("Friday Mixtape");
+    expect(await screen.findByText(/^closes /i)).toBeInTheDocument();
+  });
+
   it("closed round: shows the single winner and most-noted pick on the card", async () => {
     mockGetRounds.mockResolvedValue([closedRound()]);
     mockGetResults.mockResolvedValue(resultsWith());

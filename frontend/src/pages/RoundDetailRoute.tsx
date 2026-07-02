@@ -46,6 +46,7 @@ import { SongSearchCard } from "../components/songs/SongSearchCard";
 import { SpotifyPlaylist } from "../components/SpotifyPlaylist";
 import { CrownIcon } from "../components/CrownIcon";
 import { MusicNoteIcon } from "../components/MusicNoteIcon";
+import { formatDeadline } from "../utils/deadline";
 
 const STATE_LABEL: Record<RoundState, string> = {
   pending: "upcoming",
@@ -148,12 +149,14 @@ export function RoundDetailRoute() {
             : membership.vibe_mode,
         );
       } else if (loadedRound.state === "open_voting") {
-        const [loadedPlaylist, loadedVotes, loadedMine, loadedCounts] = await Promise.all([
-          getPlaylist(id),
-          getMyVotes(id),
-          getMySubmissions(id),
-          getVoteCounts(id),
-        ]);
+        const [loadedPlaylist, loadedVotes, loadedMine, loadedCounts, membership] =
+          await Promise.all([
+            getPlaylist(id),
+            getMyVotes(id),
+            getMySubmissions(id),
+            getVoteCounts(id),
+            getMyMembership(loadedRound.league_id),
+          ]);
         setPlaylist(loadedPlaylist.entries);
         setYoutubePlaylistUrl(loadedPlaylist.youtube_playlist_url);
         setYoutubeTrackCount(loadedPlaylist.youtube_track_count);
@@ -165,6 +168,15 @@ export function RoundDetailRoute() {
         // Votes are locked if the player has already cast at least one vote
         setIsVotesLocked(loadedVotes.submission_ids.length > 0);
         setMySubmissions(loadedMine);
+        // Seed the vibe stance for voting the same way submission does: the
+        // player's per-round stance (uniform across their songs) if they
+        // submitted, else their per-league default — so a vibe-mode non-submitter
+        // sits voting out instead of seeing a ballot the API rejects (MYS-167).
+        setRoundVibe(
+          loadedMine.length > 0
+            ? loadedMine[0].participation_mode === "vibing"
+            : membership.vibe_mode,
+        );
       } else {
         // Closed: the reveal plus a way to still listen to the mix (MYS-133).
         // The playlist endpoint serves closed rounds too.
@@ -486,6 +498,14 @@ export function RoundDetailRoute() {
           </p>
         ) : null}
 
+        {/* Static, phase-appropriate deadline (MYS-161) — viewer-local time.
+            Renders nothing for legacy rounds with no deadline set. */}
+        {formatDeadline(round) ? (
+          <p className="mt-3 font-mono uppercase tracking-label text-[9px] text-muted">
+            {formatDeadline(round)}
+          </p>
+        ) : null}
+
         {isOrganizer ? (
           <>
             <OrganizerControls
@@ -552,7 +572,13 @@ export function RoundDetailRoute() {
               vibingCount={vibingCount}
               votesPerPlayer={round.votes_per_player}
               myVotes={myVotes}
-              isVibingParticipant={mySubmissions[0]?.participation_mode === "vibing"}
+              // A submitter's stance is their song's mode; a non-submitter falls
+              // back to their league vibe flag so vibe-mode members sit out (MYS-167).
+              isVibingParticipant={
+                mySubmissions.length > 0
+                  ? mySubmissions[0].participation_mode === "vibing"
+                  : roundVibe
+              }
               casting={casting}
               votesSaved={votesSaved}
               onCast={handleCastVotes}

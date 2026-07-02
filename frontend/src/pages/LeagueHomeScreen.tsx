@@ -13,6 +13,7 @@ import { TextField } from "../components/TextField";
 import { ConcentricRings } from "../components/ConcentricRings";
 import { CrownIcon } from "../components/CrownIcon";
 import { Confetti } from "../components/Confetti";
+import { formatDeadline } from "../utils/deadline";
 
 const ROUND_STATE_LABEL: Record<RoundState, string> = {
   pending: "upcoming",
@@ -545,6 +546,13 @@ function RoundRow({
         {round.state === "open_voting" && round.voting_eligible_count > 0 ? (
           <p className="mt-2 font-mono uppercase tracking-label text-[9px] text-muted">
             {round.voted_count} of {round.voting_eligible_count} voted
+          </p>
+        ) : null}
+        {/* Static, phase-appropriate deadline (MYS-161) — viewer-local time.
+            Renders nothing for legacy rounds with no deadline set. */}
+        {formatDeadline(round) ? (
+          <p className="mt-2 font-mono uppercase tracking-label text-[9px] text-muted">
+            {formatDeadline(round)}
           </p>
         ) : null}
         {/* Viewer participation indicators — subtle sage checkmarks. */}

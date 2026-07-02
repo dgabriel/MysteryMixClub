@@ -59,3 +59,16 @@ class Round(Base):
         DateTime(timezone=True), nullable=True
     )
     closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Deadline-notification bookkeeping (MYS-159). The deadline cron (MYS-145)
+    # stamps each of these the one time it sends the corresponding notice, so a
+    # warning / empty-round notice fires exactly once per round. Nullable: unset
+    # until (and unless) that notice goes out.
+    submission_warning_sent_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    voting_warning_sent_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    empty_round_notice_sent_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

@@ -13,6 +13,7 @@ import { TextField } from "../components/TextField";
 import { ConcentricRings } from "../components/ConcentricRings";
 import { CrownIcon } from "../components/CrownIcon";
 import { Confetti } from "../components/Confetti";
+import { DeadlineChip } from "../components/DeadlineChip";
 
 const ROUND_STATE_LABEL: Record<RoundState, string> = {
   pending: "upcoming",
@@ -547,6 +548,9 @@ function RoundRow({
             {round.voted_count} of {round.voting_eligible_count} voted
           </p>
         ) : null}
+        {/* Prominent, phase-appropriate deadline chip (MYS-161) — viewer-local
+            time. Renders nothing for legacy rounds with no deadline set. */}
+        <DeadlineChip round={round} className="mt-3" />
         {/* Viewer participation indicators — subtle sage checkmarks. */}
         {round.viewer_submitted || round.viewer_voted ? (
           <p className="mt-1.5 flex items-center gap-3 font-mono uppercase tracking-label text-[9px] text-sage">

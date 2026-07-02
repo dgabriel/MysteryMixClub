@@ -267,6 +267,48 @@ describe("RoundDetailRoute", () => {
     expect(screen.queryByText(/submitted$/i)).not.toBeInTheDocument();
   });
 
+  it("open_submission: renders the static deadline line when a deadline is set — MYS-161", async () => {
+    // The action area shows "closes …" (lowercase in the DOM; uppercase is CSS).
+    mockGetRound.mockResolvedValue(
+      round({ state: "open_submission", submission_deadline: "2026-07-05T12:00:00Z" }),
+    );
+    renderRound();
+    expect(await screen.findByText(/^closes /i)).toBeInTheDocument();
+  });
+
+  it("closed: does not render the static deadline line — MYS-161", async () => {
+    mockGetRound.mockResolvedValue(
+      round({
+        state: "closed",
+        submission_deadline: "2026-07-05T12:00:00Z",
+        voting_deadline: "2026-07-05T12:00:00Z",
+      }),
+    );
+    mockGetResults.mockResolvedValue(
+      results({
+        submissions: [
+          {
+            submission_id: "s1",
+            user_id: OTHER,
+            submitter_display_name: "Bob",
+            isrc: "I1",
+            title: "Bad Guy",
+            artist: "Billie Eilish",
+            album: null,
+            album_art_url: null,
+            platforms: {},
+            submitter_note: null,
+            vote_count: 0,
+            notes: [],
+          },
+        ],
+      }),
+    );
+    renderRound();
+    await screen.findByRole("heading", { name: /the picks/i });
+    expect(screen.queryByText(/^closes /i)).not.toBeInTheDocument();
+  });
+
   it("open_submission: hides the vibing UI from players (toggle + mode badge)", async () => {
     // Vibing isn't ready for players yet — the submit screen must not surface the
     // "just vibes" toggle, and a submitted song must not show a playing/vibing
@@ -1040,6 +1082,50 @@ describe("RoundDetailRoute", () => {
       expect(screen.queryByRole("button", { name: /Debaser/i })).not.toBeInTheDocument();
       // playlist still visible
       expect(screen.getByText("Debaser")).toBeInTheDocument();
+    });
+
+    it("a non-submitter whose league membership is vibing sits voting out (MYS-167)", async () => {
+      // No submission this round, so the vibe stance falls back to the caller's
+      // per-league membership: vibe_mode true → they sit voting out, matching the
+      // backend which rejects such a ballot.
+      mockGetMyMembership.mockResolvedValue({
+        league_id: "lg1",
+        user_id: ORGANIZER,
+        vibe_mode: true,
+      });
+      setupVoting({
+        entries: [entry({ submission_id: "p1", title: "Debaser" })],
+        myVotes: [],
+        mine: null, // no submission — stance comes from membership vibe_mode
+      });
+      renderRound();
+
+      expect(await screen.findByText(/you sit voting out/i)).toBeInTheDocument();
+      // no vote controls
+      expect(screen.queryByRole("button", { name: /cast votes/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Debaser/i })).not.toBeInTheDocument();
+      // playlist still visible
+      expect(screen.getByText("Debaser")).toBeInTheDocument();
+    });
+
+    it("a non-submitter whose league membership is playing can vote (MYS-167)", async () => {
+      // Playing membership + no submission → the ballot is available, matching the
+      // backend which now accepts non-submitter votes from playing members.
+      mockGetMyMembership.mockResolvedValue({
+        league_id: "lg1",
+        user_id: ORGANIZER,
+        vibe_mode: false,
+      });
+      setupVoting({
+        entries: [entry({ submission_id: "p1", title: "Debaser" })],
+        myVotes: [],
+        mine: null, // no submission — stance comes from membership vibe_mode
+      });
+      renderRound();
+
+      // The song is a votable toggle and there's no sit-out message.
+      expect(await screen.findByRole("button", { name: /Debaser/i })).toBeInTheDocument();
+      expect(screen.queryByText(/you sit voting out/i)).not.toBeInTheDocument();
     });
 
     it("vibing viewer can leave a note on each song (MYS-132)", async () => {

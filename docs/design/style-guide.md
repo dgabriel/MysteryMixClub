@@ -34,6 +34,7 @@
   - **Exception — the nav brand mark.** The concentric-rings mark in the shared top nav may carry its single off-center Rust dot ("the fish") as persistent *brand identity*. Because the nav is global chrome, this dot does **not** count against a screen's one-Rust budget: a screen may still use Rust once in its own content. This is the only standing exception to the one-use rule.
 - **Gold is an achievement signal.** Use it exclusively for achievement moments: winner and most-noted reveals (the crown icon on section headings) and a **completed league** (the crown + thin left accent on a finished league's card). Do not use Gold decoratively or expand it to other contexts without updating this guide.
 - **Vinyl is for avatar illustrations only.** The five music hardware SVG avatars (cassette, record, boom box, walkman, flying V) use Vinyl as their stroke/fill. Do not use Vinyl outside of avatar illustration contexts.
+- **Ink as a surface is a time signal.** An Ink-filled chip with Cream text is reserved for time-critical information — deadlines and countdowns (see Badges → Time signal). One per screen; never decorative.
 - **No pure black or pure white.** Cream is the lightest surface; Ink is the darkest text.
 - **Sage family handles hierarchy.** Sage for primary, Sage Light for hover/secondary, Sage Pale for background tags.
 
@@ -147,6 +148,19 @@ Page horizontal padding: `32px` (desktop), `16px` (mobile)
 - Text: Rust `#B5533C`
 - Same font/padding as default badge
 
+**Time signal (Ink) — time-critical information only**
+- Background: Ink `#2E2B27`
+- Text: Cream `#F0EDE6`
+- Font: DM Mono, 11px, ALL CAPS, letter-spacing 0.12em
+- Padding: `4px 10px`
+- Border radius: `1px`
+- May carry one small line icon (12px, stroke `currentColor`)
+- Reserved for the moment a player must act by — deadlines and countdowns.
+  Never for status, achievement, or decoration. Like Rust, it is a signal:
+  **one time-signal chip per screen.** (Added Jul 2026 — the palette's only
+  sanctioned Ink-filled surface; it exists because the Sage family cannot
+  produce enough contrast for time-critical info without stealing Rust.)
+
 ---
 
 ## Motif
@@ -191,4 +205,4 @@ The rings use the Sage color family (Sage Pale → Sage Light → Sage → Sage)
 
 ---
 
-*Last updated: May 2026*
+*Last updated: July 2026 — added the Time signal (Ink) badge variant*

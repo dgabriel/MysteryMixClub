@@ -32,6 +32,8 @@ _LEAGUE_KEYS = {
     "songs_per_submission",
     "current_round",
     "default_vibe_mode",
+    "submission_window_hours",
+    "voting_window_hours",
     "state",
     "created_at",
     "completed_at",

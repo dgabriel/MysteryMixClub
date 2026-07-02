@@ -6,14 +6,16 @@ Casting and reading a player's votes for a round:
 * ``GET  /api/v1/rounds/:id/votes/mine`` — your current votes for the round
 * ``GET  /api/v1/rounds/:id/vote-counts`` — vote counts per song (no notes yet)
 
-Voting is open only while the round is in ``open_voting``. Only a Playing
-participant may vote: the caller must have a submission in the round, and a
-``vibing`` submitter cannot vote — they leave a note instead (MYS-21). A player
-cannot vote for their own song. Every other song is votable, including vibing
-submissions — vibing is private (the voter can't tell which songs are vibers'),
-and a viber's song competes like any other (MYS-112). Casting replaces the
-caller's prior votes for the round wholesale (delete-then-insert), so a re-cast
-is idempotent — mirroring the submission replace-in-place pattern.
+Voting is open only while the round is in ``open_voting``. Any active league
+member may vote whether or not they submitted a song (MYS-167) — but a vibing
+member sits voting out and leaves a note instead. The caller's vibing stance is
+their submission's ``participation_mode`` if they submitted, else their league
+membership's ``vibe_mode``. A player cannot vote for their own song. Every other
+song is votable, including vibing submissions — vibing is private (the voter
+can't tell which songs are vibers'), and a viber's song competes like any other
+(MYS-112). Casting replaces the caller's prior votes for the round wholesale
+(delete-then-insert), so a re-cast is idempotent — mirroring the submission
+replace-in-place pattern.
 """
 
 import uuid
@@ -29,6 +31,7 @@ from app.auth.deps import get_current_user
 from app.config import Settings, get_settings
 from app.db.session import get_db
 from app.models.league import League
+from app.models.league_member import LeagueMember
 from app.models.round import Round
 from app.models.submission import Submission
 from app.models.user import User
@@ -68,21 +71,29 @@ async def cast_votes(
             status_code=status.HTTP_409_CONFLICT, detail="voting is not open for this round"
         )
 
-    # Decision (MYS-20): only players who are themselves Playing may vote. A
-    # member with no submission for the round cannot vote, and a member whose
-    # own submission is `vibing` cannot vote — they leave a note instead. A
-    # player may have several songs now (MYS-116) but their stance is uniform,
-    # so any one of their submissions answers both questions.
+    # Decision (MYS-167): any active member may vote, whether or not they
+    # submitted a song — only vibing members sit voting out. Stance resolves from
+    # the caller's own submission if they have one (a player may hold several songs
+    # now — MYS-116 — but their stance is uniform, so any one answers it), else
+    # from their league membership's vibe_mode. Vibing -> 409, leave a note instead.
     own_submission = await db.scalar(
         select(Submission)
         .where(Submission.round_id == round_id, Submission.user_id == current_user.id)
         .limit(1)
     )
-    if own_submission is None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="submit a song before voting"
+    if own_submission is not None:
+        is_vibing = own_submission.participation_mode == "vibing"
+    else:
+        membership = await db.scalar(
+            select(LeagueMember).where(
+                LeagueMember.league_id == round_.league_id,
+                LeagueMember.user_id == current_user.id,
+                LeagueMember.removed_at.is_(None),
+            )
         )
-    if own_submission.participation_mode == "vibing":
+        # _load_league_as_member above already proved an active membership exists.
+        is_vibing = membership is not None and membership.vibe_mode
+    if is_vibing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="just vibing players don't cast votes — leave a note instead",

@@ -36,6 +36,16 @@ class League(Base):
     state: Mapped[str] = mapped_column(
         String, nullable=False, default="active", server_default=text("'active'")
     )
+    # Deadline windows (in hours) for the league's rounds (MYS-159). A round closes
+    # on quorum OR its deadline, whichever comes first (epic MYS-158); when a round
+    # opens, these seed its submission_deadline / voting_deadline. Organizer-set,
+    # hour-granular, 4..168 (1 week), default 72 (3 days).
+    submission_window_hours: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=72, server_default=text("72")
+    )
+    voting_window_hours: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=72, server_default=text("72")
+    )
     # Admin-set default participation mode for the league (MYS-112). Seeds each
     # member's league_members.vibe_mode at join; per-round overrides live on the
     # submission's participation_mode.

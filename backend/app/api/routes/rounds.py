@@ -19,7 +19,7 @@ in :mod:`app.api.routes.leagues`.
 
 import random
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
@@ -234,9 +234,21 @@ async def advance_round_state(
     round_.state = new_state
     if new_state == "open_submission":
         round_.submission_opened_at = func.now()
+        # Stamp the submission deadline from the league window (MYS-159), unless the
+        # organizer already set one explicitly at round creation — don't clobber it.
+        if round_.submission_deadline is None:
+            round_.submission_deadline = datetime.now(timezone.utc) + timedelta(
+                hours=league.submission_window_hours
+            )
         league.current_round = round_.round_number
         events.append((round_, "submission_open"))
     elif new_state == "open_voting":
+        # Stamp the voting deadline from the league window (MYS-159), unless the
+        # organizer already set one explicitly — don't clobber a manual value.
+        if round_.voting_deadline is None:
+            round_.voting_deadline = datetime.now(timezone.utc) + timedelta(
+                hours=league.voting_window_hours
+            )
         events.append((round_, "voting_open"))
     elif new_state == "closed":
         round_.closed_at = func.now()
@@ -258,6 +270,12 @@ async def advance_round_state(
             if next_round is not None:
                 next_round.state = "open_submission"
                 next_round.submission_opened_at = func.now()
+                # Same league window as the manual open (MYS-159): stamp the next
+                # round's submission deadline unless it was set explicitly.
+                if next_round.submission_deadline is None:
+                    next_round.submission_deadline = datetime.now(timezone.utc) + timedelta(
+                        hours=league.submission_window_hours
+                    )
                 league.current_round = next_round.round_number
                 events.append((next_round, "submission_open"))
     return events

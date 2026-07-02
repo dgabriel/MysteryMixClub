@@ -38,6 +38,10 @@ class LeagueCreate(BaseModel):
     # Admin-set default participation mode for the league (MYS-112). Seeds every
     # member's vibe_mode at join (including the organizer at creation).
     default_vibe_mode: bool = False
+    # Deadline windows (in days) for the league's rounds (MYS-159). Seed each
+    # round's submission/voting deadline when it opens; 1..14, default 3.
+    submission_deadline_days: int = Field(default=3, ge=1, le=14)
+    voting_deadline_days: int = Field(default=3, ge=1, le=14)
 
 
 class LeagueUpdate(BaseModel):
@@ -50,15 +54,25 @@ class LeagueUpdate(BaseModel):
     # Changing the league default only affects members who join afterward; it does
     # not re-seed existing members' settings (MYS-112).
     default_vibe_mode: bool | None = None
+    # Deadline windows (in days) for the league's rounds (MYS-159); 1..14. Only
+    # affects rounds opened after the change — deadlines already stamped stay put.
+    submission_deadline_days: int | None = Field(default=None, ge=1, le=14)
+    voting_deadline_days: int | None = Field(default=None, ge=1, le=14)
 
-    # name, total_rounds and default_vibe_mode map to NOT NULL columns: allow
-    # omission (partial update) but reject an explicitly provided null with a 422.
-    # description is nullable, so an explicit null is allowed and clears it.
+    # These all map to NOT NULL columns: allow omission (partial update) but reject
+    # an explicitly provided null with a 422. description is nullable, so an
+    # explicit null is allowed and clears it.
     @model_validator(mode="before")
     @classmethod
     def _reject_explicit_null(cls, data):
         if isinstance(data, dict):
-            for field in ("name", "total_rounds", "default_vibe_mode"):
+            for field in (
+                "name",
+                "total_rounds",
+                "default_vibe_mode",
+                "submission_deadline_days",
+                "voting_deadline_days",
+            ):
                 if field in data and data[field] is None:
                     raise ValueError(f"{field} may not be null")
         return data
@@ -106,6 +120,9 @@ class LeagueResponse(BaseModel):
     # Admin-set default participation mode for the league (MYS-112). A member's own
     # setting lives on their membership (GET /leagues/:id/membership), not here.
     default_vibe_mode: bool
+    # Deadline windows (in days) for the league's rounds (MYS-159).
+    submission_deadline_days: int
+    voting_deadline_days: int
     created_at: datetime
     completed_at: datetime | None
 
@@ -122,6 +139,8 @@ def _to_response(league: League) -> LeagueResponse:
         current_round=league.current_round,
         state=league.state,
         default_vibe_mode=league.default_vibe_mode,
+        submission_deadline_days=league.submission_deadline_days,
+        voting_deadline_days=league.voting_deadline_days,
         created_at=league.created_at,
         completed_at=league.completed_at,
     )
@@ -160,6 +179,8 @@ async def create_league(
         votes_per_player=payload.votes_per_player,
         songs_per_submission=payload.songs_per_submission,
         default_vibe_mode=payload.default_vibe_mode,
+        submission_deadline_days=payload.submission_deadline_days,
+        voting_deadline_days=payload.voting_deadline_days,
     )
     db.add(league)
     # Flush to populate league.id for the membership and round rows below.

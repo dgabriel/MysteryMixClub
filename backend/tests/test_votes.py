@@ -10,6 +10,7 @@ exact participation_mode and ownership it needs.
 """
 
 import uuid
+from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 
@@ -60,8 +61,10 @@ async def _seed_league_with_round(
     return round_
 
 
-async def _add_member(db_session, league_id: uuid.UUID, user: User) -> None:
-    db_session.add(LeagueMember(league_id=league_id, user_id=user.id))
+async def _add_member(
+    db_session, league_id: uuid.UUID, user: User, *, vibe_mode: bool = False
+) -> None:
+    db_session.add(LeagueMember(league_id=league_id, user_id=user.id, vibe_mode=vibe_mode))
     await db_session.commit()
 
 
@@ -139,7 +142,9 @@ async def test_cast_round_not_open_voting_409(client, db_session):
     assert resp.json()["detail"] == "voting is not open for this round"
 
 
-async def test_cast_without_own_submission_409(client, db_session):
+async def test_cast_without_own_submission_succeeds(client, db_session):
+    # MYS-167: a member who did not submit may still vote, provided they aren't
+    # vibing. Membership is playing by default, so this non-submitter can vote.
     organizer = await _seed_user(db_session, "o@example.com")
     voter = await _seed_user(db_session, "v@example.com")
     round_ = await _seed_league_with_round(db_session, organizer)
@@ -151,8 +156,8 @@ async def test_cast_without_own_submission_409(client, db_session):
         json={"submission_ids": [str(target.id)]},
         headers=_auth(voter.id),
     )
-    assert resp.status_code == 409
-    assert resp.json()["detail"] == "submit a song before voting"
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["submission_ids"] == [str(target.id)]
 
 
 async def test_cast_when_own_submission_is_vibing_409(client, db_session):
@@ -169,6 +174,147 @@ async def test_cast_when_own_submission_is_vibing_409(client, db_session):
     )
     assert resp.status_code == 409
     assert resp.json()["detail"] == "just vibing players don't cast votes — leave a note instead"
+
+
+# --------------------------------------------------------------------------- #
+# POST — non-submitter voting (MYS-167)
+# --------------------------------------------------------------------------- #
+
+
+async def test_cast_non_submitter_vibing_membership_409(client, db_session):
+    # MYS-167: a non-submitter's stance comes from league_members.vibe_mode. A
+    # member whose membership is vibing sits voting out even without a submission.
+    organizer = await _seed_user(db_session, "o@example.com")
+    voter = await _seed_user(db_session, "v@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    await _add_member(db_session, round_.league_id, voter, vibe_mode=True)
+    target = await _seed_submission(db_session, round_.id, organizer)
+    resp = await client.post(
+        _votes_url(round_.id),
+        json={"submission_ids": [str(target.id)]},
+        headers=_auth(voter.id),
+    )
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "just vibing players don't cast votes — leave a note instead"
+
+
+async def test_cast_non_submitter_playing_persists_and_counts(client, db_session):
+    # MYS-167: a playing non-submitter's ballot is persisted and shows up in the
+    # running vote-counts tally like any other vote.
+    organizer = await _seed_user(db_session, "o@example.com")
+    voter = await _seed_user(db_session, "v@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    round_id = round_.id
+    await _add_member(db_session, round_.league_id, voter)  # playing by default
+    target = await _seed_submission(db_session, round_id, organizer, title="Target")
+    # Capture PKs into locals before expire_all() — reading expired ORM
+    # attributes later raises MissingGreenlet in async tests.
+    target_id = target.id
+    organizer_id = organizer.id
+    voter_id = voter.id
+
+    resp = await client.post(
+        _votes_url(round_id),
+        json={"submission_ids": [str(target_id)]},
+        headers=_auth(voter_id),
+    )
+    assert resp.status_code == 200, resp.text
+
+    # Persisted: exactly the voter's one vote for the target.
+    db_session.expire_all()
+    rows = list(
+        await db_session.scalars(
+            select(Vote).where(Vote.round_id == round_id, Vote.voter_id == voter_id)
+        )
+    )
+    assert len(rows) == 1
+    assert str(rows[0].submission_id) == str(target_id)
+
+    # Appears in the vote-counts tally.
+    counts = await client.get(_vote_counts_url(round_id), headers=_auth(organizer_id))
+    assert counts.status_code == 200, counts.text
+    entry = next(e for e in counts.json()["entries"] if e["title"] == "Target")
+    assert entry["vote_count"] == 1
+
+
+async def test_non_submitter_vote_does_not_trip_auto_close(client, db_session):
+    # MYS-167: auto-close quorum is playing-SUBMITTERS-only. With two playing
+    # submitters of whom only one has voted, a non-submitter casting a ballot must
+    # NOT close the round — the second submitter still hasn't voted.
+    organizer = await _seed_user(db_session, "o@example.com")
+    submitter_b = await _seed_user(db_session, "b@example.com")
+    non_submitter = await _seed_user(db_session, "n@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    round_id = round_.id
+    league_id = round_.league_id
+    await _add_member(db_session, league_id, submitter_b)
+    await _add_member(db_session, league_id, non_submitter)  # playing, no submission
+
+    org_sub = await _seed_submission(db_session, round_id, organizer, title="Org")
+    b_sub = await _seed_submission(db_session, round_id, submitter_b, title="B")
+
+    # One of the two playing submitters votes (organizer -> B's song).
+    first = await client.post(
+        _votes_url(round_id),
+        json={"submission_ids": [str(b_sub.id)]},
+        headers=_auth(organizer.id),
+    )
+    assert first.status_code == 200, first.text
+
+    # The non-submitter votes (for the organizer's song). submitter_b still hasn't
+    # voted, so quorum is not met and the round must stay open.
+    resp = await client.post(
+        _votes_url(round_id),
+        json={"submission_ids": [str(org_sub.id)]},
+        headers=_auth(non_submitter.id),
+    )
+    assert resp.status_code == 200, resp.text
+
+    db_session.expire_all()
+    persisted = await db_session.scalar(select(Round).where(Round.id == round_id))
+    assert persisted.state == "open_voting"
+    assert persisted.closed_at is None
+
+
+async def test_cast_non_submitter_over_limit_409(client, db_session):
+    # The votes_per_player cap applies to non-submitters too (checked after the
+    # vibing gate, before target resolution — ids need not exist).
+    organizer = await _seed_user(db_session, "o@example.com")
+    voter = await _seed_user(db_session, "v@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer, votes_per_player=2)
+    await _add_member(db_session, round_.league_id, voter)  # playing, no submission
+    ids = [str(uuid.uuid4()) for _ in range(3)]
+    resp = await client.post(
+        _votes_url(round_.id),
+        json={"submission_ids": ids},
+        headers=_auth(voter.id),
+    )
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "you may cast up to 2 votes"
+
+
+async def test_cast_removed_member_403(client, db_session):
+    # A member removed from the league (removed_at set) is not an active member, so
+    # _load_league_as_member rejects them before any voting logic (403).
+    organizer = await _seed_user(db_session, "o@example.com")
+    voter = await _seed_user(db_session, "v@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    db_session.add(
+        LeagueMember(
+            league_id=round_.league_id,
+            user_id=voter.id,
+            removed_at=datetime.now(timezone.utc),
+        )
+    )
+    await db_session.commit()
+    target = await _seed_submission(db_session, round_.id, organizer)
+    resp = await client.post(
+        _votes_url(round_.id),
+        json={"submission_ids": [str(target.id)]},
+        headers=_auth(voter.id),
+    )
+    assert resp.status_code == 403
+    assert resp.json()["detail"] == "you are not a member of this league"
 
 
 async def test_cast_zero_votes_409(client, db_session):

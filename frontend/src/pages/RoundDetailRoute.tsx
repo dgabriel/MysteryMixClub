@@ -884,6 +884,7 @@ function ComposerSlot({
   onCancel?: () => void;
 }) {
   const [noteText, setNoteText] = useState("");
+  const { preferredService } = useAuth();
   return (
     <>
       <SongSearchCard
@@ -893,6 +894,7 @@ function ComposerSlot({
         submitting={submitting}
         noteText={noteText}
         onNoteChange={setNoteText}
+        preferredService={preferredService}
         onSubmit={async (song) => {
           const note = noteText.trim() || null;
           const ok = await Promise.resolve(onSubmit(song, note));

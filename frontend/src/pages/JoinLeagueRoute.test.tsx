@@ -64,6 +64,7 @@ function setAuth(isAuthenticated: boolean) {
     needsOnboarding: false,
     isPlatformAdmin: false,
     applyDisplayName: vi.fn(),
+    preferredService: null,
   });
 }
 

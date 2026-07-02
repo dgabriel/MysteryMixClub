@@ -74,6 +74,7 @@ describe("VerifyRoute", () => {
       needsOnboarding: false,
       isPlatformAdmin: false,
       applyDisplayName: vi.fn(),
+    preferredService: null,
     });
   });
 

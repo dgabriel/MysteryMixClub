@@ -24,6 +24,7 @@ import { ConcentricRings } from "../ConcentricRings";
  */
 
 type Mode = "link" | "search";
+type ServiceKey = "spotify" | "youtube" | "appleMusic";
 
 const LINK_ERROR = "We couldn't find that song. Check the link and try again.";
 const SEARCH_ERROR = "Something went wrong with that search. Try again.";
@@ -36,6 +37,31 @@ const PLATFORMS: { key: PlatformKey; label: string }[] = [
   { key: "deezer", label: "Deezer" },
   { key: "youtube", label: "YouTube" },
 ];
+
+const SERVICES: { key: ServiceKey; label: string; placeholder: string }[] = [
+  { key: "spotify", label: "Spotify", placeholder: "https://open.spotify.com/track/…" },
+  { key: "youtube", label: "YouTube", placeholder: "https://www.youtube.com/watch?v=…" },
+  { key: "appleMusic", label: "Apple Music", placeholder: "https://music.apple.com/…?i=…" },
+];
+
+function serviceFromPref(pref: string | null | undefined): ServiceKey {
+  if (pref === "youtube") return "youtube";
+  if (pref === "appleMusic") return "appleMusic";
+  return "spotify";
+}
+
+function detectService(url: string): ServiceKey | null {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, "");
+    if (host === "open.spotify.com") return "spotify";
+    if (host === "music.apple.com") return "appleMusic";
+    if (["youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"].includes(host))
+      return "youtube";
+  } catch {
+    // not a valid URL yet — ignore
+  }
+  return null;
+}
 
 /** Small line "open in new tab" glyph — 1.25px stroke, per the iconography spec. */
 function ExternalLinkIcon() {
@@ -86,6 +112,9 @@ type SongSearchCardProps = {
    *  view so the submitter can add context before submitting. */
   noteText?: string;
   onNoteChange?: (text: string) => void;
+  /** User's preferred streaming service — seeds the link-tab service selector.
+   *  Falls back to Spotify when absent or unrecognised (MYS-164). */
+  preferredService?: string | null;
 };
 
 export function SongSearchCard({
@@ -96,10 +125,12 @@ export function SongSearchCard({
   idPrefix = "song",
   noteText,
   onNoteChange,
+  preferredService,
 }: SongSearchCardProps = {}) {
   const [mode, setMode] = useState<Mode>("search");
 
   // link mode
+  const [service, setService] = useState<ServiceKey>(() => serviceFromPref(preferredService));
   const [url, setUrl] = useState("");
   // search mode
   const [title, setTitle] = useState("");
@@ -129,6 +160,12 @@ export function SongSearchCard({
     setTooMany(false);
     setError(null);
     setResolved(null);
+  }
+
+  function handleUrlChange(next: string) {
+    setUrl(next);
+    const detected = detectService(next.trim());
+    if (detected) setService(detected);
   }
 
   async function handleResolveLink(event: React.FormEvent) {
@@ -224,16 +261,42 @@ export function SongSearchCard({
 
           {mode === "link" ? (
             <form onSubmit={handleResolveLink} className="mt-5">
-              <TextField
-                id={`${idPrefix}-link`}
-                label="paste a spotify or youtube link"
-                placeholder="https://open.spotify.com/track/…"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                disabled={loading}
-                inputMode="url"
-                autoComplete="off"
-              />
+              <div>
+                <label
+                  htmlFor={`${idPrefix}-service`}
+                  className="block font-mono uppercase tracking-label text-[9px] text-muted"
+                >
+                  service
+                </label>
+                <select
+                  id={`${idPrefix}-service`}
+                  value={service}
+                  onChange={(e) => setService(e.target.value as ServiceKey)}
+                  disabled={loading}
+                  className="mt-1 w-full border-b border-border bg-transparent font-mono text-[13px] text-ink focus:border-sage focus:outline-none disabled:opacity-50"
+                >
+                  {SERVICES.map((s) => (
+                    <option key={s.key} value={s.key}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="mt-5">
+                <TextField
+                  id={`${idPrefix}-link`}
+                  label="paste a link"
+                  placeholder={SERVICES.find((s) => s.key === service)?.placeholder ?? ""}
+                  value={url}
+                  onChange={(e) => handleUrlChange(e.target.value)}
+                  disabled={loading}
+                  inputMode="url"
+                  autoComplete="off"
+                />
+                <p className="mt-2 font-mono text-[11px] font-light text-muted">
+                  paste any link — we'll detect the service automatically
+                </p>
+              </div>
               <div className="mt-5">
                 <Button type="submit" disabled={loading || !url.trim()}>
                   resolve

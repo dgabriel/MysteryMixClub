@@ -33,6 +33,7 @@ function setStatus(
     needsOnboarding: overrides.needsOnboarding ?? false,
     isPlatformAdmin: false,
     applyDisplayName: vi.fn(),
+    preferredService: null,
   });
 }
 

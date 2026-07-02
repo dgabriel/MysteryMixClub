@@ -60,6 +60,8 @@ type AuthContextValue = {
   /** Apply a new display name locally (after a successful PATCH) so the
    *  onboarding gate flips false without a refetch. */
   applyDisplayName: (name: string) => void;
+  /** User's preferred streaming service from their profile; null if unset. */
+  preferredService: string | null;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -71,6 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [email, setEmail] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
+  const [preferredService, setPreferredService] = useState<string | null>(null);
   const [profileStatus, setProfileStatus] = useState<ProfileStatus>("idle");
   const didInit = useRef(false);
   const didLoadProfile = useRef(false);
@@ -89,6 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setEmail(null);
     setUserId(null);
     setIsPlatformAdmin(false);
+    setPreferredService(null);
     setProfileStatus("idle");
   }, []);
 
@@ -140,6 +144,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setEmail(profile.email);
         setUserId(profile.id);
         setIsPlatformAdmin(profile.is_platform_admin);
+        setPreferredService(profile.preferred_service);
         setProfileStatus("ready");
       } catch {
         didLoadProfile.current = false;
@@ -179,6 +184,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email,
       userId,
       isPlatformAdmin,
+      preferredService,
       profileStatus,
       needsOnboarding,
       applyDisplayName,
@@ -194,6 +200,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email,
       userId,
       isPlatformAdmin,
+      preferredService,
       profileStatus,
       needsOnboarding,
       applyDisplayName,

@@ -76,7 +76,7 @@ describe("SongSearchCard", () => {
 
     await user.click(screen.getByRole("tab", { name: /paste a link/i }));
     await user.type(
-      screen.getByLabelText(/paste a spotify or youtube link/i),
+      screen.getByLabelText(/paste a link/i),
       "https://open.spotify.com/track/2",
     );
     await user.click(screen.getByRole("button", { name: /^resolve$/i }));
@@ -102,7 +102,7 @@ describe("SongSearchCard", () => {
     render(<SongSearchCard />);
 
     await user.click(screen.getByRole("tab", { name: /paste a link/i }));
-    await user.type(screen.getByLabelText(/paste a spotify or youtube link/i), "https://bad/link");
+    await user.type(screen.getByLabelText(/paste a link/i), "https://bad/link");
     await user.click(screen.getByRole("button", { name: /^resolve$/i }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
@@ -161,7 +161,7 @@ describe("SongSearchCard", () => {
     render(<SongSearchCard />);
 
     await user.click(screen.getByRole("tab", { name: /paste a link/i }));
-    await user.type(screen.getByLabelText(/paste a spotify or youtube link/i), "https://x/y");
+    await user.type(screen.getByLabelText(/paste a link/i), "https://x/y");
     await user.click(screen.getByRole("button", { name: /^resolve$/i }));
 
     const status = await screen.findByRole("status");
@@ -177,7 +177,7 @@ describe("SongSearchCard", () => {
     render(<SongSearchCard />);
 
     await user.click(screen.getByRole("tab", { name: /paste a link/i }));
-    await user.type(screen.getByLabelText(/paste a spotify or youtube link/i), "https://x/y");
+    await user.type(screen.getByLabelText(/paste a link/i), "https://x/y");
     await user.click(screen.getByRole("button", { name: /^resolve$/i }));
     await screen.findByRole("heading", { name: "bad guy" });
 

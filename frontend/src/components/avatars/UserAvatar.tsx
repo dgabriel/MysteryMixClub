@@ -2,7 +2,7 @@ import { CassetteAvatar } from "./CassetteAvatar";
 
 /** Circular avatar showing a cassette tape illustration in Vinyl color.
  *  Placeholder until real profile photos are supported (see Linear backlog). */
-export function UserAvatar({ userId: _userId, size = 48 }: { userId: string; size?: number }) {
+export function UserAvatar({ size = 48 }: { userId: string; size?: number }) {
   return (
     <div
       className="flex shrink-0 items-center justify-center rounded-full border border-border bg-cream text-vinyl"

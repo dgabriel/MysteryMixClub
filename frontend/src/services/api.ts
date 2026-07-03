@@ -782,10 +782,11 @@ export async function getPlaylist(roundId: string): Promise<Playlist> {
   return (await res.json()) as Playlist;
 }
 
-// --- Spotify playlist generation (MYS-83) -------------------------------- //
+// --- Spotify playlist generation (MYS-83, MYS-169) ----------------------- //
 
-/** Whether the server has Spotify configured at all, and whether the current
- *  user has connected their Spotify account. */
+/** Whether the server has Spotify configured at all, and whether the shared
+ *  MysteryMixClub playlist account is connected (MYS-169) — not the calling
+ *  user's own connection; no member connects their own account anymore. */
 export type SpotifyStatus = {
   configured: boolean;
   connected: boolean;
@@ -809,7 +810,7 @@ export type SpotifyPlaylistResult = {
   unmatched: SpotifyUnmatchedTrack[];
 };
 
-/** Is Spotify configured/connected for the current user? */
+/** Is Spotify configured, and is the shared playlist account connected? */
 export async function getSpotifyStatus(): Promise<SpotifyStatus> {
   const res = await authenticatedRequest("/api/v1/spotify/status");
   if (!res.ok) {
@@ -820,7 +821,11 @@ export async function getSpotifyStatus(): Promise<SpotifyStatus> {
 
 /** Begin the connect flow: returns the Spotify consent URL to redirect to.
  *  `returnTo` is an in-app path (e.g. the current round) the callback lands on
- *  after consent, so the user comes back where they started. */
+ *  after consent, so the user comes back where they started.
+ *
+ *  Dormant (MYS-169): no round-page UI calls this anymore now that playlist
+ *  generation runs off one shared account. Kept for ops to (re)connect that
+ *  shared account, and in case per-user OAuth is ever revived. */
 export async function connectSpotify(returnTo?: string): Promise<{ authorize_url: string }> {
   const path = returnTo
     ? `/api/v1/spotify/connect?return_to=${encodeURIComponent(returnTo)}`
@@ -832,7 +837,9 @@ export async function connectSpotify(returnTo?: string): Promise<{ authorize_url
   return (await res.json()) as { authorize_url: string };
 }
 
-/** Create a saved Spotify playlist for the round in the user's library. */
+/** Create (or refresh) the round's PUBLIC Spotify playlist, owned by the shared
+ *  MysteryMixClub account (MYS-169). Any league member may call this; the same
+ *  link is returned to everyone. */
 export async function createSpotifyPlaylist(roundId: string): Promise<SpotifyPlaylistResult> {
   const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/spotify-playlist`, {
     method: "POST",

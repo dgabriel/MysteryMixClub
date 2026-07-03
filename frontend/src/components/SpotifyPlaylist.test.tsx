@@ -2,25 +2,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SpotifyPlaylist } from "./SpotifyPlaylist";
-import {
-  ApiError,
-  connectSpotify,
-  createSpotifyPlaylist,
-  getSpotifyStatus,
-} from "../services/api";
+import { ApiError, createSpotifyPlaylist, getSpotifyStatus } from "../services/api";
 
 vi.mock("../services/api", async () => {
   const actual = await vi.importActual<typeof import("../services/api")>("../services/api");
   return {
     ...actual,
     getSpotifyStatus: vi.fn(),
-    connectSpotify: vi.fn(),
     createSpotifyPlaylist: vi.fn(),
   };
 });
 
 const mockStatus = vi.mocked(getSpotifyStatus);
-const mockConnect = vi.mocked(connectSpotify);
 const mockCreate = vi.mocked(createSpotifyPlaylist);
 
 beforeEach(() => {
@@ -39,20 +32,13 @@ describe("SpotifyPlaylist", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("offers to connect when configured but not connected, and redirects to consent", async () => {
+  it("renders nothing when configured but the shared account isn't connected yet", async () => {
+    // MYS-169: no per-member connect step — if the shared account isn't wired
+    // up, the affordance stays hidden rather than showing a broken button.
     mockStatus.mockResolvedValue({ configured: true, connected: false });
-    mockConnect.mockResolvedValue({ authorize_url: "https://accounts.spotify.com/authorize?x=1" });
-    const assign = vi.fn();
-    vi.stubGlobal("location", { assign });
-
-    render(<SpotifyPlaylist roundId="r1" entryCount={3} />);
-    const button = await screen.findByRole("button", { name: /connect spotify/i });
-    await userEvent.click(button);
-
-    expect(mockConnect).toHaveBeenCalledWith("/rounds/r1"); // returns here after consent
-    await waitFor(() =>
-      expect(assign).toHaveBeenCalledWith("https://accounts.spotify.com/authorize?x=1"),
-    );
+    const { container } = render(<SpotifyPlaylist roundId="r1" entryCount={3} />);
+    await waitFor(() => expect(mockStatus).toHaveBeenCalled());
+    expect(container).toBeEmptyDOMElement();
   });
 
   it("creates a playlist and shows the link plus matched/unmatched counts", async () => {

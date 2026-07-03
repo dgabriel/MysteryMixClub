@@ -1,4 +1,4 @@
-"""Spotify connect + per-round playlist creation (MYS-83).
+"""Spotify connect + per-round playlist creation (MYS-83, MYS-169).
 
 Three surfaces:
 
@@ -6,18 +6,30 @@ Three surfaces:
 * ``GET  /spotify/callback`` — (no auth) Spotify redirects here; we exchange the
   code, store the encrypted refresh token, and bounce back to the SPA. The user
   identity rides in a signed ``state`` token (the callback has no bearer header).
-* ``GET  /spotify/status``   — (auth) is this user connected / is the app configured.
-* ``DELETE /spotify/connection`` — (auth) disconnect.
-* ``POST /rounds/:id/spotify-playlist`` — (auth) resolve the round's submissions
-  to Spotify track URIs and create a saved playlist in the user's library; returns
-  the link plus any tracks we couldn't match (the "unmatched" escape hatch).
+* ``GET  /spotify/status``   — (auth) is the app configured / is the shared
+  playlist account connected.
+* ``DELETE /spotify/connection`` — (auth) disconnect (own connection only).
+* ``POST /rounds/:id/spotify-playlist`` — (auth, any league member) resolve the
+  round's submissions to Spotify track URIs and create a PUBLIC playlist owned
+  by the shared account; returns the link plus any tracks we couldn't match
+  (the "unmatched" escape hatch). Same link for every caller.
 
 Token exchange/refresh is server-side; the client secret and refresh token never
 reach the browser.
+
+MYS-169: Spotify's extended quota requires 250k MAU, so the app stays in
+Development Mode indefinitely (~25 allowlisted accounts platform-wide) — per-user
+OAuth playlist creation is dead as a general feature. One designated
+MysteryMixClub Spotify account (``settings.spotify_playlist_account_user_id``)
+creates each round's playlist as PUBLIC; every member gets the same link, no
+Spotify connection of their own required. The connect/callback/status endpoints
+and per-user connection storage stay dormant (not deleted) in case extended
+quota is ever reached.
 """
 
 from __future__ import annotations
 
+import logging
 import random
 import uuid
 
@@ -52,8 +64,22 @@ from app.services.spotify_token_crypto import (
 )
 
 router = APIRouter(tags=["spotify"])
+logger = logging.getLogger("app.api.routes.spotify")
 
 _OAUTH_PURPOSE = "spotify"
+
+
+def _playlist_account_user_id(settings: Settings) -> uuid.UUID | None:
+    """The shared playlist account's app-user id, or ``None`` when unset/invalid
+    (MYS-169) — playlist generation is unavailable until this is configured."""
+    raw = settings.spotify_playlist_account_user_id
+    if not raw:
+        return None
+    try:
+        return uuid.UUID(raw)
+    except ValueError:
+        logger.error("SPOTIFY_PLAYLIST_ACCOUNT_USER_ID is not a valid UUID: %r", raw)
+        return None
 
 
 def _safe_return_path(path: str | None) -> str | None:
@@ -154,18 +180,29 @@ async def spotify_callback(
     return_to = _safe_return_path(oauth_state.return_to) or "/home"
 
     if error or not code:
-        # User denied consent or Spotify returned an error.
-        return _redirect(return_to, "error")
+        # User denied consent or Spotify returned an error before a code was issued.
+        logger.info("spotify callback: denied or no code (error=%s)", error)
+        return _redirect(return_to, "denied")
 
     try:
         tokens = await client.exchange_code(code)
-        if not tokens.refresh_token:
-            # Initial authorization must include a refresh token; without it we
-            # can't mint future access tokens.
-            return _redirect(return_to, "error")
+    except (SpotifyAuthError, SpotifyApiError):
+        # MYS-169: distinct flag + full exception (carries the Spotify error body
+        # via spotify_client's _safe_body) so a swallowed failure is diagnosable.
+        logger.exception("spotify callback: code exchange failed")
+        return _redirect(return_to, "exchange_failed")
+
+    if not tokens.refresh_token:
+        # Initial authorization must include a refresh token; without it we
+        # can't mint future access tokens.
+        logger.error("spotify callback: exchange succeeded but returned no refresh_token")
+        return _redirect(return_to, "exchange_failed")
+
+    try:
         spotify_user_id = await client.get_current_user_id(tokens.access_token)
     except (SpotifyAuthError, SpotifyApiError):
-        return _redirect(return_to, "error")
+        logger.exception("spotify callback: /me lookup failed after exchange")
+        return _redirect(return_to, "api_error")
 
     await _upsert_connection(
         db,
@@ -179,11 +216,17 @@ async def spotify_callback(
 
 @router.get("/spotify/status", response_model=StatusResponse)
 async def spotify_status(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),  # auth gate only
     db: AsyncSession = Depends(get_db),
     client: SpotifyClient = Depends(get_spotify_client),
+    settings: Settings = Depends(get_settings),
 ) -> StatusResponse:
-    connection = await _get_connection(db, current_user.id)
+    """``connected`` now reflects the shared playlist account (MYS-169), not the
+    calling user — every member sees the same status, since no one connects
+    their own account anymore. Drives whether the round page shows the
+    playlist affordance at all."""
+    account_id = _playlist_account_user_id(settings)
+    connection = await _get_connection(db, account_id) if account_id else None
     return StatusResponse(configured=client.is_configured, connected=connection is not None)
 
 
@@ -209,6 +252,7 @@ async def create_round_spotify_playlist(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     client: SpotifyClient = Depends(get_spotify_client),
+    settings: Settings = Depends(get_settings),
 ) -> SpotifyPlaylistResponse:
     round_ = await _load_round(round_id, db)
     league = await _load_league_as_member(round_.league_id, current_user, db)
@@ -220,14 +264,26 @@ async def create_round_spotify_playlist(
             detail="the playlist is available once voting opens",
         )
 
-    connection = await _get_connection(db, current_user.id)
-    if connection is None:
+    # MYS-169: any league member may trigger generation, but the playlist is
+    # always created/owned by the one shared account — never the caller's own
+    # (dormant) connection. A missing/broken shared connection is an ops issue,
+    # not something this member can fix, so it's logged loudly here.
+    account_id = _playlist_account_user_id(settings)
+    if account_id is None:
+        logger.error("spotify playlist: SPOTIFY_PLAYLIST_ACCOUNT_USER_ID is not configured")
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="connect your spotify account first",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="spotify playlists aren't set up for this league yet",
+        )
+    connection = await _get_connection(db, account_id)
+    if connection is None:
+        logger.error("spotify playlist: shared account %s has no spotify connection", account_id)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="spotify playlists aren't set up for this league yet",
         )
 
-    access_token = await _user_access_token(client, db, connection)
+    access_token = await _playlist_account_access_token(client, db, connection)
 
     submissions = list(await db.scalars(select(Submission).where(Submission.round_id == round_id)))
     # Same seeded shuffle as get_round_playlist so Spotify and YouTube always agree (MYS-151).
@@ -265,10 +321,12 @@ async def create_round_spotify_playlist(
     name = playlist_name(league.name, round_.round_number, round_.theme)
     description = playlist_description(league.name, round_.round_number, round_.theme)
 
+    # Keyed by (round, shared account) — since the account is the same for every
+    # caller, this is effectively one playlist per round (MYS-169).
     stored = await db.scalar(
         select(SpotifyRoundPlaylist).where(
             SpotifyRoundPlaylist.round_id == round_id,
-            SpotifyRoundPlaylist.user_id == current_user.id,
+            SpotifyRoundPlaylist.user_id == account_id,
         )
     )
 
@@ -281,30 +339,39 @@ async def create_round_spotify_playlist(
                     await client.replace_tracks(access_token, stored.playlist_id, matched_uris)
                     playlist_url = f"https://open.spotify.com/playlist/{stored.playlist_id}"
                 except SpotifyNotFoundError:
-                    # User deleted the playlist in Spotify; recreate and update stored ID.
+                    # Playlist was deleted in Spotify; recreate and update stored ID.
                     playlist_id, playlist_url = await client.create_playlist(
-                        access_token, name, description
+                        access_token, name, description, public=True
                     )
                     await client.add_tracks(access_token, playlist_id, matched_uris)
                     stored.playlist_id = playlist_id
                     await db.commit()
             else:
+                # Public (MYS-169): no API access needed to open the link, same
+                # reach as the YouTube playlist link.
                 playlist_id, playlist_url = await client.create_playlist(
-                    access_token, name, description
+                    access_token, name, description, public=True
                 )
                 await client.add_tracks(access_token, playlist_id, matched_uris)
                 db.add(
                     SpotifyRoundPlaylist(
-                        round_id=round_id, user_id=current_user.id, playlist_id=playlist_id
+                        round_id=round_id, user_id=account_id, playlist_id=playlist_id
                     )
                 )
                 await db.commit()
         except SpotifyAuthError as exc:
+            # Single point of failure (MYS-169): a revoked grant on the shared
+            # account breaks generation platform-wide until an admin reconnects
+            # it. The caller can't fix this themselves, so log loudly here.
+            logger.exception(
+                "spotify playlist: shared account %s authorization rejected", account_id
+            )
             raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="your spotify connection expired — reconnect and try again",
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="spotify playlists are temporarily unavailable — try again later",
             ) from exc
         except SpotifyApiError as exc:
+            logger.exception("spotify playlist: spotify API call failed for round %s", round_id)
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="spotify couldn't create the playlist — try again",
@@ -354,28 +421,34 @@ async def _upsert_connection(
     await db.commit()
 
 
-async def _user_access_token(
+async def _playlist_account_access_token(
     client: SpotifyClient, db: AsyncSession, connection: SpotifyConnection
 ) -> str:
-    """Mint a fresh user access token from the stored refresh token, persisting a
-    rotated refresh token if Spotify returns one. Maps failures to a 409 so the
-    UI prompts a reconnect."""
+    """Mint a fresh access token for the shared playlist account from its stored
+    refresh token, persisting a rotated refresh token if Spotify returns one.
+
+    MYS-169: failures here are an ops problem (the shared account, not the
+    calling member, needs reconnecting), so they're logged loudly and mapped to
+    a 503 rather than a per-user "reconnect" prompt."""
     try:
         refresh_token = decrypt_refresh_token(connection.refresh_token_encrypted)
     except SpotifyTokenCryptoError as exc:
+        logger.exception("spotify playlist: shared account refresh token failed to decrypt")
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="your spotify connection is invalid — reconnect and try again",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="spotify playlists are temporarily unavailable — try again later",
         ) from exc
 
     try:
         tokens = await client.refresh_access_token(refresh_token)
     except SpotifyAuthError as exc:
+        logger.exception("spotify playlist: shared account refresh token rejected")
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="your spotify connection expired — reconnect and try again",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="spotify playlists are temporarily unavailable — try again later",
         ) from exc
     except SpotifyApiError as exc:
+        logger.exception("spotify playlist: couldn't reach spotify to refresh the shared token")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="couldn't reach spotify — try again",

@@ -1,22 +1,25 @@
 """Route tests for the Spotify endpoints (MYS-83, MYS-169).
 
-Pre-network gates (auth, membership, open_submission, unconfigured) use the
-shared ``client`` fixture, where the real Spotify client is unconfigured and
-those handlers return before any HTTP call. The connect/status/create-playlist
-happy paths use a local app wired with a ``FakeSpotifyClient`` so nothing touches
-the network.
+Pre-network gates (auth, admin, open_submission, unconfigured) use the shared
+``client`` fixture, where the real Spotify client is unconfigured and those
+handlers return before any HTTP call. The connect/status/create-playlist happy
+paths use a local app wired with a ``FakeSpotifyClient`` so nothing touches the
+network.
 
 MYS-169: playlist generation now runs off one shared/dedicated Spotify account
-(``settings.spotify_playlist_account_user_id``), not the caller's own connection.
-``_SHARED_ACCOUNT_ID`` is a fixed test UUID used as that shared account's app-user
-id throughout; ``spotify_client``/``_client_with_spotify`` wire it into Settings
-by default so any league member can generate against a connected shared account.
+(``settings.spotify_playlist_account_user_id``), not the caller's own connection,
+and is **platform-admin only** (not any league member — revised 2026-07-03: too
+broad a surface against a real person's own Spotify account). ``_SHARED_ACCOUNT_ID``
+is a fixed test UUID for that shared account's app-user id; ``ADMIN_EMAIL`` is the
+fixed platform-admin identity every generate-capable test authenticates as.
+Regular members only ever read the link via ``GET /rounds/:id/spotify-playlist``.
 """
 
 import random
 import uuid
 from collections.abc import AsyncGenerator
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,6 +43,16 @@ from app.services.youtube_resolver import get_youtube_resolver
 # it into Settings before knowing which User row will hold the connection.
 _SHARED_ACCOUNT_ID = uuid.UUID("00000000-0000-0000-0000-0000000000aa")
 
+# Fixed platform-admin identity (MYS-128 pattern, MYS-169 usage) for every test
+# that needs to authenticate as the only role allowed to generate playlists.
+ADMIN_EMAIL = "admin@example.com"
+
+
+@pytest.fixture
+def seed_admin_emails() -> str:
+    """Make ADMIN_EMAIL a platform admin for the shared ``client`` fixture."""
+    return ADMIN_EMAIL
+
 
 # --------------------------------------------------------------------------- #
 # Seed helpers
@@ -52,6 +65,11 @@ async def _seed_user(db_session, email: str, *, user_id: uuid.UUID | None = None
     await db_session.commit()
     await db_session.refresh(user)
     return user
+
+
+async def _seed_admin(db_session) -> User:
+    """A platform-admin app user (MYS-169: the only role that can generate)."""
+    return await _seed_user(db_session, ADMIN_EMAIL)
 
 
 async def _seed_shared_account(db_session, *, connected: bool = True) -> User:
@@ -201,12 +219,17 @@ async def fake_spotify() -> FakeSpotifyClient:
 
 
 def _client_with_spotify(
-    session_factory, fake, *, playlist_account_id: uuid.UUID | None = _SHARED_ACCOUNT_ID
+    session_factory,
+    fake,
+    *,
+    playlist_account_id: uuid.UUID | None = _SHARED_ACCOUNT_ID,
+    admin_email: str = ADMIN_EMAIL,
 ) -> AsyncClient:
     """An ASGI client whose Spotify dependency is `fake` (no network, no
     dependence on the ambient .env). Defaults ``SPOTIFY_PLAYLIST_ACCOUNT_USER_ID``
-    to ``_SHARED_ACCOUNT_ID`` (MYS-169); pass ``playlist_account_id=None`` to
-    exercise the "not configured" path."""
+    to ``_SHARED_ACCOUNT_ID`` (MYS-169) and ``SEED_ADMIN_EMAILS`` to
+    ``ADMIN_EMAIL``; pass ``playlist_account_id=None`` to exercise the "not
+    configured" path."""
     app = create_app()
 
     async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -217,7 +240,8 @@ def _client_with_spotify(
     app.dependency_overrides[get_spotify_client] = lambda: fake
     app.dependency_overrides[get_youtube_resolver] = lambda: None
     app.dependency_overrides[get_settings] = lambda: Settings(
-        spotify_playlist_account_user_id=str(playlist_account_id) if playlist_account_id else ""
+        spotify_playlist_account_user_id=str(playlist_account_id) if playlist_account_id else "",
+        seed_admin_emails=admin_email,
     )
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
@@ -381,51 +405,56 @@ async def test_create_requires_auth(client, db_session):
     assert resp.status_code == 401
 
 
-async def test_create_non_member_forbidden(client, db_session):
+async def test_create_non_admin_league_member_forbidden(client, db_session):
+    # MYS-169 (revised): league membership no longer matters for generation —
+    # only platform-admin status does. A league member who isn't the admin is
+    # still forbidden, even the organizer.
     organizer = await _seed_user(db_session, "o@example.com")
-    outsider = await _seed_user(db_session, "x@example.com")
     round_ = await _seed_round(db_session, organizer)
-    resp = await client.post(_playlist_url(round_.id), headers=_auth(outsider.id))
+    resp = await client.post(_playlist_url(round_.id), headers=_auth(organizer.id))
     assert resp.status_code == 403
 
 
 async def test_create_blocked_during_submission(client, db_session):
+    admin = await _seed_admin(db_session)
     organizer = await _seed_user(db_session, "o@example.com")
     round_ = await _seed_round(db_session, organizer, state="open_submission")
-    resp = await client.post(_playlist_url(round_.id), headers=_auth(organizer.id))
+    resp = await client.post(_playlist_url(round_.id), headers=_auth(admin.id))
     assert resp.status_code == 409
 
 
 async def test_create_503_when_shared_account_not_configured(client, db_session):
     # `client` (conftest's default fixture) has no SPOTIFY_PLAYLIST_ACCOUNT_USER_ID
-    # set — playlist generation is unavailable platform-wide, not just for this
-    # caller (MYS-169), so this is a 503, not a per-user "connect" 409.
+    # set — playlist generation is unavailable platform-wide (MYS-169), so this
+    # is a 503, not a per-user "connect" 409.
+    admin = await _seed_admin(db_session)
     organizer = await _seed_user(db_session, "o@example.com")
     round_ = await _seed_round(db_session, organizer)
-    resp = await client.post(_playlist_url(round_.id), headers=_auth(organizer.id))
+    resp = await client.post(_playlist_url(round_.id), headers=_auth(admin.id))
     assert resp.status_code == 503
 
 
 async def test_create_503_when_shared_account_not_connected(spotify_client, db_session):
     # Shared account id is configured, but nobody has connected it yet.
+    admin = await _seed_admin(db_session)
     organizer = await _seed_user(db_session, "o@example.com")
     round_ = await _seed_round(db_session, organizer)
-    resp = await spotify_client.post(_playlist_url(round_.id), headers=_auth(organizer.id))
+    resp = await spotify_client.post(_playlist_url(round_.id), headers=_auth(admin.id))
     assert resp.status_code == 503
 
 
-async def test_create_any_member_may_trigger_not_just_organizer(
+async def test_create_admin_not_a_league_member_still_succeeds(
     spotify_client, db_session, fake_spotify
 ):
-    # MYS-169: playlist generation no longer requires the caller's own
-    # connection — any league member can trigger it against the shared account.
+    # MYS-169 (revised): the admin doesn't need to be in the round's league —
+    # unlike the old any-member design, there's no membership gate at all here.
     organizer = await _seed_user(db_session, "o@example.com")
     round_ = await _seed_round(db_session, organizer)
     await _seed_shared_account(db_session)
-    member = await _seed_member(db_session, round_, "m@example.com")
-    await _add_submission(db_session, round_.id, member.id, isrc="I-MATCH", title="hit")
+    admin = await _seed_admin(db_session)
+    await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
 
-    resp = await spotify_client.post(_playlist_url(round_.id), headers=_auth(member.id))
+    resp = await spotify_client.post(_playlist_url(round_.id), headers=_auth(admin.id))
     assert resp.status_code == 200, resp.text
     assert resp.json()["playlist_url"] == "https://open.spotify.com/playlist/pl1"
     # Playlist is public — no API access needed for members to open the link.
@@ -443,12 +472,13 @@ async def test_create_builds_playlist_and_reports_unmatched(
     organizer = await _seed_user(db_session, "o@example.com")
     round_ = await _seed_round(db_session, organizer)
     await _seed_shared_account(db_session)
+    admin = await _seed_admin(db_session)
     other = await _seed_member(db_session, round_, "m2@example.com")
     # One track resolves via the fake's isrc_map; one does not.
     await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
     await _add_submission(db_session, round_.id, other.id, isrc="I-MISS", title="miss")
 
-    resp = await spotify_client.post(_playlist_url(round_.id), headers=_auth(organizer.id))
+    resp = await spotify_client.post(_playlist_url(round_.id), headers=_auth(admin.id))
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["playlist_url"] == "https://open.spotify.com/playlist/pl1"
@@ -465,9 +495,10 @@ async def test_create_caches_resolved_uri_on_submission(spotify_client, db_sessi
     organizer = await _seed_user(db_session, "o@example.com")
     round_ = await _seed_round(db_session, organizer)
     await _seed_shared_account(db_session)
+    admin = await _seed_admin(db_session)
     await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
 
-    resp = await spotify_client.post(_playlist_url(round_.id), headers=_auth(organizer.id))
+    resp = await spotify_client.post(_playlist_url(round_.id), headers=_auth(admin.id))
     assert resp.status_code == 200
 
     # The resolved uri should now be cached on the submission row.
@@ -481,9 +512,10 @@ async def test_create_no_matches_returns_no_playlist(spotify_client, db_session,
     organizer = await _seed_user(db_session, "o@example.com")
     round_ = await _seed_round(db_session, organizer)
     await _seed_shared_account(db_session)
+    admin = await _seed_admin(db_session)
     await _add_submission(db_session, round_.id, organizer.id, isrc="I-MISS", title="miss")
 
-    resp = await spotify_client.post(_playlist_url(round_.id), headers=_auth(organizer.id))
+    resp = await spotify_client.post(_playlist_url(round_.id), headers=_auth(admin.id))
     assert resp.status_code == 200
     body = resp.json()
     assert body["playlist_url"] is None
@@ -498,9 +530,10 @@ async def test_first_generate_stores_playlist_id_in_db(spotify_client, db_sessio
     organizer = await _seed_user(db_session, "o@example.com")
     round_ = await _seed_round(db_session, organizer)
     await _seed_shared_account(db_session)
+    admin = await _seed_admin(db_session)
     await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
 
-    resp = await spotify_client.post(_playlist_url(round_.id), headers=_auth(organizer.id))
+    resp = await spotify_client.post(_playlist_url(round_.id), headers=_auth(admin.id))
     assert resp.status_code == 200, resp.text
 
     round_id = round_.id
@@ -523,6 +556,7 @@ async def test_second_generate_reuses_stored_id_without_creating(session_factory
     organizer = await _seed_user(db_session, "o@example.com")
     round_ = await _seed_round(db_session, organizer)
     await _seed_shared_account(db_session)
+    admin = await _seed_admin(db_session)
     await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
     # Seed the stored playlist ID directly, keyed to the shared account (MYS-169).
     db_session.add(
@@ -533,7 +567,7 @@ async def test_second_generate_reuses_stored_id_without_creating(session_factory
     await db_session.commit()
 
     async with _client_with_spotify(session_factory, fake) as c:
-        resp = await c.post(_playlist_url(round_.id), headers=_auth(organizer.id))
+        resp = await c.post(_playlist_url(round_.id), headers=_auth(admin.id))
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert fake.created is None
@@ -553,6 +587,7 @@ async def test_generate_recreates_when_stored_playlist_deleted_in_spotify(
     organizer = await _seed_user(db_session, "o@example.com")
     round_ = await _seed_round(db_session, organizer)
     await _seed_shared_account(db_session)
+    admin = await _seed_admin(db_session)
     await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
     db_session.add(
         SpotifyRoundPlaylist(
@@ -564,7 +599,7 @@ async def test_generate_recreates_when_stored_playlist_deleted_in_spotify(
     round_id = round_.id
 
     async with _client_with_spotify(session_factory, fake) as c:
-        resp = await c.post(_playlist_url(round_.id), headers=_auth(organizer.id))
+        resp = await c.post(_playlist_url(round_.id), headers=_auth(admin.id))
     assert resp.status_code == 200, resp.text
     # A new playlist was created (the fake always returns "pl1").
     assert fake.created is not None
@@ -595,6 +630,7 @@ async def test_playlist_track_order_matches_seeded_shuffle(session_factory, db_s
     organizer = await _seed_user(db_session, "o@example.com")
     round_ = await _seed_round(db_session, organizer)
     await _seed_shared_account(db_session)
+    admin = await _seed_admin(db_session)
     other = await _seed_member(db_session, round_, "m2@example.com")
 
     # Insert in reverse id order so insertion order ≠ id-sorted order.
@@ -629,6 +665,138 @@ async def test_playlist_track_order_matches_seeded_shuffle(session_factory, db_s
     expected_uris = [uri_a if sid == id_a else uri_b for sid in subs_sorted]
 
     async with _client_with_spotify(session_factory, fake) as c:
-        resp = await c.post(_playlist_url(round_.id), headers=_auth(organizer.id))
+        resp = await c.post(_playlist_url(round_.id), headers=_auth(admin.id))
     assert resp.status_code == 200, resp.text
     assert fake.added == expected_uris
+
+
+# --------------------------------------------------------------------------- #
+# read-only link — GET /rounds/:id/spotify-playlist (MYS-169)
+# --------------------------------------------------------------------------- #
+
+
+def _link_url(round_id) -> str:
+    return f"/api/v1/rounds/{round_id}/spotify-playlist"
+
+
+async def test_link_requires_auth(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    resp = await client.get(_link_url(round_.id))
+    assert resp.status_code == 401
+
+
+async def test_link_requires_league_membership(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    outsider = await _seed_user(db_session, "x@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    resp = await client.get(_link_url(round_.id), headers=_auth(outsider.id))
+    assert resp.status_code == 403
+
+
+async def test_link_null_before_generation(spotify_client, db_session):
+    # Shared account is even connected here — still null because no admin has
+    # generated anything yet (read-only: this endpoint never generates).
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    await _seed_shared_account(db_session)
+    resp = await spotify_client.get(_link_url(round_.id), headers=_auth(organizer.id))
+    assert resp.status_code == 200
+    assert resp.json() == {"playlist_url": None}
+
+
+async def test_link_null_when_shared_account_not_configured(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    resp = await client.get(_link_url(round_.id), headers=_auth(organizer.id))
+    assert resp.status_code == 200
+    assert resp.json() == {"playlist_url": None}
+
+
+async def test_link_visible_to_any_member_after_admin_generates(
+    spotify_client, db_session, fake_spotify
+):
+    # The whole point of MYS-169's revision: a member who never touched Spotify
+    # and isn't the admin still sees the link once the admin has generated it.
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    await _seed_shared_account(db_session)
+    admin = await _seed_admin(db_session)
+    member = await _seed_member(db_session, round_, "m@example.com")
+    await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
+
+    generate_resp = await spotify_client.post(_playlist_url(round_.id), headers=_auth(admin.id))
+    assert generate_resp.status_code == 200, generate_resp.text
+
+    link_resp = await spotify_client.get(_link_url(round_.id), headers=_auth(member.id))
+    assert link_resp.status_code == 200
+    assert link_resp.json() == {"playlist_url": "https://open.spotify.com/playlist/pl1"}
+
+
+# --------------------------------------------------------------------------- #
+# admin listing — GET /admin/rounds/spotify-pending (MYS-169)
+# --------------------------------------------------------------------------- #
+
+_PENDING_URL = "/api/v1/admin/rounds/spotify-pending"
+
+
+async def test_pending_requires_platform_admin(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    resp = await client.get(_PENDING_URL, headers=_auth(organizer.id))
+    assert resp.status_code == 403
+
+
+async def test_pending_excludes_open_submission_round(spotify_client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    admin = await _seed_admin(db_session)
+    round_ = await _seed_round(db_session, organizer, state="open_submission")
+    await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
+
+    resp = await spotify_client.get(_PENDING_URL, headers=_auth(admin.id))
+    assert resp.status_code == 200
+    assert str(round_.id) not in {row["round_id"] for row in resp.json()}
+
+
+async def test_pending_excludes_round_with_zero_submissions(spotify_client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    admin = await _seed_admin(db_session)
+    round_ = await _seed_round(db_session, organizer)  # open_voting, no submissions
+
+    resp = await spotify_client.get(_PENDING_URL, headers=_auth(admin.id))
+    assert resp.status_code == 200
+    assert str(round_.id) not in {row["round_id"] for row in resp.json()}
+
+
+async def test_pending_includes_eligible_round_with_fields(spotify_client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    admin = await _seed_admin(db_session)
+    round_ = await _seed_round(db_session, organizer, state="closed")
+    await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
+
+    resp = await spotify_client.get(_PENDING_URL, headers=_auth(admin.id))
+    assert resp.status_code == 200
+    rows = {row["round_id"]: row for row in resp.json()}
+    row = rows[str(round_.id)]
+    assert row["league_name"] == "L"
+    assert row["round_label"] == "Round 1: Late Summer"
+    assert row["state"] == "closed"
+    assert row["submission_count"] == 1
+    assert row["playlist_url"] is None
+
+
+async def test_pending_shows_playlist_url_after_generation(
+    spotify_client, db_session, fake_spotify
+):
+    organizer = await _seed_user(db_session, "o@example.com")
+    await _seed_shared_account(db_session)
+    admin = await _seed_admin(db_session)
+    round_ = await _seed_round(db_session, organizer)
+    await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
+
+    generate_resp = await spotify_client.post(_playlist_url(round_.id), headers=_auth(admin.id))
+    assert generate_resp.status_code == 200, generate_resp.text
+
+    resp = await spotify_client.get(_PENDING_URL, headers=_auth(admin.id))
+    assert resp.status_code == 200
+    rows = {row["round_id"]: row for row in resp.json()}
+    assert rows[str(round_.id)]["playlist_url"] == "https://open.spotify.com/playlist/pl1"

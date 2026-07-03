@@ -1,7 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { AdminScreen } from "./AdminScreen";
-import { ApiError, adminDeleteUser, adminSearchUsers, type AdminUser } from "../services/api";
+import {
+  ApiError,
+  adminDeleteUser,
+  adminListSpotifyPendingRounds,
+  adminSearchUsers,
+  createSpotifyPlaylist,
+  type AdminSpotifyRound,
+  type AdminUser,
+} from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 
 /**
@@ -9,7 +17,8 @@ import { useAuth } from "../hooks/useAuth";
  * onboarding; here we additionally gate on `isPlatformAdmin` and bounce a
  * non-admin to /home (the nav entry is also hidden for non-admins, so this is a
  * defence-in-depth guard for a hand-typed URL). Wires the user search + the
- * hard-delete action to the admin API.
+ * hard-delete action, and the Spotify generate/regenerate list (MYS-169), to
+ * the admin API.
  */
 export function AdminRoute() {
   const { isPlatformAdmin } = useAuth();
@@ -23,8 +32,51 @@ export function AdminRoute() {
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  const [spotifyRounds, setSpotifyRounds] = useState<AdminSpotifyRound[]>([]);
+  const [spotifyLoading, setSpotifyLoading] = useState(true);
+  const [spotifyError, setSpotifyError] = useState<string | null>(null);
+  const [generatingRoundId, setGeneratingRoundId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isPlatformAdmin) return;
+    let active = true;
+    adminListSpotifyPendingRounds()
+      .then((rounds) => {
+        if (active) setSpotifyRounds(rounds);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setSpotifyError(
+          err instanceof ApiError ? err.message : "couldn't load the round list. try again.",
+        );
+      })
+      .finally(() => {
+        if (active) setSpotifyLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [isPlatformAdmin]);
+
   if (!isPlatformAdmin) {
     return <Navigate to="/home" replace />;
+  }
+
+  async function handleGenerateSpotifyPlaylist(roundId: string) {
+    setGeneratingRoundId(roundId);
+    setSpotifyError(null);
+    try {
+      const result = await createSpotifyPlaylist(roundId);
+      setSpotifyRounds((current) =>
+        current.map((r) => (r.round_id === roundId ? { ...r, playlist_url: result.playlist_url } : r)),
+      );
+    } catch (err) {
+      setSpotifyError(
+        err instanceof ApiError ? err.message : "couldn't generate that playlist. try again.",
+      );
+    } finally {
+      setGeneratingRoundId(null);
+    }
   }
 
   async function handleSearch() {
@@ -73,6 +125,11 @@ export function AdminRoute() {
       onDeleteUser={handleDeleteUser}
       deletingUserId={deletingUserId}
       deleteError={deleteError}
+      spotifyRounds={spotifyRounds}
+      spotifyLoading={spotifyLoading}
+      spotifyError={spotifyError}
+      onGenerateSpotifyPlaylist={handleGenerateSpotifyPlaylist}
+      generatingRoundId={generatingRoundId}
     />
   );
 }

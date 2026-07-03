@@ -1164,7 +1164,7 @@ function ClosedListen({
         youtubeTrackCount={youtubeTrackCount}
         entryCount={entryCount}
       />
-      <SpotifyPlaylist roundId={roundId} entryCount={entryCount} />
+      <SpotifyPlaylist roundId={roundId} />
     </div>
   );
 }
@@ -1249,7 +1249,7 @@ function VotingSection({
             youtubeTrackCount={youtubeTrackCount}
             entryCount={entries.length}
           />
-          <SpotifyPlaylist roundId={roundId} entryCount={entries.length} />
+          <SpotifyPlaylist roundId={roundId} />
         </div>
         <ul className="mt-4 space-y-4">
           {entries.map((entry) => (
@@ -1284,7 +1284,7 @@ function VotingSection({
         youtubeTrackCount={youtubeTrackCount}
         entryCount={entries.length}
       />
-      <SpotifyPlaylist roundId={roundId} entryCount={entries.length} />
+      <SpotifyPlaylist roundId={roundId} />
       <div className="flex items-baseline justify-between gap-4">
         <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
           cast your votes

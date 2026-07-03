@@ -810,6 +810,17 @@ export type SpotifyPlaylistResult = {
   unmatched: SpotifyUnmatchedTrack[];
 };
 
+/** One row on the admin screen's generate/regenerate list (MYS-169): every
+ *  live round across every league, with a link if one's already been made. */
+export type AdminSpotifyRound = {
+  round_id: string;
+  league_name: string;
+  round_label: string;
+  state: string;
+  submission_count: number;
+  playlist_url: string | null;
+};
+
 /** Is Spotify configured, and is the shared playlist account connected? */
 export async function getSpotifyStatus(): Promise<SpotifyStatus> {
   const res = await authenticatedRequest("/api/v1/spotify/status");
@@ -837,9 +848,32 @@ export async function connectSpotify(returnTo?: string): Promise<{ authorize_url
   return (await res.json()) as { authorize_url: string };
 }
 
-/** Create (or refresh) the round's PUBLIC Spotify playlist, owned by the shared
- *  MysteryMixClub account (MYS-169). Any league member may call this; the same
- *  link is returned to everyone. */
+/** Read-only: the round's existing Spotify playlist link, or null if a
+ *  platform admin hasn't generated one yet (MYS-169). Never triggers
+ *  generation — that's an admin-only action from the admin screen. */
+export async function getSpotifyPlaylistLink(
+  roundId: string,
+): Promise<{ playlist_url: string | null }> {
+  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/spotify-playlist`);
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as { playlist_url: string | null };
+}
+
+/** Every live round across every league, for the admin screen's
+ *  generate/regenerate list (MYS-169, platform-admin only). */
+export async function adminListSpotifyPendingRounds(): Promise<AdminSpotifyRound[]> {
+  const res = await authenticatedRequest("/api/v1/admin/rounds/spotify-pending");
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as AdminSpotifyRound[];
+}
+
+/** Create (or refresh) a round's PUBLIC Spotify playlist, owned by the shared
+ *  MysteryMixClub account (MYS-169, platform-admin only — revised 2026-07-03).
+ *  Called from the admin screen, not the round page. */
 export async function createSpotifyPlaylist(roundId: string): Promise<SpotifyPlaylistResult> {
   const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/spotify-playlist`, {
     method: "POST",

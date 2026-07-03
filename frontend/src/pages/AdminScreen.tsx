@@ -1,5 +1,6 @@
 import { type FormEvent, useState } from "react";
-import type { AdminUser } from "../services/api";
+import type { AdminSpotifyRound, AdminUser } from "../services/api";
+import { Badge } from "../components/Badge";
 import { Button } from "../components/Button";
 import { TextField } from "../components/TextField";
 
@@ -16,14 +17,21 @@ type AdminScreenProps = {
   onDeleteUser: (userId: string) => void;
   deletingUserId: string | null;
   deleteError?: string | null;
+  spotifyRounds: AdminSpotifyRound[];
+  spotifyLoading: boolean;
+  spotifyError?: string | null;
+  onGenerateSpotifyPlaylist: (roundId: string) => void;
+  generatingRoundId: string | null;
 };
 
 /**
  * Thin platform-admin page: search users by email, then hard-delete a match
- * behind a typed confirm. Content-only — the shared TopNav is rendered by
+ * behind a typed confirm; and generate/refresh a round's Spotify playlist
+ * (MYS-169 — the only role allowed to, since the shared account is a real
+ * person's own Spotify login). Content-only — the shared TopNav is rendered by
  * AuthedLayout. The single Rust signal on this screen is the destructive confirm
- * action; everything else stays in the Sage/Ink family. Underline-only inputs,
- * ALL-CAPS labels, calm lowercase copy.
+ * action; everything else, including the Spotify section, stays in the
+ * Sage/Ink family. Underline-only inputs, ALL-CAPS labels, calm lowercase copy.
  */
 export function AdminScreen({
   query,
@@ -36,6 +44,11 @@ export function AdminScreen({
   onDeleteUser,
   deletingUserId,
   deleteError,
+  spotifyRounds,
+  spotifyLoading,
+  spotifyError,
+  onGenerateSpotifyPlaylist,
+  generatingRoundId,
 }: AdminScreenProps) {
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -97,6 +110,42 @@ export function AdminScreen({
             {deleteError}
           </p>
         ) : null}
+
+        <section className="mt-16">
+          <h2 className="font-serif lowercase text-[20px] leading-tight text-ink">
+            spotify playlists
+          </h2>
+          <p className="mt-2 font-mono text-[13px] font-light text-muted">
+            generate or refresh a round&apos;s public playlist. every live round with
+            submissions, across every league.
+          </p>
+
+          {spotifyError ? (
+            <p role="alert" className="mt-4 font-mono text-[11px] text-ink">
+              {spotifyError}
+            </p>
+          ) : null}
+
+          <div className="mt-6">
+            {spotifyLoading ? (
+              <p className="font-mono text-[13px] font-light text-muted">loading…</p>
+            ) : spotifyRounds.length === 0 ? (
+              <p className="font-mono text-[13px] font-light text-muted">no rounds ready</p>
+            ) : (
+              <ul className="divide-y divide-border border-t border-border">
+                {spotifyRounds.map((round) => (
+                  <li key={round.round_id} className="py-4">
+                    <SpotifyRoundRow
+                      round={round}
+                      generating={generatingRoundId === round.round_id}
+                      onGenerate={() => onGenerateSpotifyPlaylist(round.round_id)}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
     </main>
   );
 }
@@ -178,6 +227,53 @@ function AdminUserRow({
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * One round on the Spotify generate/regenerate list. Shows the league, round
+ * label, plain-text state + submission count, an "open" link if a playlist
+ * already exists, and the generate/regenerate action. No Rust here — this
+ * screen's single Rust use is the destructive delete confirm above.
+ */
+function SpotifyRoundRow({
+  round,
+  generating,
+  onGenerate,
+}: {
+  round: AdminSpotifyRound;
+  generating: boolean;
+  onGenerate: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <span className="min-w-0">
+        <span className="block truncate font-mono text-[13px] text-ink">
+          {round.league_name} — {round.round_label}
+        </span>
+        <span className="mt-1 flex items-center gap-2">
+          <Badge>{round.state}</Badge>
+          <span className="font-mono text-[11px] font-light text-muted">
+            {round.submission_count} submission{round.submission_count === 1 ? "" : "s"}
+          </span>
+        </span>
+      </span>
+      <div className="flex shrink-0 items-center gap-4">
+        {round.playlist_url ? (
+          <a
+            href={round.playlist_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] hover:text-ink"
+          >
+            open
+          </a>
+        ) : null}
+        <Button variant="ghost" type="button" onClick={onGenerate} disabled={generating}>
+          {generating ? "generating…" : round.playlist_url ? "regenerate" : "generate"}
+        </Button>
+      </div>
     </div>
   );
 }

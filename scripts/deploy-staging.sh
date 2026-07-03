@@ -6,6 +6,10 @@
 #
 # Requires the invoking user to have passwordless sudo for:
 #   systemctl restart mysterymixclub-api
+#   cp scripts/mysterymixclub-advance-rounds.{service,timer} /etc/systemd/system/
+#   systemctl daemon-reload
+#   systemctl enable --now mysterymixclub-advance-rounds.timer
+# (the last three keep the MYS-145/162 deadline job's unit files and timer current.)
 # The web root is owned by the deploy user (see bootstrap-droplet.sh), so the
 # frontend publish step needs no sudo. (See docs/staging-setup.md.)
 set -euo pipefail
@@ -39,6 +43,15 @@ alembic upgrade head
 
 echo "==> Restarting the API service"
 sudo systemctl restart mysterymixclub-api
+
+echo "==> Installing/refreshing the deadline force-advance job (MYS-145/162)"
+# Keep the job's unit files current with the checkout and its timer enabled, so
+# code and schedule changes take effect on deploy. Idempotent: re-copying and
+# re-enabling are no-ops when nothing changed.
+sudo cp "${REPO_ROOT}/scripts/mysterymixclub-advance-rounds.service" /etc/systemd/system/
+sudo cp "${REPO_ROOT}/scripts/mysterymixclub-advance-rounds.timer" /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now mysterymixclub-advance-rounds.timer
 
 echo "==> Building and publishing the frontend"
 cd ../frontend

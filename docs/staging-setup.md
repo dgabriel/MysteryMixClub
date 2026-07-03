@@ -165,17 +165,25 @@ in `staging.env` to the new domain and restart the service.
 The `Deploy Staging` workflow (`.github/workflows/deploy-staging.yml`) SSHes into
 the Droplet on every push to `develop` and runs `scripts/deploy-staging.sh`.
 
-**Sudoers** — the deploy script restarts the service via sudo (the web root is
-owned by the deploy user, so the frontend publish needs no sudo). Grant
-passwordless sudo for just that one command:
+**Sudoers** — the deploy script restarts the service and keeps the deadline-job
+units current via sudo (the web root is owned by the deploy user, so the frontend
+publish needs no sudo). Grant passwordless sudo for exactly those commands:
 
 ```bash
 # on the Droplet, as root
 cat >/etc/sudoers.d/mysterymixclub-deploy <<'EOF'
 mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl restart mysterymixclub-api
+mysterymixclub ALL=(root) NOPASSWD: /usr/bin/cp /home/mysterymixclub/app/scripts/mysterymixclub-advance-rounds.service /etc/systemd/system/
+mysterymixclub ALL=(root) NOPASSWD: /usr/bin/cp /home/mysterymixclub/app/scripts/mysterymixclub-advance-rounds.timer /etc/systemd/system/
+mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl daemon-reload
+mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl enable --now mysterymixclub-advance-rounds.timer
 EOF
 chmod 440 /etc/sudoers.d/mysterymixclub-deploy
 ```
+
+> The last four lines were added for the MYS-145/162 deadline job. On a Droplet
+> bootstrapped before this change, add them to the existing sudoers file (and see
+> §7) or the next deploy will fail at the timer-refresh step.
 
 **GitHub secrets** (Settings → Secrets and variables → Actions → environment
 `staging`):
@@ -198,6 +206,52 @@ Then push to `develop` (or re-run the workflow) to trigger a deploy.
 
 ---
 
+## 7. The deadline force-advance job (MYS-145/162)
+
+Rounds close on quorum **or** a deadline, whichever comes first. Quorum is handled
+live by the API; the deadline is handled by `app.jobs.advance_rounds`, run on a
+15-minute systemd timer. Each run, per live round, it: stamps a missing deadline
+from the league window; sends the "about 12 hours left" submit/vote warning once
+when the deadline is 1–12h away (only for windows longer than 12h); force-advances
+a submission round to voting (or nudges the organizer once if nobody submitted —
+that round then waits for a manual advance); and closes a voting round whose
+deadline has passed.
+
+**Units** (installed from `scripts/`): `mysterymixclub-advance-rounds.service`
+(`Type=oneshot`, same user/env/venv as the API) and
+`mysterymixclub-advance-rounds.timer` (`OnCalendar=*:00/15`, `Persistent=true`).
+Bootstrap installs and arms them; each deploy refreshes the files and runs
+`enable --now`. On a Droplet bootstrapped before this job existed, install once:
+
+```bash
+sudo cp /home/mysterymixclub/app/scripts/mysterymixclub-advance-rounds.service /etc/systemd/system/
+sudo cp /home/mysterymixclub/app/scripts/mysterymixclub-advance-rounds.timer   /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now mysterymixclub-advance-rounds.timer
+```
+
+**Check it:**
+
+```bash
+systemctl list-timers mysterymixclub-advance-rounds.timer   # NEXT / LAST run
+sudo journalctl -u mysterymixclub-advance-rounds.service -f # per-run summary line
+sudo systemctl start mysterymixclub-advance-rounds.service  # run once, on demand
+```
+
+Each run logs a summary: `stamped=… warned=… empty_notices=… advanced=… closed=…
+skipped=… errors=…`.
+
+**Disable in an emergency** (stops all deadline-driven transitions; quorum-based
+closing keeps working):
+
+```bash
+sudo systemctl disable --now mysterymixclub-advance-rounds.timer
+```
+
+Re-enable with `sudo systemctl enable --now mysterymixclub-advance-rounds.timer`.
+
+---
+
 ## What to share with the test team
 
 - **URL:** `https://staging.mysterymixclub.com` (or `http://<DROPLET_IP>/`)
@@ -216,3 +270,7 @@ Then push to `develop` (or re-run the workflow) to trigger a deploy.
 - **502 from Nginx:** the API isn't listening on `127.0.0.1:8000` — check the
   service and that `staging.env` is valid (a bad value makes the app exit on boot).
 - **Manual deploy:** `sudo -u mysterymixclub /home/mysterymixclub/app/scripts/deploy-staging.sh`.
+- **Deadline job status / logs:** `systemctl list-timers mysterymixclub-advance-rounds.timer`
+  and `sudo journalctl -u mysterymixclub-advance-rounds.service -f` (see §7). Rounds
+  not advancing at their deadline → check the timer is enabled and the run summary
+  for `errors=`.

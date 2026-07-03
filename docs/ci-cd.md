@@ -58,6 +58,25 @@ approve the `production` environment → prod deploy.
 
 ---
 
+## Scheduled jobs
+
+The backend ships two standalone jobs run outside the request path:
+`python -m app.jobs.purge_accounts` (right-to-be-forgotten hard purge) and
+`python -m app.jobs.advance_rounds` (deadline force-advance + 12h warnings,
+MYS-145/162). On **staging** the deadline job runs every 15 minutes via a systemd
+timer (`mysterymixclub-advance-rounds.timer`) — see
+[`staging-setup.md` §7](staging-setup.md).
+
+> **Prod follow-up (not yet wired).** Production runs on DO App Platform, which
+> has no systemd; the deadline job must be scheduled there before deadline-based
+> closing works in prod. Options: a DO App Platform **Job** component with a cron
+> schedule (e.g. `*/15 * * * *`) running `python -m app.jobs.advance_rounds`
+> against the managed Postgres, added to `.do/app.prod.yaml`; or an external
+> scheduler hitting the same entrypoint. Until then, prod rounds close on quorum
+> only. Tracked as a deploy-prod follow-up to this PR.
+
+---
+
 ## Workflows
 
 | File                              | On                        | Does                                                        |

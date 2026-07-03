@@ -2,13 +2,15 @@
 
 Generalizes the magic-link mailer into per-event notifications fired when a
 round changes state. Recipients are the league's current members who have email
-notifications enabled; sending is best-effort and runs in a background task so a
-slow or failing mail provider never blocks (or fails) the state-transition
-request that triggered it.
+notifications enabled; sending is best-effort so a slow or failing mail provider
+never blocks (or fails) the caller.
 
-Entry points:
-- :func:`queue_round_event` — one notification per member per round state change.
-- :func:`queue_league_joined` — welcome email fired once when a user joins a league.
+Two dispatch paths share the same body-building code:
+- the API path (:func:`queue_round_event` / :func:`queue_league_joined`) runs each
+  send in a FastAPI background task, off the request; and
+- the job path (:func:`send_round_event` / :func:`send_deadline_warning` /
+  :func:`send_empty_round_notice`) sends synchronously, for the deadline
+  force-advance job (MYS-145/162), which has no request or ``BackgroundTasks``.
 """
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import BackgroundTasks
@@ -36,6 +39,9 @@ logger = logging.getLogger("app.services.notifications")
 # so "the next round auto-opened" and "this round opened" can both map to a
 # submission_open notification for their respective rounds.
 RoundEvent = Literal["submission_open", "voting_open", "round_closed", "league_complete"]
+
+# The two deadline phases a round can be warned about (MYS-162).
+DeadlinePhase = Literal["submission", "voting"]
 
 
 @dataclass(frozen=True)
@@ -69,6 +75,13 @@ def _round_label(round_: Round) -> str:
     return f"Round {round_.round_number}"
 
 
+def _format_deadline(deadline: datetime) -> str:
+    """A compact absolute-UTC deadline for email copy, e.g. 'Jul 5, 21:00 UTC'.
+    Avoids the platform-specific ``%-d`` so it formats identically everywhere."""
+    d = deadline.astimezone(timezone.utc)
+    return f"{d.strftime('%b')} {d.day}, {d.strftime('%H:%M')} UTC"
+
+
 def _subject_and_body(
     event: RoundEvent, league: League, round_: Round, league_url: str
 ) -> tuple[str, str]:
@@ -77,16 +90,29 @@ def _subject_and_body(
     label = _round_label(round_)
     link = f'<a href="{league_url}">Go to {league.name} →</a>'
     if event == "submission_open":
+        # MYS-162: include the concrete deadline when the round has one stamped.
+        by = (
+            f" Submit by {_format_deadline(round_.submission_deadline)}."
+            if round_.submission_deadline is not None
+            else ""
+        )
         return (
             f"{league.name} — {label} is open for submissions",
             f"<p><strong>{label}</strong> is open in <strong>{league.name}</strong>. "
-            f"Pick your song and submit it before the deadline. {link}</p>",
+            f"Pick your song and get it in.{by} {link}</p>",
         )
     if event == "voting_open":
+        # MYS-162: include the concrete voting deadline when stamped.
+        by = (
+            f" Vote by {_format_deadline(round_.voting_deadline)}."
+            if round_.voting_deadline is not None
+            else ""
+        )
         return (
             f"{league.name} — voting is open for {label}",
             f"<p>Submissions are in for <strong>{label}</strong> in "
-            f"<strong>{league.name}</strong>. Listen to the playlist and cast your votes. {link}</p>",
+            f"<strong>{league.name}</strong>. Listen to the playlist and cast your votes.{by} "
+            f"{link}</p>",
         )
     if event == "round_closed":
         return (
@@ -121,6 +147,39 @@ def _wrap_html(body: str, unsubscribe_url: str) -> str:
     )
 
 
+def _html_and_headers(
+    settings: Settings, user_id: uuid.UUID, body: str
+) -> tuple[str, dict[str, str]]:
+    """Wrap a body with a per-recipient unsubscribe footer + one-click headers.
+
+    List-Unsubscribe(+Post) surface Gmail/Yahoo's native one-click unsubscribe and
+    are part of their bulk-sender deliverability rules. Shared by every dispatch
+    path so the API and job emails are byte-for-byte consistent."""
+    url = _unsubscribe_url(settings, user_id)
+    html = _wrap_html(body, url)
+    headers = {
+        "List-Unsubscribe": f"<{url}>",
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    }
+    return html, headers
+
+
+def _send_direct(
+    sender: EmailSender,
+    settings: Settings,
+    recipients: list[Recipient],
+    subject: str,
+    body: str,
+) -> None:
+    """Synchronously send one email per recipient (job path — no BackgroundTasks).
+
+    Best-effort: :func:`_safe_send` swallows per-recipient failures so one bad
+    address can't stop the rest. No-ops on an empty recipient list."""
+    for r in recipients:
+        html, headers = _html_and_headers(settings, r.user_id, body)
+        _safe_send(sender, r.email, subject, html, headers)
+
+
 def queue_round_event(
     background_tasks: BackgroundTasks,
     sender: EmailSender,
@@ -140,15 +199,84 @@ def queue_round_event(
     league_url = _league_url(settings, league.id)
     subject, body = _subject_and_body(event, league, round_, league_url)
     for r in recipients:
-        url = _unsubscribe_url(settings, r.user_id)
-        html = _wrap_html(body, url)
-        # List-Unsubscribe(+Post) surface Gmail/Yahoo's native one-click
-        # unsubscribe and are part of their bulk-sender deliverability rules.
-        headers = {
-            "List-Unsubscribe": f"<{url}>",
-            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-        }
+        html, headers = _html_and_headers(settings, r.user_id, body)
         background_tasks.add_task(_safe_send, sender, r.email, subject, html, headers)
+
+
+def send_round_event(
+    sender: EmailSender,
+    settings: Settings,
+    recipients: list[Recipient],
+    league: League,
+    round_: Round,
+    event: RoundEvent,
+) -> None:
+    """Synchronous twin of :func:`queue_round_event` for the deadline job.
+
+    Same subject/body as the API path; sends inline instead of via a background
+    task. No-ops when there are no recipients."""
+    if not recipients:
+        return
+    league_url = _league_url(settings, league.id)
+    subject, body = _subject_and_body(event, league, round_, league_url)
+    _send_direct(sender, settings, recipients, subject, body)
+
+
+def send_deadline_warning(
+    sender: EmailSender,
+    settings: Settings,
+    recipients: list[Recipient],
+    league: League,
+    round_: Round,
+    phase: DeadlinePhase,
+) -> None:
+    """Send the "about 12 hours left" warning to the outstanding actors (MYS-162).
+
+    The caller (deadline job) has already filtered ``recipients`` to exactly those
+    who still need to act this phase. No-ops on an empty list."""
+    if not recipients:
+        return
+    league_url = _league_url(settings, league.id)
+    label = _round_label(round_)
+    link = f'<a href="{league_url}">Go to {league.name} →</a>'
+    if phase == "submission":
+        subject = f"{league.name} — about 12 hours left to submit"
+        action = f"submit to <strong>{label}</strong>"
+    else:
+        subject = f"{league.name} — about 12 hours left to vote"
+        action = f"vote in <strong>{label}</strong>"
+    body = (
+        f"<p>You have about 12 hours to {action} in <strong>{league.name}</strong>. "
+        f"Whatever is in by the deadline counts. {link}</p>"
+    )
+    _send_direct(sender, settings, recipients, subject, body)
+
+
+def send_empty_round_notice(
+    sender: EmailSender,
+    settings: Settings,
+    recipients: list[Recipient],
+    league: League,
+    round_: Round,
+) -> None:
+    """Tell the organizer a submission deadline passed with zero songs (MYS-145).
+
+    The round is left open (it never auto-advances empty); the organizer can
+    extend the deadline or advance it manually. ``recipients`` is the organizer
+    only, already filtered for the email-notifications preference. No-ops when the
+    organizer has notifications off (empty list)."""
+    if not recipients:
+        return
+    league_url = _league_url(settings, league.id)
+    label = _round_label(round_)
+    link = f'<a href="{league_url}">Go to {league.name} →</a>'
+    subject = f"{league.name} — {label} closed with no submissions"
+    body = (
+        f"<p>The submission deadline for <strong>{label}</strong> in "
+        f"<strong>{league.name}</strong> passed with no songs submitted. You can extend the "
+        f"deadline or advance the round manually. {link}</p>"
+    )
+    _send_direct(sender, settings, recipients, subject, body)
 
 
 def queue_league_joined(
@@ -162,17 +290,12 @@ def queue_league_joined(
 ) -> None:
     """Schedule a welcome email for a user who just joined (or rejoined) a league."""
     url = _league_url(settings, league_id)
-    unsub_url = _unsubscribe_url(settings, user_id)
     subject = f"You've joined {league_name}"
     body = (
         f"<p>You're in! You've joined <strong>{league_name}</strong>. "
         f'<a href="{url}">View {league_name} →</a></p>'
     )
-    html = _wrap_html(body, unsub_url)
-    headers = {
-        "List-Unsubscribe": f"<{unsub_url}>",
-        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-    }
+    html, headers = _html_and_headers(settings, user_id, body)
     background_tasks.add_task(_safe_send, sender, email, subject, html, headers)
 
 

@@ -1,10 +1,16 @@
-"""Route tests for the Spotify endpoints (MYS-83).
+"""Route tests for the Spotify endpoints (MYS-83, MYS-169).
 
-Pre-network gates (auth, membership, open_submission, not-connected) use the
+Pre-network gates (auth, membership, open_submission, unconfigured) use the
 shared ``client`` fixture, where the real Spotify client is unconfigured and
 those handlers return before any HTTP call. The connect/status/create-playlist
 happy paths use a local app wired with a ``FakeSpotifyClient`` so nothing touches
 the network.
+
+MYS-169: playlist generation now runs off one shared/dedicated Spotify account
+(``settings.spotify_playlist_account_user_id``), not the caller's own connection.
+``_SHARED_ACCOUNT_ID`` is a fixed test UUID used as that shared account's app-user
+id throughout; ``spotify_client``/``_client_with_spotify`` wire it into Settings
+by default so any league member can generate against a connected shared account.
 """
 
 import random
@@ -16,6 +22,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.jwt import create_access_token, create_oauth_state
+from app.config import Settings, get_settings
 from app.db.session import get_db
 from app.main import create_app
 from app.models.league import League
@@ -29,17 +36,30 @@ from app.services.spotify_client import SpotifyNotFoundError, SpotifyTokens, get
 from app.services.spotify_token_crypto import encrypt_refresh_token
 from app.services.youtube_resolver import get_youtube_resolver
 
+# Fixed id for the shared/dedicated playlist account (MYS-169) so tests can wire
+# it into Settings before knowing which User row will hold the connection.
+_SHARED_ACCOUNT_ID = uuid.UUID("00000000-0000-0000-0000-0000000000aa")
+
 
 # --------------------------------------------------------------------------- #
 # Seed helpers
 # --------------------------------------------------------------------------- #
 
 
-async def _seed_user(db_session, email: str) -> User:
-    user = User(email=email, display_name="U")
+async def _seed_user(db_session, email: str, *, user_id: uuid.UUID | None = None) -> User:
+    user = User(email=email, display_name="U", **({"id": user_id} if user_id else {}))
     db_session.add(user)
     await db_session.commit()
     await db_session.refresh(user)
+    return user
+
+
+async def _seed_shared_account(db_session, *, connected: bool = True) -> User:
+    """The dedicated MysteryMixClub Spotify account's app user, at
+    ``_SHARED_ACCOUNT_ID`` (MYS-169), optionally with a connection attached."""
+    user = await _seed_user(db_session, "playlist-account@example.com", user_id=_SHARED_ACCOUNT_ID)
+    if connected:
+        await _connect(db_session, user.id)
     return user
 
 
@@ -107,11 +127,24 @@ class FakeSpotifyClient:
     """Stands in for SpotifyClient. Resolves ISRCs from a fixed map and records
     the playlist operations it was asked to perform."""
 
-    def __init__(self, *, isrc_map=None, configured=True, replace_raises_not_found=False):
+    def __init__(
+        self,
+        *,
+        isrc_map=None,
+        configured=True,
+        replace_raises_not_found=False,
+        exchange_raises: Exception | None = None,
+        get_user_id_raises: Exception | None = None,
+        exchange_refresh_token: str | None = "rt-new",
+    ):
         self._isrc_map = isrc_map or {}
         self._configured = configured
         # When True, replace_tracks raises SpotifyNotFoundError (simulates deleted playlist).
         self._replace_raises_not_found = replace_raises_not_found
+        # MYS-169 callback observability: let tests drive exchange_failed / api_error.
+        self._exchange_raises = exchange_raises
+        self._get_user_id_raises = get_user_id_raises
+        self._exchange_refresh_token = exchange_refresh_token
         self.created: dict | None = None
         self.added: list[str] = []
         self.replaced: dict | None = None
@@ -129,16 +162,28 @@ class FakeSpotifyClient:
     async def search_track_uri_by_isrc(self, isrc, access_token) -> str | None:
         return self._isrc_map.get(isrc)
 
+    async def exchange_code(self, code) -> SpotifyTokens:
+        if self._exchange_raises:
+            raise self._exchange_raises
+        return SpotifyTokens(
+            access_token="tok",
+            refresh_token=self._exchange_refresh_token,
+            scope="playlist-modify-private",
+            expires_in=3600,
+        )
+
     async def refresh_access_token(self, refresh_token) -> SpotifyTokens:
         return SpotifyTokens(
             access_token="user-tok", refresh_token=None, scope=None, expires_in=3600
         )
 
     async def get_current_user_id(self, access_token) -> str:
+        if self._get_user_id_raises:
+            raise self._get_user_id_raises
         return "spuser"
 
     async def create_playlist(self, access_token, name, description, *, public=False):
-        self.created = {"name": name, "description": description}
+        self.created = {"name": name, "description": description, "public": public}
         return "pl1", "https://open.spotify.com/playlist/pl1"
 
     async def add_tracks(self, access_token, playlist_id, uris) -> None:
@@ -155,9 +200,13 @@ async def fake_spotify() -> FakeSpotifyClient:
     return FakeSpotifyClient(isrc_map={"I-MATCH": "spotify:track:matched"})
 
 
-def _client_with_spotify(session_factory, fake) -> AsyncClient:
+def _client_with_spotify(
+    session_factory, fake, *, playlist_account_id: uuid.UUID | None = _SHARED_ACCOUNT_ID
+) -> AsyncClient:
     """An ASGI client whose Spotify dependency is `fake` (no network, no
-    dependence on the ambient .env)."""
+    dependence on the ambient .env). Defaults ``SPOTIFY_PLAYLIST_ACCOUNT_USER_ID``
+    to ``_SHARED_ACCOUNT_ID`` (MYS-169); pass ``playlist_account_id=None`` to
+    exercise the "not configured" path."""
     app = create_app()
 
     async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -167,12 +216,17 @@ def _client_with_spotify(session_factory, fake) -> AsyncClient:
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_spotify_client] = lambda: fake
     app.dependency_overrides[get_youtube_resolver] = lambda: None
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        spotify_playlist_account_user_id=str(playlist_account_id) if playlist_account_id else ""
+    )
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
 
 @pytest_asyncio.fixture
 async def spotify_client(session_factory, fake_spotify) -> AsyncGenerator[AsyncClient, None]:
-    """Local app wired to a *configured* fake Spotify client."""
+    """Local app wired to a *configured* fake Spotify client and the shared
+    playlist account id (its connection is seeded per-test via
+    :func:`_seed_shared_account`)."""
     async with _client_with_spotify(session_factory, fake_spotify) as ac:
         yield ac
 
@@ -198,10 +252,19 @@ async def test_status_unconfigured_and_disconnected(unconfigured_client, db_sess
 
 
 async def test_status_connected(spotify_client, db_session):
+    # MYS-169: "connected" reflects the shared account, not the caller's own
+    # (nonexistent) connection — any authenticated member sees the same status.
     user = await _seed_user(db_session, "u@example.com")
-    await _connect(db_session, user.id)
+    await _seed_shared_account(db_session)
     resp = await spotify_client.get("/api/v1/spotify/status", headers=_auth(user.id))
     assert resp.json() == {"configured": True, "connected": True}
+
+
+async def test_status_configured_but_shared_account_not_connected(spotify_client, db_session):
+    # App has credentials, but nobody has connected the shared account yet.
+    user = await _seed_user(db_session, "u@example.com")
+    resp = await spotify_client.get("/api/v1/spotify/status", headers=_auth(user.id))
+    assert resp.json() == {"configured": True, "connected": False}
 
 
 async def test_connect_503_when_unconfigured(unconfigured_client, db_session):
@@ -219,20 +282,91 @@ async def test_connect_returns_authorize_url(spotify_client, db_session):
 
 async def test_callback_redirects_to_home_not_root(spotify_client):
     # An unrecoverable (invalid) state falls back to /home — never / (which
-    # hard-redirects to /login and strands the returned user — MYS-92).
+    # hard-redirects to /login and strands the returned user — MYS-92). An
+    # invalid *state* is indistinguishable from tampering, so it keeps the
+    # generic "error" flag rather than one of the MYS-169 specific ones.
     resp = await spotify_client.get("/api/v1/spotify/callback?state=x&error=denied")
     assert resp.status_code == 303
     assert resp.headers["location"].endswith("/home?spotify=error")
 
 
-async def test_callback_returns_to_round_from_state(spotify_client, db_session):
-    # A valid state carrying return_to lands back on that round (MYS-93). Error
-    # path exercises the redirect without mocking the token exchange.
+async def test_callback_denied_returns_to_round_from_state(spotify_client, db_session):
+    # A valid state carrying return_to lands back on that round (MYS-93). User
+    # denying consent (or Spotify erroring before a code is issued) is the
+    # "denied" flag (MYS-169 — distinct from exchange_failed/api_error below).
     user = await _seed_user(db_session, "u@example.com")
     state = create_oauth_state(user.id, "spotify", "/rounds/r-123")
     resp = await spotify_client.get(f"/api/v1/spotify/callback?state={state}&error=denied")
     assert resp.status_code == 303
-    assert resp.headers["location"].endswith("/rounds/r-123?spotify=error")
+    assert resp.headers["location"].endswith("/rounds/r-123?spotify=denied")
+
+
+async def test_callback_no_code_is_denied(spotify_client, db_session):
+    user = await _seed_user(db_session, "u@example.com")
+    state = create_oauth_state(user.id, "spotify", "/rounds/r-123")
+    resp = await spotify_client.get(f"/api/v1/spotify/callback?state={state}")
+    assert resp.status_code == 303
+    assert resp.headers["location"].endswith("/rounds/r-123?spotify=denied")
+
+
+async def test_callback_exchange_failure_is_exchange_failed(session_factory, db_session):
+    from app.services.spotify_client import SpotifyApiError
+
+    fake = FakeSpotifyClient(exchange_raises=SpotifyApiError("spotify token request returned 500"))
+    user = await _seed_user(db_session, "u@example.com")
+    state = create_oauth_state(user.id, "spotify", "/rounds/r-123")
+
+    async with _client_with_spotify(session_factory, fake) as c:
+        resp = await c.get(f"/api/v1/spotify/callback?state={state}&code=abc")
+    assert resp.status_code == 303
+    assert resp.headers["location"].endswith("/rounds/r-123?spotify=exchange_failed")
+
+
+async def test_callback_missing_refresh_token_is_exchange_failed(session_factory, db_session):
+    # Exchange "succeeds" but Spotify returned no refresh_token — can't mint
+    # future access tokens, so this is treated the same as an exchange failure.
+    fake = FakeSpotifyClient(exchange_refresh_token=None)
+    user = await _seed_user(db_session, "u@example.com")
+    state = create_oauth_state(user.id, "spotify", "/rounds/r-123")
+
+    async with _client_with_spotify(session_factory, fake) as c:
+        resp = await c.get(f"/api/v1/spotify/callback?state={state}&code=abc")
+    assert resp.status_code == 303
+    assert resp.headers["location"].endswith("/rounds/r-123?spotify=exchange_failed")
+
+
+async def test_callback_get_user_id_failure_is_api_error(session_factory, db_session):
+    from app.services.spotify_client import SpotifyApiError
+
+    fake = FakeSpotifyClient(get_user_id_raises=SpotifyApiError("spotify /me returned 500"))
+    user = await _seed_user(db_session, "u@example.com")
+    state = create_oauth_state(user.id, "spotify", "/rounds/r-123")
+
+    async with _client_with_spotify(session_factory, fake) as c:
+        resp = await c.get(f"/api/v1/spotify/callback?state={state}&code=abc")
+    assert resp.status_code == 303
+    assert resp.headers["location"].endswith("/rounds/r-123?spotify=api_error")
+
+
+async def test_callback_success_persists_connection_and_redirects_connected(
+    session_factory, db_session
+):
+    from sqlalchemy import select
+
+    fake = FakeSpotifyClient()
+    user = await _seed_user(db_session, "u@example.com")
+    state = create_oauth_state(user.id, "spotify", "/rounds/r-123")
+
+    async with _client_with_spotify(session_factory, fake) as c:
+        resp = await c.get(f"/api/v1/spotify/callback?state={state}&code=abc")
+    assert resp.status_code == 303
+    assert resp.headers["location"].endswith("/rounds/r-123?spotify=connected")
+
+    connection = await db_session.scalar(
+        select(SpotifyConnection).where(SpotifyConnection.user_id == user.id)
+    )
+    assert connection is not None
+    assert connection.spotify_user_id == "spuser"
 
 
 # --------------------------------------------------------------------------- #
@@ -262,12 +396,40 @@ async def test_create_blocked_during_submission(client, db_session):
     assert resp.status_code == 409
 
 
-async def test_create_requires_connection(client, db_session):
+async def test_create_503_when_shared_account_not_configured(client, db_session):
+    # `client` (conftest's default fixture) has no SPOTIFY_PLAYLIST_ACCOUNT_USER_ID
+    # set — playlist generation is unavailable platform-wide, not just for this
+    # caller (MYS-169), so this is a 503, not a per-user "connect" 409.
     organizer = await _seed_user(db_session, "o@example.com")
     round_ = await _seed_round(db_session, organizer)
     resp = await client.post(_playlist_url(round_.id), headers=_auth(organizer.id))
-    assert resp.status_code == 409
-    assert "connect" in resp.json()["detail"].lower()
+    assert resp.status_code == 503
+
+
+async def test_create_503_when_shared_account_not_connected(spotify_client, db_session):
+    # Shared account id is configured, but nobody has connected it yet.
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    resp = await spotify_client.post(_playlist_url(round_.id), headers=_auth(organizer.id))
+    assert resp.status_code == 503
+
+
+async def test_create_any_member_may_trigger_not_just_organizer(
+    spotify_client, db_session, fake_spotify
+):
+    # MYS-169: playlist generation no longer requires the caller's own
+    # connection — any league member can trigger it against the shared account.
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    await _seed_shared_account(db_session)
+    member = await _seed_member(db_session, round_, "m@example.com")
+    await _add_submission(db_session, round_.id, member.id, isrc="I-MATCH", title="hit")
+
+    resp = await spotify_client.post(_playlist_url(round_.id), headers=_auth(member.id))
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["playlist_url"] == "https://open.spotify.com/playlist/pl1"
+    # Playlist is public — no API access needed for members to open the link.
+    assert fake_spotify.created["public"] is True
 
 
 # --------------------------------------------------------------------------- #
@@ -280,7 +442,7 @@ async def test_create_builds_playlist_and_reports_unmatched(
 ):
     organizer = await _seed_user(db_session, "o@example.com")
     round_ = await _seed_round(db_session, organizer)
-    await _connect(db_session, organizer.id)
+    await _seed_shared_account(db_session)
     other = await _seed_member(db_session, round_, "m2@example.com")
     # One track resolves via the fake's isrc_map; one does not.
     await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
@@ -302,7 +464,7 @@ async def test_create_builds_playlist_and_reports_unmatched(
 async def test_create_caches_resolved_uri_on_submission(spotify_client, db_session, fake_spotify):
     organizer = await _seed_user(db_session, "o@example.com")
     round_ = await _seed_round(db_session, organizer)
-    await _connect(db_session, organizer.id)
+    await _seed_shared_account(db_session)
     await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
 
     resp = await spotify_client.post(_playlist_url(round_.id), headers=_auth(organizer.id))
@@ -318,7 +480,7 @@ async def test_create_caches_resolved_uri_on_submission(spotify_client, db_sessi
 async def test_create_no_matches_returns_no_playlist(spotify_client, db_session, fake_spotify):
     organizer = await _seed_user(db_session, "o@example.com")
     round_ = await _seed_round(db_session, organizer)
-    await _connect(db_session, organizer.id)
+    await _seed_shared_account(db_session)
     await _add_submission(db_session, round_.id, organizer.id, isrc="I-MISS", title="miss")
 
     resp = await spotify_client.post(_playlist_url(round_.id), headers=_auth(organizer.id))
@@ -335,20 +497,20 @@ async def test_first_generate_stores_playlist_id_in_db(spotify_client, db_sessio
 
     organizer = await _seed_user(db_session, "o@example.com")
     round_ = await _seed_round(db_session, organizer)
-    await _connect(db_session, organizer.id)
+    await _seed_shared_account(db_session)
     await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
 
     resp = await spotify_client.post(_playlist_url(round_.id), headers=_auth(organizer.id))
     assert resp.status_code == 200, resp.text
 
-    organizer_id = organizer.id
     round_id = round_.id
     db_session.expire_all()
 
+    # Stored against the shared account, not the caller (MYS-169).
     stored = await db_session.scalar(
         select(SpotifyRoundPlaylist).where(
             SpotifyRoundPlaylist.round_id == round_id,
-            SpotifyRoundPlaylist.user_id == organizer_id,
+            SpotifyRoundPlaylist.user_id == _SHARED_ACCOUNT_ID,
         )
     )
     assert stored is not None
@@ -360,11 +522,13 @@ async def test_second_generate_reuses_stored_id_without_creating(session_factory
     fake = FakeSpotifyClient(isrc_map={"I-MATCH": "spotify:track:matched"})
     organizer = await _seed_user(db_session, "o@example.com")
     round_ = await _seed_round(db_session, organizer)
-    await _connect(db_session, organizer.id)
+    await _seed_shared_account(db_session)
     await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
-    # Seed the stored playlist ID directly.
+    # Seed the stored playlist ID directly, keyed to the shared account (MYS-169).
     db_session.add(
-        SpotifyRoundPlaylist(round_id=round_.id, user_id=organizer.id, playlist_id="pl-stored")
+        SpotifyRoundPlaylist(
+            round_id=round_.id, user_id=_SHARED_ACCOUNT_ID, playlist_id="pl-stored"
+        )
     )
     await db_session.commit()
 
@@ -388,14 +552,15 @@ async def test_generate_recreates_when_stored_playlist_deleted_in_spotify(
     )
     organizer = await _seed_user(db_session, "o@example.com")
     round_ = await _seed_round(db_session, organizer)
-    await _connect(db_session, organizer.id)
+    await _seed_shared_account(db_session)
     await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
     db_session.add(
-        SpotifyRoundPlaylist(round_id=round_.id, user_id=organizer.id, playlist_id="pl-deleted")
+        SpotifyRoundPlaylist(
+            round_id=round_.id, user_id=_SHARED_ACCOUNT_ID, playlist_id="pl-deleted"
+        )
     )
     await db_session.commit()
 
-    organizer_id = organizer.id
     round_id = round_.id
 
     async with _client_with_spotify(session_factory, fake) as c:
@@ -409,7 +574,7 @@ async def test_generate_recreates_when_stored_playlist_deleted_in_spotify(
     stored = await db_session.scalar(
         select(SpotifyRoundPlaylist).where(
             SpotifyRoundPlaylist.round_id == round_id,
-            SpotifyRoundPlaylist.user_id == organizer_id,
+            SpotifyRoundPlaylist.user_id == _SHARED_ACCOUNT_ID,
         )
     )
     # Stored ID updated to the new playlist, not the deleted one.
@@ -429,7 +594,7 @@ async def test_playlist_track_order_matches_seeded_shuffle(session_factory, db_s
 
     organizer = await _seed_user(db_session, "o@example.com")
     round_ = await _seed_round(db_session, organizer)
-    await _connect(db_session, organizer.id)
+    await _seed_shared_account(db_session)
     other = await _seed_member(db_session, round_, "m2@example.com")
 
     # Insert in reverse id order so insertion order ≠ id-sorted order.

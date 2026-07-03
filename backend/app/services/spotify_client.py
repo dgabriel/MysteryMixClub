@@ -36,6 +36,19 @@ import httpx
 
 from app.config import Settings, get_settings
 
+
+def _safe_body(response: httpx.Response, limit: int = 300) -> str:
+    """A truncated response body for exception messages/logs (MYS-169's callback
+    observability fix needs the Spotify error body, not just a status code).
+    Never raises — reading ``.text`` on a consumed/binary response degrades to
+    a placeholder rather than masking the original error."""
+    try:
+        text = response.text
+    except Exception:  # noqa: BLE001 — body is diagnostic only, never fatal
+        return "<unreadable body>"
+    return text[:limit]
+
+
 _ACCOUNTS_BASE = "https://accounts.spotify.com"
 _AUTHORIZE_URL = f"{_ACCOUNTS_BASE}/authorize"
 _TOKEN_URL = f"{_ACCOUNTS_BASE}/api/token"
@@ -186,9 +199,13 @@ class SpotifyClient:
 
         if response.status_code in (400, 401):
             # invalid_grant / revoked consent — the user must reconnect.
-            raise SpotifyAuthError("spotify authorization is invalid or expired")
+            raise SpotifyAuthError(
+                f"spotify authorization is invalid or expired: {_safe_body(response)}"
+            )
         if response.status_code != 200:
-            raise SpotifyApiError(f"spotify token request returned {response.status_code}")
+            raise SpotifyApiError(
+                f"spotify token request returned {response.status_code}: {_safe_body(response)}"
+            )
         return response.json()
 
     async def app_access_token(self) -> str | None:
@@ -431,11 +448,13 @@ class SpotifyClient:
     @staticmethod
     def _json_or_raise(response: httpx.Response, path: str) -> dict:
         if response.status_code == 401:
-            raise SpotifyAuthError("spotify access token rejected")
+            raise SpotifyAuthError(f"spotify access token rejected: {_safe_body(response)}")
         if response.status_code == 404:
             raise SpotifyNotFoundError(f"spotify {path} returned 404")
         if response.status_code not in (200, 201):
-            raise SpotifyApiError(f"spotify {path} returned {response.status_code}")
+            raise SpotifyApiError(
+                f"spotify {path} returned {response.status_code}: {_safe_body(response)}"
+            )
         try:
             return response.json()
         except ValueError:

@@ -499,8 +499,9 @@ export function RoundDetailRoute() {
         ) : null}
 
         {/* Prominent, phase-appropriate deadline chip (MYS-161) — viewer-local
-            time. Renders nothing for legacy rounds with no deadline set. */}
-        <DeadlineChip round={round} className="mt-4" />
+            time plus a live countdown. Renders nothing for legacy rounds with
+            no deadline set. */}
+        <DeadlineChip round={round} className="mt-4" showCountdown />
 
         {isOrganizer ? (
           <>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDeadline } from "./deadline";
+import { formatCountdown, formatDeadline } from "./deadline";
 import type { Round } from "../services/api";
 
 // A full Round with only the fields formatDeadline reads meaningfully; overrides
@@ -84,5 +84,119 @@ describe("formatDeadline", () => {
     expect(
       formatDeadline(roundWith({ state: "open_submission", submission_deadline: "not-a-date" })),
     ).toBeNull();
+  });
+});
+
+describe("formatCountdown", () => {
+  // Fixed reference "now" — offsets below are computed from this instant so the
+  // expected d/h/m breakdown is exact and not subject to wall-clock flakiness.
+  // Deliberately earlier than both JULY and DECEMBER so those constants remain
+  // usable as future deadlines in the phase-selection test below.
+  const NOW = new Date("2026-07-01T12:00:00Z");
+
+  function offsetFrom(now: Date, ms: number): string {
+    return new Date(now.getTime() + ms).toISOString();
+  }
+
+  it("multi-day remaining → \"Xd Yh remaining\"", () => {
+    const deadline = offsetFrom(NOW, (2 * 24 + 14) * 60 * 60 * 1000); // 2d 14h out
+    const out = formatCountdown(
+      roundWith({ state: "open_submission", submission_deadline: deadline }),
+      NOW,
+    );
+    expect(out).toBe("2d 14h remaining");
+  });
+
+  it("under-a-day remaining → \"Xh Ym remaining\", not \"0d Xh\"", () => {
+    const deadline = offsetFrom(NOW, (3 * 60 + 12) * 60 * 1000); // 3h 12m out
+    const out = formatCountdown(
+      roundWith({ state: "open_submission", submission_deadline: deadline }),
+      NOW,
+    );
+    expect(out).toBe("3h 12m remaining");
+    expect(out).not.toMatch(/^0d/);
+  });
+
+  it("deadline exactly now → \"closing soon…\"", () => {
+    const out = formatCountdown(
+      roundWith({ state: "open_submission", submission_deadline: NOW.toISOString() }),
+      NOW,
+    );
+    expect(out).toBe("closing soon…");
+  });
+
+  it("deadline already passed → \"closing soon…\"", () => {
+    const deadline = offsetFrom(NOW, -60_000); // 1 minute in the past
+    const out = formatCountdown(
+      roundWith({ state: "open_submission", submission_deadline: deadline }),
+      NOW,
+    );
+    expect(out).toBe("closing soon…");
+  });
+
+  it("pending → null even when deadlines are set", () => {
+    expect(
+      formatCountdown(
+        roundWith({ state: "pending", submission_deadline: JULY, voting_deadline: DECEMBER }),
+        NOW,
+      ),
+    ).toBeNull();
+  });
+
+  it("closed → null even when deadlines are set", () => {
+    expect(
+      formatCountdown(
+        roundWith({ state: "closed", submission_deadline: JULY, voting_deadline: DECEMBER }),
+        NOW,
+      ),
+    ).toBeNull();
+  });
+
+  it("open_submission with a null submission deadline → null (legacy round)", () => {
+    expect(
+      formatCountdown(roundWith({ state: "open_submission", submission_deadline: null }), NOW),
+    ).toBeNull();
+  });
+
+  it("open_voting with a null voting deadline → null (legacy round)", () => {
+    expect(
+      formatCountdown(roundWith({ state: "open_voting", voting_deadline: null }), NOW),
+    ).toBeNull();
+  });
+
+  it("invalid date string → null", () => {
+    expect(
+      formatCountdown(
+        roundWith({ state: "open_submission", submission_deadline: "not-a-date" }),
+        NOW,
+      ),
+    ).toBeNull();
+  });
+
+  it("open_submission → uses the submission deadline, not voting", () => {
+    // JULY is ~ a day+ after NOW; DECEMBER is far in the future — proves the
+    // submission field (JULY) drives the countdown, not voting (DECEMBER).
+    const out = formatCountdown(
+      roundWith({ state: "open_submission", submission_deadline: JULY, voting_deadline: DECEMBER }),
+      NOW,
+    );
+    const outIfVoting = formatCountdown(
+      roundWith({ state: "open_voting", submission_deadline: JULY, voting_deadline: DECEMBER }),
+      NOW,
+    );
+    expect(out).not.toBe(outIfVoting);
+  });
+
+  it("open_voting → uses the voting deadline, not submission", () => {
+    const deadline = offsetFrom(NOW, 5 * 60 * 60 * 1000); // 5h out
+    const out = formatCountdown(
+      roundWith({
+        state: "open_voting",
+        submission_deadline: offsetFrom(NOW, 60 * 60 * 1000), // 1h out — should be ignored
+        voting_deadline: deadline,
+      }),
+      NOW,
+    );
+    expect(out).toBe("5h 0m remaining");
   });
 });

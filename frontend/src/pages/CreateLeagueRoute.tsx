@@ -21,6 +21,8 @@ export function CreateLeagueRoute() {
     votes_per_player: number;
     songs_per_submission: number;
     default_vibe_mode: boolean;
+    submission_window_hours: number;
+    voting_window_hours: number;
   }) {
     setSubmitting(true);
     setError(null);

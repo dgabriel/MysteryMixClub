@@ -14,6 +14,12 @@ import { ConcentricRings } from "../components/ConcentricRings";
 import { CrownIcon } from "../components/CrownIcon";
 import { Confetti } from "../components/Confetti";
 import { DeadlineChip } from "../components/DeadlineChip";
+import { DeadlineWindowField } from "../components/DeadlineWindowField";
+import {
+  daysAndHoursToTotal,
+  hoursToDaysAndHours,
+  validateWindowHours,
+} from "../utils/deadlineWindow";
 
 const ROUND_STATE_LABEL: Record<RoundState, string> = {
   pending: "upcoming",
@@ -52,6 +58,8 @@ type LeagueHomeScreenProps = {
     name?: string;
     description?: string | null;
     total_rounds?: number;
+    submission_window_hours?: number;
+    voting_window_hours?: number;
   }) => void;
   updating: boolean;
   updateError?: string | null;
@@ -765,17 +773,41 @@ function OrganizerEdit({
   const [name, setName] = useState(league.name);
   const [description, setDescription] = useState(league.description ?? "");
   const [totalRounds, setTotalRounds] = useState(String(league.total_rounds));
+  const initialSubmissionWindow = hoursToDaysAndHours(league.submission_window_hours);
+  const initialVotingWindow = hoursToDaysAndHours(league.voting_window_hours);
+  const [submissionWindowDays, setSubmissionWindowDays] = useState(
+    String(initialSubmissionWindow.days),
+  );
+  const [submissionWindowHours, setSubmissionWindowHours] = useState(
+    String(initialSubmissionWindow.hours),
+  );
+  const [votingWindowDays, setVotingWindowDays] = useState(String(initialVotingWindow.days));
+  const [votingWindowHours, setVotingWindowHours] = useState(String(initialVotingWindow.hours));
+  const [windowError, setWindowError] = useState<string | null>(null);
 
   function openForm() {
     setName(league.name);
     setDescription(league.description ?? "");
     setTotalRounds(String(league.total_rounds));
+    const submissionWindow = hoursToDaysAndHours(league.submission_window_hours);
+    setSubmissionWindowDays(String(submissionWindow.days));
+    setSubmissionWindowHours(String(submissionWindow.hours));
+    const votingWindow = hoursToDaysAndHours(league.voting_window_hours);
+    setVotingWindowDays(String(votingWindow.days));
+    setVotingWindowHours(String(votingWindow.hours));
+    setWindowError(null);
     setOpen(true);
   }
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    const input: { name?: string; description?: string | null; total_rounds?: number } = {};
+    const input: {
+      name?: string;
+      description?: string | null;
+      total_rounds?: number;
+      submission_window_hours?: number;
+      voting_window_hours?: number;
+    } = {};
 
     const trimmedName = name.trim();
     if (trimmedName && trimmedName !== league.name) input.name = trimmedName;
@@ -789,6 +821,29 @@ function OrganizerEdit({
     const rounds = Number(totalRounds);
     if (Number.isFinite(rounds) && rounds >= 1 && rounds !== league.total_rounds) {
       input.total_rounds = rounds;
+    }
+
+    const submissionHours = daysAndHoursToTotal(
+      Number(submissionWindowDays),
+      Number(submissionWindowHours),
+    );
+    const votingHours = daysAndHoursToTotal(Number(votingWindowDays), Number(votingWindowHours));
+    const submissionWindowValidationError = validateWindowHours(submissionHours);
+    if (submissionWindowValidationError) {
+      setWindowError(`submission ${submissionWindowValidationError}`);
+      return;
+    }
+    const votingWindowValidationError = validateWindowHours(votingHours);
+    if (votingWindowValidationError) {
+      setWindowError(`voting ${votingWindowValidationError}`);
+      return;
+    }
+    setWindowError(null);
+    if (submissionHours !== league.submission_window_hours) {
+      input.submission_window_hours = submissionHours;
+    }
+    if (votingHours !== league.voting_window_hours) {
+      input.voting_window_hours = votingHours;
     }
 
     onUpdateLeague(input);
@@ -832,6 +887,34 @@ function OrganizerEdit({
         onChange={(e) => setTotalRounds(e.target.value)}
         disabled={updating}
       />
+      <DeadlineWindowField
+        idPrefix="edit-submission-window"
+        label="submission window"
+        days={submissionWindowDays}
+        hours={submissionWindowHours}
+        onDaysChange={setSubmissionWindowDays}
+        onHoursChange={setSubmissionWindowHours}
+        disabled={updating}
+      />
+      <DeadlineWindowField
+        idPrefix="edit-voting-window"
+        label="voting window"
+        days={votingWindowDays}
+        hours={votingWindowHours}
+        onDaysChange={setVotingWindowDays}
+        onHoursChange={setVotingWindowHours}
+        disabled={updating}
+      />
+      <p className="font-mono text-[11px] font-light text-muted">
+        this only applies going forward — a round already collecting submissions or
+        votes keeps its current deadline. it takes effect the next time a round (or
+        its next phase) opens.
+      </p>
+      {windowError ? (
+        <p role="alert" className="font-mono text-[11px] text-ink">
+          {windowError}
+        </p>
+      ) : null}
       {updateError ? (
         <p role="alert" className="font-mono text-[11px] text-ink">
           {updateError}

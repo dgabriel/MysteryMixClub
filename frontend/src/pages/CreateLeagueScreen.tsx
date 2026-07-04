@@ -2,6 +2,8 @@ import { type FormEvent, useState } from "react";
 import { Button } from "../components/Button";
 import { TextField } from "../components/TextField";
 import { ConcentricRings } from "../components/ConcentricRings";
+import { DeadlineWindowField } from "../components/DeadlineWindowField";
+import { daysAndHoursToTotal, validateWindowHours } from "../utils/deadlineWindow";
 
 type CreateLeagueInput = {
   name: string;
@@ -10,7 +12,13 @@ type CreateLeagueInput = {
   votes_per_player: number;
   songs_per_submission: number;
   default_vibe_mode: boolean;
+  submission_window_hours: number;
+  voting_window_hours: number;
 };
+
+// Default window: 3 days 0 hours (72h) each, matching the API default.
+const DEFAULT_WINDOW_DAYS = "3";
+const DEFAULT_WINDOW_HOURS = "0";
 
 type CreateLeagueScreenProps = {
   onSubmit: (input: CreateLeagueInput) => void;
@@ -31,6 +39,10 @@ export function CreateLeagueScreen({
   const [votesPerPlayer, setVotesPerPlayer] = useState("3");
   const [songsPerSubmission, setSongsPerSubmission] = useState("1");
   const [defaultVibeMode, setDefaultVibeMode] = useState(false);
+  const [submissionWindowDays, setSubmissionWindowDays] = useState(DEFAULT_WINDOW_DAYS);
+  const [submissionWindowHours, setSubmissionWindowHours] = useState(DEFAULT_WINDOW_HOURS);
+  const [votingWindowDays, setVotingWindowDays] = useState(DEFAULT_WINDOW_DAYS);
+  const [votingWindowHours, setVotingWindowHours] = useState(DEFAULT_WINDOW_HOURS);
   const [guard, setGuard] = useState<string | null>(null);
 
   function handleSubmit(e: FormEvent) {
@@ -39,6 +51,11 @@ export function CreateLeagueScreen({
     const rounds = Number(totalRounds);
     const votes = Number(votesPerPlayer);
     const songs = Number(songsPerSubmission);
+    const submissionHours = daysAndHoursToTotal(
+      Number(submissionWindowDays),
+      Number(submissionWindowHours),
+    );
+    const votingHours = daysAndHoursToTotal(Number(votingWindowDays), Number(votingWindowHours));
 
     if (!trimmedName) {
       setGuard("a league needs a name.");
@@ -56,6 +73,16 @@ export function CreateLeagueScreen({
       setGuard("songs per submission must be between 1 and 5.");
       return;
     }
+    const submissionWindowError = validateWindowHours(submissionHours);
+    if (submissionWindowError) {
+      setGuard(`submission ${submissionWindowError}`);
+      return;
+    }
+    const votingWindowError = validateWindowHours(votingHours);
+    if (votingWindowError) {
+      setGuard(`voting ${votingWindowError}`);
+      return;
+    }
 
     setGuard(null);
     const trimmedDescription = description.trim();
@@ -66,6 +93,8 @@ export function CreateLeagueScreen({
       votes_per_player: votes,
       songs_per_submission: songs,
       default_vibe_mode: defaultVibeMode,
+      submission_window_hours: submissionHours,
+      voting_window_hours: votingHours,
     });
   }
 
@@ -138,6 +167,30 @@ export function CreateLeagueScreen({
             />
             <p className="mt-2 font-mono text-[11px] font-light text-muted">
               how many songs each player can submit per round — 1 to 5.
+            </p>
+          </div>
+
+          <div className="space-y-6">
+            <DeadlineWindowField
+              idPrefix="submission-window"
+              label="submission window"
+              days={submissionWindowDays}
+              hours={submissionWindowHours}
+              onDaysChange={setSubmissionWindowDays}
+              onHoursChange={setSubmissionWindowHours}
+              disabled={submitting}
+            />
+            <DeadlineWindowField
+              idPrefix="voting-window"
+              label="voting window"
+              days={votingWindowDays}
+              hours={votingWindowHours}
+              onDaysChange={setVotingWindowDays}
+              onHoursChange={setVotingWindowHours}
+              disabled={submitting}
+            />
+            <p className="font-mono text-[11px] font-light text-muted">
+              rounds also close early if everyone finishes.
             </p>
           </div>
 

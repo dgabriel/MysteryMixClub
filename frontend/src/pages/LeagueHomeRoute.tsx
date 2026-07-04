@@ -202,6 +202,8 @@ export function LeagueHomeRoute() {
     name?: string;
     description?: string | null;
     total_rounds?: number;
+    submission_window_hours?: number;
+    voting_window_hours?: number;
   }) {
     if (!id) return;
     setUpdating(true);
@@ -270,6 +272,8 @@ export function LeagueHomeRoute() {
     current_round: 0,
     state: "active",
     default_vibe_mode: false,
+    submission_window_hours: 72,
+    voting_window_hours: 72,
     created_at: "",
     completed_at: null,
   };

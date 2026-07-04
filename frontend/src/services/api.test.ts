@@ -53,6 +53,8 @@ const sampleLeague: League = {
   current_round: 0,
   state: "active",
   default_vibe_mode: false,
+  submission_window_hours: 72,
+  voting_window_hours: 72,
   created_at: "2026-06-01T00:00:00Z",
   completed_at: null,
 };

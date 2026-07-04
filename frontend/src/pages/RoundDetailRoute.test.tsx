@@ -705,6 +705,154 @@ describe("RoundDetailRoute", () => {
     });
   });
 
+  describe("reopening submissions — organizer rollback (MYS-168)", () => {
+    beforeEach(() => {
+      mockGetRound.mockResolvedValue(round({ state: "open_voting" }));
+    });
+
+    it("shows both 'close round' and 'reopen submissions' buttons while open_voting", async () => {
+      renderRound();
+      expect(await screen.findByRole("button", { name: "close round" })).toBeInTheDocument();
+      expect(
+        await screen.findByRole("button", { name: "reopen submissions" }),
+      ).toBeInTheDocument();
+    });
+
+    it("clicking 'reopen submissions' shows a confirm panel instead of calling updateRound immediately", async () => {
+      const user = userEvent.setup();
+      renderRound();
+      const reopenBtn = await screen.findByRole("button", { name: "reopen submissions" });
+      await user.click(reopenBtn);
+
+      expect(mockUpdateRound).not.toHaveBeenCalled();
+      expect(
+        await screen.findByRole("button", { name: "yes, reopen submissions" }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "cancel" })).toBeInTheDocument();
+      // The plain two-button row is gone while confirming.
+      expect(screen.queryByRole("button", { name: "reopen submissions" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "close round" })).not.toBeInTheDocument();
+    });
+
+    it("confirm copy mentions the vote count (pluralized) when votes have been cast", async () => {
+      mockGetVoteCounts.mockResolvedValue({
+        round_id: "r1",
+        entries: [
+          { submission_id: "p1", title: "Debaser", artist: "Pixies", vote_count: 2 },
+          { submission_id: "p2", title: "Bad Guy", artist: "Billie Eilish", vote_count: 1 },
+        ],
+      });
+      const user = userEvent.setup();
+      renderRound();
+      await user.click(await screen.findByRole("button", { name: "reopen submissions" }));
+
+      expect(
+        await screen.findByText(
+          "this reopens submissions with a fresh window and discards 3 votes already cast. it can't be undone.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("confirm copy uses singular 'vote' for exactly one cast vote", async () => {
+      mockGetVoteCounts.mockResolvedValue({
+        round_id: "r1",
+        entries: [{ submission_id: "p1", title: "Debaser", artist: "Pixies", vote_count: 1 }],
+      });
+      const user = userEvent.setup();
+      renderRound();
+      await user.click(await screen.findByRole("button", { name: "reopen submissions" }));
+
+      expect(
+        await screen.findByText(
+          "this reopens submissions with a fresh window and discards 1 vote already cast. it can't be undone.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("confirm copy omits the vote count when no votes have been cast", async () => {
+      // beforeEach default mockGetVoteCounts resolves to an empty entries list.
+      const user = userEvent.setup();
+      renderRound();
+      await user.click(await screen.findByRole("button", { name: "reopen submissions" }));
+
+      expect(
+        await screen.findByText(
+          "this reopens submissions with a fresh window. it can't be undone.",
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/discards/i)).not.toBeInTheDocument();
+    });
+
+    it("clicking 'cancel' dismisses the confirm panel without calling updateRound", async () => {
+      const user = userEvent.setup();
+      renderRound();
+      await user.click(await screen.findByRole("button", { name: "reopen submissions" }));
+      await user.click(await screen.findByRole("button", { name: "cancel" }));
+
+      expect(mockUpdateRound).not.toHaveBeenCalled();
+      // Back to the plain two-button row; the confirm panel's controls are gone.
+      expect(await screen.findByRole("button", { name: "reopen submissions" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "close round" })).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "yes, reopen submissions" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("clicking 'yes, reopen submissions' calls updateRound(roundId, { state: 'open_submission' })", async () => {
+      const user = userEvent.setup();
+      renderRound();
+      await user.click(await screen.findByRole("button", { name: "reopen submissions" }));
+      await user.click(await screen.findByRole("button", { name: "yes, reopen submissions" }));
+
+      expect(mockUpdateRound).toHaveBeenCalledWith("r1", { state: "open_submission" });
+    });
+
+    it("the two confirm flows don't interfere: canceling 'reopen submissions' returns to the plain row, not a broken close-round state", async () => {
+      const user = userEvent.setup();
+      renderRound();
+      await user.click(await screen.findByRole("button", { name: "reopen submissions" }));
+      await user.click(await screen.findByRole("button", { name: "cancel" }));
+
+      // Plain two-button row is restored; "close round" still opens ITS OWN
+      // confirm panel correctly (not a leftover/broken intermediate state).
+      await user.click(await screen.findByRole("button", { name: "close round" }));
+      expect(await screen.findByRole("button", { name: "yes, close round" })).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "yes, reopen submissions" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("the two confirm flows don't interfere: canceling 'close round' returns to the plain row, not a broken reopen state", async () => {
+      const user = userEvent.setup();
+      renderRound();
+      await user.click(await screen.findByRole("button", { name: "close round" }));
+      await user.click(await screen.findByRole("button", { name: "cancel" }));
+
+      await user.click(await screen.findByRole("button", { name: "reopen submissions" }));
+      expect(
+        await screen.findByRole("button", { name: "yes, reopen submissions" }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "yes, close round" })).not.toBeInTheDocument();
+    });
+  });
+
+  it("'reopen submissions' is never rendered while the round is pending", async () => {
+    mockGetRound.mockResolvedValue(round({ state: "pending" }));
+    renderRound();
+    await screen.findByRole("button", { name: "open round" });
+    expect(
+      screen.queryByRole("button", { name: "reopen submissions" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("'reopen submissions' is never rendered while the round is open_submission", async () => {
+    renderRound(); // default round() state is open_submission
+    await screen.findByRole("button", { name: "open voting" });
+    expect(
+      screen.queryByRole("button", { name: "reopen submissions" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("open_voting: renders the playlist with platform links", async () => {
     mockGetRound.mockResolvedValue(round({ state: "open_voting" }));
     const entries: PlaylistEntry[] = [

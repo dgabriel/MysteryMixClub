@@ -24,7 +24,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel, Field, StringConstraints
-from sqlalchemy import exists, func, select
+from sqlalchemy import delete, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.leagues import _load_league_as_member, _load_league_as_organizer
@@ -281,6 +281,41 @@ async def advance_round_state(
     return events
 
 
+async def rollback_round_to_submission(round_: Round, league: League, db: AsyncSession) -> None:
+    """Organizer-only reverse transition, ``open_voting -> open_submission``
+    (MYS-168) — the single sanctioned backward step in an otherwise forward-only
+    lifecycle. Born from a live incident where a round advanced to voting by
+    accident and had to be rolled back by hand-run SQL; this reproduces exactly
+    that fix as a supported action.
+
+    Unlike ``advance_round_state``, every stamp here is an unconditional
+    overwrite, not a no-clobber guard — the round already has a stale
+    ``submission_deadline`` from its first pass through ``open_submission``, and
+    a rollback must replace it with a fresh full window, not preserve it.
+
+    Caller must already hold the row lock (``with_for_update``) and have
+    re-verified ``round_.state == "open_voting"`` under that lock — this
+    function only applies the transition, it does not itself guard concurrency.
+    """
+    round_.state = "open_submission"
+    round_.submission_opened_at = func.now()
+    round_.submission_deadline = datetime.now(timezone.utc) + timedelta(
+        hours=league.submission_window_hours
+    )
+    # Re-stamped when voting genuinely reopens; the no-clobber guard in
+    # advance_round_state requires this to be NULL.
+    round_.voting_deadline = None
+    # Warnings re-arm for the new window/phase.
+    round_.submission_warning_sent_at = None
+    round_.voting_warning_sent_at = None
+    round_.empty_round_notice_sent_at = None
+    # The ballot set may change under a reopened submission phase; stale votes
+    # would poison results and could insta-satisfy the voting quorum on the
+    # next pass. Notes are kept — they're appreciation, remain state-gated, and
+    # resurface at close.
+    await db.execute(delete(Vote).where(Vote.round_id == round_.id))
+
+
 async def submission_quorum_met(round_: Round, db: AsyncSession) -> bool:
     """True iff every member active when submissions opened has at least one song
     in the round (MYS-69 auto-advance).
@@ -525,15 +560,20 @@ async def update_round(
         setattr(round_, field, value)
 
     if new_state is not None and new_state != round_.state:
-        if new_state != _NEXT_STATE.get(round_.state):
+        # The single sanctioned backward step (MYS-168): open_voting ->
+        # open_submission. Everything else stays forward-only.
+        is_rollback = round_.state == "open_voting" and new_state == "open_submission"
+        if not is_rollback and new_state != _NEXT_STATE.get(round_.state):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"cannot move round from {round_.state} to {new_state}",
             )
         # Opening a pending round: only one round may be active per league. This
         # guard is the organizer's manual step only; auto-advance never makes the
-        # pending->open_submission move, so it lives here, not in the helper.
-        if new_state == "open_submission":
+        # pending->open_submission move, so it lives here, not in the helper. A
+        # rollback is exempt — the round is already the league's active round,
+        # so there is by definition no *other* active round to conflict with.
+        if new_state == "open_submission" and not is_rollback:
             active = await db.scalar(
                 select(Round)
                 .where(
@@ -548,14 +588,35 @@ async def update_round(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="another round is already active",
                 )
-        events = await advance_round_state(round_, league, new_state, db)
-        # All-vibing edge: if voting just opened but every participant is vibing,
-        # nobody will ever call cast_votes, so voting quorum is immediately met.
-        # Close in the same transaction and suppress the voting_open notification
-        # (nobody could vote in a round that closes in the same breath).
-        if round_.state == "open_voting" and await voting_quorum_met(round_, db):
-            events = [e for e in events if e != (round_, "voting_open")]
-            events += await advance_round_state(round_, league, "closed", db)
+        if is_rollback:
+            # Serialize with the deadline force-advance job and the vote-cast
+            # auto-close (MYS-145/MYS-69) under the same FOR UPDATE discipline,
+            # then re-verify under the lock — the round may have just been
+            # force-closed or auto-closed concurrently.
+            locked = await db.scalar(
+                select(Round)
+                .where(Round.id == round_.id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            if locked is None or locked.state != "open_voting":
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="round is no longer open for voting",
+                )
+            await rollback_round_to_submission(round_, league, db)
+            # Silent (product decision 2026-07-04): the organizer tells the
+            # league directly, matching the incident's actual behavior — no
+            # "submissions reopened" email. `events` stays empty.
+        else:
+            events = await advance_round_state(round_, league, new_state, db)
+            # All-vibing edge: if voting just opened but every participant is vibing,
+            # nobody will ever call cast_votes, so voting quorum is immediately met.
+            # Close in the same transaction and suppress the voting_open notification
+            # (nobody could vote in a round that closes in the same breath).
+            if round_.state == "open_voting" and await voting_quorum_met(round_, db):
+                events = [e for e in events if e != (round_, "voting_open")]
+                events += await advance_round_state(round_, league, "closed", db)
 
     # Build + schedule notifications before commit, while the ORM objects are
     # loaded (avoids post-commit lazy-loads in async — the expire_on_commit

@@ -59,6 +59,8 @@ function leagueWith(overrides: Partial<League> = {}): League {
     current_round: 6,
     state: "complete",
     default_vibe_mode: false,
+    submission_window_hours: 72,
+    voting_window_hours: 72,
     created_at: "2026-01-01T00:00:00Z",
     completed_at: "2026-02-01T00:00:00Z",
     ...overrides,

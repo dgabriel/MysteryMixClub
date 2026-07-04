@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { LeagueHomeRoute } from "./LeagueHomeRoute";
@@ -69,6 +69,8 @@ function leagueWith(overrides: Partial<League> = {}): League {
     state: "active",
     created_at: "2026-01-01T00:00:00Z",
     default_vibe_mode: false,
+    submission_window_hours: 72,
+    voting_window_hours: 72,
     completed_at: null,
     ...overrides,
   };
@@ -283,6 +285,84 @@ describe("LeagueHomeRoute", () => {
       expect.objectContaining({ name: "Renamed League" }),
     );
     expect(await screen.findByText(/name taken/i)).toBeInTheDocument();
+  });
+
+  // --- Deadline windows (MYS-160). The submission/voting window fields share
+  // the "days"/"hours" labels between the two DeadlineWindowFields, so we look
+  // them up by id rather than label text. ---
+
+  it("deadline windows: opening the edit form pre-fills submission/voting windows from the league's current hours", async () => {
+    mockGetLeague.mockResolvedValue(
+      leagueWith({ submission_window_hours: 102, voting_window_hours: 72 }),
+    );
+    const user = userEvent.setup();
+
+    const { container } = renderLeague();
+    await screen.findByText("Friday Mixtape");
+
+    await user.click(screen.getByRole("button", { name: /^edit$/i }));
+
+    expect((container.querySelector("#edit-submission-window-days") as HTMLInputElement).value).toBe(
+      "4",
+    );
+    expect(
+      (container.querySelector("#edit-submission-window-hours") as HTMLInputElement).value,
+    ).toBe("6");
+    expect((container.querySelector("#edit-voting-window-days") as HTMLInputElement).value).toBe(
+      "3",
+    );
+    expect((container.querySelector("#edit-voting-window-hours") as HTMLInputElement).value).toBe(
+      "0",
+    );
+  });
+
+  it("deadline windows: changing one window and saving includes only the changed window's hours (diff-based)", async () => {
+    mockGetLeague.mockResolvedValue(
+      leagueWith({ submission_window_hours: 72, voting_window_hours: 72 }),
+    );
+    mockUpdateLeague.mockResolvedValue(
+      leagueWith({ submission_window_hours: 96, voting_window_hours: 72 }),
+    );
+    const user = userEvent.setup();
+
+    const { container } = renderLeague();
+    await screen.findByText("Friday Mixtape");
+
+    await user.click(screen.getByRole("button", { name: /^edit$/i }));
+    fireEvent.change(container.querySelector("#edit-submission-window-days") as HTMLInputElement, {
+      target: { value: "4" },
+    });
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    expect(mockUpdateLeague).toHaveBeenCalledTimes(1);
+    const [, input] = mockUpdateLeague.mock.calls[0];
+    expect(input).toMatchObject({ submission_window_hours: 96 });
+    expect(input).not.toHaveProperty("voting_window_hours");
+  });
+
+  it("deadline windows: an out-of-range window blocks the entire save (name change withheld too) and shows windowError", async () => {
+    mockGetLeague.mockResolvedValue(
+      leagueWith({ submission_window_hours: 72, voting_window_hours: 72 }),
+    );
+    const user = userEvent.setup();
+
+    const { container } = renderLeague();
+    await screen.findByText("Friday Mixtape");
+
+    await user.click(screen.getByRole("button", { name: /^edit$/i }));
+    const nameInput = screen.getByLabelText(/^name$/i);
+    await user.clear(nameInput);
+    await user.type(nameInput, "Renamed League");
+    fireEvent.change(container.querySelector("#edit-submission-window-days") as HTMLInputElement, {
+      target: { value: "0" },
+    });
+    fireEvent.change(container.querySelector("#edit-submission-window-hours") as HTMLInputElement, {
+      target: { value: "2" },
+    });
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    expect(await screen.findByText(/submission windows need at least 4 hours\./i)).toBeInTheDocument();
+    expect(mockUpdateLeague).not.toHaveBeenCalled();
   });
 
   it("organizer remove: clicking remove on a non-organizer calls removeMember", async () => {

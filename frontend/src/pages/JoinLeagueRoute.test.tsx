@@ -45,6 +45,8 @@ function leagueWith(id: string): League {
     state: "active",
     created_at: "2026-01-01T00:00:00Z",
     default_vibe_mode: false,
+    submission_window_hours: 72,
+    voting_window_hours: 72,
     completed_at: null,
   };
 }

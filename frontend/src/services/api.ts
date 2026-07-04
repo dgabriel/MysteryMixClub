@@ -270,6 +270,10 @@ export type League = {
   /** Admin-set default participation mode for the league (MYS-112). A member's
    *  own setting lives on their membership (getMyMembership), not here. */
   default_vibe_mode: boolean;
+  /** Hour-granular deadline windows stamped onto each round when it opens
+   *  (MYS-158/160). Bounds: 4–168 hours (1 week). */
+  submission_window_hours: number;
+  voting_window_hours: number;
   created_at: string;
   completed_at: string | null;
 };
@@ -316,6 +320,8 @@ export async function createLeague(input: {
   songs_per_submission?: number;
   description?: string;
   default_vibe_mode?: boolean;
+  submission_window_hours?: number;
+  voting_window_hours?: number;
 }): Promise<League> {
   const res = await authenticatedRequest("/api/v1/leagues", {
     method: "POST",
@@ -374,6 +380,8 @@ export async function updateLeague(
     description?: string | null;
     total_rounds?: number;
     default_vibe_mode?: boolean;
+    submission_window_hours?: number;
+    voting_window_hours?: number;
   },
 ): Promise<League> {
   const res = await authenticatedRequest(`/api/v1/leagues/${id}`, {

@@ -508,6 +508,7 @@ export function RoundDetailRoute() {
               state={round.state}
               advancing={advancing}
               onAdvance={handleAdvance}
+              isFinalRound={!!league && round.round_number >= league.total_rounds}
             />
             <EditRoundForm
               round={round}
@@ -603,11 +604,18 @@ function OrganizerControls({
   state,
   advancing,
   onAdvance,
+  isFinalRound,
 }: {
   state: RoundState;
   advancing: boolean;
   onAdvance: (next: RoundState) => void;
+  isFinalRound: boolean;
 }) {
+  // Closing is the one forward transition that cascades and can't be undone
+  // in-app (MYS-170) — gated behind an explicit second step. "open round" /
+  // "open voting" stay one-click; they're lower-risk and easy to reason about.
+  const [confirmingClose, setConfirmingClose] = useState(false);
+
   if (state === "closed") return null;
   const next: RoundState =
     state === "pending"
@@ -622,9 +630,39 @@ function OrganizerControls({
         ? "open voting"
         : "close round";
   const busyLabel = next === "closed" ? "closing…" : "opening…";
+
+  if (next === "closed" && confirmingClose) {
+    return (
+      <div className="mt-6 space-y-4 border-t border-border pt-6">
+        <p className="font-mono text-[13px] font-light text-muted">
+          {isFinalRound
+            ? "this closes the round and completes the league. it can't be undone."
+            : "this closes the round and opens the next one, starting its submission deadline. it can't be undone."}
+        </p>
+        <div className="flex items-center gap-4">
+          <Button type="button" onClick={() => onAdvance(next)} disabled={advancing}>
+            {advancing ? busyLabel : "yes, close round"}
+          </Button>
+          <Button
+            variant="ghost"
+            type="button"
+            onClick={() => setConfirmingClose(false)}
+            disabled={advancing}
+          >
+            cancel
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mt-6 border-t border-border pt-6">
-      <Button type="button" onClick={() => onAdvance(next)} disabled={advancing}>
+      <Button
+        type="button"
+        onClick={() => (next === "closed" ? setConfirmingClose(true) : onAdvance(next))}
+        disabled={advancing}
+      >
         {advancing ? busyLabel : label}
       </Button>
     </div>

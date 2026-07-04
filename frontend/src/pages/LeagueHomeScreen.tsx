@@ -905,6 +905,11 @@ function OrganizerEdit({
         onHoursChange={setVotingWindowHours}
         disabled={updating}
       />
+      <p className="font-mono text-[11px] font-light text-muted">
+        this only applies going forward — a round already collecting submissions or
+        votes keeps its current deadline. it takes effect the next time a round (or
+        its next phase) opens.
+      </p>
       {windowError ? (
         <p role="alert" className="font-mono text-[11px] text-ink">
           {windowError}

@@ -1395,6 +1395,196 @@ describe("RoundDetailRoute", () => {
     });
   });
 
+  describe("locked vote tally — VotingTally (MYS-171)", () => {
+    /** Puts the round straight into the locked-tally view: getMyVotes already
+     *  returns a non-empty submission_ids, so isVotesLocked is true from load()
+     *  without needing to drive the cast-votes UI flow. */
+    function setupLockedTally(opts: {
+      voteCounts: { submission_id: string; title: string; artist: string; vote_count: number }[];
+      myVotes: string[];
+      votesPerPlayer?: number;
+    }) {
+      const vpp = opts.votesPerPlayer ?? 3;
+      mockGetRound.mockResolvedValue(round({ state: "open_voting", votes_per_player: vpp }));
+      mockGetPlaylist.mockResolvedValue({
+        round_id: "r1",
+        round_number: 1,
+        theme: "t",
+        state: "open_voting",
+        entries: opts.voteCounts.map((v) =>
+          entry({ submission_id: v.submission_id, title: v.title, artist: v.artist }),
+        ),
+        youtube_playlist_url: null,
+        youtube_track_count: 0,
+        voting_eligible: 0,
+        voting_acted: 0,
+        vibing_count: 0,
+      });
+      mockGetMyVotes.mockResolvedValue({
+        round_id: "r1",
+        submission_ids: opts.myVotes,
+        count: opts.myVotes.length,
+        votes_per_player: vpp,
+      });
+      mockGetMine.mockResolvedValue([mine()]);
+      mockGetVoteCounts.mockResolvedValue({ round_id: "r1", entries: opts.voteCounts });
+    }
+
+    /** Finds the tally row div for a given song title — three levels up from
+     *  the title <p>: p -> div.min-w-0 -> div.flex (rank+title) -> row div. */
+    function tallyRowFor(title: string): HTMLElement {
+      const titleEl = screen.getByText(title);
+      return titleEl.parentElement!.parentElement!.parentElement as HTMLElement;
+    }
+
+    it("marks the song actually voted for, not simply the top-N by vote count (bug fix)", async () => {
+      // The caller voted for the LOWEST-count song (p3). Under the old
+      // rank-based `i < voteLimit` logic (votes_per_player=1 -> top 1), the
+      // highest-count song (p1, "Debaser") would have been wrongly labeled
+      // "your vote" instead.
+      setupLockedTally({
+        voteCounts: [
+          { submission_id: "p1", title: "Debaser", artist: "Pixies", vote_count: 5 },
+          { submission_id: "p2", title: "Hey", artist: "Pixies", vote_count: 3 },
+          { submission_id: "p3", title: "Where Is My Mind", artist: "Pixies", vote_count: 1 },
+        ],
+        myVotes: ["p3"],
+        votesPerPlayer: 1,
+      });
+      renderRound();
+
+      await screen.findByText(/vote tally/i);
+
+      // Only one "your vote" label anywhere, and it's on the song actually voted for.
+      // (Exact match — the intro copy above the tally also contains the
+      // substring "your votes", so a loose regex would over-match.)
+      const voteLabels = screen.getAllByText("your vote", { exact: true });
+      expect(voteLabels).toHaveLength(1);
+
+      const votedRow = tallyRowFor("Where Is My Mind");
+      expect(within(votedRow).getByText("your vote", { exact: true })).toBeInTheDocument();
+
+      // The higher-ranked songs the caller did NOT vote for must not be marked.
+      const debaserRow = tallyRowFor("Debaser");
+      const heyRow = tallyRowFor("Hey");
+      expect(within(debaserRow).queryByText("your vote", { exact: true })).not.toBeInTheDocument();
+      expect(within(heyRow).queryByText("your vote", { exact: true })).not.toBeInTheDocument();
+    });
+
+    it("renders the CheckmarkIcon svg, not just the 'your vote' text", async () => {
+      setupLockedTally({
+        voteCounts: [
+          { submission_id: "p1", title: "Debaser", artist: "Pixies", vote_count: 2 },
+          { submission_id: "p2", title: "Hey", artist: "Pixies", vote_count: 1 },
+        ],
+        myVotes: ["p1"],
+      });
+      renderRound();
+
+      await screen.findByText(/vote tally/i);
+
+      const voteLabel = screen.getByText("your vote", { exact: true });
+      const svg = voteLabel.querySelector("svg");
+      expect(svg).toBeInTheDocument();
+      expect(svg?.querySelector("polyline")).toHaveAttribute(
+        "points",
+        "1.5 6.5 4.5 9.5 10.5 2.5",
+      );
+    });
+
+    it("uses Sage styling for the voted row, never Rust (Rust is reserved elsewhere on this screen)", async () => {
+      setupLockedTally({
+        voteCounts: [
+          { submission_id: "p1", title: "Debaser", artist: "Pixies", vote_count: 2 },
+          { submission_id: "p2", title: "Hey", artist: "Pixies", vote_count: 1 },
+        ],
+        myVotes: ["p1"],
+      });
+      const { container } = renderRound();
+
+      await screen.findByText(/vote tally/i);
+
+      const votedRow = tallyRowFor("Debaser");
+      expect(votedRow.className).toMatch(/border-sage/);
+      const voteLabel = within(votedRow).getByText("your vote", { exact: true });
+      expect(voteLabel.className).toMatch(/text-sage/);
+
+      // The unvoted row keeps its neutral border.
+      const heyRow = tallyRowFor("Hey");
+      expect(heyRow.className).toMatch(/border-border/);
+
+      // Rust is never used in the locked tally view.
+      expect(container.innerHTML).not.toMatch(/border-rust/);
+      expect(container.innerHTML).not.toMatch(/text-rust/);
+    });
+
+    it("zero-votes case: no checkmark anywhere and the locked-footer doesn't render when myVotes is empty", async () => {
+      const user = userEvent.setup();
+      // Reach the locked tally via the cast-votes flow with a backend response
+      // that (edge case) reports no submission_ids for this caller, so
+      // myVotes ends up empty even though isVotesLocked flips true.
+      setupLockedTally({
+        voteCounts: [
+          { submission_id: "p1", title: "Debaser", artist: "Pixies", vote_count: 0 },
+          { submission_id: "p2", title: "Hey", artist: "Pixies", vote_count: 0 },
+        ],
+        myVotes: [], // not locked yet — voting controls shown first
+      });
+      mockCastVotes.mockResolvedValue({
+        round_id: "r1",
+        submission_ids: [],
+        count: 0,
+        votes_per_player: 3,
+      });
+      renderRound();
+
+      await user.click(await screen.findByRole("button", { name: /Debaser/i }));
+      await user.click(screen.getByRole("button", { name: /cast votes/i }));
+
+      await screen.findByText(/vote tally/i);
+      expect(screen.queryByText("your vote", { exact: true })).not.toBeInTheDocument();
+      expect(screen.queryByText(/your votes are locked/i)).not.toBeInTheDocument();
+    });
+
+    it("multiple votes: checkmarks appear on every song the caller voted for", async () => {
+      setupLockedTally({
+        voteCounts: [
+          { submission_id: "p1", title: "Debaser", artist: "Pixies", vote_count: 4 },
+          { submission_id: "p2", title: "Hey", artist: "Pixies", vote_count: 3 },
+          { submission_id: "p3", title: "Where Is My Mind", artist: "Pixies", vote_count: 1 },
+        ],
+        myVotes: ["p1", "p3"],
+        votesPerPlayer: 2,
+      });
+      renderRound();
+
+      await screen.findByText(/vote tally/i);
+
+      expect(screen.getAllByText("your vote", { exact: true })).toHaveLength(2);
+      expect(
+        within(tallyRowFor("Debaser")).getByText("your vote", { exact: true }),
+      ).toBeInTheDocument();
+      expect(
+        within(tallyRowFor("Where Is My Mind")).getByText("your vote", { exact: true }),
+      ).toBeInTheDocument();
+      expect(
+        within(tallyRowFor("Hey")).queryByText("your vote", { exact: true }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("the locked-footer renders once at least one vote is cast", async () => {
+      setupLockedTally({
+        voteCounts: [{ submission_id: "p1", title: "Debaser", artist: "Pixies", vote_count: 1 }],
+        myVotes: ["p1"],
+      });
+      renderRound();
+
+      expect(
+        await screen.findByText(/your votes are locked — they will be revealed when the round closes/i),
+      ).toBeInTheDocument();
+    });
+  });
+
   describe("open_voting notes UX (MYS-21)", () => {
     function setupVoting(opts: { entries: PlaylistEntry[]; mine?: SubmissionResult | null }) {
       mockGetRound.mockResolvedValue(round({ state: "open_voting" }));

@@ -30,6 +30,7 @@ from app.models.league import League
 from app.models.league_member import LeagueMember
 from app.models.note import Note
 from app.models.round import Round
+from app.models.spotify_round_playlist import SpotifyRoundPlaylist
 from app.models.submission import Submission
 from app.models.user import User
 from app.models.vote import Vote
@@ -69,6 +70,9 @@ async def wipe_existing_league(session) -> None:
         await session.execute(delete(Vote).where(Vote.round_id.in_(round_ids)))
         await session.execute(delete(Note).where(Note.round_id.in_(round_ids)))
         await session.execute(delete(Submission).where(Submission.round_id.in_(round_ids)))
+        await session.execute(
+            delete(SpotifyRoundPlaylist).where(SpotifyRoundPlaylist.round_id.in_(round_ids))
+        )
         await session.execute(delete(Round).where(Round.id.in_(round_ids)))
     await session.execute(delete(LeagueMember).where(LeagueMember.league_id.in_(league_ids)))
     await session.execute(delete(League).where(League.id.in_(league_ids)))

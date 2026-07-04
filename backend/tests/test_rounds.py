@@ -15,6 +15,8 @@ from sqlalchemy import select
 from app.auth.jwt import create_access_token
 from app.models.league import League
 from app.models.league_member import LeagueMember
+from app.models.note import Note
+from app.models.round import Round
 from app.models.submission import Submission
 from app.models.user import User
 from app.models.vote import Vote
@@ -236,13 +238,45 @@ async def test_skipping_a_state_is_rejected(client, db_session):
     assert resp.status_code == 409
 
 
-async def test_backwards_transition_is_rejected(client, db_session):
+async def test_closed_to_open_submission_is_rejected(client, db_session):
+    # open_voting -> open_submission is now the MYS-168 sanctioned rollback (see
+    # the dedicated "Rollback" section below), so it's no longer a backward
+    # transition this test can use. closed -> open_submission is NOT the
+    # sanctioned transition (the round isn't in open_voting) and must still 409,
+    # preserving the "forward-only except this one exception" invariant.
+    organizer = await _seed_user(db_session, "org@example.com")
+    league = await _seed_league(db_session, organizer, total_rounds=2)
+    rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
+    await _advance(client, rid, organizer.id, "open_voting")
+    await _advance(client, rid, organizer.id, "closed")
+
+    resp = await _advance(client, rid, organizer.id, "open_submission")
+    assert resp.status_code == 409
+
+
+async def test_open_submission_to_pending_is_rejected(client, db_session):
+    # Another backward transition that is NOT the sanctioned rollback (the round
+    # is open_submission, not open_voting) — must still 409.
+    organizer = await _seed_user(db_session, "org@example.com")
+    league = await _seed_league(db_session, organizer)
+    rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
+
+    resp = await _advance(client, rid, organizer.id, "pending")
+    assert resp.status_code == 409
+
+
+async def test_open_voting_to_pending_is_rejected(client, db_session):
+    # MYS-168: the sanctioned rollback is open_voting -> open_submission only.
+    # This pins the exact boolean in update_round —
+    # `is_rollback = round_.state == "open_voting" and new_state == "open_submission"`
+    # — proving a transition OUT of open_voting to anything else (e.g. pending)
+    # is still rejected, not just the closed/open_submission cases covered above.
     organizer = await _seed_user(db_session, "org@example.com")
     league = await _seed_league(db_session, organizer)
     rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
     await _advance(client, rid, organizer.id, "open_voting")
 
-    resp = await _advance(client, rid, organizer.id, "open_submission")
+    resp = await _advance(client, rid, organizer.id, "pending")
     assert resp.status_code == 409
 
 
@@ -303,6 +337,169 @@ async def test_patch_theme_on_open_round_is_rejected(client, db_session):
     )
     assert resp.status_code == 409, resp.text
     assert "locked" in resp.json()["detail"]
+
+
+# --------------------------------------------------------------------------- #
+# Rollback: open_voting -> open_submission (MYS-168)
+# --------------------------------------------------------------------------- #
+
+
+async def test_rollback_happy_path_resets_deadlines_and_deletes_votes(client, db_session):
+    organizer = await _seed_user(db_session, "org@example.com")
+    member = await _seed_user(db_session, "member@example.com")
+    league = await _seed_league(db_session, organizer)
+    await _add_member(db_session, league.id, member)
+    # create_round doesn't auto-stamp a submission_deadline (only advance/rollback
+    # do), so set one explicitly here to stand in for the round's "first pass"
+    # deadline that the rollback must overwrite with a fresh full window.
+    original_submission_deadline = datetime.now(timezone.utc) + timedelta(hours=1)
+    rid = (
+        await _create_round(
+            client,
+            league.id,
+            organizer.id,
+            submission_deadline=original_submission_deadline.isoformat(),
+        )
+    ).json()["id"]
+    round_id = uuid.UUID(rid)
+
+    org_sub = await _add_submission_ret(db_session, round_id, organizer)
+    mem_sub = await _add_submission_ret(db_session, round_id, member)
+
+    assert (await _advance(client, rid, organizer.id, "open_voting")).status_code == 200
+
+    await _add_vote(db_session, round_id, organizer, mem_sub)
+    await _add_vote(db_session, round_id, member, org_sub)
+
+    resp = await _advance(client, rid, organizer.id, "open_submission")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["state"] == "open_submission"
+    assert body["voting_deadline"] is None
+    assert body["submission_deadline"] is not None
+
+    new_deadline = datetime.fromisoformat(body["submission_deadline"])
+    # A fresh full window, not the round's original stale deadline.
+    assert new_deadline > original_submission_deadline
+
+    # The votes cast during the accidental voting phase are gone.
+    db_session.expire_all()
+    remaining_votes = (
+        await db_session.scalars(select(Vote).where(Vote.round_id == round_id))
+    ).all()
+    assert remaining_votes == []
+
+
+async def test_rollback_preserves_notes(client, db_session):
+    organizer = await _seed_user(db_session, "org@example.com")
+    league = await _seed_league(db_session, organizer)
+    rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
+    round_id = uuid.UUID(rid)
+    sub_id = await _add_submission_ret(db_session, round_id, organizer)
+
+    assert (await _advance(client, rid, organizer.id, "open_voting")).status_code == 200
+
+    note_resp = await client.post(
+        f"/api/v1/submissions/{sub_id}/notes",
+        json={"body": "banger"},
+        headers=_auth(organizer.id),
+    )
+    assert note_resp.status_code == 201, note_resp.text
+
+    resp = await _advance(client, rid, organizer.id, "open_submission")
+    assert resp.status_code == 200, resp.text
+
+    db_session.expire_all()
+    notes = (await db_session.scalars(select(Note).where(Note.submission_id == sub_id))).all()
+    assert len(notes) == 1
+    assert notes[0].body == "banger"
+
+
+async def test_rollback_rearms_warning_and_notice_timestamps(client, db_session):
+    organizer = await _seed_user(db_session, "org@example.com")
+    organizer_id = organizer.id  # capture before expire_all (MissingGreenlet trap)
+    league = await _seed_league(db_session, organizer)
+    rid = (await _create_round(client, league.id, organizer_id)).json()["id"]
+    round_id = uuid.UUID(rid)
+
+    assert (await _advance(client, rid, organizer_id, "open_voting")).status_code == 200
+
+    db_session.expire_all()
+    round_ = await db_session.scalar(select(Round).where(Round.id == round_id))
+    now = datetime.now(timezone.utc)
+    round_.submission_warning_sent_at = now
+    round_.voting_warning_sent_at = now
+    round_.empty_round_notice_sent_at = now
+    db_session.add(round_)
+    await db_session.commit()
+
+    resp = await _advance(client, rid, organizer_id, "open_submission")
+    assert resp.status_code == 200, resp.text
+
+    db_session.expire_all()
+    after = await db_session.scalar(select(Round).where(Round.id == round_id))
+    assert after.submission_warning_sent_at is None
+    assert after.voting_warning_sent_at is None
+    assert after.empty_round_notice_sent_at is None
+
+
+async def test_rollback_rejected_when_round_is_closed(client, db_session):
+    organizer = await _seed_user(db_session, "org@example.com")
+    league = await _seed_league(db_session, organizer, total_rounds=2)
+    rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
+    await _advance(client, rid, organizer.id, "open_voting")
+    await _advance(client, rid, organizer.id, "closed")
+
+    resp = await _advance(client, rid, organizer.id, "open_submission")
+    assert resp.status_code == 409
+
+
+async def test_rollback_no_op_when_round_already_open_submission(client, db_session):
+    # PATCHing state=open_submission on a round that's already open_submission is
+    # a same-state no-op (the state-transition block is only entered when
+    # new_state != round_.state) — it succeeds (200), it is not a rollback
+    # attempt to reject. Documented here so the invariant isn't mistaken for a
+    # 409 case in future changes.
+    organizer = await _seed_user(db_session, "org@example.com")
+    league = await _seed_league(db_session, organizer)
+    rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
+
+    resp = await _advance(client, rid, organizer.id, "open_submission")
+    assert resp.status_code == 200
+    assert resp.json()["state"] == "open_submission"
+
+
+async def test_rollback_requires_organizer(client, db_session):
+    organizer = await _seed_user(db_session, "org@example.com")
+    member = await _seed_user(db_session, "member@example.com")
+    league = await _seed_league(db_session, organizer)
+    await _add_member(db_session, league.id, member)
+    rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
+    await _advance(client, rid, organizer.id, "open_voting")
+
+    resp = await client.patch(
+        f"/api/v1/rounds/{rid}", json={"state": "open_submission"}, headers=_auth(member.id)
+    )
+    assert resp.status_code == 403
+
+
+async def test_rollback_does_not_spuriously_conflict_with_active_round_guard(client, db_session):
+    # The "only one round active per league" guard must not fire against a
+    # round rolling back to its own prior state — even if (hypothetically) a
+    # second round were also active in the same league, the rollback of the
+    # first is exempt from that guard.
+    organizer = await _seed_user(db_session, "org@example.com")
+    league = await _seed_league(db_session, organizer, total_rounds=3)
+    rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
+    assert (await _advance(client, rid, organizer.id, "open_voting")).status_code == 200
+
+    other_round = Round(league_id=league.id, round_number=2, state="open_submission")
+    db_session.add(other_round)
+    await db_session.commit()
+
+    resp = await _advance(client, rid, organizer.id, "open_submission")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["state"] == "open_submission"
 
 
 # --------------------------------------------------------------------------- #

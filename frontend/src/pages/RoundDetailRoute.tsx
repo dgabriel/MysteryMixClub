@@ -100,6 +100,7 @@ export function RoundDetailRoute() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [leagueRepeatWarning, setLeagueRepeatWarning] = useState(false);
   const [advancing, setAdvancing] = useState(false);
+  const [rollingBack, setRollingBack] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [casting, setCasting] = useState(false);
@@ -427,6 +428,23 @@ export function RoundDetailRoute() {
     }
   }
 
+  // Organizer: roll an open_voting round back to open_submission (MYS-168) —
+  // the one sanctioned backward step. Separate busy/error handling from
+  // handleAdvance so the two organizer actions don't fight over one flag.
+  async function handleRollback() {
+    if (!id) return;
+    setRollingBack(true);
+    setActionError(null);
+    try {
+      await updateRound(id, { state: "open_submission" });
+      await load();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "couldn't reopen submissions.");
+    } finally {
+      setRollingBack(false);
+    }
+  }
+
   if (loading) {
     return (
       <main className="flex flex-1 items-center justify-center px-4 sm:px-8">
@@ -510,6 +528,9 @@ export function RoundDetailRoute() {
               advancing={advancing}
               onAdvance={handleAdvance}
               isFinalRound={!!league && round.round_number >= league.total_rounds}
+              onRollback={handleRollback}
+              rollingBack={rollingBack}
+              totalVotes={voteCounts.reduce((sum, entry) => sum + entry.vote_count, 0)}
             />
             <EditRoundForm
               round={round}
@@ -606,16 +627,25 @@ function OrganizerControls({
   advancing,
   onAdvance,
   isFinalRound,
+  onRollback,
+  rollingBack,
+  totalVotes,
 }: {
   state: RoundState;
   advancing: boolean;
   onAdvance: (next: RoundState) => void;
   isFinalRound: boolean;
+  onRollback: () => void;
+  rollingBack: boolean;
+  totalVotes: number;
 }) {
   // Closing is the one forward transition that cascades and can't be undone
   // in-app (MYS-170) — gated behind an explicit second step. "open round" /
   // "open voting" stay one-click; they're lower-risk and easy to reason about.
   const [confirmingClose, setConfirmingClose] = useState(false);
+  // The one sanctioned backward step (MYS-168) — same two-step treatment,
+  // since it discards any votes already cast.
+  const [confirmingRollback, setConfirmingRollback] = useState(false);
 
   if (state === "closed") return null;
   const next: RoundState =
@@ -631,6 +661,7 @@ function OrganizerControls({
         ? "open voting"
         : "close round";
   const busyLabel = next === "closed" ? "closing…" : "opening…";
+  const busy = advancing || rollingBack;
 
   if (next === "closed" && confirmingClose) {
     return (
@@ -657,15 +688,50 @@ function OrganizerControls({
     );
   }
 
+  if (state === "open_voting" && confirmingRollback) {
+    return (
+      <div className="mt-6 space-y-4 border-t border-border pt-6">
+        <p className="font-mono text-[13px] font-light text-muted">
+          {totalVotes > 0
+            ? `this reopens submissions with a fresh window and discards ${totalVotes} vote${totalVotes === 1 ? "" : "s"} already cast. it can't be undone.`
+            : "this reopens submissions with a fresh window. it can't be undone."}
+        </p>
+        <div className="flex items-center gap-4">
+          <Button type="button" onClick={onRollback} disabled={rollingBack}>
+            {rollingBack ? "reopening…" : "yes, reopen submissions"}
+          </Button>
+          <Button
+            variant="ghost"
+            type="button"
+            onClick={() => setConfirmingRollback(false)}
+            disabled={rollingBack}
+          >
+            cancel
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="mt-6 border-t border-border pt-6">
+    <div className="mt-6 flex items-center gap-4 border-t border-border pt-6">
       <Button
         type="button"
         onClick={() => (next === "closed" ? setConfirmingClose(true) : onAdvance(next))}
-        disabled={advancing}
+        disabled={busy}
       >
         {advancing ? busyLabel : label}
       </Button>
+      {state === "open_voting" ? (
+        <Button
+          variant="ghost"
+          type="button"
+          onClick={() => setConfirmingRollback(true)}
+          disabled={busy}
+        >
+          reopen submissions
+        </Button>
+      ) : null}
     </div>
   );
 }

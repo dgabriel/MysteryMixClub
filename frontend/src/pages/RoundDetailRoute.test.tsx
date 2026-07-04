@@ -620,6 +620,89 @@ describe("RoundDetailRoute", () => {
     expect(screen.queryByRole("button", { name: /open voting/i })).not.toBeInTheDocument();
   });
 
+  it("organizer can open a pending round; advancing calls updateRound directly, no confirm step — MYS-170", async () => {
+    mockGetRound.mockResolvedValue(round({ state: "pending" }));
+    const user = userEvent.setup();
+    renderRound();
+    const btn = await screen.findByRole("button", { name: "open round" });
+    await user.click(btn);
+    expect(mockUpdateRound).toHaveBeenCalledWith("r1", { state: "open_submission" });
+    // No confirm affordance should ever appear for this transition.
+    expect(screen.queryByRole("button", { name: /yes, close round/i })).not.toBeInTheDocument();
+  });
+
+  describe("closing a round — confirm step (MYS-170)", () => {
+    beforeEach(() => {
+      mockGetRound.mockResolvedValue(round({ state: "open_voting" }));
+    });
+
+    it("clicking 'close round' shows a confirm panel instead of calling updateRound immediately", async () => {
+      const user = userEvent.setup();
+      renderRound();
+      const closeBtn = await screen.findByRole("button", { name: "close round" });
+      await user.click(closeBtn);
+
+      expect(mockUpdateRound).not.toHaveBeenCalled();
+      expect(
+        await screen.findByRole("button", { name: "yes, close round" }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "cancel" })).toBeInTheDocument();
+      // The plain one-click button is gone while confirming.
+      expect(screen.queryByRole("button", { name: "close round" })).not.toBeInTheDocument();
+    });
+
+    it("confirm panel shows the non-final-round copy when more rounds remain", async () => {
+      // default league() has total_rounds: 6; round() defaults round_number: 1.
+      const user = userEvent.setup();
+      renderRound();
+      await user.click(await screen.findByRole("button", { name: "close round" }));
+
+      expect(
+        await screen.findByText(
+          /this closes the round and opens the next one, starting its submission deadline\. it can't be undone\./i,
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/completes the league/i)).not.toBeInTheDocument();
+    });
+
+    it("confirm panel shows the final-round copy when round_number >= league.total_rounds", async () => {
+      mockGetRound.mockResolvedValue(round({ state: "open_voting", round_number: 6 }));
+      mockGetLeague.mockResolvedValue({ ...league(), total_rounds: 6 });
+      const user = userEvent.setup();
+      renderRound();
+      await user.click(await screen.findByRole("button", { name: "close round" }));
+
+      expect(
+        await screen.findByText(
+          /this closes the round and completes the league\. it can't be undone\./i,
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/opens the next one/i)).not.toBeInTheDocument();
+    });
+
+    it("clicking 'yes, close round' in the confirm panel calls updateRound with state: closed", async () => {
+      const user = userEvent.setup();
+      renderRound();
+      await user.click(await screen.findByRole("button", { name: "close round" }));
+      await user.click(await screen.findByRole("button", { name: "yes, close round" }));
+
+      expect(mockUpdateRound).toHaveBeenCalledWith("r1", { state: "closed" });
+    });
+
+    it("clicking 'cancel' dismisses the confirm panel without calling updateRound", async () => {
+      const user = userEvent.setup();
+      renderRound();
+      await user.click(await screen.findByRole("button", { name: "close round" }));
+      await user.click(await screen.findByRole("button", { name: "cancel" }));
+
+      expect(mockUpdateRound).not.toHaveBeenCalled();
+      // Back to the plain button; the confirm panel's controls are gone.
+      expect(await screen.findByRole("button", { name: "close round" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "yes, close round" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "cancel" })).not.toBeInTheDocument();
+    });
+  });
+
   it("open_voting: renders the playlist with platform links", async () => {
     mockGetRound.mockResolvedValue(round({ state: "open_voting" }));
     const entries: PlaylistEntry[] = [

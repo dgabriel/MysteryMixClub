@@ -714,3 +714,63 @@ async def test_vote_counts_honors_vote_limit(client, db_session):
 
     assert b_entry["vote_count"] == 1
     assert a_entry["vote_count"] == 1
+
+
+# --------------------------------------------------------------------------- #
+# POST — MYS-168 rollback regression: state-check-then-mutate ordering
+# --------------------------------------------------------------------------- #
+
+
+def _round_url(round_id) -> str:
+    return f"/api/v1/rounds/{round_id}"
+
+
+async def test_cast_after_organizer_rollback_rejected_and_not_persisted(client, db_session):
+    # HIGH-severity fix regression (MYS-168 code review): cast_votes used to check
+    # round_.state != "open_voting" once at the top, mutate votes, and only lock the
+    # round row later at the auto-close quorum check. A concurrent organizer
+    # rollback (open_voting -> open_submission) landing in that window could leave
+    # a stray Vote attached to a round no longer accepting them. The fix
+    # re-acquires a with_for_update() lock and re-checks round_.state ==
+    # "open_voting" immediately before the vote delete/insert. This test proves the
+    # outcome that guarantees: once a round has been rolled back out of
+    # open_voting, a subsequent cast_votes call is rejected with 409 and persists
+    # no vote — it does not silently succeed against a round that is no longer
+    # voting.
+    organizer = await _seed_user(db_session, "o@example.com")
+    voter = await _seed_user(db_session, "v@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    round_id = round_.id
+    await _add_member(db_session, round_.league_id, voter)
+    target = await _seed_submission(db_session, round_id, organizer, title="Target")
+    target_id = target.id
+    organizer_id = organizer.id
+    voter_id = voter.id
+
+    # Organizer rolls the round back out of open_voting via the MYS-168 endpoint.
+    rollback_resp = await client.patch(
+        _round_url(round_id),
+        json={"state": "open_submission"},
+        headers=_auth(organizer_id),
+    )
+    assert rollback_resp.status_code == 200, rollback_resp.text
+    assert rollback_resp.json()["state"] == "open_submission"
+
+    # A subsequent cast against the now-rolled-back round must be rejected, not
+    # silently accepted.
+    cast_resp = await client.post(
+        _votes_url(round_id),
+        json={"submission_ids": [str(target_id)]},
+        headers=_auth(voter_id),
+    )
+    assert cast_resp.status_code == 409, cast_resp.text
+    assert cast_resp.json()["detail"] == "voting is not open for this round"
+
+    # No vote was persisted for the rejected cast.
+    db_session.expire_all()
+    rows = list(
+        await db_session.scalars(
+            select(Vote).where(Vote.round_id == round_id, Vote.voter_id == voter_id)
+        )
+    )
+    assert rows == []

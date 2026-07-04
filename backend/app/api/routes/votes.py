@@ -130,7 +130,25 @@ async def cast_votes(
         # Vibing songs are votable (MYS-112): a viber's song competes like any
         # other, and the voter can't tell which songs are vibers'.
 
-    # All validation passed: replace the caller's votes for this round wholesale.
+    # Lock the round row before mutating votes (MYS-168): a concurrent organizer
+    # rollback, deadline force-advance, or manual close could otherwise land
+    # between the open_voting check above and the vote writes below, leaving a
+    # stray vote attached to a round that's no longer accepting them. Re-verify
+    # state under the lock, then hold it through the rest of this request — the
+    # same lock also serializes the auto-advance quorum check further down, so
+    # there is only one lock acquisition for the whole endpoint.
+    locked = await db.scalar(
+        select(Round)
+        .where(Round.id == round_.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if locked is None or locked.state != "open_voting":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="voting is not open for this round"
+        )
+
+    # Replace the caller's votes for this round wholesale.
     existing = list(
         await db.scalars(
             select(Vote).where(Vote.round_id == round_id, Vote.voter_id == current_user.id)
@@ -147,32 +165,20 @@ async def cast_votes(
     await db.flush()
 
     # Auto-advance (MYS-69): once every playing submitter has voted, the round
-    # closes itself — auto-opening the next round or completing the league. Lock
-    # the round row FIRST, then evaluate the quorum UNDER the lock. Two concurrent
-    # final votes each only see their own uncommitted votes before locking (READ
-    # COMMITTED hides the other's), so checking before the lock would have both see
-    # N-1 and neither advance — the round would stall. Serialized on the lock, the
-    # last committer re-reads the now-committed votes and closes the round.
-    if round_.state == "open_voting":
-        locked = await db.scalar(
-            select(Round)
-            .where(Round.id == round_.id)
-            .with_for_update()
-            .execution_options(populate_existing=True)
-        )
-        if (
-            locked is not None
-            and locked.state == "open_voting"
-            and await voting_quorum_met(round_, db)
-        ):
-            league = await db.scalar(select(League).where(League.id == round_.league_id))
-            if league is not None:
-                events = await advance_round_state(round_, league, "closed", db)
-                recipients = await gather_recipients(db, round_.league_id)
-                for event_round, event in events:
-                    queue_round_event(
-                        background_tasks, sender, settings, recipients, league, event_round, event
-                    )
+    # closes itself — auto-opening the next round or completing the league. The
+    # round has been locked since before the vote mutation above, so two
+    # concurrent final votes still serialize correctly: whichever request's
+    # quorum check runs second sees the other's now-committed vote plus its own
+    # just-flushed one, and is the one that closes the round.
+    if round_.state == "open_voting" and await voting_quorum_met(round_, db):
+        league = await db.scalar(select(League).where(League.id == round_.league_id))
+        if league is not None:
+            events = await advance_round_state(round_, league, "closed", db)
+            recipients = await gather_recipients(db, round_.league_id)
+            for event_round, event in events:
+                queue_round_event(
+                    background_tasks, sender, settings, recipients, league, event_round, event
+                )
 
     await db.commit()
 

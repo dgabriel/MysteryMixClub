@@ -44,6 +44,7 @@ import { TextField } from "../components/TextField";
 import { ConcentricRings } from "../components/ConcentricRings";
 import { SongSearchCard } from "../components/songs/SongSearchCard";
 import { SpotifyPlaylist } from "../components/SpotifyPlaylist";
+import { CheckmarkIcon } from "../components/CheckmarkIcon";
 import { CrownIcon } from "../components/CrownIcon";
 import { MusicNoteIcon } from "../components/MusicNoteIcon";
 import { DeadlineChip } from "../components/DeadlineChip";
@@ -1317,7 +1318,7 @@ function VotingSection({
 
   // If votes are locked, show the vote counts tally instead of voting controls
   if (isVotesLocked) {
-    return <VotingTally voteCounts={voteCounts} voteLimit={votesPerPlayer} votesSaved={votesSaved} />;
+    return <VotingTally voteCounts={voteCounts} votesSaved={votesSaved} myVotes={myVotes} />;
   }
 
   if (entries.length === 0) {
@@ -1517,12 +1518,12 @@ function VotingSection({
  */
 function VotingTally({
   voteCounts,
-  voteLimit,
   votesSaved,
+  myVotes,
 }: {
   voteCounts: VoteCountEntry[];
-  voteLimit: number;
   votesSaved: boolean;
+  myVotes: string[];
 }) {
   // Sort by vote count desc, then title asc for deterministic order
   const sorted = [...voteCounts].sort((a, b) => {
@@ -1532,8 +1533,11 @@ function VotingTally({
     return a.title.localeCompare(b.title);
   });
 
-  // Find the caller's votes (they're locked in, so show them highlighted)
-  const myVoteEntries = sorted.slice(0, voteLimit);
+  // Which songs the caller actually voted for (MYS-171) — a submission_id
+  // membership check, not a rank cutoff, so it stays correct regardless of how
+  // the tally sorts (a song you voted for that isn't currently leading still
+  // gets marked).
+  const votedIds = new Set(myVotes);
 
   return (
     <>
@@ -1545,22 +1549,17 @@ function VotingTally({
       </h2>
       <div className="mt-4 space-y-3">
         {sorted.map((entry, i) => {
-          const isVoted = i < voteLimit;
+          const isVoted = votedIds.has(entry.submission_id);
           return (
             <div
               key={entry.submission_id}
               className={[
                 "flex items-center justify-between rounded-[2px] border px-4 py-3",
-                isVoted ? "border-rust bg-white" : "border-border bg-sage-pale/20",
+                isVoted ? "border-sage bg-white" : "border-border bg-sage-pale/20",
               ].join(" ")}
             >
               <div className="flex items-center gap-3 overflow-hidden">
-                <span
-                  className={[
-                    "w-6 shrink-0 font-mono text-[13px] font-light",
-                    isVoted ? "text-rust" : "text-muted",
-                  ].join(" ")}
-                >
+                <span className="w-6 shrink-0 font-mono text-[13px] font-light text-muted">
                   #{i + 1}
                 </span>
                 <div className="min-w-0 flex-1">
@@ -1577,7 +1576,8 @@ function VotingTally({
                   {entry.vote_count} {entry.vote_count === 1 ? "vote" : "votes"}
                 </span>
                 {isVoted && (
-                  <span className="font-mono uppercase tracking-ui text-[9px] text-rust">
+                  <span className="inline-flex items-center gap-1 font-mono uppercase tracking-ui text-[9px] text-sage">
+                    <CheckmarkIcon />
                     your vote
                   </span>
                 )}
@@ -1586,7 +1586,7 @@ function VotingTally({
           );
         })}
       </div>
-      {myVoteEntries.length > 0 && (
+      {myVotes.length > 0 && (
         <div className="mt-6 border-t border-border pt-6">
           <p className="font-mono uppercase tracking-label text-[9px] text-muted">
             your votes are locked — they will be revealed when the round closes

@@ -11,6 +11,7 @@ import { Button } from "../components/Button";
 import { Badge } from "../components/Badge";
 import { TextField } from "../components/TextField";
 import { ConcentricRings } from "../components/ConcentricRings";
+import { CheckmarkIcon } from "../components/CheckmarkIcon";
 import { CrownIcon } from "../components/CrownIcon";
 import { Confetti } from "../components/Confetti";
 import { DeadlineChip } from "../components/DeadlineChip";
@@ -595,19 +596,7 @@ function RoundRow({
 function ViewerCheck({ label }: { label: string }) {
   return (
     <span className="inline-flex items-center gap-1">
-      <svg
-        width="9"
-        height="9"
-        viewBox="0 0 12 12"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        <polyline points="1.5 6.5 4.5 9.5 10.5 2.5" />
-      </svg>
+      <CheckmarkIcon />
       {label}
     </span>
   );

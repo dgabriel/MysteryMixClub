@@ -1922,8 +1922,15 @@ function ResultsSection({
                         <span className="font-mono uppercase tracking-label text-[9px] text-muted">
                           {nameFor(s.user_id, s.submitter_display_name)}
                         </span>
-                        <span className="shrink-0 font-mono uppercase tracking-label text-[9px] text-sage">
-                          {s.vote_count} {s.vote_count === 1 ? "vote" : "votes"}
+                        <span className="flex shrink-0 flex-col items-end">
+                          <span className="font-mono uppercase tracking-label text-[9px] text-sage">
+                            {s.vote_count} {s.vote_count === 1 ? "vote" : "votes"}
+                          </span>
+                          {s.tied ? (
+                            <span className="mt-0.5 font-mono uppercase tracking-label text-[9px] text-muted">
+                              {s.rank === 1 ? "winners" : "tied"}
+                            </span>
+                          ) : null}
                         </span>
                       </div>
                       <h3 className="mt-1 font-serif text-[18px] leading-tight text-ink">
@@ -2165,14 +2172,20 @@ function WinnersSection({
 
 /** Attach a competition rank to each song: ties share the same rank number and
  *  the next distinct score gets the position it would occupy if the tied entries
- *  were counted separately (1, 1, 3 — not 1, 1, 2). */
-function rankSongs(submissions: ResultSubmission[]): Array<ResultSubmission & { rank: number }> {
+ *  were counted separately (1, 1, 3 — not 1, 1, 2). `tied` flags any song that
+ *  shares its rank with another, so the card can call it out explicitly. */
+function rankSongs(
+  submissions: ResultSubmission[],
+): Array<ResultSubmission & { rank: number; tied: boolean }> {
   const sorted = [...submissions].sort((a, b) => b.vote_count - a.vote_count);
   let rank = 1;
-  return sorted.map((s, i) => {
+  const ranked = sorted.map((s, i) => {
     if (i > 0 && sorted[i - 1].vote_count > s.vote_count) rank = i + 1;
     return { ...s, rank };
   });
+  const countByRank = new Map<number, number>();
+  for (const s of ranked) countByRank.set(s.rank, (countByRank.get(s.rank) ?? 0) + 1);
+  return ranked.map((s) => ({ ...s, tied: (countByRank.get(s.rank) ?? 0) > 1 }));
 }
 
 /** The Playing leaderboard — already ranked, vibing excluded. Calm and compact;

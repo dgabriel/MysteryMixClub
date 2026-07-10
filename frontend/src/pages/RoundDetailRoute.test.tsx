@@ -351,6 +351,7 @@ describe("RoundDetailRoute", () => {
             submitter_note: null,
             vote_count: 0,
             notes: [],
+            voters: [],
           },
         ],
       }),
@@ -985,6 +986,7 @@ describe("RoundDetailRoute", () => {
             submitter_note: "a banger",
             vote_count: 0,
             notes: [],
+            voters: [],
           },
         ],
       }),
@@ -994,6 +996,38 @@ describe("RoundDetailRoute", () => {
     expect((await screen.findAllByText("Bad Guy")).length).toBeGreaterThan(0);
     expect(screen.getByText("Bob")).toBeInTheDocument();
     expect(screen.getByText(/a banger/)).toBeInTheDocument();
+    // No voters on this submission — no "voted by" line at all (MYS-173).
+    expect(screen.queryByText(/voted by/i)).not.toBeInTheDocument();
+  });
+
+  it("closed: names who voted for a song (MYS-173)", async () => {
+    mockGetRound.mockResolvedValue(round({ state: "closed" }));
+    mockGetResults.mockResolvedValue(
+      results({
+        submissions: [
+          {
+            submission_id: "s1",
+            user_id: OTHER,
+            submitter_display_name: "Bob",
+            isrc: "I1",
+            title: "Bad Guy",
+            artist: "Billie Eilish",
+            album: null,
+            album_art_url: null,
+            platforms: {},
+            submitter_note: null,
+            vote_count: 2,
+            notes: [],
+            voters: [
+              { user_id: "u-ada", display_name: "Ada" },
+              { user_id: "u-cal", display_name: "Cal" },
+            ],
+          },
+        ],
+      }),
+    );
+    renderRound();
+    expect(await screen.findByText("voted by Ada, Cal")).toBeInTheDocument();
   });
 
   it("closed: per-song leaderboard ranks by votes with shared-rank ties", async () => {
@@ -1010,6 +1044,7 @@ describe("RoundDetailRoute", () => {
       submitter_note: null,
       vote_count,
       notes: [],
+      voters: [],
     });
     mockGetRound.mockResolvedValue(round({ state: "closed" }));
     mockGetResults.mockResolvedValue(
@@ -1850,6 +1885,7 @@ describe("RoundDetailRoute", () => {
               submitter_note: "a banger",
               vote_count: 0,
               notes: [],
+              voters: [],
             },
           ],
         }),
@@ -1881,6 +1917,7 @@ describe("RoundDetailRoute", () => {
         submitter_note: null,
         vote_count: 0,
         notes: [],
+        voters: [],
         ...overrides,
       };
     }

@@ -936,6 +936,14 @@ export type ResultNote = {
   created_at: string;
 };
 
+/** A voter identified on the closed-round reveal (MYS-173). Voting stays
+ *  anonymous through open_voting; this only ever appears once a round is
+ *  closed. */
+export type ResultVoter = {
+  user_id: string;
+  display_name: string;
+};
+
 /** A revealed submission: submitter named, vote total, and the notes it drew. */
 export type ResultSubmission = {
   submission_id: string;
@@ -953,6 +961,10 @@ export type ResultSubmission = {
   submitter_note: string | null;
   vote_count: number;
   notes: ResultNote[];
+  /** Who voted for this song (MYS-173), name-sorted. Absent from the vibe-safe
+   *  WinnerReveal/RevealPick shapes by design — a vibing viewer never sees
+   *  voter identity, matching the existing no-vote-count rule (MYS-112). */
+  voters: ResultVoter[];
 };
 
 /** One ranked player on the leaderboard — every submitter competes, vibers

@@ -1931,6 +1931,11 @@ function ResultsSection({
                   </p>
                 ) : null}
                 <PlatformLinks platforms={s.platforms} title={s.title} />
+                {s.voters.length > 0 ? (
+                  <p className="mt-2 font-mono text-[11px] font-light text-muted">
+                    voted by {s.voters.map((v) => v.display_name).join(", ")}
+                  </p>
+                ) : null}
                 {s.notes.length > 0 ? <CollapsibleNotes notes={s.notes} /> : null}
               </Card>
             </li>

@@ -1977,12 +1977,19 @@ function RankBadge({ rank }: { rank: number }) {
       </span>
     );
   }
-  // 1st place reads slightly larger than 2nd/3rd. The numeral sits inside the
+  // 1st place reads slightly larger than 2nd/3rd, and in Gold — the app's
+  // existing achievement-signal color (crown icons above use it too) — since
+  // this medal marks the same winner moment. The numeral sits inside the
   // medal's disc — centered on its (6, 4.5) midpoint in the icon's 0-12
   // viewBox, i.e. 50% across / 37.5% down the rendered icon.
   const first = rank === 1;
   return (
-    <span className={["relative shrink-0 text-sage", first ? "h-7 w-7" : "h-6 w-6"].join(" ")}>
+    <span
+      className={[
+        "relative shrink-0",
+        first ? "h-7 w-7 text-gold" : "h-6 w-6 text-sage",
+      ].join(" ")}
+    >
       <MedalIcon className="h-full w-full" />
       <span
         className={[

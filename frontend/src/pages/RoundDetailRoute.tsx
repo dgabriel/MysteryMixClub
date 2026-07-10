@@ -1928,7 +1928,7 @@ function ResultsSection({
                           </span>
                           {s.tied ? (
                             <span className="mt-0.5 font-mono uppercase tracking-label text-[9px] text-muted">
-                              {s.rank === 1 ? "winners" : "tied"}
+                              tied
                             </span>
                           ) : null}
                         </span>

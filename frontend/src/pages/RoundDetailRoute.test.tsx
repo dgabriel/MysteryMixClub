@@ -1029,7 +1029,7 @@ describe("RoundDetailRoute", () => {
     expect(await screen.findByText("voted by Ada, Cal")).toBeInTheDocument();
   });
 
-  it("closed: the picks list ranks songs by votes with shared-rank ties, plural 'winners' for a tied top rank", async () => {
+  it("closed: the picks list ranks songs by votes with shared-rank ties, called out as 'tied'", async () => {
     const sub = (id: string, title: string, vote_count: number) => ({
       submission_id: id,
       user_id: OTHER,
@@ -1059,45 +1059,10 @@ describe("RoundDetailRoute", () => {
     expect(picks.getByText("Charlie").closest("li")).toHaveTextContent("3");
     expect(picks.getAllByText("7 votes")).toHaveLength(2);
     expect(picks.getByText("4 votes")).toBeInTheDocument();
-    // A tie for the TOP rank reads "winners" (plural), not the generic "tied".
-    expect(picks.getAllByText("winners")).toHaveLength(2);
-    expect(picks.queryByText("tied")).not.toBeInTheDocument();
-    expect(
-      within(picks.getByText("Charlie").closest("li") as HTMLElement).queryByText("winners"),
-    ).not.toBeInTheDocument();
-  });
-
-  it("closed: a tie below the top rank reads 'tied', not 'winners'", async () => {
-    const sub = (id: string, title: string, vote_count: number) => ({
-      submission_id: id,
-      user_id: OTHER,
-      submitter_display_name: "Bob",
-      isrc: id,
-      title,
-      artist: "",
-      album: null,
-      album_art_url: null,
-      platforms: {},
-      submitter_note: null,
-      vote_count,
-      notes: [],
-      voters: [],
-    });
-    mockGetRound.mockResolvedValue(round({ state: "closed" }));
-    mockGetResults.mockResolvedValue(
-      results({
-        // Alpha wins outright; Bravo and Charlie tie for 2nd.
-        submissions: [sub("a", "Alpha", 9), sub("b", "Bravo", 5), sub("c", "Charlie", 5)],
-      }),
-    );
-    renderRound();
-    const heading = await screen.findByText("the picks (3)");
-    const section = heading.closest("section") as HTMLElement;
-    const picks = within(section);
+    // The tied pair is called out; the untied third place is not.
     expect(picks.getAllByText("tied")).toHaveLength(2);
-    expect(picks.queryByText("winners")).not.toBeInTheDocument();
     expect(
-      within(picks.getByText("Alpha").closest("li") as HTMLElement).queryByText("tied"),
+      within(picks.getByText("Charlie").closest("li") as HTMLElement).queryByText("tied"),
     ).not.toBeInTheDocument();
   });
 

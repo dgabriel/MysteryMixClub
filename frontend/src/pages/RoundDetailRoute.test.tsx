@@ -351,6 +351,7 @@ describe("RoundDetailRoute", () => {
             submitter_note: null,
             vote_count: 0,
             notes: [],
+            voters: [],
           },
         ],
       }),
@@ -985,18 +986,50 @@ describe("RoundDetailRoute", () => {
             submitter_note: "a banger",
             vote_count: 0,
             notes: [],
+            voters: [],
           },
         ],
       }),
     );
     renderRound();
-    // "Bad Guy" now appears in both the per-song leaderboard and the picks list.
-    expect((await screen.findAllByText("Bad Guy")).length).toBeGreaterThan(0);
+    expect(await screen.findByText("Bad Guy")).toBeInTheDocument();
     expect(screen.getByText("Bob")).toBeInTheDocument();
     expect(screen.getByText(/a banger/)).toBeInTheDocument();
+    // No voters on this submission — no "voted by" line at all (MYS-173).
+    expect(screen.queryByText(/voted by/i)).not.toBeInTheDocument();
   });
 
-  it("closed: per-song leaderboard ranks by votes with shared-rank ties", async () => {
+  it("closed: names who voted for a song (MYS-173)", async () => {
+    mockGetRound.mockResolvedValue(round({ state: "closed" }));
+    mockGetResults.mockResolvedValue(
+      results({
+        submissions: [
+          {
+            submission_id: "s1",
+            user_id: OTHER,
+            submitter_display_name: "Bob",
+            isrc: "I1",
+            title: "Bad Guy",
+            artist: "Billie Eilish",
+            album: null,
+            album_art_url: null,
+            platforms: {},
+            submitter_note: null,
+            vote_count: 2,
+            notes: [],
+            voters: [
+              { user_id: "u-ada", display_name: "Ada" },
+              { user_id: "u-cal", display_name: "Cal" },
+            ],
+          },
+        ],
+      }),
+    );
+    renderRound();
+    expect(await screen.findByText("voted by Ada, Cal")).toBeInTheDocument();
+  });
+
+  it("closed: the picks list ranks songs by votes with shared-rank ties, called out as 'tied'", async () => {
     const sub = (id: string, title: string, vote_count: number) => ({
       submission_id: id,
       user_id: OTHER,
@@ -1010,6 +1043,7 @@ describe("RoundDetailRoute", () => {
       submitter_note: null,
       vote_count,
       notes: [],
+      voters: [],
     });
     mockGetRound.mockResolvedValue(round({ state: "closed" }));
     mockGetResults.mockResolvedValue(
@@ -1018,14 +1052,57 @@ describe("RoundDetailRoute", () => {
       }),
     );
     renderRound();
-    // Scope to the "songs (N)" section so titles shared with the picks list don't collide.
-    const heading = await screen.findByText("songs (3)");
+    const heading = await screen.findByText("the picks (3)");
     const section = heading.closest("section") as HTMLElement;
-    const songs = within(section);
+    const picks = within(section);
     // Two songs tie at rank 1, the next distinct score is rank 3 (not 2).
-    expect(songs.getByText("Charlie").closest("li")).toHaveTextContent("3");
-    expect(songs.getAllByText("7 votes")).toHaveLength(2);
-    expect(songs.getByText("4 votes")).toBeInTheDocument();
+    expect(picks.getByText("Charlie").closest("li")).toHaveTextContent("3");
+    expect(picks.getAllByText("7 votes")).toHaveLength(2);
+    expect(picks.getByText("4 votes")).toBeInTheDocument();
+    // The tied pair is called out; the untied third place is not.
+    expect(picks.getAllByText("tied")).toHaveLength(2);
+    expect(
+      within(picks.getByText("Charlie").closest("li") as HTMLElement).queryByText("tied"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("closed: the picks list gives the top 3 ranks a medal icon", async () => {
+    const sub = (id: string, title: string, vote_count: number) => ({
+      submission_id: id,
+      user_id: OTHER,
+      submitter_display_name: "Bob",
+      isrc: id,
+      title,
+      artist: "",
+      album: null,
+      album_art_url: null,
+      platforms: {},
+      submitter_note: null,
+      vote_count,
+      notes: [],
+      voters: [],
+    });
+    mockGetRound.mockResolvedValue(round({ state: "closed" }));
+    mockGetResults.mockResolvedValue(
+      results({
+        submissions: [
+          sub("a", "Alpha", 4),
+          sub("b", "Bravo", 3),
+          sub("c", "Charlie", 2),
+          sub("d", "Delta", 1),
+        ],
+      }),
+    );
+    renderRound();
+    const heading = await screen.findByText("the picks (4)");
+    const section = heading.closest("section") as HTMLElement;
+    const picks = within(section);
+    const medalFor = (title: string) =>
+      picks.getByText(title).closest("li")!.querySelector("svg");
+    expect(medalFor("Alpha")).not.toBeNull();
+    expect(medalFor("Bravo")).not.toBeNull();
+    expect(medalFor("Charlie")).not.toBeNull();
+    expect(medalFor("Delta")).toBeNull();
   });
 
   describe("open_voting voting UX (MYS-20)", () => {
@@ -1850,6 +1927,7 @@ describe("RoundDetailRoute", () => {
               submitter_note: "a banger",
               vote_count: 0,
               notes: [],
+              voters: [],
             },
           ],
         }),
@@ -1881,6 +1959,7 @@ describe("RoundDetailRoute", () => {
         submitter_note: null,
         vote_count: 0,
         notes: [],
+        voters: [],
         ...overrides,
       };
     }

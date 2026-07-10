@@ -247,6 +247,11 @@ submission_id       UUID REFERENCES submissions(id)
 created_at          TIMESTAMP
 UNIQUE(voter_id, submission_id)
 ```
+> *Voting is anonymous throughout `open_voting` — `voter_id` is never surfaced
+> to other players before a round closes. Once `rounds.state == "closed"`,
+> `GET /rounds/:id/results` reveals each submission's voters by name
+> (MYS-173). This does not change vote casting or the anonymous voting
+> playlist (§7 Rounds) — it only adds identity to the post-close reveal.*
 
 ### notes
 ```
@@ -316,7 +321,7 @@ GET    /leagues/:id/rounds        Get all rounds for a league
 GET    /rounds/:id            Get round detail
 PATCH  /rounds/:id            Update round (organizer only: theme, deadlines, state — co-organizers now have parity, MYS-99)
 GET    /rounds/:id/playlist   Get round playlist with Odesli universal links
-GET    /rounds/:id/results    Get round results (scores, Most Noted, vote breakdown)
+GET    /rounds/:id/results    Get round results (scores, Most Noted, vote breakdown, per-song voter identity once closed — MYS-173)
 ```
 
 ### Submissions

@@ -808,6 +808,11 @@ class ResultNote(BaseModel):
     created_at: datetime
 
 
+class ResultVoter(BaseModel):
+    user_id: str
+    display_name: str
+
+
 class ResultSubmission(BaseModel):
     submission_id: str
     user_id: str
@@ -827,6 +832,12 @@ class ResultSubmission(BaseModel):
     vote_count: int
     # Notes others left on this submission, oldest first.
     notes: list[ResultNote]
+    # Who voted for this song (MYS-173). Voting itself stays anonymous through
+    # open_voting; this is only ever populated on the closed-round reveal, and
+    # only on ResultSubmission — the vibe-safe RevealPick/WinnerReveal shapes
+    # below intentionally omit it so a vibing viewer never sees voter identity,
+    # matching the existing no-vote-count rule (MYS-112).
+    voters: list[ResultVoter]
 
 
 class LeaderboardEntry(BaseModel):
@@ -929,6 +940,24 @@ async def get_round_results(
     ).all()
     votes_by_submission: dict[uuid.UUID, int] = {sid: count for sid, count in vote_count_rows}
 
+    # Voter identity per submission (MYS-173) — who cast each vote, revealed only
+    # now that the round is closed (voting itself stays anonymous throughout
+    # open_voting; this endpoint is already gated to state == "closed" above).
+    voter_rows = (
+        await db.execute(
+            select(Vote.submission_id, Vote.voter_id, User.display_name)
+            .join(User, User.id == Vote.voter_id)
+            .where(Vote.round_id == round_id)
+        )
+    ).all()
+    voters_by_submission: dict[uuid.UUID, list[ResultVoter]] = {}
+    for submission_id, voter_id, display_name in voter_rows:
+        voters_by_submission.setdefault(submission_id, []).append(
+            ResultVoter(user_id=str(voter_id), display_name=display_name)
+        )
+    for voters in voters_by_submission.values():
+        voters.sort(key=lambda v: v.display_name)
+
     # All notes for the round, joined to author display names, grouped in Python.
     note_rows = (
         await db.execute(
@@ -962,6 +991,7 @@ async def get_round_results(
             submitter_note=s.note,
             vote_count=votes_by_submission.get(s.id, 0),
             notes=notes_by_submission.get(s.id, []),
+            voters=voters_by_submission.get(s.id, []),
         )
         for s, display_name in submission_rows
     ]

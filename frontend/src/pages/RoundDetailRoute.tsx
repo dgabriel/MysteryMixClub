@@ -48,6 +48,7 @@ import { SongSearchCard } from "../components/songs/SongSearchCard";
 import { SpotifyPlaylist } from "../components/SpotifyPlaylist";
 import { CheckmarkIcon } from "../components/CheckmarkIcon";
 import { CrownIcon } from "../components/CrownIcon";
+import { MedalIcon } from "../components/MedalIcon";
 import { MusicNoteIcon } from "../components/MusicNoteIcon";
 import { DeadlineChip } from "../components/DeadlineChip";
 
@@ -1866,8 +1867,11 @@ function CollapsibleNotes({ notes }: { notes: ResultNote[] }) {
  * Closed-round reveal (MYS-24 / MYS-71). A static results moment — subtle
  * fade-in only, no staged animation (deferred to MYS-54). Top to bottom: Most
  * Noted (the one Rust signal on this screen), the Winner(s) by votes, the
- * Playing leaderboard, then every submission with its submitter revealed.
- * Vibing picks are shown fully and equally — a calm badge, never a score.
+ * Playing leaderboard, then a single ranked "the picks" list with every
+ * submission's full detail (submitter, notes, platforms, voters) — the
+ * standalone compact song-rank list was folded into this one to avoid listing
+ * every song twice (MYS-173 follow-up). Top 3 ranks get a filled Sage badge
+ * (RankBadge) so they read as distinct without a second Rust/Gold signal.
  */
 function ResultsSection({
   results,
@@ -1903,41 +1907,99 @@ function ResultsSection({
 
       {leaderboard.length > 0 ? <LeaderboardSection entries={leaderboard} /> : null}
 
-      {submissions.length > 0 ? <SongLeaderboardSection submissions={submissions} /> : null}
-
-      <section>
-        <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
-          the picks ({submissions.length})
-        </h2>
-        <ul className="mt-4 space-y-4">
-          {submissions.map((s) => (
-            <li key={s.submission_id}>
-              <Card>
-                <div className="flex items-start justify-between gap-3">
-                  <span className="font-mono uppercase tracking-label text-[9px] text-muted">
-                    {nameFor(s.user_id, s.submitter_display_name)}
-                  </span>
-                  <span className="shrink-0 font-mono uppercase tracking-label text-[9px] text-sage">
-                    {s.vote_count} {s.vote_count === 1 ? "vote" : "votes"}
-                  </span>
-                </div>
-                <h3 className="mt-1 font-serif text-[18px] leading-tight text-ink">{s.title}</h3>
-                {s.artist ? (
-                  <p className="mt-1 font-mono text-[11px] font-light text-muted">{s.artist}</p>
-                ) : null}
-                {s.submitter_note ? (
-                  <p className="mt-2 font-mono text-[11px] font-light text-ink">
-                    “{s.submitter_note}”
-                  </p>
-                ) : null}
-                <PlatformLinks platforms={s.platforms} title={s.title} />
-                {s.notes.length > 0 ? <CollapsibleNotes notes={s.notes} /> : null}
-              </Card>
-            </li>
-          ))}
-        </ul>
-      </section>
+      {submissions.length > 0 ? (
+        <section>
+          <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
+            the picks ({submissions.length})
+          </h2>
+          <ul className="mt-4 space-y-4">
+            {rankSongs(submissions).map((s) => (
+              <li key={s.submission_id}>
+                <Card>
+                  <div className="flex items-start gap-4">
+                    <RankBadge rank={s.rank} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="font-mono uppercase tracking-label text-[9px] text-muted">
+                          {nameFor(s.user_id, s.submitter_display_name)}
+                        </span>
+                        <span className="flex shrink-0 flex-col items-end">
+                          <span className="font-mono uppercase tracking-label text-[9px] text-sage">
+                            {s.vote_count} {s.vote_count === 1 ? "vote" : "votes"}
+                          </span>
+                          {s.tied ? (
+                            <span className="mt-0.5 font-mono uppercase tracking-label text-[9px] text-muted">
+                              tied
+                            </span>
+                          ) : null}
+                        </span>
+                      </div>
+                      <h3 className="mt-1 font-serif text-[18px] leading-tight text-ink">
+                        {s.title}
+                      </h3>
+                      {s.artist ? (
+                        <p className="mt-1 font-mono text-[11px] font-light text-muted">
+                          {s.artist}
+                        </p>
+                      ) : null}
+                      {s.submitter_note ? (
+                        <p className="mt-2 font-mono text-[11px] font-light text-ink">
+                          “{s.submitter_note}”
+                        </p>
+                      ) : null}
+                      <PlatformLinks platforms={s.platforms} title={s.title} />
+                      {s.voters.length > 0 ? (
+                        <p className="mt-2 font-mono text-[11px] font-light text-muted">
+                          voted by {s.voters.map((v) => v.display_name).join(", ")}
+                        </p>
+                      ) : null}
+                      {s.notes.length > 0 ? <CollapsibleNotes notes={s.notes} /> : null}
+                    </div>
+                  </div>
+                </Card>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </div>
+  );
+}
+
+/** A song's rank within its round. Top 3 get a filled Sage badge — the app's
+ *  hierarchy color, not a new signal — so they read as distinct at a glance
+ *  without competing with the Rust/Gold signals used elsewhere on this screen. */
+function RankBadge({ rank }: { rank: number }) {
+  if (rank > 3) {
+    return (
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center font-mono text-[11px] text-muted">
+        {rank}
+      </span>
+    );
+  }
+  // 1st place reads slightly larger than 2nd/3rd, and in Gold — the app's
+  // existing achievement-signal color (crown icons above use it too) — since
+  // this medal marks the same winner moment. The numeral sits inside the
+  // medal's disc — centered on its (6, 4.5) midpoint in the icon's 0-12
+  // viewBox, i.e. 50% across / 37.5% down the rendered icon.
+  const first = rank === 1;
+  return (
+    <span
+      className={[
+        "relative shrink-0",
+        first ? "h-7 w-7 text-gold" : "h-6 w-6 text-sage",
+      ].join(" ")}
+    >
+      <MedalIcon className="h-full w-full" />
+      <span
+        className={[
+          "absolute left-1/2 top-[37.5%] -translate-x-1/2 -translate-y-1/2 font-mono leading-none",
+          first ? "text-[12px]" : "text-[10px]",
+        ].join(" ")}
+      >
+        {rank}
+      </span>
+    </span>
   );
 }
 
@@ -2131,49 +2193,20 @@ function WinnersSection({
 
 /** Attach a competition rank to each song: ties share the same rank number and
  *  the next distinct score gets the position it would occupy if the tied entries
- *  were counted separately (1, 1, 3 — not 1, 1, 2). */
-function rankSongs(submissions: ResultSubmission[]): Array<ResultSubmission & { rank: number }> {
+ *  were counted separately (1, 1, 3 — not 1, 1, 2). `tied` flags any song that
+ *  shares its rank with another, so the card can call it out explicitly. */
+function rankSongs(
+  submissions: ResultSubmission[],
+): Array<ResultSubmission & { rank: number; tied: boolean }> {
   const sorted = [...submissions].sort((a, b) => b.vote_count - a.vote_count);
   let rank = 1;
-  return sorted.map((s, i) => {
+  const ranked = sorted.map((s, i) => {
     if (i > 0 && sorted[i - 1].vote_count > s.vote_count) rank = i + 1;
     return { ...s, rank };
   });
-}
-
-/** Every song ranked by votes (MYS-116) — the per-song complement to the
- *  per-player leaderboard. Shared-rank ties; calm Sage/Ink family, no Rust. */
-function SongLeaderboardSection({ submissions }: { submissions: ResultSubmission[] }) {
-  const ranked = rankSongs(submissions);
-  return (
-    <section>
-      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
-        songs ({submissions.length})
-      </h2>
-      <ul className="mt-4 divide-y divide-border border-y border-border">
-        {ranked.map((s) => (
-          <li key={s.submission_id} className="flex items-start justify-between gap-4 py-3">
-            <div className="flex items-start gap-4">
-              <span className="w-6 shrink-0 pt-0.5 font-mono text-[13px] font-light text-muted">
-                {s.rank}
-              </span>
-              <span>
-                <span className="block font-mono text-[13px] font-light text-ink">{s.title}</span>
-                {s.artist ? (
-                  <span className="mt-0.5 block font-mono text-[11px] font-light text-muted">
-                    {s.artist}
-                  </span>
-                ) : null}
-              </span>
-            </div>
-            <span className="shrink-0 pt-0.5 font-mono uppercase tracking-label text-[9px] text-sage">
-              {s.vote_count} {s.vote_count === 1 ? "vote" : "votes"}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
+  const countByRank = new Map<number, number>();
+  for (const s of ranked) countByRank.set(s.rank, (countByRank.get(s.rank) ?? 0) + 1);
+  return ranked.map((s) => ({ ...s, tied: (countByRank.get(s.rank) ?? 0) > 1 }));
 }
 
 /** The Playing leaderboard — already ranked, vibing excluded. Calm and compact;

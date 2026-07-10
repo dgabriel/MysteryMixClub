@@ -1215,6 +1215,7 @@ describe("api.ts", () => {
           submitter_note: "a banger",
           vote_count: 3,
           notes: [{ body: "this slaps", author_display_name: "Ada", created_at: "x" }],
+          voters: [{ user_id: "user-3", display_name: "Cal" }],
         },
       ],
       leaderboard: [{ user_id: "user-2", display_name: "Bo", vote_count: 3, rank: 1 }],

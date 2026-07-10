@@ -235,6 +235,39 @@ async def test_results_full_submissions_revealed_and_ordered(client, db_session)
     ]
 
 
+async def test_results_voters_named_per_submission_and_sorted(client, db_session):
+    """MYS-173: closed-round results name who voted for each song, sorted by
+    display name. A zero-vote submission gets an empty voters list."""
+    organizer = await _seed_user(db_session, "o@example.com", "Org")
+    alice = await _seed_user(db_session, "a@example.com", "Alice")
+    bob = await _seed_user(db_session, "b@example.com", "Bob")
+    carol = await _seed_user(db_session, "c@example.com", "Carol")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    round_id = round_.id
+    for u in (alice, bob, carol):
+        await _add_member(db_session, round_.league_id, u)
+
+    s_alice = await _seed_submission(db_session, round_, alice, title="Banana")
+    s_bob = await _seed_submission(db_session, round_, bob, title="Apple")
+    s_alice_id, s_bob_id = s_alice.id, s_bob.id
+    bob_id, carol_id = bob.id, carol.id
+
+    # Carol and Bob vote for Alice's song; nobody votes for Bob's.
+    await _seed_vote(db_session, round_id, carol, s_alice)
+    await _seed_vote(db_session, round_id, bob, s_alice)
+
+    resp = await client.get(_url(round_id), headers=_auth(organizer.id))
+    assert resp.status_code == 200, resp.text
+    subs = {s["submission_id"]: s for s in resp.json()["submissions"]}
+
+    # Sorted by display_name asc (Bob before Carol), not vote order.
+    assert subs[str(s_alice_id)]["voters"] == [
+        {"user_id": str(bob_id), "display_name": "Bob"},
+        {"user_id": str(carol_id), "display_name": "Carol"},
+    ]
+    assert subs[str(s_bob_id)]["voters"] == []
+
+
 async def test_results_submissions_tiebreak_title_asc(client, db_session):
     # Two submissions tied on votes -> ordered by title A->Z.
     organizer = await _seed_user(db_session, "o@example.com", "Org")
@@ -530,6 +563,10 @@ async def test_results_vibing_viewer_gets_trimmed_reveal(client, db_session):
     picks = body["picks"]
     assert [p["title"] for p in picks] == ["Org-song", "Vibed", "Winner"]
     assert all("vote_count" not in p for p in picks)
+    # Voter identity (MYS-173) never leaks into the vibe-safe shapes either —
+    # a vibing viewer sees who won but not who voted for them.
+    assert "voters" not in body["winners"][0]
+    assert all("voters" not in p for p in picks)
     # Tiles are playable: each pick carries its platform links (MYS-134 fix).
     assert all("platforms" in p for p in picks)
     own = next(p for p in picks if p["submission_id"] == str(s_viber_id))

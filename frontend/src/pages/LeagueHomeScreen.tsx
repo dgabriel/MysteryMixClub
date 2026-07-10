@@ -40,7 +40,14 @@ type LeagueHomeScreenProps = {
   rounds: Round[];
   /** Reveal results keyed by round id, present once a closed round's results load. */
   roundResults: Record<string, RoundResults>;
+  /** The fixed organizer only — narrower than isAdmin. Still needed to decide
+   *  whether the leave-league section renders (co-organizers can leave; the
+   *  fixed organizer cannot). */
   isOrganizer: boolean;
+  /** isOrganizer OR the caller's own membership row has is_admin === true
+   *  (co-organizer, MYS-99). Gates round management, league settings edit,
+   *  and member removal/role changes. */
+  isAdmin: boolean;
   loading: boolean;
   error?: string | null;
   onBack: () => void;
@@ -67,6 +74,10 @@ type LeagueHomeScreenProps = {
   onRemoveMember: (userId: string) => void;
   removingUserId: string | null;
   removeError?: string | null;
+  // --- Co-organizer promote/demote (MYS-99) ---
+  onChangeMemberRole: (userId: string, role: "admin" | "member") => void;
+  changingRoleUserId: string | null;
+  roleChangeError?: string | null;
   // --- Organizer admin: delete league (MYS-124) ---
   onDeleteLeague: () => void;
   deletingLeague: boolean;
@@ -86,6 +97,7 @@ export function LeagueHomeScreen({
   rounds,
   roundResults,
   isOrganizer,
+  isAdmin,
   loading,
   error,
   onBack,
@@ -103,6 +115,9 @@ export function LeagueHomeScreen({
   onRemoveMember,
   removingUserId,
   removeError,
+  onChangeMemberRole,
+  changingRoleUserId,
+  roleChangeError,
   onDeleteLeague,
   deletingLeague,
   deleteLeagueError,
@@ -133,10 +148,12 @@ export function LeagueHomeScreen({
     );
   }
 
-  // Rust budget: this screen's single Rust signal is reserved for the organizer's
-  // destructive delete-league confirm (DeleteLeagueSection below). Every other
-  // element — including the league-state badge — stays in the Sage family. The
-  // shared TopNav is rendered by AuthedLayout, so this is content-only.
+  // Rust budget: this screen's single Rust signal is reserved for the
+  // destructive delete-league confirm (DeleteLeagueSection below), visible to
+  // any admin — the fixed organizer or a co-organizer (MYS-99). Every other
+  // element — including the league-state badge and the co-organizer badge —
+  // stays in the Sage family. The shared TopNav is rendered by AuthedLayout,
+  // so this is content-only.
   const isComplete = league.state === "complete";
 
   return (
@@ -160,7 +177,7 @@ export function LeagueHomeScreen({
           </p>
         ) : null}
 
-        {isOrganizer ? (
+        {isAdmin ? (
           <OrganizerEdit
             league={league}
             onUpdateLeague={onUpdateLeague}
@@ -173,7 +190,7 @@ export function LeagueHomeScreen({
         <RoundsSection
           rounds={rounds}
           roundResults={roundResults}
-          isOrganizer={isOrganizer}
+          isAdmin={isAdmin}
           onOpenRound={onOpenRound}
           onUpdateRound={onUpdateRound}
           savingRoundId={savingRoundId}
@@ -189,7 +206,10 @@ export function LeagueHomeScreen({
             {leaderboard.map((entry) => {
               const member = members.find((m) => m.user_id === entry.user_id);
               const isMe = entry.user_id === userId;
-              const showRemove = isOrganizer && member && !member.is_organizer;
+              // The fixed organizer's role can't be toggled or removed by anyone
+              // (MYS-99) — every other member, including other co-organizers, is
+              // fair game for any current admin.
+              const showRoleAndRemove = isAdmin && member && !member.is_organizer;
               const anyVotes = leaderboard.some((e) => e.vote_count > 0);
               return (
                 <li
@@ -210,12 +230,31 @@ export function LeagueHomeScreen({
                       {entry.display_name}
                     </span>
                     {member?.is_organizer ? <Badge>organizer</Badge> : null}
+                    {member?.is_admin && !member?.is_organizer ? (
+                      <Badge>co-organizer</Badge>
+                    ) : null}
                   </span>
                   <span className="flex items-center gap-4">
                     <span className="font-mono text-[11px] text-muted">
                       {entry.vote_count} {entry.vote_count === 1 ? "vote" : "votes"}
                     </span>
-                    {showRemove ? (
+                    {showRoleAndRemove ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onChangeMemberRole(entry.user_id, member.is_admin ? "member" : "admin")
+                        }
+                        disabled={changingRoleUserId === entry.user_id}
+                        className="font-mono uppercase tracking-ui text-[11px] text-ink underline underline-offset-[3px] hover:text-sage disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {changingRoleUserId === entry.user_id
+                          ? "saving…"
+                          : member.is_admin
+                            ? "remove admin"
+                            : "make admin"}
+                      </button>
+                    ) : null}
+                    {showRoleAndRemove ? (
                       <button
                         type="button"
                         onClick={() => onRemoveMember(entry.user_id)}
@@ -230,6 +269,11 @@ export function LeagueHomeScreen({
               );
             })}
           </ul>
+          {roleChangeError ? (
+            <p role="alert" className="mt-3 font-mono text-[11px] text-ink">
+              {roleChangeError}
+            </p>
+          ) : null}
           {removeError ? (
             <p role="alert" className="mt-3 font-mono text-[11px] text-ink">
               {removeError}
@@ -262,30 +306,40 @@ export function LeagueHomeScreen({
           ) : null}
         </section>
 
-        {/* Destructive actions — organizers delete, members leave. Never both. */}
-        {isOrganizer ? (
+        {/* Destructive actions (MYS-99): any admin (fixed organizer or
+            co-organizer) can delete the league outright. The fixed organizer
+            can never leave (the backend guard blocks it) so they only see
+            delete; a co-organizer is the one case that sees both — they can
+            leave individually, or delete the whole league; a plain member
+            only sees leave. Delete's confirm carries this screen's single
+            Rust signal (see DeleteLeagueSection) — because a co-organizer can
+            have both sections open at once, LeaveLeagueSection's confirm
+            intentionally stays in the Sage/ghost family, never Rust. */}
+        {isAdmin ? (
           <DeleteLeagueSection
             onDeleteLeague={onDeleteLeague}
             deletingLeague={deletingLeague}
             deleteLeagueError={deleteLeagueError}
           />
-        ) : (
+        ) : null}
+        {!isOrganizer ? (
           <LeaveLeagueSection
             onLeaveLeague={onLeaveLeague}
             leavingLeague={leavingLeague}
             leaveLeagueError={leaveLeagueError}
           />
-        )}
+        ) : null}
     </main>
   );
 }
 
 /**
- * Organizer-only destructive action. A two-step confirm (calm copy, no
- * exclamation marks): the first action arms the confirm, the second commits.
- * This confirm carries the screen's single Rust signal — the `link`-variant
- * Button renders in Rust. The backend rejects deleting an in-progress league
- * (409); that calm message is surfaced verbatim.
+ * Admin-only destructive action — the fixed organizer or any co-organizer
+ * (MYS-99). A two-step confirm (calm copy, no exclamation marks): the first
+ * action arms the confirm, the second commits. This confirm carries the
+ * screen's single Rust signal — the `link`-variant Button renders in Rust.
+ * The backend rejects deleting an in-progress league (409); that calm
+ * message is surfaced verbatim.
  */
 function DeleteLeagueSection({
   onDeleteLeague,
@@ -345,8 +399,13 @@ function DeleteLeagueSection({
 }
 
 /**
- * Non-organizer destructive action. Two-step confirm, mirrors DeleteLeagueSection.
- * Rust is safe here: organizers (who have their own Rust confirm) never see this.
+ * Destructive action for anyone but the fixed organizer (plain members and,
+ * since MYS-99, co-organizers too). Two-step confirm, mirrors
+ * DeleteLeagueSection — but its confirm intentionally uses the `ghost`
+ * Button variant, not `link` (Rust). A co-organizer can have this section
+ * open at the same time as DeleteLeagueSection, which already spends this
+ * screen's single Rust use; keeping this one in the Sage/ghost family avoids
+ * a second Rust element appearing in the same view.
  */
 function LeaveLeagueSection({
   onLeaveLeague,
@@ -370,7 +429,7 @@ function LeaveLeagueSection({
           </p>
           <div className="flex items-center gap-4">
             <Button
-              variant="link"
+              variant="ghost"
               type="button"
               onClick={onLeaveLeague}
               disabled={leavingLeague}
@@ -407,7 +466,7 @@ function LeaveLeagueSection({
 function RoundsSection({
   rounds,
   roundResults,
-  isOrganizer,
+  isAdmin,
   onOpenRound,
   onUpdateRound,
   savingRoundId,
@@ -415,7 +474,7 @@ function RoundsSection({
 }: {
   rounds: Round[];
   roundResults: Record<string, RoundResults>;
-  isOrganizer: boolean;
+  isAdmin: boolean;
   onOpenRound: (roundId: string) => void;
   onUpdateRound: (
     roundId: string,
@@ -441,7 +500,7 @@ function RoundsSection({
               <RoundRow
                 round={round}
                 results={roundResults[round.id]}
-                isOrganizer={isOrganizer}
+                isAdmin={isAdmin}
                 onOpen={() => onOpenRound(round.id)}
                 onUpdate={(input) => onUpdateRound(round.id, input)}
                 saving={savingRoundId === round.id}
@@ -476,7 +535,7 @@ function RoundsSection({
 function RoundRow({
   round,
   results,
-  isOrganizer,
+  isAdmin,
   onOpen,
   onUpdate,
   saving,
@@ -484,7 +543,7 @@ function RoundRow({
 }: {
   round: Round;
   results?: RoundResults;
-  isOrganizer: boolean;
+  isAdmin: boolean;
   onOpen: () => void;
   onUpdate: (input: { theme?: string | null; description?: string | null }) => Promise<boolean>;
   saving: boolean;
@@ -530,7 +589,7 @@ function RoundRow({
               <span className="mt-0.5 block truncate font-serif text-[16px] text-ink">
                 {round.theme}
               </span>
-            ) : isOrganizer ? (
+            ) : isAdmin ? (
               <span className="mt-0.5 block truncate font-mono text-[13px] font-light italic text-muted">
                 untitled — add a theme
               </span>
@@ -570,7 +629,7 @@ function RoundRow({
         {round.state === "closed" && results ? <ClosedRoundSummary results={results} /> : null}
       </button>
 
-      {isOrganizer ? (
+      {isAdmin ? (
         <div className="mt-3">
           {pending ? (
             <button

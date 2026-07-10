@@ -1,7 +1,7 @@
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, StringConstraints, model_validator
@@ -153,16 +153,22 @@ class MemberResponse(BaseModel):
     display_name: str
     joined_at: datetime
     is_organizer: bool
+    # True if this member is the fixed organizer OR a promoted co-organizer
+    # (league_members.role == "admin", MYS-99). Broader than is_organizer, which
+    # only ever means "is the original organizer_id".
+    is_admin: bool
 
 
 def _to_member_response(
     member: LeagueMember, user: User, organizer_id: uuid.UUID | None
 ) -> MemberResponse:
+    is_organizer = member.user_id == organizer_id
     return MemberResponse(
         user_id=str(member.user_id),
         display_name=user.display_name,
         joined_at=member.joined_at,
-        is_organizer=member.user_id == organizer_id,
+        is_organizer=is_organizer,
+        is_admin=is_organizer or member.role == "admin",
     )
 
 
@@ -238,12 +244,28 @@ async def list_leagues(
 async def _load_league_as_organizer(
     league_id: uuid.UUID, current_user: User, db: AsyncSession, forbidden_detail: str
 ) -> League:
-    """Load a league or 404, then require the caller to be its organizer or 403."""
+    """Load a league or 404, then require the caller to be an organizer or 403.
+
+    "Organizer" here means either the league's fixed ``organizer_id`` or an
+    active (``removed_at IS NULL``) league member promoted to co-organizer
+    (``league_members.role == "admin"``, MYS-99). Co-organizers get full
+    operational parity with the organizer everywhere this helper gates,
+    including reuse by :mod:`app.api.routes.rounds`.
+    """
     league = await db.scalar(select(League).where(League.id == league_id))
     if league is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="league not found")
     if league.organizer_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=forbidden_detail)
+        is_admin_member = await db.scalar(
+            select(LeagueMember.id).where(
+                LeagueMember.league_id == league_id,
+                LeagueMember.user_id == current_user.id,
+                LeagueMember.removed_at.is_(None),
+                LeagueMember.role == "admin",
+            )
+        )
+        if is_admin_member is None:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=forbidden_detail)
     return league
 
 
@@ -437,7 +459,7 @@ async def update_league(
     db: AsyncSession = Depends(get_db),
 ) -> LeagueResponse:
     league = await _load_league_as_organizer(
-        league_id, current_user, db, "only the organizer can update this league"
+        league_id, current_user, db, "only an organizer or co-organizer can update this league"
     )
     if league.state == "complete":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="league is complete")
@@ -509,7 +531,7 @@ async def delete_league(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     await _load_league_as_organizer(
-        league_id, current_user, db, "only the organizer can delete this league"
+        league_id, current_user, db, "only an organizer or co-organizer can delete this league"
     )
     # The organizer may delete the league in any state (MYS-137) — including an
     # in-progress round. The two-step UI confirm guards the destructive intent;
@@ -547,7 +569,7 @@ async def remove_member(
     else:
         # Organizer removing another member.
         league = await _load_league_as_organizer(
-            league_id, current_user, db, "only the organizer can remove members"
+            league_id, current_user, db, "only an organizer or co-organizer can remove members"
         )
         if user_id == league.organizer_id:
             raise HTTPException(
@@ -566,6 +588,74 @@ async def remove_member(
 
     membership.removed_at = func.now()
     await db.commit()
+
+
+class MemberRoleUpdate(BaseModel):
+    role: Literal["admin", "member"]
+
+
+@router.patch("/{league_id}/members/{user_id}/role", response_model=MemberResponse)
+async def set_member_role(
+    league_id: uuid.UUID,
+    user_id: uuid.UUID,
+    payload: MemberRoleUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> MemberResponse:
+    """Promote/demote an active member to/from co-organizer (MYS-99).
+
+    Any current admin (the fixed organizer or an existing co-organizer) may
+    call this. The organizer's own membership row can't be changed here — its
+    admin power comes from ``organizer_id`` itself, not a toggleable role.
+    """
+    league = await _load_league_as_organizer(
+        league_id, current_user, db, "only an organizer or co-organizer can change member roles"
+    )
+    if user_id == league.organizer_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="the organizer already has full admin access and can't be changed here",
+        )
+
+    membership = await db.scalar(
+        select(LeagueMember).where(
+            LeagueMember.league_id == league_id,
+            LeagueMember.user_id == user_id,
+            LeagueMember.removed_at.is_(None),
+        )
+    )
+    if membership is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="member not found")
+
+    # Zero-effective-admins lockout guard (MYS-99 follow-up). If the fixed
+    # organizer account has been hard-purged (organizer_id nulled — see
+    # jobs/purge_accounts.py), the league's only path to an admin-capable
+    # caller is a co-organizer with role == "admin". Demoting the last one
+    # would leave the league permanently unadministrable, so block it.
+    if payload.role == "member" and membership.role == "admin" and league.organizer_id is None:
+        other_admin = await db.scalar(
+            select(LeagueMember.id)
+            .join(User, User.id == LeagueMember.user_id)
+            .where(
+                LeagueMember.league_id == league_id,
+                LeagueMember.user_id != user_id,
+                LeagueMember.removed_at.is_(None),
+                LeagueMember.role == "admin",
+                User.deleted_at.is_(None),
+            )
+        )
+        if other_admin is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="cannot remove the last admin from a league with no organizer",
+            )
+
+    membership.role = payload.role
+    await db.commit()
+
+    user = await db.scalar(select(User).where(User.id == user_id))
+    assert user is not None
+    return _to_member_response(membership, user, league.organizer_id)
 
 
 @router.post("/{league_id}/invites", status_code=201, response_model=InviteResponse)
@@ -612,7 +702,7 @@ async def revoke_invite(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     await _load_league_as_organizer(
-        league_id, current_user, db, "only the organizer can revoke invites"
+        league_id, current_user, db, "only an organizer or co-organizer can revoke invites"
     )
 
     invite = await db.scalar(select(Invite).where(Invite.id == invite_id))

@@ -287,12 +287,15 @@ export type Membership = {
   vibe_mode: boolean;
 };
 
-/** A member of a league (GET /api/v1/leagues/:id/members). */
+/** A member of a league (GET /api/v1/leagues/:id/members). `is_admin` is true
+ *  for the fixed organizer or anyone holding the co-organizer `"admin"` role
+ *  (MYS-99). */
 export type LeagueMember = {
   user_id: string;
   display_name: string;
   joined_at: string;
   is_organizer: boolean;
+  is_admin: boolean;
 };
 
 /** An invite to a league (POST /api/v1/leagues/:id/invites). */
@@ -412,6 +415,26 @@ export async function removeMember(leagueId: string, userId: string): Promise<vo
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
+}
+
+/** Promote or demote a member to/from co-organizer (MYS-99). Callable by any
+ *  current admin (the fixed organizer or another co-organizer) on another
+ *  active member. The backend 409s if targeting the fixed `organizer_id` user
+ *  (that role isn't toggleable). Returns the updated LeagueMember. */
+export async function updateMemberRole(
+  leagueId: string,
+  userId: string,
+  role: "admin" | "member",
+): Promise<LeagueMember> {
+  const res = await authenticatedRequest(`/api/v1/leagues/${leagueId}/members/${userId}/role`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role }),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as LeagueMember;
 }
 
 /** Generate an invite link for a league (organizer or member). Returns the Invite. */

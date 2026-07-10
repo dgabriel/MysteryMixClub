@@ -2,10 +2,10 @@
 
 Round lifecycle and the create/read/update surface for a league's rounds:
 
-* ``POST  /api/v1/leagues/:id/rounds``       — organizer creates the next round
+* ``POST  /api/v1/leagues/:id/rounds``       — organizer (or co-organizer) creates the next round
 * ``GET   /api/v1/leagues/:id/rounds``       — members list a league's rounds
 * ``GET   /api/v1/rounds/:id``               — members read a round
-* ``PATCH /api/v1/rounds/:id``               — organizer edits fields / advances state
+* ``PATCH /api/v1/rounds/:id``               — organizer (or co-organizer) edits fields / advances state
 * ``GET   /api/v1/rounds/:id/playlist``      — members get the anonymous voting playlist
 
 State machine is forward-only: ``pending -> open_submission -> open_voting ->
@@ -14,7 +14,8 @@ round per league may be active (open_submission/open_voting) at a time, enforced
 when a round opens. The
 playlist surfaces each submission resolved to the viewer's preferred service (it
 reads the stored ``platform_links``). Membership/organizer checks reuse the helpers
-in :mod:`app.api.routes.leagues`.
+in :mod:`app.api.routes.leagues` — "organizer" there also admits a promoted
+co-organizer (``league_members.role == "admin"``, MYS-99).
 """
 
 import random
@@ -387,7 +388,7 @@ async def create_round(
     db: AsyncSession = Depends(get_db),
 ) -> RoundResponse:
     league = await _load_league_as_organizer(
-        league_id, current_user, db, "only the organizer can create rounds"
+        league_id, current_user, db, "only an organizer or co-organizer can create rounds"
     )
     if league.state == "complete":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="league is complete")
@@ -537,7 +538,7 @@ async def update_round(
 ) -> RoundResponse:
     round_ = await _load_round(round_id, db)
     league = await _load_league_as_organizer(
-        round_.league_id, current_user, db, "only the organizer can update rounds"
+        round_.league_id, current_user, db, "only an organizer or co-organizer can update rounds"
     )
 
     updates = payload.model_dump(exclude_unset=True)

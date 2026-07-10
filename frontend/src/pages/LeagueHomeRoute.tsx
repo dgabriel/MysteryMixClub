@@ -12,6 +12,7 @@ import {
   getRounds,
   removeMember,
   updateLeague,
+  updateMemberRole,
   updateRound,
   type League,
   type LeaderboardEntry,
@@ -24,10 +25,14 @@ import { usePolling } from "../hooks/usePolling";
 
 /**
  * Protected league-home route. Loads the league and its members in parallel,
- * gates organizer controls on userId === organizer_id, and wires the invite,
- * edit, and member-removal actions back to the API. A 403/404 (or any load
- * failure) becomes a calm error the screen renders alongside a back affordance,
- * so the route never crashes on a league the user can't see.
+ * gates the fixed-organizer-only affordance on userId === organizer_id
+ * (isOrganizer) and the broader operational powers — round management, league
+ * settings, member removal/role changes — on isOrganizer OR the caller's own
+ * member row having is_admin (isAdmin, co-organizer parity, MYS-99). Wires the
+ * invite, edit, member-removal, and role-change actions back to the API. A
+ * 403/404 (or any load failure) becomes a calm error the screen renders
+ * alongside a back affordance, so the route never crashes on a league the
+ * user can't see.
  */
 export function LeagueHomeRoute() {
   const { id } = useParams();
@@ -54,6 +59,10 @@ export function LeagueHomeRoute() {
 
   const [removingUserId, setRemovingUserId] = useState<string | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
+
+  // Co-organizer promote/demote (MYS-99).
+  const [changingRoleUserId, setChangingRoleUserId] = useState<string | null>(null);
+  const [roleChangeError, setRoleChangeError] = useState<string | null>(null);
 
   // Organizer admin: delete league (MYS-124).
   const [deletingLeague, setDeletingLeague] = useState(false);
@@ -138,6 +147,13 @@ export function LeagueHomeRoute() {
   }, [rounds]);
 
   const isOrganizer = !!userId && league?.organizer_id === userId;
+  // Co-organizers (role === "admin") get parity with the fixed organizer on
+  // operational powers (round management, league settings, member removal) —
+  // MYS-99. isOrganizer stays narrower, for the one case that still cares
+  // about the fixed organizer specifically (see the destructive-actions
+  // section in LeagueHomeScreen).
+  const ownMember = members.find((m) => m.user_id === userId);
+  const isAdmin = isOrganizer || ownMember?.is_admin === true;
 
   async function handleDeleteLeague() {
     if (!id) return;
@@ -258,6 +274,22 @@ export function LeagueHomeRoute() {
     }
   }
 
+  async function handleChangeMemberRole(memberUserId: string, role: "admin" | "member") {
+    if (!id) return;
+    setChangingRoleUserId(memberUserId);
+    setRoleChangeError(null);
+    try {
+      const updated = await updateMemberRole(id, memberUserId, role);
+      setMembers((current) => current.map((m) => (m.user_id === memberUserId ? updated : m)));
+    } catch (err) {
+      setRoleChangeError(
+        err instanceof ApiError ? err.message : "couldn't update that member's role. try again.",
+      );
+    } finally {
+      setChangingRoleUserId(null);
+    }
+  }
+
   // While loading (or if the league never resolved without an error), keep the
   // screen in its loading state. The screen reads `league` only after the
   // loading/error guards, so the empty placeholder is never rendered.
@@ -287,6 +319,7 @@ export function LeagueHomeRoute() {
       userId={userId}
       roundResults={roundResults}
       isOrganizer={isOrganizer}
+      isAdmin={isAdmin}
       loading={loading || (!league && !error)}
       error={error}
       onBack={() => navigate("/home")}
@@ -304,6 +337,9 @@ export function LeagueHomeRoute() {
       onRemoveMember={handleRemoveMember}
       removingUserId={removingUserId}
       removeError={removeError}
+      onChangeMemberRole={handleChangeMemberRole}
+      changingRoleUserId={changingRoleUserId}
+      roleChangeError={roleChangeError}
       onDeleteLeague={handleDeleteLeague}
       deletingLeague={deletingLeague}
       deleteLeagueError={deleteLeagueError}

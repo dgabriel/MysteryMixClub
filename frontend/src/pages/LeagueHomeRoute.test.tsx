@@ -15,6 +15,7 @@ import {
   getRounds,
   removeMember,
   updateLeague,
+  updateMemberRole,
 } from "../services/api";
 import type { Invite, League, LeaderboardEntry, LeagueMember, Round, RoundResults } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
@@ -34,6 +35,7 @@ vi.mock("../services/api", async () => {
     removeMember: vi.fn(),
     createInvite: vi.fn(),
     deleteLeague: vi.fn(),
+    updateMemberRole: vi.fn(),
   };
 });
 
@@ -51,10 +53,12 @@ const mockUpdateLeague = vi.mocked(updateLeague);
 const mockRemoveMember = vi.mocked(removeMember);
 const mockCreateInvite = vi.mocked(createInvite);
 const mockDeleteLeague = vi.mocked(deleteLeague);
+const mockUpdateMemberRole = vi.mocked(updateMemberRole);
 const mockUseAuth = vi.mocked(useAuth);
 
 const ORGANIZER_ID = "org-1111";
 const MEMBER_ID = "mem-2222";
+const CO_ORGANIZER_ID = "co-3333";
 
 function leagueWith(overrides: Partial<League> = {}): League {
   return {
@@ -83,14 +87,41 @@ function members(): LeagueMember[] {
       display_name: "Ada",
       joined_at: "2026-01-01T00:00:00Z",
       is_organizer: true,
+      is_admin: true,
     },
     {
       user_id: MEMBER_ID,
       display_name: "Bo",
       joined_at: "2026-01-02T00:00:00Z",
       is_organizer: false,
+      is_admin: false,
     },
   ];
+}
+
+// A three-member roster including a promoted co-organizer (MYS-99): the fixed
+// organizer, a co-organizer (is_admin true, is_organizer false), and a plain
+// member.
+function membersWithCoOrganizer(): LeagueMember[] {
+  return [
+    ...members(),
+    {
+      user_id: CO_ORGANIZER_ID,
+      display_name: "Cy",
+      joined_at: "2026-01-03T00:00:00Z",
+      is_organizer: false,
+      is_admin: true,
+    },
+  ];
+}
+
+function leaderboardFor(memberList: LeagueMember[]): LeaderboardEntry[] {
+  return memberList.map((m, i) => ({
+    user_id: m.user_id,
+    display_name: m.display_name,
+    vote_count: 0,
+    rank: i + 1,
+  }));
 }
 
 function inviteWith(token: string): Invite {
@@ -376,6 +407,137 @@ describe("LeagueHomeRoute", () => {
 
     await waitFor(() => expect(mockRemoveMember).toHaveBeenCalledTimes(1));
     expect(mockRemoveMember).toHaveBeenCalledWith("league-1", MEMBER_ID);
+  });
+
+  // --- Co-organizer promote/demote (MYS-99) ---
+
+  it("co-organizer badge: renders for a member with is_admin && !is_organizer, not for the fixed organizer or a plain member", async () => {
+    const roster = membersWithCoOrganizer();
+    mockGetLeagueMembers.mockResolvedValue(roster);
+    mockGetLeagueLeaderboard.mockResolvedValue(leaderboardFor(roster));
+
+    renderLeague();
+    await screen.findByText("Friday Mixtape");
+
+    expect(await screen.findByText("co-organizer")).toBeInTheDocument();
+    // Exactly one co-organizer badge — the fixed organizer gets "organizer"
+    // instead, and the plain member gets neither.
+    expect(screen.getAllByText("co-organizer")).toHaveLength(1);
+    expect(screen.getByText("organizer")).toBeInTheDocument();
+  });
+
+  it("make admin: appears for an admin viewer on a plain member, calls updateMemberRole with role admin, shows a busy state, and surfaces an error on failure", async () => {
+    mockUpdateMemberRole.mockRejectedValue(new ApiError(500, "couldn't update that member's role"));
+    const user = userEvent.setup();
+
+    renderLeague();
+    await screen.findByText("Friday Mixtape");
+
+    const makeAdminBtn = screen.getByRole("button", { name: /^make admin$/i });
+    await user.click(makeAdminBtn);
+
+    expect(mockUpdateMemberRole).toHaveBeenCalledWith("league-1", MEMBER_ID, "admin");
+    expect(
+      await screen.findByText(/couldn't update that member's role/i),
+    ).toBeInTheDocument();
+  });
+
+  it("make admin: shows a busy 'saving…' state while the request is in flight", async () => {
+    let resolvePromise!: (value: LeagueMember) => void;
+    mockUpdateMemberRole.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePromise = resolve;
+        }),
+    );
+    const user = userEvent.setup();
+
+    renderLeague();
+    await screen.findByText("Friday Mixtape");
+
+    await user.click(screen.getByRole("button", { name: /^make admin$/i }));
+
+    expect(await screen.findByRole("button", { name: /^saving…$/i })).toBeInTheDocument();
+
+    resolvePromise({
+      user_id: MEMBER_ID,
+      display_name: "Bo",
+      joined_at: "2026-01-02T00:00:00Z",
+      is_organizer: false,
+      is_admin: true,
+    });
+
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /^saving…$/i })).not.toBeInTheDocument(),
+    );
+  });
+
+  it("remove admin: appears for an admin viewer on a co-organizer (not the fixed organizer), calls updateMemberRole with role member", async () => {
+    const roster = membersWithCoOrganizer();
+    mockGetLeagueMembers.mockResolvedValue(roster);
+    mockGetLeagueLeaderboard.mockResolvedValue(leaderboardFor(roster));
+    mockUpdateMemberRole.mockResolvedValue({
+      user_id: CO_ORGANIZER_ID,
+      display_name: "Cy",
+      joined_at: "2026-01-03T00:00:00Z",
+      is_organizer: false,
+      is_admin: false,
+    });
+    const user = userEvent.setup();
+
+    renderLeague();
+    await screen.findByText("Friday Mixtape");
+
+    // The fixed organizer's row never shows a role toggle; only the
+    // co-organizer's row does, alongside the plain member's "make admin".
+    const removeAdminBtn = screen.getByRole("button", { name: /^remove admin$/i });
+    await user.click(removeAdminBtn);
+
+    expect(mockUpdateMemberRole).toHaveBeenCalledWith("league-1", CO_ORGANIZER_ID, "member");
+  });
+
+  describe("co-organizer viewer parity", () => {
+    beforeEach(() => {
+      const roster = membersWithCoOrganizer();
+      mockGetLeagueMembers.mockResolvedValue(roster);
+      mockGetLeagueLeaderboard.mockResolvedValue(leaderboardFor(roster));
+      setAuth(CO_ORGANIZER_ID);
+    });
+
+    it("a co-organizer viewer (isAdmin, not isOrganizer) sees league-edit and member-removal controls a plain member does not", async () => {
+      renderLeague();
+      await screen.findByText("Friday Mixtape");
+
+      expect(screen.getByRole("button", { name: /^edit$/i })).toBeInTheDocument();
+      // Remove is available on both the plain member's row and the other
+      // co-organizer's row (never the fixed organizer's), per showRoleAndRemove.
+      expect(screen.getAllByRole("button", { name: /^remove$/i })).toHaveLength(2);
+    });
+
+    it("a co-organizer viewer sees BOTH the delete-league and leave-league sections", async () => {
+      renderLeague();
+      await screen.findByText("Friday Mixtape");
+
+      expect(screen.getByRole("button", { name: /^delete league$/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /^leave league$/i })).toBeInTheDocument();
+    });
+  });
+
+  it("the fixed organizer sees only the delete-league section, not leave-league", async () => {
+    renderLeague();
+    await screen.findByText("Friday Mixtape");
+
+    expect(screen.getByRole("button", { name: /^delete league$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^leave league$/i })).not.toBeInTheDocument();
+  });
+
+  it("a plain member sees only the leave-league section, not delete-league", async () => {
+    setAuth(MEMBER_ID);
+    renderLeague();
+    await screen.findByText("Friday Mixtape");
+
+    expect(screen.queryByRole("button", { name: /^delete league$/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^leave league$/i })).toBeInTheDocument();
   });
 
   it("nav: the TopNav home link navigates to /home", async () => {

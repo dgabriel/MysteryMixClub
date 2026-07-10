@@ -180,6 +180,7 @@ id                  UUID PRIMARY KEY
 league_id           UUID REFERENCES leagues(id)
 user_id             UUID REFERENCES users(id)
 vibe_mode           BOOLEAN DEFAULT FALSE (per-league participation default; seeded from leagues.default_vibe_mode at join, toggleable anytime — MYS-112)
+role                TEXT (admin | member) DEFAULT 'member', CHECK (role IN ('admin', 'member')) — co-organizer support (MYS-99). An "admin" member has full operational parity with the league's fixed organizer_id everywhere organizer checks apply (see §7 annotations below), except they can't be demoted via the role endpoint by anyone but another admin, and the fixed organizer's own row is never touched by it.
 joined_at           TIMESTAMP
 removed_at          TIMESTAMP
 ```
@@ -294,10 +295,11 @@ DELETE /users/me              Delete account and all associated data (right to b
 POST   /leagues               Create a new league (organizer sets default_vibe_mode — MYS-112)
 GET    /leagues               Get all leagues for current user
 GET    /leagues/:id           Get league detail
-PATCH  /leagues/:id           Update league (organizer only: name, total_rounds, default_vibe_mode)
+PATCH  /leagues/:id           Update league (organizer only: name, total_rounds, default_vibe_mode — co-organizers now have parity, MYS-99)
 GET    /leagues/:id/members   Get league members
 PATCH  /leagues/:id/membership Set the caller's own vibe_mode for the league (MYS-112)
-DELETE /leagues/:id/members/:userId   Remove a member (organizer only)
+DELETE /leagues/:id/members/:userId   Remove a member (organizer only — co-organizers now have parity, MYS-99)
+PATCH  /leagues/:id/members/:userId/role  Promote/demote an active member to/from co-organizer (organizer or co-organizer only; MYS-99)
 ```
 
 ### Invites
@@ -309,10 +311,10 @@ POST   /invites/:token/accept Join league via invite
 
 ### Rounds
 ```
-POST   /leagues/:id/rounds        Create a new round (organizer only)
+POST   /leagues/:id/rounds        Create a new round (organizer only — co-organizers now have parity, MYS-99)
 GET    /leagues/:id/rounds        Get all rounds for a league
 GET    /rounds/:id            Get round detail
-PATCH  /rounds/:id            Update round (organizer only: theme, deadlines, state)
+PATCH  /rounds/:id            Update round (organizer only: theme, deadlines, state — co-organizers now have parity, MYS-99)
 GET    /rounds/:id/playlist   Get round playlist with Odesli universal links
 GET    /rounds/:id/results    Get round results (scores, Most Noted, vote breakdown)
 ```

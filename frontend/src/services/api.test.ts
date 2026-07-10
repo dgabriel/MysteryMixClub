@@ -24,6 +24,7 @@ import {
   setStoredAccessToken,
   updateDisplayName,
   updateLeague,
+  updateMemberRole,
   verifyToken,
 } from "./api";
 import type {
@@ -600,12 +601,14 @@ describe("api.ts", () => {
         display_name: "Ada",
         joined_at: "2026-06-01T00:00:00Z",
         is_organizer: true,
+        is_admin: true,
       },
       {
         user_id: "user-2",
         display_name: "Bo",
         joined_at: "2026-06-02T00:00:00Z",
         is_organizer: false,
+        is_admin: false,
       },
     ];
 
@@ -726,6 +729,92 @@ describe("api.ts", () => {
       const err = await removeMember("league-1", "user-2").catch((e: unknown) => e);
       expect(err).toBeInstanceOf(ApiError);
       expect(err).toMatchObject({ status: 403, message: "organizer only" });
+    });
+  });
+
+  describe("updateMemberRole", () => {
+    it("PATCHes /api/v1/leagues/{leagueId}/members/{userId}/role with a JSON body (Bearer + credentials) and resolves the updated LeagueMember on 200", async () => {
+      setStoredAccessToken("my-token");
+      const updated: LeagueMember = {
+        user_id: "user-2",
+        display_name: "Bo",
+        joined_at: "2026-06-02T00:00:00Z",
+        is_organizer: false,
+        is_admin: true,
+      };
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, updated));
+
+      await expect(updateMemberRole("league-1", "user-2", "admin")).resolves.toEqual(updated);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(`${V1_BASE}/leagues/league-1/members/user-2/role`);
+      expect(init?.method).toBe("PATCH");
+      expect(init?.credentials).toBe("include");
+      expect(init?.body).toBe(JSON.stringify({ role: "admin" }));
+      const headers = new Headers(init?.headers);
+      expect(headers.get("Content-Type")).toBe("application/json");
+      expect(headers.get("Authorization")).toBe("Bearer my-token");
+    });
+
+    it("sends role: member to demote a co-organizer", async () => {
+      setStoredAccessToken("my-token");
+      const updated: LeagueMember = {
+        user_id: "user-2",
+        display_name: "Bo",
+        joined_at: "2026-06-02T00:00:00Z",
+        is_organizer: false,
+        is_admin: false,
+      };
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, updated));
+
+      await expect(updateMemberRole("league-1", "user-2", "member")).resolves.toEqual(updated);
+
+      const [, init] = fetchMock.mock.calls[0];
+      expect(init?.body).toBe(JSON.stringify({ role: "member" }));
+    });
+
+    it("throws ApiError(409) when targeting the fixed organizer", async () => {
+      setStoredAccessToken("my-token");
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse(409, {
+          detail: "the organizer already has full admin access and can't be changed here",
+        }),
+      );
+
+      const err = await updateMemberRole("league-1", "user-1", "admin").catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err).toMatchObject({
+        status: 409,
+        message: "the organizer already has full admin access and can't be changed here",
+      });
+    });
+
+    it("throws ApiError(403) when the caller is not an admin", async () => {
+      setStoredAccessToken("my-token");
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse(403, {
+          detail: "only an organizer or co-organizer can change member roles",
+        }),
+      );
+
+      const err = await updateMemberRole("league-1", "user-2", "admin").catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err).toMatchObject({
+        status: 403,
+        message: "only an organizer or co-organizer can change member roles",
+      });
+    });
+
+    it("throws ApiError(404) when the target is not an active member", async () => {
+      setStoredAccessToken("my-token");
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse(404, { detail: "member not found" }),
+      );
+
+      const err = await updateMemberRole("league-1", "user-9", "admin").catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err).toMatchObject({ status: 404, message: "member not found" });
     });
   });
 

@@ -9,6 +9,7 @@ import {
   deleteSubmission,
   editSubmission,
   getLeague,
+  getLeagueMembers,
   getMyMembership,
   getMySubmissions,
   getMyVotes,
@@ -22,7 +23,14 @@ import {
   submitSong,
   updateRound,
 } from "../services/api";
-import type { League, PlaylistEntry, Round, RoundResults, SubmissionResult } from "../services/api";
+import type {
+  League,
+  LeagueMember,
+  PlaylistEntry,
+  Round,
+  RoundResults,
+  SubmissionResult,
+} from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 
 vi.mock("../services/api", async () => {
@@ -31,6 +39,7 @@ vi.mock("../services/api", async () => {
     ...actual,
     getRound: vi.fn(),
     getLeague: vi.fn(),
+    getLeagueMembers: vi.fn(),
     getMyMembership: vi.fn(),
     getMySubmissions: vi.fn(),
     getPlaylist: vi.fn(),
@@ -52,6 +61,7 @@ vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
 
 const mockGetRound = vi.mocked(getRound);
 const mockGetLeague = vi.mocked(getLeague);
+const mockGetLeagueMembers = vi.mocked(getLeagueMembers);
 const mockGetMyMembership = vi.mocked(getMyMembership);
 const mockGetMine = vi.mocked(getMySubmissions);
 const mockEditSubmission = vi.mocked(editSubmission);
@@ -71,6 +81,7 @@ const mockUseAuth = vi.mocked(useAuth);
 
 const ORGANIZER = "org-1";
 const OTHER = "user-2";
+const CO_ORGANIZER = "co-3";
 
 function round(overrides: Partial<Round> = {}): Round {
   return {
@@ -112,6 +123,43 @@ function league(): League {
     voting_window_hours: 72,
     completed_at: null,
   };
+}
+
+// League membership (MYS-99) — the fixed organizer's row carries is_admin;
+// OTHER defaults to a plain member.
+function members(): LeagueMember[] {
+  return [
+    {
+      user_id: ORGANIZER,
+      display_name: "Org",
+      joined_at: "2026-01-01T00:00:00Z",
+      is_organizer: true,
+      is_admin: true,
+    },
+    {
+      user_id: OTHER,
+      display_name: "Other",
+      joined_at: "2026-01-02T00:00:00Z",
+      is_organizer: false,
+      is_admin: false,
+    },
+  ];
+}
+
+// A roster with a promoted co-organizer (MYS-99), for parity coverage: same
+// full round-management access as the fixed organizer without being the
+// organizer themselves.
+function membersWithCoOrganizer(): LeagueMember[] {
+  return [
+    ...members(),
+    {
+      user_id: CO_ORGANIZER,
+      display_name: "Cy",
+      joined_at: "2026-01-03T00:00:00Z",
+      is_organizer: false,
+      is_admin: true,
+    },
+  ];
 }
 
 function entry(overrides: Partial<PlaylistEntry> = {}): PlaylistEntry {
@@ -199,6 +247,7 @@ describe("RoundDetailRoute", () => {
     vi.clearAllMocks();
     mockGetRound.mockResolvedValue(round());
     mockGetLeague.mockResolvedValue(league());
+    mockGetLeagueMembers.mockResolvedValue(members());
     mockGetMyMembership.mockResolvedValue({
       league_id: "lg1",
       user_id: ORGANIZER,
@@ -620,6 +669,37 @@ describe("RoundDetailRoute", () => {
     renderRound();
     await screen.findByText("late summer feels");
     expect(screen.queryByRole("button", { name: /open voting/i })).not.toBeInTheDocument();
+  });
+
+  // --- Co-organizer parity (MYS-99): isAdmin (isOrganizer OR own row's
+  // is_admin) gates OrganizerControls/EditRoundForm, same as the fixed
+  // organizer. ---
+
+  it("co-organizer viewer: sees OrganizerControls (advance control) though they are not the fixed organizer", async () => {
+    mockGetLeagueMembers.mockResolvedValue(membersWithCoOrganizer());
+    setAuth(CO_ORGANIZER);
+    renderRound();
+    await screen.findByText("late summer feels");
+    expect(await screen.findByRole("button", { name: /open voting/i })).toBeInTheDocument();
+  });
+
+  it("co-organizer viewer: sees EditRoundForm (edit round) on a pending round", async () => {
+    mockGetRound.mockResolvedValue(round({ state: "pending" }));
+    mockGetLeagueMembers.mockResolvedValue(membersWithCoOrganizer());
+    setAuth(CO_ORGANIZER);
+    renderRound();
+    await screen.findByText("late summer feels");
+    expect(await screen.findByRole("button", { name: /^edit round$/i })).toBeInTheDocument();
+  });
+
+  it("plain member viewer: sees neither OrganizerControls nor EditRoundForm on a pending round", async () => {
+    mockGetRound.mockResolvedValue(round({ state: "pending" }));
+    mockGetLeagueMembers.mockResolvedValue(membersWithCoOrganizer());
+    setAuth(OTHER);
+    renderRound();
+    await screen.findByText("late summer feels");
+    expect(screen.queryByRole("button", { name: /open round/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^edit round$/i })).not.toBeInTheDocument();
   });
 
   it("organizer can open a pending round; advancing calls updateRound directly, no confirm step — MYS-170", async () => {

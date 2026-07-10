@@ -7,6 +7,7 @@ import {
   deleteSubmission,
   editSubmission,
   getLeague,
+  getLeagueMembers,
   getMyMembership,
   getMySubmissions,
   getMyVotes,
@@ -20,6 +21,7 @@ import {
   updateSubmissionNote,
   type League,
   type LeaderboardEntry,
+  type LeagueMember,
   type MostNotedWinner,
   type Note,
   type PlatformKey,
@@ -78,6 +80,9 @@ export function RoundDetailRoute() {
 
   const [round, setRound] = useState<Round | null>(null);
   const [league, setLeague] = useState<League | null>(null);
+  // League membership (MYS-99), fetched alongside league so co-organizers get
+  // parity with the fixed organizer on round-management controls (see isAdmin).
+  const [members, setMembers] = useState<LeagueMember[]>([]);
   const [mySubmissions, setMySubmissions] = useState<SubmissionResult[]>([]);
   // Per-round "Just Vibes for this Round" toggle (MYS-60), seeded from the
   // existing submission's mode, else the caller's per-league vibe setting.
@@ -130,9 +135,13 @@ export function RoundDetailRoute() {
     setError(null);
     try {
       const loadedRound = await getRound(id);
-      const loadedLeague = await getLeague(loadedRound.league_id);
+      const [loadedLeague, loadedMembers] = await Promise.all([
+        getLeague(loadedRound.league_id),
+        getLeagueMembers(loadedRound.league_id),
+      ]);
       setRound(loadedRound);
       setLeague(loadedLeague);
+      setMembers(loadedMembers);
 
       if (loadedRound.state === "pending") {
         // Nothing to load yet — the round isn't open. The organizer can edit its
@@ -230,6 +239,10 @@ export function RoundDetailRoute() {
   });
 
   const isOrganizer = !!userId && !!league && league.organizer_id === userId;
+  // Co-organizers (role === "admin") get parity with the fixed organizer on
+  // round-management controls (MYS-99) — same derivation as LeagueHomeRoute.
+  const ownMember = members.find((m) => m.user_id === userId);
+  const isAdmin = isOrganizer || ownMember?.is_admin === true;
 
   // Refresh the round so "X of Y submitted" reflects an add/remove right away
   // (MYS-101). Refetch rather than locally increment so a *replacement* (which
@@ -522,7 +535,7 @@ export function RoundDetailRoute() {
             no deadline set. */}
         <DeadlineChip round={round} className="mt-4" showCountdown />
 
-        {isOrganizer ? (
+        {isAdmin ? (
           <>
             <OrganizerControls
               state={round.state}

@@ -19,8 +19,11 @@ from app.models.league import League
 from app.models.league_member import LeagueMember
 from app.models.user import User
 
-# The exact key set each member item must return. Notably NO "email".
-_MEMBER_KEYS = {"user_id", "display_name", "joined_at", "is_organizer"}
+# The exact key set each member item must return. Notably NO "email". is_admin
+# was added alongside league co-organizers (MYS-99): true for the fixed
+# organizer OR a promoted co-organizer (role == "admin"), broader than
+# is_organizer, which only ever means "is the original organizer_id".
+_MEMBER_KEYS = {"user_id", "display_name", "joined_at", "is_organizer", "is_admin"}
 
 
 # --------------------------------------------------------------------------- #
@@ -201,6 +204,27 @@ async def test_is_organizer_flag_true_only_for_organizer(client, db_session):
     by_user = {item["user_id"]: item for item in resp.json()}
     assert by_user[str(organizer.id)]["is_organizer"] is True
     assert by_user[str(member.id)]["is_organizer"] is False
+
+
+async def test_is_admin_flag_true_for_organizer_and_promoted_co_organizer_only(client, db_session):
+    # MYS-99: is_admin is true for the fixed organizer OR a member promoted to
+    # role == "admin"; false for a plain member. Broader than is_organizer,
+    # which stays true only for the fixed organizer_id.
+    organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
+    league = await _seed_league(db_session, organizer)
+    co_organizer = await _seed_user(db_session, email="co@example.com", display_name="Co")
+    await _seed_member(db_session, league, co_organizer, role="admin")
+    plain = await _seed_user(db_session, email="plain@example.com", display_name="Plain")
+    await _seed_member(db_session, league, plain)
+
+    resp = await client.get(_members_url(league.id), headers=_auth_header(organizer.id))
+
+    assert resp.status_code == 200, resp.text
+    by_user = {item["user_id"]: item for item in resp.json()}
+    assert by_user[str(organizer.id)]["is_admin"] is True
+    assert by_user[str(co_organizer.id)]["is_admin"] is True
+    assert by_user[str(co_organizer.id)]["is_organizer"] is False
+    assert by_user[str(plain.id)]["is_admin"] is False
 
 
 # ========================================================================== #

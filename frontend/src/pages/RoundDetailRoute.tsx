@@ -1977,10 +1977,21 @@ function RankBadge({ rank }: { rank: number }) {
       </span>
     );
   }
+  // 1st place reads slightly larger than 2nd/3rd. The numeral sits inside the
+  // medal's disc — centered on its (6, 4.5) midpoint in the icon's 0-12
+  // viewBox, i.e. 50% across / 37.5% down the rendered icon.
+  const first = rank === 1;
   return (
-    <span className="flex w-6 shrink-0 flex-col items-center gap-0.5 text-sage">
-      <MedalIcon className="h-4 w-4" />
-      <span className="font-mono text-[9px] leading-none">{rank}</span>
+    <span className={["relative shrink-0 text-sage", first ? "h-7 w-7" : "h-6 w-6"].join(" ")}>
+      <MedalIcon className="h-full w-full" />
+      <span
+        className={[
+          "absolute left-1/2 top-[37.5%] -translate-x-1/2 -translate-y-1/2 font-mono leading-none",
+          first ? "text-[12px]" : "text-[10px]",
+        ].join(" ")}
+      >
+        {rank}
+      </span>
     </span>
   );
 }

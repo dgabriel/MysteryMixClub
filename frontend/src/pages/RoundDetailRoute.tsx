@@ -48,6 +48,7 @@ import { SongSearchCard } from "../components/songs/SongSearchCard";
 import { SpotifyPlaylist } from "../components/SpotifyPlaylist";
 import { CheckmarkIcon } from "../components/CheckmarkIcon";
 import { CrownIcon } from "../components/CrownIcon";
+import { MedalIcon } from "../components/MedalIcon";
 import { MusicNoteIcon } from "../components/MusicNoteIcon";
 import { DeadlineChip } from "../components/DeadlineChip";
 
@@ -1969,15 +1970,17 @@ function ResultsSection({
  *  hierarchy color, not a new signal — so they read as distinct at a glance
  *  without competing with the Rust/Gold signals used elsewhere on this screen. */
 function RankBadge({ rank }: { rank: number }) {
-  const topThree = rank <= 3;
+  if (rank > 3) {
+    return (
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center font-mono text-[11px] text-muted">
+        {rank}
+      </span>
+    );
+  }
   return (
-    <span
-      className={[
-        "flex h-6 w-6 shrink-0 items-center justify-center rounded-full font-mono text-[11px]",
-        topThree ? "bg-sage text-cream" : "text-muted",
-      ].join(" ")}
-    >
-      {rank}
+    <span className="flex w-6 shrink-0 flex-col items-center gap-0.5 text-sage">
+      <MedalIcon className="h-4 w-4" />
+      <span className="font-mono text-[9px] leading-none">{rank}</span>
     </span>
   );
 }

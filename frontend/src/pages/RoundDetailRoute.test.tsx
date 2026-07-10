@@ -1066,7 +1066,7 @@ describe("RoundDetailRoute", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("closed: the picks list gives the top 3 ranks a filled rank badge", async () => {
+  it("closed: the picks list gives the top 3 ranks a medal icon", async () => {
     const sub = (id: string, title: string, vote_count: number) => ({
       submission_id: id,
       user_id: OTHER,
@@ -1097,12 +1097,12 @@ describe("RoundDetailRoute", () => {
     const heading = await screen.findByText("the picks (4)");
     const section = heading.closest("section") as HTMLElement;
     const picks = within(section);
-    const badgeFor = (title: string) =>
-      picks.getByText(title).closest("li")!.querySelector(".bg-sage");
-    expect(badgeFor("Alpha")).not.toBeNull();
-    expect(badgeFor("Bravo")).not.toBeNull();
-    expect(badgeFor("Charlie")).not.toBeNull();
-    expect(badgeFor("Delta")).toBeNull();
+    const medalFor = (title: string) =>
+      picks.getByText(title).closest("li")!.querySelector("svg");
+    expect(medalFor("Alpha")).not.toBeNull();
+    expect(medalFor("Bravo")).not.toBeNull();
+    expect(medalFor("Charlie")).not.toBeNull();
+    expect(medalFor("Delta")).toBeNull();
   });
 
   describe("open_voting voting UX (MYS-20)", () => {

@@ -52,7 +52,10 @@ Quick reference (never override these without reading the full guide first):
 | Sage Light  | `#A8C4AD` | Secondary accent                            |
 | Sage Pale   | `#D4E3D7` | Backgrounds, hover states                   |
 | Rust        | `#B5533C` | **Signal color. One use per screen. Never decorative.** |
+| Gold        | `#C9A028` | Achievement signal — winner/most-noted reveals only |
+| Vinyl       | `#6B7EB5` | Avatar illustrations only (the 5 hardware icons) |
 | Muted       | `#8A8680` | Supporting text                             |
+| Border      | `#D6D2CA` | Dividers, input underlines, card borders    |
 
 - Headings: `DM Serif Display`
 - Everything else: `DM Mono`

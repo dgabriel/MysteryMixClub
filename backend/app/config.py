@@ -25,6 +25,15 @@ class Settings(BaseSettings):
     # (MYS-83) is dormant: every round's playlist is created PUBLIC by this one
     # account and shared as a link. Empty = playlist generation is unavailable.
     spotify_playlist_account_user_id: str = Field(default="")
+    # Apple Music developer-token credentials (MYS-104/MYS-105). Server-side only:
+    # the MusicKit .p8 private key is a secret that signs the ES256 developer token
+    # identifying the app to Apple's Music API. Team ID + Key ID come from the Apple
+    # Developer portal. Empty (any of the three) = Apple Music features are off.
+    apple_music_team_id: str = Field(default="")
+    apple_music_key_id: str = Field(default="")
+    # PEM contents of the MusicKit .p8 key. Deploy secrets may store it single-line
+    # with literal "\n" escapes; the token service normalizes both forms.
+    apple_music_private_key: str = Field(default="")
     allowed_origins: str = Field(default="")
     environment: Literal["development", "staging", "production"] = "development"
     app_base_url: str = Field(default="https://mysterymixclub.com")

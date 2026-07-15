@@ -860,12 +860,14 @@ describe("api.ts", () => {
 
   describe("getInvitePreview", () => {
     const preview: InvitePreview = {
+      league_id: "league-1",
       league_name: "Friday Mixers",
       member_count: 4,
+      already_member: false,
     };
 
-    it("GETs /api/v1/invites/{token} UNAUTHENTICATED (no Authorization header) and resolves the preview on 200", async () => {
-      // Deliberately no token set: the preview is a public, unauthenticated read.
+    it("GETs /api/v1/invites/{token} with no Authorization header when signed out, and resolves the preview on 200", async () => {
+      // No token set: the preview still works for an anonymous caller.
       const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, preview));
 
       await expect(getInvitePreview("plain-token")).resolves.toEqual(preview);
@@ -878,7 +880,7 @@ describe("api.ts", () => {
       expect(headers.get("Authorization")).toBeNull();
     });
 
-    it("does NOT attach an Authorization header even when an access token is set", async () => {
+    it("attaches the Authorization header when an access token is set (MYS-181: lets the backend compute already_member)", async () => {
       setStoredAccessToken("my-token");
       const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, preview));
 
@@ -886,7 +888,7 @@ describe("api.ts", () => {
 
       const [, init] = fetchMock.mock.calls[0];
       const headers = new Headers(init?.headers);
-      expect(headers.get("Authorization")).toBeNull();
+      expect(headers.get("Authorization")).toBe("Bearer my-token");
     });
 
     it("URL-encodes the token in the path", async () => {

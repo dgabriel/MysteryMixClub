@@ -23,7 +23,7 @@ from app.models.league_member import LeagueMember
 from app.models.user import User
 
 # The exact key set the preview response must return.
-_PREVIEW_KEYS = {"league_name", "member_count"}
+_PREVIEW_KEYS = {"league_id", "league_name", "member_count", "already_member"}
 
 # The full league object key set, matching POST /leagues.
 _LEAGUE_KEYS = {
@@ -159,6 +159,23 @@ async def test_preview_works_without_auth_header_returns_200_and_shape(client, d
     data = resp.json()
     assert set(data.keys()) == _PREVIEW_KEYS
     assert data["league_name"] == league.name
+    assert data["league_id"] == str(league.id)
+    assert data["already_member"] is False
+
+
+async def test_preview_with_garbage_auth_header_still_returns_200(client, db_session):
+    # get_current_user_optional must swallow a malformed/invalid token rather
+    # than 401ing a route that's meant to work for anonymous callers too.
+    organizer = await _seed_user(db_session)
+    league = await _seed_league(db_session, organizer)
+    invite = await _seed_invite(db_session, league, organizer)
+
+    resp = await client.get(
+        _preview_url(invite.token), headers={"Authorization": "Bearer not-a-real-token"}
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["already_member"] is False
 
 
 async def test_preview_member_count_counts_only_active_members(client, db_session):
@@ -344,6 +361,66 @@ async def test_accept_expired_link_returns_410_and_no_membership(client, db_sess
         )
     ).all()
     assert members == []
+
+
+async def test_preview_expired_link_as_active_member_returns_200_and_redirect_signal(
+    client, db_session
+):
+    # MYS-181: an already-active member passes through the expiry gate — the
+    # frontend uses already_member to redirect straight into the league instead
+    # of showing "this link has expired".
+    organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
+    league = await _seed_league(db_session, organizer)
+    invite = await _seed_invite(
+        db_session, league, organizer, expires_at=datetime.now(timezone.utc) - timedelta(minutes=1)
+    )
+
+    resp = await client.get(_preview_url(invite.token), headers=_auth_header(organizer.id))
+
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["already_member"] is True
+    assert data["league_id"] == str(league.id)
+
+
+async def test_preview_expired_link_as_non_member_still_returns_410(client, db_session):
+    # A signed-in but unaffiliated visitor still gets the expired state — only
+    # an active member of THIS league bypasses expiry.
+    organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
+    league = await _seed_league(db_session, organizer)
+    invite = await _seed_invite(
+        db_session, league, organizer, expires_at=datetime.now(timezone.utc) - timedelta(minutes=1)
+    )
+    stranger = await _seed_user(db_session, email="stranger@example.com", display_name="Stranger")
+
+    resp = await client.get(_preview_url(invite.token), headers=_auth_header(stranger.id))
+
+    assert resp.status_code == 410, resp.text
+
+
+async def test_accept_expired_link_as_active_member_returns_200(client, db_session):
+    # MYS-181: accept mirrors preview — an already-active member is routed to
+    # the league (200) even past the invite's expiry, matching MYS-135's
+    # idempotent-accept spirit.
+    organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
+    league = await _seed_league(db_session, organizer)
+    invite = await _seed_invite(
+        db_session, league, organizer, expires_at=datetime.now(timezone.utc) - timedelta(minutes=1)
+    )
+    member = await _seed_user(db_session, email="member@example.com", display_name="Member")
+    await _seed_member(db_session, league, member)  # already active
+
+    league_id = league.id
+    member_id = member.id
+
+    resp = await client.post(_accept_url(invite.token), headers=_auth_header(member.id))
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["id"] == str(league_id)
+
+    db_session.expire_all()
+    count = await _active_membership_count(db_session, league_id, member_id)
+    assert count == 1, "the bypass must not create a duplicate membership row"
 
 
 async def test_unexpired_dated_link_still_previews_200(client, db_session):

@@ -25,7 +25,7 @@ export function JoinLeagueRoute() {
   const { token } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, status } = useAuth();
 
   // A missing :token can't resolve to anything, so it's the not-found state
   // from the first render — no effect-time setState needed for that case.
@@ -40,9 +40,21 @@ export function JoinLeagueRoute() {
 
   useEffect(() => {
     if (!token) return;
+    // Wait for the on-mount silent-refresh to resolve before fetching the
+    // preview. Firing early would race it: an actually-authenticated visitor
+    // (landing directly on this URL, e.g. via a shared link) would look
+    // anonymous for this request, since isAuthenticated/the stored access
+    // token both only flip once the refresh completes.
+    if (status === "loading") return;
     void (async () => {
       try {
         const result = await getInvitePreview(token);
+        // Already a member (most relevant on an otherwise-expired link, MYS-181)
+        // — skip the join screen entirely and land them in the league.
+        if (result.already_member) {
+          navigate(`/leagues/${result.league_id}`, { replace: true });
+          return;
+        }
         setPreview(result);
       } catch (err) {
         // A 410 means the link expired; anything else is treated as not-found.
@@ -56,7 +68,7 @@ export function JoinLeagueRoute() {
         setLoading(false);
       }
     })();
-  }, [token]);
+  }, [token, status, navigate]);
 
   async function handleJoin() {
     if (!token) return;
@@ -86,6 +98,16 @@ export function JoinLeagueRoute() {
     navigate("/login");
   }
 
+  // Expired-link CTAs (MYS-181): the link itself is dead either way, so unlike
+  // handleSignIn there's nothing worth stashing to return to afterward.
+  function handleExpiredLogin() {
+    navigate("/login");
+  }
+
+  function handleExpiredGoHome() {
+    navigate("/home");
+  }
+
   return (
     <JoinLeagueScreen
       preview={preview}
@@ -97,6 +119,8 @@ export function JoinLeagueRoute() {
       joining={joining}
       joinError={joinError}
       onSignIn={handleSignIn}
+      onExpiredLogin={handleExpiredLogin}
+      onExpiredGoHome={handleExpiredGoHome}
     />
   );
 }

@@ -28,8 +28,14 @@ const mockGetInvitePreview = vi.mocked(getInvitePreview);
 const mockAcceptInvite = vi.mocked(acceptInvite);
 const mockUseAuth = vi.mocked(useAuth);
 
-function preview(): InvitePreview {
-  return { league_name: "Friday Mixtape", member_count: 4 };
+function preview(overrides: Partial<InvitePreview> = {}): InvitePreview {
+  return {
+    league_id: "league-preview-1",
+    league_name: "Friday Mixtape",
+    member_count: 4,
+    already_member: false,
+    ...overrides,
+  };
 }
 
 function leagueWith(id: string): League {
@@ -70,16 +76,40 @@ function setAuth(isAuthenticated: boolean) {
   });
 }
 
-function renderJoin(token = "tok-abc") {
-  return render(
+function joinTree(token: string) {
+  return (
     <MemoryRouter initialEntries={[`/join/${token}`]}>
       <Routes>
         <Route path="/join/:token" element={<JoinLeagueRoute />} />
         <Route path="/login" element={<div>LOGIN CONTENT</div>} />
+        <Route path="/home" element={<div>HOME CONTENT</div>} />
         <Route path="/leagues/:id" element={<div>LEAGUE DETAIL CONTENT</div>} />
       </Routes>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
+}
+
+function renderJoin(token = "tok-abc") {
+  return render(joinTree(token));
+}
+
+function loadingAuth() {
+  mockUseAuth.mockReturnValue({
+    status: "loading",
+    isAuthenticated: false,
+    setAccessToken: vi.fn(),
+    clear: vi.fn(),
+    logout: vi.fn(),
+    logoutAll: vi.fn(),
+    displayName: null,
+    email: null,
+    userId: null,
+    profileStatus: "idle",
+    needsOnboarding: false,
+    isPlatformAdmin: false,
+    applyDisplayName: vi.fn(),
+    preferredService: null,
+  });
 }
 
 describe("JoinLeagueRoute", () => {
@@ -176,5 +206,65 @@ describe("JoinLeagueRoute", () => {
     expect(localStorage.getItem("pendingInvitePath")).toBe("/join/tok-abc");
     expect(await screen.findByText("LOGIN CONTENT")).toBeInTheDocument();
     expect(mockAcceptInvite).not.toHaveBeenCalled();
+  });
+
+  describe("waits for auth status to resolve (MYS-181 fix)", () => {
+    it("does not fetch the preview while status is still 'loading', to avoid misreading an authenticated visitor as anonymous", async () => {
+      loadingAuth();
+      const { rerender } = renderJoin("tok-abc");
+
+      // Auth is still resolving (the on-mount silent refresh hasn't completed)
+      // — fetching now would race it and read as anonymous.
+      expect(mockGetInvitePreview).not.toHaveBeenCalled();
+
+      setAuth(true);
+      rerender(joinTree("tok-abc"));
+
+      expect(await screen.findByText("Friday Mixtape")).toBeInTheDocument();
+      expect(mockGetInvitePreview).toHaveBeenCalledWith("tok-abc");
+    });
+  });
+
+  describe("already a member (MYS-181)", () => {
+    it("preview with already_member true redirects straight into the league, skipping the join screen", async () => {
+      mockGetInvitePreview.mockResolvedValue(
+        preview({ league_id: "league-99", already_member: true }),
+      );
+
+      renderJoin("tok-abc");
+
+      expect(await screen.findByText("LEAGUE DETAIL CONTENT")).toBeInTheDocument();
+      expect(screen.queryByText("Friday Mixtape")).not.toBeInTheDocument();
+      expect(mockAcceptInvite).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("expired link CTA (MYS-181)", () => {
+    it("signed in: shows a 'go home' button that navigates to /home", async () => {
+      setAuth(true);
+      mockGetInvitePreview.mockRejectedValue(new ApiError(410, "gone"));
+      const user = userEvent.setup();
+
+      renderJoin("tok-abc");
+      await screen.findByText(/this link has expired/i);
+
+      await user.click(screen.getByRole("button", { name: /go home/i }));
+      expect(await screen.findByText("HOME CONTENT")).toBeInTheDocument();
+    });
+
+    it("signed out: shows a 'sign in' button that navigates to /login without stashing a pending invite", async () => {
+      setAuth(false);
+      mockGetInvitePreview.mockRejectedValue(new ApiError(410, "gone"));
+      const user = userEvent.setup();
+
+      renderJoin("tok-abc");
+      await screen.findByText(/this link has expired/i);
+
+      await user.click(screen.getByRole("button", { name: /sign in/i }));
+
+      expect(await screen.findByText("LOGIN CONTENT")).toBeInTheDocument();
+      // The link is dead either way — nothing worth stashing to return to.
+      expect(localStorage.getItem("pendingInvitePath")).toBeNull();
+    });
   });
 });

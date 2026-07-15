@@ -14,6 +14,10 @@ type JoinLeagueScreenProps = {
   joining: boolean;
   joinError?: string | null;
   onSignIn: () => void;
+  /** Expired-link CTAs (MYS-181): distinct from onSignIn — the link is dead
+   *  either way, so there's nothing to return to afterward. */
+  onExpiredLogin: () => void;
+  onExpiredGoHome: () => void;
 };
 
 export function JoinLeagueScreen({
@@ -26,6 +30,8 @@ export function JoinLeagueScreen({
   joining,
   joinError,
   onSignIn,
+  onExpiredLogin,
+  onExpiredGoHome,
 }: JoinLeagueScreenProps) {
   return (
     <div className="flex min-h-screen flex-col">
@@ -42,6 +48,17 @@ export function JoinLeagueScreen({
             <p className="mt-8 font-mono text-[13px] font-light text-muted">
               this link has expired — ask the organizer for a new one.
             </p>
+            <div className="mt-8">
+              {isAuthenticated ? (
+                <Button type="button" onClick={onExpiredGoHome} className="w-full">
+                  go home
+                </Button>
+              ) : (
+                <Button type="button" onClick={onExpiredLogin} className="w-full">
+                  sign in
+                </Button>
+              )}
+            </div>
           </>
         ) : notFound ? (
           <>

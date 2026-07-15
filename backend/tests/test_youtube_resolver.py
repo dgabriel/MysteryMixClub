@@ -55,7 +55,7 @@ async def test_sends_expected_query_params():
     assert seen["part"] == "snippet"
     assert seen["q"] == "American Pie Don McLean"
     assert seen["type"] == "video"
-    assert seen["maxResults"] == "1"
+    assert seen["maxResults"] == "5"
     assert seen["key"] == "secret"
 
 
@@ -105,6 +105,63 @@ async def test_missing_video_id_field_returns_none():
     assert (
         await _resolver(lambda r: httpx.Response(200, json=payload)).video_id_for("x", None) is None
     )
+
+
+# --------------------------------------------------------------------------- #
+# Relevance ranking (MYS-175) — the API's own top hit is not trusted blindly.
+# --------------------------------------------------------------------------- #
+
+
+async def test_picks_best_title_match_not_first_result():
+    # Regression case: searching "Storm II" by GENER8ION should not surface an
+    # unrelated top hit just because the API returned it first.
+    payload = {
+        "items": [
+            {"id": {"videoId": "unrelated1"}, "snippet": {"title": "Totally Different Song"}},
+            {"id": {"videoId": "correct1"}, "snippet": {"title": "GENER8ION - Storm II (Audio)"}},
+        ]
+    }
+    vid = await _resolver(lambda r: httpx.Response(200, json=payload)).video_id_for(
+        "Storm II", "GENER8ION"
+    )
+    assert vid == "correct1"
+
+
+async def test_penalizes_karaoke_version_over_original():
+    payload = {
+        "items": [
+            {"id": {"videoId": "karaoke1"}, "snippet": {"title": "American Pie (Karaoke Version)"}},
+            {"id": {"videoId": "original1"}, "snippet": {"title": "Don McLean - American Pie"}},
+        ]
+    }
+    vid = await _resolver(lambda r: httpx.Response(200, json=payload)).video_id_for(
+        "American Pie", "Don McLean"
+    )
+    assert vid == "original1"
+
+
+async def test_prefers_official_channel_over_a_slightly_better_title_match():
+    # Real repro (MYS-175): a reupload's title matches the query more closely,
+    # but the artist's own channel is preferred when it's a plausible match too.
+    payload = {
+        "items": [
+            {
+                "id": {"videoId": "reupload"},
+                "snippet": {
+                    "title": "Artist - Song Title (Audio)",
+                    "channelTitle": "Random Uploader",
+                },
+            },
+            {
+                "id": {"videoId": "official"},
+                "snippet": {"title": "Artist - Song", "channelTitle": "Artist"},
+            },
+        ]
+    }
+    vid = await _resolver(lambda r: httpx.Response(200, json=payload)).video_id_for(
+        "Song Title", "Artist"
+    )
+    assert vid == "official"
 
 
 async def test_timeout_returns_none():

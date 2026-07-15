@@ -9,9 +9,13 @@ Resolution is best-effort by design: a missing API key, quota/auth failure,
 timeout, or empty result all yield ``None`` so a submission is never blocked and
 the playlist GET never fails on one bad track.
 
+The API's own top hit is frequently an unrelated or non-original video
+(MYS-175), so several candidates are fetched and the closest title match to
+the query is chosen, rather than trusting ``search.list``'s own ordering.
+
 Reference: https://developers.google.com/youtube/v3/docs/search/list
   GET https://www.googleapis.com/youtube/v3/search
-      ?part=snippet&q=<query>&type=video&maxResults=1&key=<api key>
+      ?part=snippet&q=<query>&type=video&maxResults=5&key=<api key>
 """
 
 from __future__ import annotations
@@ -22,9 +26,11 @@ from functools import lru_cache
 import httpx
 
 from app.config import Settings, get_settings
+from app.services.search_relevance import best_match
 
 _SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
 _DEFAULT_TIMEOUT = 10.0
+_RESULT_LIMIT = 5
 
 
 def _query(title: str, artist: str | None) -> str:
@@ -59,11 +65,12 @@ class YouTubeResolver:
         if not self._api_key or not title or not title.strip():
             return None
 
+        query = _query(title, artist)
         params: dict[str, str | int] = {
             "part": "snippet",
-            "q": _query(title, artist),
+            "q": query,
             "type": "video",
-            "maxResults": 1,
+            "maxResults": _RESULT_LIMIT,
             "key": self._api_key,
         }
         try:
@@ -84,7 +91,22 @@ class YouTubeResolver:
         items = payload.get("items") or []
         if not items:
             return None
-        video_id = (items[0].get("id") or {}).get("videoId")
+        # Video titles interleave artist + title (e.g. "Artist - Song (Audio)"),
+        # so the full query is matched against the whole snippet title rather
+        # than splitting title/artist like the other providers. The uploading
+        # channel is matched against the artist as the secondary (0.3-weight)
+        # signal, so the artist's own channel is preferred over a same-song
+        # reupload from an unrelated channel when one is present (MYS-175).
+        chosen = best_match(
+            query,
+            artist,
+            items,
+            title_of=lambda item: (item.get("snippet") or {}).get("title") or "",
+            artist_of=lambda item: (item.get("snippet") or {}).get("channelTitle"),
+        )
+        if chosen is None:
+            return None
+        video_id = (chosen.get("id") or {}).get("videoId")
         if isinstance(video_id, str) and video_id:
             return video_id
         return None

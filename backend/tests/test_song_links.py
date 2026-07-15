@@ -34,14 +34,24 @@ class _Dispatch:
         return httpx.Response(404)
 
 
-def _assembler(dispatch) -> SongLinkAssembler:
+def _assembler(dispatch, *, youtube_resolver=None) -> SongLinkAssembler:
     def factory() -> httpx.AsyncClient:
         return httpx.AsyncClient(transport=httpx.MockTransport(dispatch), timeout=5.0)
 
-    return SongLinkAssembler(client_factory=factory)
+    return SongLinkAssembler(client_factory=factory, youtube_resolver=youtube_resolver)
 
 
-async def test_assemble_returns_all_four_platforms():
+class _FakeYouTubeResolver:
+    """Stub matching YouTubeResolver's interface for injection into the assembler."""
+
+    def __init__(self, video_id: str | None):
+        self._video_id = video_id
+
+    async def video_id_for(self, title: str, artist: str | None = None) -> str | None:
+        return self._video_id
+
+
+async def test_assemble_returns_all_five_platforms():
     a = _assembler(
         _Dispatch(
             isrc=httpx.Response(200, json=_DEEZER_ISRC_OK),
@@ -49,13 +59,17 @@ async def test_assemble_returns_all_four_platforms():
         )
     )
     links = await a.assemble("Blinding Lights", "The Weeknd", "USUG11904206")
-    assert set(links) == {"spotify", "appleMusic", "deezer", "youtube"}
+    assert set(links) == {"spotify", "appleMusic", "deezer", "youtube", "youtubeMusic"}
 
 
 async def test_spotify_and_youtube_are_deep_links():
     links = await _assembler(_Dispatch()).assemble("bad guy", "Billie Eilish")
     assert links["spotify"] == "https://open.spotify.com/search/bad%20guy%20Billie%20Eilish"
-    assert links["youtube"] == "https://music.youtube.com/search?q=bad%20guy%20Billie%20Eilish"
+    assert (
+        links["youtube"]
+        == "https://www.youtube.com/results?search_query=bad%20guy%20Billie%20Eilish"
+    )
+    assert links["youtubeMusic"] == "https://music.youtube.com/search?q=bad%20guy%20Billie%20Eilish"
 
 
 async def test_deezer_exact_via_isrc():
@@ -111,3 +125,99 @@ async def test_network_error_falls_back_to_deeplinks():
     links = await _assembler(boom).assemble("x", "y", "I1")
     assert links["deezer"].startswith("https://www.deezer.com/search/")
     assert links["appleMusic"].startswith("https://music.apple.com/search?term=")
+
+
+# --------------------------------------------------------------------------- #
+# Relevance ranking (MYS-175) — best-match picking, not first-result.
+# --------------------------------------------------------------------------- #
+
+
+async def test_apple_picks_best_match_not_first_result():
+    itunes_multi = {
+        "resultCount": 2,
+        "results": [
+            {
+                "trackName": "Totally Different Song",
+                "artistName": "Someone Else",
+                "trackViewUrl": "https://music.apple.com/track/wrong",
+            },
+            {
+                "trackName": "Storm II",
+                "artistName": "GENER8ION",
+                "trackViewUrl": "https://music.apple.com/track/right",
+            },
+        ],
+    }
+    links = await _assembler(_Dispatch(itunes=httpx.Response(200, json=itunes_multi))).assemble(
+        "Storm II", "GENER8ION"
+    )
+    assert links["appleMusic"] == "https://music.apple.com/track/right"
+
+
+async def test_deezer_search_fallback_picks_best_match():
+    deezer_multi = {
+        "data": [
+            {
+                "id": 1,
+                "title": "Unrelated Track",
+                "artist": {"name": "Nobody"},
+                "link": "https://www.deezer.com/track/wrong",
+            },
+            {
+                "id": 2,
+                "title": "Storm II",
+                "artist": {"name": "GENER8ION"},
+                "link": "https://www.deezer.com/track/right",
+            },
+        ],
+        "total": 2,
+    }
+    links = await _assembler(_Dispatch(search=httpx.Response(200, json=deezer_multi))).assemble(
+        "Storm II", "GENER8ION"
+    )
+    assert links["deezer"] == "https://www.deezer.com/track/right"
+
+
+async def test_youtube_exact_via_resolver():
+    links = await _assembler(_Dispatch(), youtube_resolver=_FakeYouTubeResolver("abc123")).assemble(
+        "x", "y"
+    )
+    assert links["youtube"] == "https://www.youtube.com/watch?v=abc123"
+    # Same resolved video id, served through the Music app domain (MYS-175).
+    assert links["youtubeMusic"] == "https://music.youtube.com/watch?v=abc123"
+
+
+async def test_youtube_falls_back_to_deeplink_when_resolver_finds_nothing():
+    links = await _assembler(_Dispatch(), youtube_resolver=_FakeYouTubeResolver(None)).assemble(
+        "x", "y"
+    )
+    assert links["youtube"] == "https://www.youtube.com/results?search_query=x%20y"
+    assert links["youtubeMusic"] == "https://music.youtube.com/search?q=x%20y"
+
+
+async def test_youtube_falls_back_to_deeplink_when_no_resolver_configured():
+    # No youtube_resolver injected at all (e.g. unconfigured API key) — behaves
+    # exactly as before MYS-175, preserving the "no regression" requirement.
+    links = await _assembler(_Dispatch()).assemble("x", "y")
+    assert links["youtube"] == "https://www.youtube.com/results?search_query=x%20y"
+    assert links["youtubeMusic"] == "https://music.youtube.com/search?q=x%20y"
+
+
+async def test_assemble_resolves_youtube_video_id_only_once():
+    # Callers that already resolved the video id (e.g. to persist it alongside
+    # the links, MYS-175) can pass it through so assemble() doesn't spend a
+    # second YouTube Data API call re-resolving the same thing.
+    calls = 0
+
+    class _CountingResolver:
+        async def video_id_for(self, title, artist=None):
+            nonlocal calls
+            calls += 1
+            return "should-not-be-used"
+
+    links = await _assembler(_Dispatch(), youtube_resolver=_CountingResolver()).assemble(
+        "x", "y", youtube_video_id="precomputed"
+    )
+    assert calls == 0
+    assert links["youtube"] == "https://www.youtube.com/watch?v=precomputed"
+    assert links["youtubeMusic"] == "https://music.youtube.com/watch?v=precomputed"

@@ -64,6 +64,7 @@ const PLATFORM_LABELS: { key: string; label: string }[] = [
   { key: "appleMusic", label: "Apple Music" },
   { key: "deezer", label: "Deezer" },
   { key: "youtube", label: "YouTube" },
+  { key: "youtubeMusic", label: "YouTube Music" },
 ];
 
 /**

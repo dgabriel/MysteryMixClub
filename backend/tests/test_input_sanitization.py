@@ -63,7 +63,9 @@ _LINKS = {
 
 
 class _FakeAssembler:
-    async def assemble(self, title, artist=None, isrc=None) -> dict[str, str]:
+    async def assemble(
+        self, title, artist=None, isrc=None, *, youtube_video_id=None
+    ) -> dict[str, str]:
         return _LINKS
 
 

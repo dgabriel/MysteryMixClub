@@ -63,7 +63,9 @@ class _FakeAssembler:
     def __init__(self, platforms: dict[str, str]):
         self._platforms = platforms
 
-    async def assemble(self, title, artist=None, isrc=None) -> dict[str, str]:
+    async def assemble(
+        self, title, artist=None, isrc=None, *, youtube_video_id=None
+    ) -> dict[str, str]:
         return self._platforms
 
 

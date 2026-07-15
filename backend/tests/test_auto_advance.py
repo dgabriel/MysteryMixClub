@@ -51,7 +51,9 @@ AFTER = OPEN_TIME + timedelta(hours=1)
 
 
 class _FakeAssembler:
-    async def assemble(self, title, artist=None, isrc=None) -> dict[str, str]:
+    async def assemble(
+        self, title, artist=None, isrc=None, *, youtube_video_id=None
+    ) -> dict[str, str]:
         return {"youtube": "https://music.youtube.com/search?q=x"}
 
 

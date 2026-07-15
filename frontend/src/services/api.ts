@@ -488,7 +488,7 @@ export async function acceptInvite(token: string): Promise<League> {
 // --------------------------------------------------------------------------- //
 
 /** Streaming platforms the app surfaces, matching the backend's normalized keys. */
-export type PlatformKey = "spotify" | "youtube" | "deezer" | "appleMusic";
+export type PlatformKey = "spotify" | "youtube" | "youtubeMusic" | "deezer" | "appleMusic";
 
 /** A canonical, platform-agnostic song resolved from a link or a search pick.
  *  `platforms` only contains the platforms that actually have a link. */

@@ -40,7 +40,9 @@ class _FakeAssembler:
     def __init__(self, links: dict[str, str] | None = None):
         self._links = _LINKS if links is None else links
 
-    async def assemble(self, title, artist=None, isrc=None) -> dict[str, str]:
+    async def assemble(
+        self, title, artist=None, isrc=None, *, youtube_video_id=None
+    ) -> dict[str, str]:
         return self._links
 
 

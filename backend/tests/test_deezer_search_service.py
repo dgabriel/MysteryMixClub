@@ -82,6 +82,32 @@ async def test_search_skips_items_missing_id_or_title():
     assert [t.id for t in result.results] == ["101"]
 
 
+async def test_search_reranks_results_by_relevance():
+    # Deezer's own order (a live/cover version first) shouldn't win over the
+    # closer title+artist match to the query (MYS-175).
+    body = {
+        "data": [
+            {
+                "id": 1,
+                "title": "Storm II (Live)",
+                "artist": {"name": "Cover Band"},
+                "link": "https://www.deezer.com/track/1",
+            },
+            {
+                "id": 2,
+                "title": "Storm II",
+                "artist": {"name": "GENER8ION"},
+                "link": "https://www.deezer.com/track/2",
+            },
+        ],
+        "total": 2,
+    }
+    result = await _client(_Recorder(httpx.Response(200, json=body))).search(
+        "Storm II", "GENER8ION"
+    )
+    assert result.results[0].id == "2"
+
+
 # --------------------------------------------------------------------------- #
 # too_many_results heuristic + query building
 # --------------------------------------------------------------------------- #

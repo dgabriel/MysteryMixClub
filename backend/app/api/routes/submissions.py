@@ -109,9 +109,13 @@ async def _assemble_track(
 
     Best-effort: the assembler always returns at least deep links, and the
     YouTube resolve is None on any failure, so neither blocks a submission.
+    The video id is resolved once here and handed to the assembler so it
+    doesn't make its own redundant YouTube Data API call (MYS-175).
     """
-    platform_links = await assembler.assemble(payload.title, payload.artist, payload.isrc)
     youtube_video_id = await youtube.video_id_for(payload.title, payload.artist)
+    platform_links = await assembler.assemble(
+        payload.title, payload.artist, payload.isrc, youtube_video_id=youtube_video_id
+    )
     return platform_links, youtube_video_id
 
 

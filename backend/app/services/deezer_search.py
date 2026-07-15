@@ -25,6 +25,8 @@ from functools import lru_cache
 import httpx
 from pydantic import BaseModel
 
+from app.services.search_relevance import rank as _rank_candidates
+
 _SEARCH_URL = "https://api.deezer.com/search"
 _DEFAULT_TIMEOUT = 10.0
 _RESULT_LIMIT = 10
@@ -181,6 +183,12 @@ class DeezerSearchClient:
         items = payload.get("data") or []
         results = [t for t in (_track_from_item(item) for item in items) if t is not None]
         total = payload.get("total", len(results))
+        # Deezer returns results in its own relevance order, which frequently
+        # surfaces covers/karaoke/live versions above the original recording
+        # (MYS-175). Re-rank against the query before returning.
+        results = _rank_candidates(
+            title, artist, results, title_of=lambda t: t.title, artist_of=lambda t: t.artist
+        )
         too_many = artist is None and isinstance(total, int) and total > _RESULT_LIMIT
 
         result = SongSearchResult(results=results, too_many_results=too_many)

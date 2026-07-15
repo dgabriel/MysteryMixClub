@@ -53,6 +53,8 @@ from app.services.notifications import (
     send_empty_round_notice,
     send_round_event,
 )
+from app.services.spotify_client import SpotifyClient, get_spotify_client
+from app.services.spotify_playlist_generation import try_auto_generate_playlist
 
 logger = logging.getLogger("app.jobs.advance_rounds")
 
@@ -126,6 +128,7 @@ async def _process_round(
     now: datetime,
     settings: Settings,
     sender: EmailSender,
+    client: SpotifyClient,
     report: AdvanceReport,
 ) -> None:
     """Process a single round under a row lock, in the caller's transaction.
@@ -210,6 +213,10 @@ async def _process_round(
         await db.commit()
         for event_round, event in events:
             send_round_event(sender, settings, recipients, league, event_round, event)
+        # Auto-generate the shared-account Spotify playlist the moment voting
+        # opens (MYS-176) — no admin click needed. Best-effort: never raises.
+        if any(event == "voting_open" for _, event in events):
+            await try_auto_generate_playlist(round_id, round_, league, db, client, settings)
         report.advanced_to_voting += 1
         return
 
@@ -227,6 +234,7 @@ async def advance_due_rounds(
     now: datetime | None = None,
     settings: Settings | None = None,
     sender: EmailSender | None = None,
+    client: SpotifyClient | None = None,
 ) -> AdvanceReport:
     """Scan live rounds and process each in its own locked transaction.
 
@@ -234,6 +242,7 @@ async def advance_due_rounds(
     counted, never fatal; only a failure of the initial scan propagates."""
     settings = settings or get_settings()
     sender = sender or build_email_sender(settings)
+    client = client or get_spotify_client()
     now = now or datetime.now(timezone.utc)
 
     # Read-only scan in its own short-lived session; each round is then locked and
@@ -245,7 +254,7 @@ async def advance_due_rounds(
     for round_id in round_ids:
         try:
             async with async_session_factory() as db:
-                await _process_round(db, round_id, now, settings, sender, report)
+                await _process_round(db, round_id, now, settings, sender, client, report)
         except Exception:  # noqa: BLE001 — isolate one round's failure from the rest
             logger.exception("advance_rounds: failed processing round %s", round_id)
             report.errors += 1

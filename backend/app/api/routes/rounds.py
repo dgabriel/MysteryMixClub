@@ -38,6 +38,8 @@ from app.models.note import Note
 from app.models.round import Round
 from app.models.submission import Submission
 from app.models.user import User
+from app.services.spotify_client import SpotifyClient, get_spotify_client
+from app.services.spotify_playlist_generation import try_auto_generate_playlist
 from app.models.vote import Vote
 from app.services.email import EmailSender, get_email_sender
 from app.services.most_noted import compute_most_noted
@@ -535,6 +537,7 @@ async def update_round(
     db: AsyncSession = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
     settings: Settings = Depends(get_settings),
+    spotify_client: SpotifyClient = Depends(get_spotify_client),
 ) -> RoundResponse:
     round_ = await _load_round(round_id, db)
     league = await _load_league_as_organizer(
@@ -629,6 +632,12 @@ async def update_round(
             queue_round_event(
                 background_tasks, sender, settings, recipients, league, event_round, event
             )
+
+    # Auto-generate the shared-account Spotify playlist the moment voting opens
+    # (MYS-176) — no admin click needed. Best-effort: never raises, so a Spotify
+    # hiccup can't block this transition (see try_auto_generate_playlist).
+    if any(event == "voting_open" for _, event in events):
+        await try_auto_generate_playlist(round_id, round_, league, db, spotify_client, settings)
 
     await db.commit()
     await db.refresh(round_)

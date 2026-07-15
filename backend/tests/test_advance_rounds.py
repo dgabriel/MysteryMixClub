@@ -429,6 +429,129 @@ async def test_branch4_force_advance_to_voting(run_job, db_session, email_spy):
 
 
 # ========================================================================== #
+# Branch 4 — Spotify auto-generation on voting_open (MYS-176)
+# ========================================================================== #
+
+_SHARED_ACCOUNT_ID = uuid.UUID("00000000-0000-0000-0000-0000000000bb")
+
+
+async def test_branch4_auto_generates_spotify_playlist(
+    monkeypatch, session_factory, db_session, email_spy
+):
+    from app.config import Settings
+    from app.models.spotify_connection import SpotifyConnection
+    from app.services.spotify_token_crypto import encrypt_refresh_token
+    from tests.test_spotify_routes import FakeSpotifyClient
+
+    monkeypatch.setattr("app.jobs.advance_rounds.async_session_factory", session_factory)
+
+    now = datetime.now(timezone.utc)
+    org = await _seed_user(db_session, "o@e.com")
+    league = await _seed_league(db_session, org, total_rounds=1, voting_window_hours=72)
+    rnd = await _seed_round(
+        db_session,
+        league.id,
+        1,
+        state="open_submission",
+        submission_deadline=now - timedelta(hours=1),
+        submission_opened_at=now - timedelta(hours=73),
+    )
+    db_session.add(
+        Submission(
+            round_id=rnd.id,
+            user_id=org.id,
+            isrc="ISRC-1",
+            title="one",
+            artist="Artist",
+            participation_mode="playing",
+            spotify_track_uri="spotify:track:pre-resolved",
+        )
+    )
+    db_session.add(
+        User(id=_SHARED_ACCOUNT_ID, email="playlist-account@example.com", display_name="P")
+    )
+    await db_session.commit()
+    db_session.add(
+        SpotifyConnection(
+            user_id=_SHARED_ACCOUNT_ID,
+            spotify_user_id="spuser",
+            refresh_token_encrypted=encrypt_refresh_token("rt"),
+            scope="playlist-modify-private",
+        )
+    )
+    await db_session.commit()
+
+    settings = Settings(spotify_playlist_account_user_id=str(_SHARED_ACCOUNT_ID))
+    fake = FakeSpotifyClient()
+
+    report = await advance_due_rounds(now=now, settings=settings, sender=email_spy, client=fake)
+    assert report.advanced_to_voting == 1
+    assert fake.created is not None
+    assert fake.created["public"] is True
+    assert fake.added == ["spotify:track:pre-resolved"]
+
+
+async def test_branch4_spotify_failure_does_not_block_advance(
+    monkeypatch, session_factory, db_session, email_spy
+):
+    # A revoked shared-account grant must not prevent the round from advancing
+    # or the voting_open email from sending (MYS-176: best-effort).
+    from app.config import Settings
+    from app.models.spotify_connection import SpotifyConnection
+    from app.services.spotify_client import SpotifyAuthError
+    from app.services.spotify_token_crypto import encrypt_refresh_token
+    from tests.test_spotify_routes import FakeSpotifyClient
+
+    monkeypatch.setattr("app.jobs.advance_rounds.async_session_factory", session_factory)
+
+    class _RejectingClient(FakeSpotifyClient):
+        async def refresh_access_token(self, refresh_token):
+            raise SpotifyAuthError("invalid_grant")
+
+    now = datetime.now(timezone.utc)
+    org = await _seed_user(db_session, "o@e.com")
+    league = await _seed_league(db_session, org, total_rounds=1, voting_window_hours=72)
+    rnd = await _seed_round(
+        db_session,
+        league.id,
+        1,
+        state="open_submission",
+        submission_deadline=now - timedelta(hours=1),
+        submission_opened_at=now - timedelta(hours=73),
+    )
+    db_session.add(
+        Submission(
+            round_id=rnd.id,
+            user_id=org.id,
+            isrc="ISRC-1",
+            title="one",
+            artist="Artist",
+            participation_mode="playing",
+        )
+    )
+    db_session.add(
+        User(id=_SHARED_ACCOUNT_ID, email="playlist-account@example.com", display_name="P")
+    )
+    await db_session.commit()
+    db_session.add(
+        SpotifyConnection(
+            user_id=_SHARED_ACCOUNT_ID,
+            spotify_user_id="spuser",
+            refresh_token_encrypted=encrypt_refresh_token("rt"),
+            scope="playlist-modify-private",
+        )
+    )
+    await db_session.commit()
+
+    settings = Settings(spotify_playlist_account_user_id=str(_SHARED_ACCOUNT_ID))
+    report = await advance_due_rounds(
+        now=now, settings=settings, sender=email_spy, client=_RejectingClient()
+    )
+    assert report.advanced_to_voting == 1
+    assert report.errors == 0
+
+
+# ========================================================================== #
 # Branch 5 — passed voting deadline: close (zero votes still closes)
 # ========================================================================== #
 

@@ -1,4 +1,5 @@
 import { type FormEvent, useState } from "react";
+import { Link } from "react-router-dom";
 import { Button } from "../components/Button";
 import { TextField } from "../components/TextField";
 import { ConcentricRings } from "../components/ConcentricRings";
@@ -81,6 +82,12 @@ export function EmailEntryScreen({
             </a>
           </div>
         ) : null}
+
+        <div className="mt-10 text-center">
+          <Link to="/about" className="font-mono text-[11px] text-muted hover:text-ink">
+            about mysterymixclub
+          </Link>
+        </div>
       </div>
     </main>
   );

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatCountdown, formatDeadline } from "./deadline";
+import { formatCountdown, formatDeadline, toDatetimeLocalValue } from "./deadline";
 import type { Round } from "../services/api";
 
 // A full Round with only the fields formatDeadline reads meaningfully; overrides
@@ -98,7 +98,7 @@ describe("formatCountdown", () => {
     return new Date(now.getTime() + ms).toISOString();
   }
 
-  it("multi-day remaining → \"Xd Yh remaining\"", () => {
+  it('multi-day remaining → "Xd Yh remaining"', () => {
     const deadline = offsetFrom(NOW, (2 * 24 + 14) * 60 * 60 * 1000); // 2d 14h out
     const out = formatCountdown(
       roundWith({ state: "open_submission", submission_deadline: deadline }),
@@ -107,7 +107,7 @@ describe("formatCountdown", () => {
     expect(out).toBe("2d 14h remaining");
   });
 
-  it("under-a-day remaining → \"Xh Ym remaining\", not \"0d Xh\"", () => {
+  it('under-a-day remaining → "Xh Ym remaining", not "0d Xh"', () => {
     const deadline = offsetFrom(NOW, (3 * 60 + 12) * 60 * 1000); // 3h 12m out
     const out = formatCountdown(
       roundWith({ state: "open_submission", submission_deadline: deadline }),
@@ -117,7 +117,7 @@ describe("formatCountdown", () => {
     expect(out).not.toMatch(/^0d/);
   });
 
-  it("deadline exactly now → \"closing soon…\"", () => {
+  it('deadline exactly now → "closing soon…"', () => {
     const out = formatCountdown(
       roundWith({ state: "open_submission", submission_deadline: NOW.toISOString() }),
       NOW,
@@ -125,7 +125,7 @@ describe("formatCountdown", () => {
     expect(out).toBe("closing soon…");
   });
 
-  it("deadline already passed → \"closing soon…\"", () => {
+  it('deadline already passed → "closing soon…"', () => {
     const deadline = offsetFrom(NOW, -60_000); // 1 minute in the past
     const out = formatCountdown(
       roundWith({ state: "open_submission", submission_deadline: deadline }),
@@ -198,5 +198,19 @@ describe("formatCountdown", () => {
       NOW,
     );
     expect(out).toBe("5h 0m remaining");
+  });
+});
+
+describe("toDatetimeLocalValue", () => {
+  it("pads single-digit month/day/hour/minute to two digits", () => {
+    const out = toDatetimeLocalValue(new Date(2026, 0, 5, 9, 5)); // Jan 5, 09:05, local
+    expect(out).toBe("2026-01-05T09:05");
+  });
+
+  it("round-trips through new Date() back to the same local wall-clock time", () => {
+    const original = new Date(2026, 6, 22, 14, 30);
+    const formatted = toDatetimeLocalValue(original);
+    const reparsed = new Date(formatted);
+    expect(reparsed.getTime()).toBe(original.getTime());
   });
 });

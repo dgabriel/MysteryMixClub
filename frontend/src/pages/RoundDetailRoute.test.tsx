@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { RoundDetailRoute } from "./RoundDetailRoute";
@@ -8,6 +8,7 @@ import {
   castVotes,
   deleteSubmission,
   editSubmission,
+  extendVotingDeadline,
   getLeague,
   getLeagueMembers,
   getMyMembership,
@@ -45,6 +46,7 @@ vi.mock("../services/api", async () => {
     getPlaylist: vi.fn(),
     getResults: vi.fn(),
     updateRound: vi.fn(),
+    extendVotingDeadline: vi.fn(),
     submitSong: vi.fn(),
     editSubmission: vi.fn(),
     deleteSubmission: vi.fn(),
@@ -69,6 +71,7 @@ const mockDeleteSubmission = vi.mocked(deleteSubmission);
 const mockGetPlaylist = vi.mocked(getPlaylist);
 const mockGetResults = vi.mocked(getResults);
 const mockUpdateRound = vi.mocked(updateRound);
+const mockExtendVotingDeadline = vi.mocked(extendVotingDeadline);
 const mockGetMyVotes = vi.mocked(getMyVotes);
 const mockCastVotes = vi.mocked(castVotes);
 const mockGetNotes = vi.mocked(getNotes);
@@ -448,10 +451,7 @@ describe("RoundDetailRoute", () => {
 
     /** Drive a composer: paste a link, resolve, then submit the resolved song.
      *  Scoped to `slot` when several composers are on screen (multiple slots). */
-    async function composeAndSubmit(
-      user: ReturnType<typeof userEvent.setup>,
-      slot?: HTMLElement,
-    ) {
+    async function composeAndSubmit(user: ReturnType<typeof userEvent.setup>, slot?: HTMLElement) {
       const q = slot ? within(slot) : screen;
       // Search is the default tab now; switch to paste-a-link for the link flow.
       await user.click(q.getByRole("tab", { name: /paste a link/i }));
@@ -726,9 +726,7 @@ describe("RoundDetailRoute", () => {
       await user.click(closeBtn);
 
       expect(mockUpdateRound).not.toHaveBeenCalled();
-      expect(
-        await screen.findByRole("button", { name: "yes, close round" }),
-      ).toBeInTheDocument();
+      expect(await screen.findByRole("button", { name: "yes, close round" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "cancel" })).toBeInTheDocument();
       // The plain one-click button is gone while confirming.
       expect(screen.queryByRole("button", { name: "close round" })).not.toBeInTheDocument();
@@ -794,9 +792,7 @@ describe("RoundDetailRoute", () => {
     it("shows both 'close round' and 'reopen submissions' buttons while open_voting", async () => {
       renderRound();
       expect(await screen.findByRole("button", { name: "close round" })).toBeInTheDocument();
-      expect(
-        await screen.findByRole("button", { name: "reopen submissions" }),
-      ).toBeInTheDocument();
+      expect(await screen.findByRole("button", { name: "reopen submissions" })).toBeInTheDocument();
     });
 
     it("clicking 'reopen submissions' shows a confirm panel instead of calling updateRound immediately", async () => {
@@ -917,21 +913,85 @@ describe("RoundDetailRoute", () => {
     });
   });
 
+  describe("extending the voting deadline (MYS-180)", () => {
+    beforeEach(() => {
+      mockGetRound.mockResolvedValue(
+        round({ state: "open_voting", voting_deadline: "2026-07-20T12:00:00Z" }),
+      );
+    });
+
+    it("shows an 'extend voting' button while open_voting", async () => {
+      renderRound();
+      expect(await screen.findByRole("button", { name: "extend voting" })).toBeInTheDocument();
+    });
+
+    it("clicking it opens a datetime picker, prefilled and bounded off the current deadline", async () => {
+      const user = userEvent.setup();
+      renderRound();
+      await user.click(await screen.findByRole("button", { name: "extend voting" }));
+
+      const input = await screen.findByLabelText(/new voting deadline/i);
+      // Exact clock values depend on the runner's local timezone, so assert
+      // shape + the relative bounds rather than a hardcoded wall-clock string.
+      expect((input as HTMLInputElement).value).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+      expect(input).toHaveAttribute("min");
+      expect(input).toHaveAttribute("max");
+      const min = new Date(input.getAttribute("min")!);
+      const max = new Date(input.getAttribute("max")!);
+      expect(max.getTime() - min.getTime()).toBeCloseTo(48 * 60 * 60 * 1000 - 60_000, -3);
+    });
+
+    it("saving calls extendVotingDeadline with the chosen time as an ISO UTC string", async () => {
+      mockExtendVotingDeadline.mockResolvedValue(
+        round({ state: "open_voting", voting_deadline: "2026-07-22T12:00:00.000Z" }),
+      );
+      const user = userEvent.setup();
+      renderRound();
+      await user.click(await screen.findByRole("button", { name: "extend voting" }));
+
+      const input = await screen.findByLabelText(/new voting deadline/i);
+      fireEvent.change(input, { target: { value: "2026-07-22T12:00" } });
+      await user.click(await screen.findByRole("button", { name: "save" }));
+
+      expect(mockExtendVotingDeadline).toHaveBeenCalledWith(
+        "r1",
+        new Date("2026-07-22T12:00").toISOString(),
+      );
+      // Picker closes back to the plain button on success.
+      expect(await screen.findByRole("button", { name: "extend voting" })).toBeInTheDocument();
+      expect(screen.queryByLabelText(/new voting deadline/i)).not.toBeInTheDocument();
+    });
+
+    it("clicking 'cancel' dismisses the picker without calling extendVotingDeadline", async () => {
+      const user = userEvent.setup();
+      renderRound();
+      await user.click(await screen.findByRole("button", { name: "extend voting" }));
+      await user.click(await screen.findByRole("button", { name: "cancel" }));
+
+      expect(mockExtendVotingDeadline).not.toHaveBeenCalled();
+      expect(await screen.findByRole("button", { name: "extend voting" })).toBeInTheDocument();
+      expect(screen.queryByLabelText(/new voting deadline/i)).not.toBeInTheDocument();
+    });
+
+    it("is not rendered once the round is closed", async () => {
+      mockGetRound.mockResolvedValue(round({ state: "closed" }));
+      renderRound();
+      await screen.findByText(/closed/i);
+      expect(screen.queryByRole("button", { name: "extend voting" })).not.toBeInTheDocument();
+    });
+  });
+
   it("'reopen submissions' is never rendered while the round is pending", async () => {
     mockGetRound.mockResolvedValue(round({ state: "pending" }));
     renderRound();
     await screen.findByRole("button", { name: "open round" });
-    expect(
-      screen.queryByRole("button", { name: "reopen submissions" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "reopen submissions" })).not.toBeInTheDocument();
   });
 
   it("'reopen submissions' is never rendered while the round is open_submission", async () => {
     renderRound(); // default round() state is open_submission
     await screen.findByRole("button", { name: "open voting" });
-    expect(
-      screen.queryByRole("button", { name: "reopen submissions" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "reopen submissions" })).not.toBeInTheDocument();
   });
 
   it("open_voting: renders the playlist with platform links", async () => {
@@ -1097,8 +1157,7 @@ describe("RoundDetailRoute", () => {
     const heading = await screen.findByText("the picks (4)");
     const section = heading.closest("section") as HTMLElement;
     const picks = within(section);
-    const medalFor = (title: string) =>
-      picks.getByText(title).closest("li")!.querySelector("svg");
+    const medalFor = (title: string) => picks.getByText(title).closest("li")!.querySelector("svg");
     expect(medalFor("Alpha")).not.toBeNull();
     expect(medalFor("Bravo")).not.toBeNull();
     expect(medalFor("Charlie")).not.toBeNull();
@@ -1158,10 +1217,7 @@ describe("RoundDetailRoute", () => {
       renderRound();
 
       const link = await screen.findByRole("link", { name: /open playlist in youtube/i });
-      expect(link).toHaveAttribute(
-        "href",
-        "https://www.youtube.com/watch_videos?video_ids=a,b",
-      );
+      expect(link).toHaveAttribute("href", "https://www.youtube.com/watch_videos?video_ids=a,b");
       expect(link).toHaveAttribute("target", "_blank");
       // N (youtube_track_count) of M (entry count) on YouTube
       expect(screen.getByText("1 of 2 on YouTube")).toBeInTheDocument();
@@ -1643,10 +1699,7 @@ describe("RoundDetailRoute", () => {
       const voteLabel = screen.getByText("your vote", { exact: true });
       const svg = voteLabel.querySelector("svg");
       expect(svg).toBeInTheDocument();
-      expect(svg?.querySelector("polyline")).toHaveAttribute(
-        "points",
-        "1.5 6.5 4.5 9.5 10.5 2.5",
-      );
+      expect(svg?.querySelector("polyline")).toHaveAttribute("points", "1.5 6.5 4.5 9.5 10.5 2.5");
     });
 
     it("uses Sage styling for the voted row, never Rust (Rust is reserved elsewhere on this screen)", async () => {
@@ -1737,7 +1790,9 @@ describe("RoundDetailRoute", () => {
       renderRound();
 
       expect(
-        await screen.findByText(/your votes are locked — they will be revealed when the round closes/i),
+        await screen.findByText(
+          /your votes are locked — they will be revealed when the round closes/i,
+        ),
       ).toBeInTheDocument();
     });
   });
@@ -1753,9 +1808,9 @@ describe("RoundDetailRoute", () => {
         entries: opts.entries,
         youtube_playlist_url: null,
         youtube_track_count: 0,
-      voting_eligible: 0,
-      voting_acted: 0,
-      vibing_count: 0,
+        voting_eligible: 0,
+        voting_acted: 0,
+        vibing_count: 0,
       });
       mockGetMyVotes.mockResolvedValue({
         round_id: "r1",
@@ -2137,7 +2192,13 @@ describe("RoundDetailRoute", () => {
     it("Winner: highlights the single top-voted song with submitter and vote count", async () => {
       setupClosed({
         submissions: [
-          sub({ submission_id: "s1", user_id: "u-bo", submitter_display_name: "Bo", title: "Bad Guy", vote_count: 3 }),
+          sub({
+            submission_id: "s1",
+            user_id: "u-bo",
+            submitter_display_name: "Bo",
+            title: "Bad Guy",
+            vote_count: 3,
+          }),
           sub({
             submission_id: "s2",
             user_id: "u-cal",
@@ -2162,7 +2223,13 @@ describe("RoundDetailRoute", () => {
     it("Winner: a tie co-recognizes every top-voted song", async () => {
       setupClosed({
         submissions: [
-          sub({ submission_id: "s1", user_id: "u-bo", submitter_display_name: "Bo", title: "Bad Guy", vote_count: 2 }),
+          sub({
+            submission_id: "s1",
+            user_id: "u-bo",
+            submitter_display_name: "Bo",
+            title: "Bad Guy",
+            vote_count: 2,
+          }),
           sub({
             submission_id: "s2",
             user_id: "u-cal",
@@ -2206,9 +2273,27 @@ describe("RoundDetailRoute", () => {
     it("multi-song player: one leaderboard row but a pick tile per song", async () => {
       setupClosed({
         submissions: [
-          sub({ submission_id: "a1", user_id: "u-a", submitter_display_name: "Ada", title: "Ada One", vote_count: 3 }),
-          sub({ submission_id: "a2", user_id: "u-a", submitter_display_name: "Ada", title: "Ada Two", vote_count: 2 }),
-          sub({ submission_id: "b1", user_id: "u-bo", submitter_display_name: "Bo", title: "Bo Solo", vote_count: 1 }),
+          sub({
+            submission_id: "a1",
+            user_id: "u-a",
+            submitter_display_name: "Ada",
+            title: "Ada One",
+            vote_count: 3,
+          }),
+          sub({
+            submission_id: "a2",
+            user_id: "u-a",
+            submitter_display_name: "Ada",
+            title: "Ada Two",
+            vote_count: 2,
+          }),
+          sub({
+            submission_id: "b1",
+            user_id: "u-bo",
+            submitter_display_name: "Bo",
+            title: "Bo Solo",
+            vote_count: 1,
+          }),
         ],
         // Backend already aggregates per player: Ada's two songs are one standing.
         leaderboard: [
@@ -2234,9 +2319,27 @@ describe("RoundDetailRoute", () => {
       setupClosed({
         submissions: [
           // Ada has two solid songs (3 + 3 = 6 total); Bo has one bigger song (5).
-          sub({ submission_id: "a1", user_id: "u-a", submitter_display_name: "Ada", title: "Ada One", vote_count: 3 }),
-          sub({ submission_id: "a2", user_id: "u-a", submitter_display_name: "Ada", title: "Ada Two", vote_count: 3 }),
-          sub({ submission_id: "b1", user_id: "u-bo", submitter_display_name: "Bo", title: "Bo Big", vote_count: 5 }),
+          sub({
+            submission_id: "a1",
+            user_id: "u-a",
+            submitter_display_name: "Ada",
+            title: "Ada One",
+            vote_count: 3,
+          }),
+          sub({
+            submission_id: "a2",
+            user_id: "u-a",
+            submitter_display_name: "Ada",
+            title: "Ada Two",
+            vote_count: 3,
+          }),
+          sub({
+            submission_id: "b1",
+            user_id: "u-bo",
+            submitter_display_name: "Bo",
+            title: "Bo Big",
+            vote_count: 5,
+          }),
         ],
         leaderboard: [
           { user_id: "u-a", display_name: "Ada", vote_count: 6, rank: 1 },
@@ -2500,9 +2603,7 @@ describe("RoundDetailRoute", () => {
       renderRound();
 
       expect(await screen.findByRole("heading", { name: /listen back/i })).toBeInTheDocument();
-      expect(
-        screen.getByRole("link", { name: /open playlist in youtube/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /open playlist in youtube/i })).toBeInTheDocument();
     });
 
     it("calls getResults + getPlaylist for a closed round, and not getMine", async () => {

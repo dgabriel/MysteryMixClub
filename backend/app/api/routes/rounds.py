@@ -652,6 +652,88 @@ async def update_round(
     )
 
 
+# Upper bound on how far a single extension may push the deadline out,
+# measured from the *current* deadline (MYS-180) — the organizer picks any
+# point in this window, not a fixed increment.
+_MAX_VOTING_EXTENSION = timedelta(hours=48)
+
+
+class ExtendVotingRequest(BaseModel):
+    voting_deadline: datetime
+
+
+@router.post("/rounds/{round_id}/extend-voting", response_model=RoundResponse)
+async def extend_voting_deadline(
+    round_id: uuid.UUID,
+    payload: ExtendVotingRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    sender: EmailSender = Depends(get_email_sender),
+    settings: Settings = Depends(get_settings),
+) -> RoundResponse:
+    """Push a round's voting deadline to an organizer-chosen time, up to 48h past
+    the current deadline (MYS-180).
+
+    Same permission level as every other round-management action (organizer or
+    co-organizer). Only valid while the round is still ``open_voting`` — locked
+    under ``FOR UPDATE`` and re-verified, the same discipline as the MYS-168
+    rollback path, since this races the deadline job and vote-cast auto-close."""
+    round_ = await _load_round(round_id, db)
+    league = await _load_league_as_organizer(
+        round_.league_id, current_user, db, "only an organizer or co-organizer can extend voting"
+    )
+
+    locked = await db.scalar(
+        select(Round)
+        .where(Round.id == round_.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if locked is None or locked.state != "open_voting":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="round is not open for voting",
+        )
+
+    current_deadline = locked.voting_deadline or datetime.now(timezone.utc)
+    new_deadline = payload.voting_deadline
+    if new_deadline.tzinfo is None:
+        new_deadline = new_deadline.replace(tzinfo=timezone.utc)
+    if new_deadline <= current_deadline:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="the new deadline must be after the current one",
+        )
+    if new_deadline > current_deadline + _MAX_VOTING_EXTENSION:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="can't extend more than 48 hours past the current deadline",
+        )
+
+    locked.voting_deadline = new_deadline
+    # Let the deadline job send a fresh "12h left" warning against the new
+    # deadline — the old marker refers to a deadline that no longer applies.
+    locked.voting_warning_sent_at = None
+
+    recipients = await gather_recipients(db, league.id)
+    queue_round_event(
+        background_tasks, sender, settings, recipients, league, locked, "voting_extended"
+    )
+
+    await db.commit()
+    await db.refresh(locked)
+    return _to_response(
+        locked,
+        await _submission_count(locked.id, db),
+        await _member_count(locked.league_id, db),
+        await _voted_count(locked.id, db),
+        await _voting_eligible_count(locked.id, db),
+        viewer_submitted=await _viewer_submitted(locked.id, current_user.id, db),
+        viewer_voted=await _viewer_voted(locked.id, current_user.id, db),
+    )
+
+
 # --------------------------------------------------------------------------- #
 # Playlist (MYS-18 slice B)
 # --------------------------------------------------------------------------- #

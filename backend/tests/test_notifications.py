@@ -13,7 +13,7 @@ pending→open transition we notify on.
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
@@ -109,6 +109,28 @@ async def test_voting_open_emails_all_members(client, db_session, email_spy):
 
     assert len(email_spy.sends) == 3
     assert all("voting is open" in subj for (_to, subj, _html) in email_spy.sends)
+
+
+async def test_extend_voting_emails_new_deadline(client, db_session, email_spy):
+    organizer, league_id, _members = await _league_with_members(client, db_session)
+    rid = await _round_id(client, league_id, organizer.id, 1)
+    await _advance(client, rid, organizer.id, "open_submission")
+    await _advance(client, rid, organizer.id, "open_voting")
+    current = (await client.get(f"/api/v1/rounds/{rid}", headers=_auth(organizer.id))).json()
+    new_deadline = datetime.fromisoformat(current["voting_deadline"]) + timedelta(hours=4)
+
+    email_spy.sends.clear()
+    resp = await client.post(
+        f"/api/v1/rounds/{rid}/extend-voting",
+        json={"voting_deadline": new_deadline.isoformat()},
+        headers=_auth(organizer.id),
+    )
+    assert resp.status_code == 200, resp.text
+
+    recipients = {to for (to, _subj, _html) in email_spy.sends}
+    assert recipients == {"org@example.com", "m0@example.com", "m1@example.com"}
+    assert all("voting extended" in subj for (_to, subj, _html) in email_spy.sends)
+    assert all("New deadline:" in html for (_to, _subj, html) in email_spy.sends)
 
 
 async def test_closing_round_emails_and_notifies_auto_opened_next(client, db_session, email_spy):

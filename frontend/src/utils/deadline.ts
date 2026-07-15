@@ -69,3 +69,19 @@ export function formatCountdown(round: Round, now: Date = new Date()): string | 
 
   return days > 0 ? `${days}d ${hours}h remaining` : `${hours}h ${minutes}m remaining`;
 }
+
+/**
+ * Format a Date as the local "YYYY-MM-DDTHH:mm" string an
+ * `<input type="datetime-local">` needs for its `value`/`min`/`max` (MYS-180).
+ * Local time, no timezone conversion — the input (and `new Date()` parsing that
+ * same shape back) both operate in the browser's local zone, so this round-trips.
+ */
+export function toDatetimeLocalValue(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const y = date.getFullYear();
+  const m = pad(date.getMonth() + 1);
+  const d = pad(date.getDate());
+  const h = pad(date.getHours());
+  const min = pad(date.getMinutes());
+  return `${y}-${m}-${d}T${h}:${min}`;
+}

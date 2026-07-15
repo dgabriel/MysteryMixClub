@@ -711,6 +711,24 @@ export async function updateRound(
   return (await res.json()) as Round;
 }
 
+/** Push a round's voting deadline to an organizer-chosen time, up to 48h past
+ *  the current deadline (organizer only, MYS-180). `votingDeadline` is an ISO
+ *  datetime string. Only valid while the round is still open_voting. */
+export async function extendVotingDeadline(
+  roundId: string,
+  votingDeadline: string,
+): Promise<Round> {
+  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/extend-voting`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ voting_deadline: votingDeadline }),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as Round;
+}
+
 /** The fields needed to add or replace a submitted song. Shared by submitSong
  *  (add) and editSubmission (replace one). `participation_mode` is a per-player
  *  round stance the backend keeps uniform across all your songs (MYS-116). */
@@ -748,14 +766,11 @@ export async function editSubmission(
   submissionId: string,
   input: SubmissionInput,
 ): Promise<SubmissionResult> {
-  const res = await authenticatedRequest(
-    `/api/v1/rounds/${roundId}/submissions/${submissionId}`,
-    {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    },
-  );
+  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/submissions/${submissionId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
@@ -785,10 +800,9 @@ export async function updateSubmissionNote(
 
 /** Remove one of your songs from a round (MYS-116). Resolves on 204. */
 export async function deleteSubmission(roundId: string, submissionId: string): Promise<void> {
-  const res = await authenticatedRequest(
-    `/api/v1/rounds/${roundId}/submissions/${submissionId}`,
-    { method: "DELETE" },
-  );
+  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/submissions/${submissionId}`, {
+    method: "DELETE",
+  });
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
@@ -1154,9 +1168,7 @@ export type AdminUser = {
 
 /** Search users by an email substring (platform-admin only). */
 export async function adminSearchUsers(email: string): Promise<AdminUser[]> {
-  const res = await authenticatedRequest(
-    `/api/v1/admin/users?email=${encodeURIComponent(email)}`,
-  );
+  const res = await authenticatedRequest(`/api/v1/admin/users?email=${encodeURIComponent(email)}`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }

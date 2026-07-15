@@ -15,6 +15,15 @@ vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
 const mockRequestMagicLink = vi.mocked(requestMagicLink);
 const mockUseAuth = vi.mocked(useAuth);
 
+// EmailEntryScreen links to /about (MYS-155), which needs a Router context.
+function renderLogin() {
+  return render(
+    <MemoryRouter initialEntries={["/login"]}>
+      <LoginRoute />
+    </MemoryRouter>,
+  );
+}
+
 describe("LoginRoute", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -36,7 +45,7 @@ describe("LoginRoute", () => {
   });
 
   it("no TopNav on the login screen (unauthenticated)", () => {
-    render(<LoginRoute />);
+    renderLogin();
 
     // The shared nav is authed-only; none of its links appear here.
     expect(screen.queryByRole("button", { name: /^profile$/i })).not.toBeInTheDocument();
@@ -48,7 +57,7 @@ describe("LoginRoute", () => {
     mockRequestMagicLink.mockResolvedValue({ devToken: null });
     const user = userEvent.setup();
 
-    render(<LoginRoute />);
+    renderLogin();
 
     // EmailEntry visible
     expect(
@@ -73,7 +82,7 @@ describe("LoginRoute", () => {
     mockRequestMagicLink.mockRejectedValue(new Error("rate limited"));
     const user = userEvent.setup();
 
-    render(<LoginRoute />);
+    renderLogin();
 
     await user.type(screen.getByLabelText(/email/i), "user@example.com");
     await user.click(screen.getByRole("button", { name: /send sign-in link/i }));
@@ -93,7 +102,7 @@ describe("LoginRoute", () => {
   it("edge case: empty input does not call requestMagicLink and stays on the form", async () => {
     const user = userEvent.setup();
 
-    render(<LoginRoute />);
+    renderLogin();
 
     await user.click(screen.getByRole("button", { name: /send sign-in link/i }));
 
@@ -104,7 +113,7 @@ describe("LoginRoute", () => {
   it("edge case: whitespace-only input does not submit", async () => {
     const user = userEvent.setup();
 
-    render(<LoginRoute />);
+    renderLogin();
 
     await user.type(screen.getByLabelText(/email/i), "    ");
     await user.click(screen.getByRole("button", { name: /send sign-in link/i }));
@@ -117,7 +126,7 @@ describe("LoginRoute", () => {
     mockRequestMagicLink.mockResolvedValue({ devToken: "tok-123" });
     const user = userEvent.setup();
 
-    render(<LoginRoute />);
+    renderLogin();
 
     await user.type(screen.getByLabelText(/email/i), "user@example.com");
     await user.click(screen.getByRole("button", { name: /send sign-in link/i }));
@@ -134,7 +143,7 @@ describe("LoginRoute", () => {
     const user = userEvent.setup();
 
     try {
-      render(<LoginRoute />);
+      renderLogin();
 
       await user.type(screen.getByLabelText(/email/i), "guest@example.com");
       await user.click(screen.getByRole("button", { name: /send sign-in link/i }));
@@ -147,11 +156,19 @@ describe("LoginRoute", () => {
     }
   });
 
+  it("links to the about page (MYS-155)", () => {
+    renderLogin();
+    expect(screen.getByRole("link", { name: /about mysterymixclub/i })).toHaveAttribute(
+      "href",
+      "/about",
+    );
+  });
+
   it("back affordance on CheckEmail returns to the email entry form", async () => {
     mockRequestMagicLink.mockResolvedValue({ devToken: null });
     const user = userEvent.setup();
 
-    render(<LoginRoute />);
+    renderLogin();
 
     await user.type(screen.getByLabelText(/email/i), "user@example.com");
     await user.click(screen.getByRole("button", { name: /send sign-in link/i }));

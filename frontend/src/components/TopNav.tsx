@@ -50,18 +50,25 @@ function LogoutIcon() {
 }
 
 /**
- * Shared top navigation for every authenticated screen. The ring mark returns
- * home; HOME / PROFILE / LOGOUT are always present, ADMIN only for platform
+ * Shared top navigation. On authenticated screens the ring mark returns home;
+ * HOME / PROFILE / ABOUT / LOGOUT are always present, ADMIN only for platform
  * admins. An optional back affordance (e.g. "← league") sits beside the mark on
  * deeper screens. The mark carries its single Rust dot as persistent brand
  * identity — a style-guide exception that does NOT count against a screen's
  * one-Rust budget (see docs/design/style-guide.md). Every nav *link* still stays
  * in the Sage/Ink family, so the chrome never competes with a screen's accent.
+ *
+ * TopNav also renders on the public /about page (MYS-155), which has no auth
+ * requirement. A signed-out (or still-resolving) visitor must never see the
+ * authed-only actions — profile, admin, logout all assume a live session — so
+ * anything short of "authenticated" collapses the nav to just the mark and a
+ * single LOGIN link, both pointing at /login.
  */
 export function TopNav({ back }: TopNavProps) {
   const navigate = useNavigate();
-  const { isPlatformAdmin, logout } = useAuth();
+  const { status, isPlatformAdmin, logout } = useAuth();
   const [loggingOut, setLoggingOut] = useState(false);
+  const authed = status === "authenticated";
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -77,6 +84,26 @@ export function TopNav({ back }: TopNavProps) {
     "font-mono uppercase tracking-ui text-[11px] text-ink transition-colors duration-150 hover:text-sage disabled:opacity-50 disabled:cursor-not-allowed";
   // Links that pair a line icon with their label sit on one baseline.
   const iconLinkClass = `inline-flex items-center gap-1.5 ${linkClass}`;
+
+  if (!authed) {
+    return (
+      <header className="flex items-center justify-between px-4 py-4 sm:px-8">
+        <button
+          type="button"
+          onClick={() => navigate("/login")}
+          aria-label="login"
+          className="transition-opacity duration-150 hover:opacity-70"
+        >
+          <ConcentricRings size={28} accent />
+        </button>
+        <nav className="flex items-center gap-4">
+          <button type="button" onClick={() => navigate("/login")} className={linkClass}>
+            login
+          </button>
+        </nav>
+      </header>
+    );
+  }
 
   return (
     <header className="flex items-center justify-between px-4 py-4 sm:px-8">
@@ -105,6 +132,9 @@ export function TopNav({ back }: TopNavProps) {
         </button>
         <button type="button" onClick={() => navigate("/profile")} className={linkClass}>
           profile
+        </button>
+        <button type="button" onClick={() => navigate("/about")} className={linkClass}>
+          about
         </button>
         {isPlatformAdmin ? (
           <button type="button" onClick={() => navigate("/admin")} className={linkClass}>

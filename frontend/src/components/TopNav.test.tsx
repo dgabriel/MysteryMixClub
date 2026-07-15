@@ -29,6 +29,27 @@ function setAuth(isPlatformAdmin: boolean) {
   });
 }
 
+// The About page (MYS-155) renders TopNav for signed-out — or still-resolving
+// — visitors too, so the nav must collapse safely for both.
+function setUnauthed(status: "unauthenticated" | "loading" = "unauthenticated") {
+  mockUseAuth.mockReturnValue({
+    status,
+    isAuthenticated: false,
+    setAccessToken: vi.fn(),
+    clear: vi.fn(),
+    logout,
+    logoutAll: vi.fn(),
+    displayName: null,
+    email: null,
+    userId: null,
+    isPlatformAdmin: false,
+    profileStatus: "idle",
+    needsOnboarding: false,
+    applyDisplayName: vi.fn(),
+    preferredService: null,
+  });
+}
+
 function renderNav(ui = <TopNav />, at = "/start") {
   return render(
     <MemoryRouter initialEntries={[at]}>
@@ -37,6 +58,7 @@ function renderNav(ui = <TopNav />, at = "/start") {
         <Route path="/start" element={ui} />
         <Route path="/home" element={<div>HOME CONTENT</div>} />
         <Route path="/profile" element={<div>PROFILE CONTENT</div>} />
+        <Route path="/about" element={<div>ABOUT CONTENT</div>} />
         <Route path="/admin" element={<div>ADMIN CONTENT</div>} />
         <Route path="/login" element={<div>LOGIN CONTENT</div>} />
         <Route path="/leagues/:id" element={<div>LEAGUE CONTENT</div>} />
@@ -51,14 +73,23 @@ describe("TopNav", () => {
     setAuth(false);
   });
 
-  it("renders home / profile / logout for any authed user, and hides admin for non-admins", () => {
+  it("renders home / profile / about / logout for any authed user, and hides admin for non-admins", () => {
     renderNav();
 
     // Two home controls: the ring mark (aria-label) and the text link.
     expect(screen.getAllByRole("button", { name: /^home$/i })).toHaveLength(2);
     expect(screen.getByRole("button", { name: /^profile$/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^about$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^logout$/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^admin$/i })).not.toBeInTheDocument();
+  });
+
+  it("about link routes to /about", async () => {
+    const user = userEvent.setup();
+    renderNav();
+
+    await user.click(screen.getByRole("button", { name: /^about$/i }));
+    expect(await screen.findByText("ABOUT CONTENT")).toBeInTheDocument();
   });
 
   it("shows the admin entry for a platform admin and routes to /admin", async () => {
@@ -111,5 +142,37 @@ describe("TopNav", () => {
   it("no back affordance is rendered when none is provided", () => {
     renderNav();
     expect(screen.queryByRole("button", { name: /^league$/i })).not.toBeInTheDocument();
+  });
+
+  describe("signed-out visitor (MYS-155: nav on the public /about page)", () => {
+    it("collapses to just a login link, hiding every authed-only action", () => {
+      setUnauthed();
+      renderNav();
+
+      // Two login controls: the ring mark (aria-label) and the text link.
+      expect(screen.getAllByRole("button", { name: /^login$/i })).toHaveLength(2);
+      expect(screen.queryByRole("button", { name: /^home$/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^profile$/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^about$/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^admin$/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^logout$/i })).not.toBeInTheDocument();
+    });
+
+    it("also collapses while auth status is still resolving", () => {
+      setUnauthed("loading");
+      renderNav();
+      expect(screen.getAllByRole("button", { name: /^login$/i }).length).toBeGreaterThan(0);
+      expect(screen.queryByRole("button", { name: /^profile$/i })).not.toBeInTheDocument();
+    });
+
+    it("the login text link routes to /login", async () => {
+      setUnauthed();
+      const user = userEvent.setup();
+      renderNav();
+
+      const loginControls = screen.getAllByRole("button", { name: /^login$/i });
+      await user.click(loginControls[loginControls.length - 1]);
+      expect(await screen.findByText("LOGIN CONTENT")).toBeInTheDocument();
+    });
   });
 });

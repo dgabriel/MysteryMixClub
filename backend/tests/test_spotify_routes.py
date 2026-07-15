@@ -800,3 +800,64 @@ async def test_pending_shows_playlist_url_after_generation(
     assert resp.status_code == 200
     rows = {row["round_id"]: row for row in resp.json()}
     assert rows[str(round_.id)]["playlist_url"] == "https://open.spotify.com/playlist/pl1"
+
+
+# --------------------------------------------------------------------------- #
+# auto-generation on voting_open (MYS-176) — no admin click needed
+# --------------------------------------------------------------------------- #
+
+
+async def test_voting_open_auto_generates_playlist(spotify_client, db_session, fake_spotify):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_round(db_session, organizer, state="open_submission")
+    await _seed_shared_account(db_session)
+    await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
+
+    resp = await spotify_client.patch(
+        f"/api/v1/rounds/{round_.id}", json={"state": "open_voting"}, headers=_auth(organizer.id)
+    )
+    assert resp.status_code == 200, resp.text
+
+    link = await spotify_client.get(_playlist_url(round_.id), headers=_auth(organizer.id))
+    assert link.json()["playlist_url"] == "https://open.spotify.com/playlist/pl1"
+    assert fake_spotify.created["public"] is True
+
+
+async def test_voting_open_does_not_auto_generate_when_unconfigured(client, db_session):
+    # `client` (conftest's default fixture) has no SPOTIFY_PLAYLIST_ACCOUNT_USER_ID
+    # set — the round transition must succeed exactly as before MYS-176.
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_round(db_session, organizer, state="open_submission")
+    await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
+
+    resp = await client.patch(
+        f"/api/v1/rounds/{round_.id}", json={"state": "open_voting"}, headers=_auth(organizer.id)
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["state"] == "open_voting"
+
+
+async def test_voting_open_auto_generate_failure_does_not_block_transition(
+    session_factory, db_session
+):
+    # A revoked shared-account grant must not prevent voting from opening —
+    # auto-generation is best-effort (MYS-176).
+    from app.services.spotify_client import SpotifyAuthError
+
+    class _RejectingClient(FakeSpotifyClient):
+        async def refresh_access_token(self, refresh_token):
+            raise SpotifyAuthError("invalid_grant")
+
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_round(db_session, organizer, state="open_submission")
+    await _seed_shared_account(db_session)
+    await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
+
+    async with _client_with_spotify(session_factory, _RejectingClient()) as ac:
+        resp = await ac.patch(
+            f"/api/v1/rounds/{round_.id}",
+            json={"state": "open_voting"},
+            headers=_auth(organizer.id),
+        )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["state"] == "open_voting"

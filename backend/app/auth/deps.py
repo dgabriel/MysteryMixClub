@@ -50,6 +50,23 @@ async def get_current_user(
     return user
 
 
+async def get_current_user_optional(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> User | None:
+    """Best-effort identity for routes usable by both anonymous and signed-in
+    callers (e.g. invite preview, MYS-181). Same resolution as
+    get_current_user, but a missing/invalid/expired token or unknown user
+    resolves to None instead of raising."""
+    if credentials is None:
+        return None
+    try:
+        user_id = decode_access_token(credentials.credentials)
+    except JWTError:
+        return None
+    return await db.scalar(select(User).where(User.id == user_id, User.deleted_at.is_(None)))
+
+
 async def get_platform_admin(
     current_user: User = Depends(get_current_user),
     settings: Settings = Depends(get_settings),

@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.leagues import LeagueResponse, _to_response
-from app.auth.deps import get_current_user
+from app.auth.deps import get_current_user, get_current_user_optional
 from app.config import Settings, get_settings
 from app.db.session import get_db
 from app.models.invite import Invite
@@ -27,6 +27,17 @@ def _is_expired(invite: Invite, now: datetime) -> bool:
     """Shareable links expire 48h after creation (MYS-126). Legacy invites with
     no expires_at never expire."""
     return invite.expires_at is not None and invite.expires_at <= now
+
+
+async def _is_active_member(db: AsyncSession, league_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+    membership = await db.scalar(
+        select(LeagueMember).where(
+            LeagueMember.league_id == league_id,
+            LeagueMember.user_id == user_id,
+            LeagueMember.removed_at.is_(None),
+        )
+    )
+    return membership is not None
 
 
 async def _join_via_invite(db: AsyncSession, user_id: uuid.UUID, invite: Invite) -> bool:
@@ -74,20 +85,35 @@ async def _join_via_invite(db: AsyncSession, user_id: uuid.UUID, invite: Invite)
 
 
 class InvitePreviewResponse(BaseModel):
+    league_id: uuid.UUID
     league_name: str
     member_count: int
+    # True when the (optionally authenticated) caller is already an active
+    # member of this league. The frontend redirects straight into the league
+    # rather than showing the join screen — most useful on an expired link,
+    # which would otherwise 410 before a legitimate member ever sees it
+    # (MYS-181).
+    already_member: bool = False
 
 
 @router.get("/{token}", response_model=InvitePreviewResponse)
 async def preview_invite(
     token: str,
     db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
 ) -> InvitePreviewResponse:
     invite = await db.scalar(select(Invite).where(Invite.token == token))
     if invite is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invite not found")
 
-    if _is_expired(invite, datetime.now(timezone.utc)):
+    already_member = (
+        await _is_active_member(db, invite.league_id, current_user.id)
+        if current_user is not None
+        else False
+    )
+
+    # An already-active member passes through regardless of expiry (MYS-181).
+    if _is_expired(invite, datetime.now(timezone.utc)) and not already_member:
         raise HTTPException(status_code=status.HTTP_410_GONE, detail=_EXPIRED_LINK_MESSAGE)
 
     league = await db.scalar(select(League).where(League.id == invite.league_id))
@@ -102,7 +128,12 @@ async def preview_invite(
             LeagueMember.removed_at.is_(None),
         )
     )
-    return InvitePreviewResponse(league_name=league.name, member_count=member_count or 0)
+    return InvitePreviewResponse(
+        league_id=invite.league_id,
+        league_name=league.name,
+        member_count=member_count or 0,
+        already_member=already_member,
+    )
 
 
 @router.post("/{token}/accept", response_model=LeagueResponse)
@@ -118,13 +149,6 @@ async def accept_invite(
     if invite is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invite not found")
 
-    if _is_expired(invite, datetime.now(timezone.utc)):
-        raise HTTPException(status_code=status.HTTP_410_GONE, detail=_EXPIRED_LINK_MESSAGE)
-
-    league = await db.scalar(select(League).where(League.id == invite.league_id))
-    if league is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invite not found")
-
     membership = await db.scalar(
         select(LeagueMember).where(
             LeagueMember.league_id == invite.league_id,
@@ -133,8 +157,17 @@ async def accept_invite(
     )
     # Accept is idempotent (MYS-135): an existing active member just gets routed
     # to the league rather than an error. Only a new (or previously removed)
-    # membership needs the join + commit.
+    # membership needs the join + commit. An already-active member also passes
+    # through regardless of expiry (MYS-181).
     already_active = membership is not None and membership.removed_at is None
+
+    if _is_expired(invite, datetime.now(timezone.utc)) and not already_active:
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail=_EXPIRED_LINK_MESSAGE)
+
+    league = await db.scalar(select(League).where(League.id == invite.league_id))
+    if league is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invite not found")
+
     if not already_active:
         joined = await _join_via_invite(db, current_user.id, invite)
         await db.commit()

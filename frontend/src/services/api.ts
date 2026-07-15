@@ -310,8 +310,13 @@ export type Invite = {
 
 /** Public preview of a league shown before joining (GET /api/v1/invites/:token). */
 export type InvitePreview = {
+  league_id: string;
   league_name: string;
   member_count: number;
+  /** True when the viewer is already an active member of this league — the
+   *  caller should redirect straight in rather than showing the join screen,
+   *  most relevant on an otherwise-expired link (MYS-181). */
+  already_member: boolean;
 };
 
 /** Create a new league. Returns the created League on 201. Only the provided
@@ -460,11 +465,12 @@ export async function deleteLeague(leagueId: string): Promise<void> {
   }
 }
 
-/** Validate an invite token and return a public league preview. Unauthenticated:
- *  a plain fetch with no Authorization header, since anyone with the link may
- *  view the preview before joining. */
+/** Validate an invite token and return a public league preview. Works for
+ *  anyone with the link — authenticatedRequest attaches a bearer token when
+ *  one is present (so the backend can compute `already_member`) but never
+ *  requires one; the endpoint accepts anonymous callers too (MYS-181). */
 export async function getInvitePreview(token: string): Promise<InvitePreview> {
-  const res = await fetch(`${API_BASE_URL}/api/v1/invites/${encodeURIComponent(token)}`);
+  const res = await authenticatedRequest(`/api/v1/invites/${encodeURIComponent(token)}`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }

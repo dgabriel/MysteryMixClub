@@ -737,3 +737,165 @@ async def test_list_rounds_includes_voted_counts(client, db_session):
     by_number = {r["round_number"]: r for r in resp.json()}
     assert by_number[1]["voting_eligible_count"] == 2
     assert by_number[1]["voted_count"] == 1
+
+
+# --------------------------------------------------------------------------- #
+# Extend voting deadline (MYS-180)
+# --------------------------------------------------------------------------- #
+
+
+def _extend_url(round_id) -> str:
+    return f"/api/v1/rounds/{round_id}/extend-voting"
+
+
+def _extend_body(deadline: datetime) -> dict:
+    return {"voting_deadline": deadline.isoformat()}
+
+
+async def test_extend_voting_requires_auth(client, db_session):
+    organizer = await _seed_user(db_session, "org@example.com")
+    league = await _seed_league(db_session, organizer)
+    rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
+    resp = await client.post(
+        _extend_url(rid), json=_extend_body(datetime.now(timezone.utc) + timedelta(hours=4))
+    )
+    assert resp.status_code == 401
+
+
+async def test_extend_voting_non_organizer_forbidden(client, db_session):
+    organizer = await _seed_user(db_session, "org@example.com")
+    member = await _seed_user(db_session, "member@example.com")
+    league = await _seed_league(db_session, organizer)
+    await _add_member(db_session, league.id, member)
+    rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
+    await _advance(client, rid, organizer.id, "open_voting")
+
+    resp = await client.post(
+        _extend_url(rid),
+        json=_extend_body(datetime.now(timezone.utc) + timedelta(hours=4)),
+        headers=_auth(member.id),
+    )
+    assert resp.status_code == 403
+
+
+async def test_extend_voting_wrong_state_409(client, db_session):
+    organizer = await _seed_user(db_session, "org@example.com")
+    league = await _seed_league(db_session, organizer)
+    rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
+    # Round is open_submission, not open_voting yet.
+    resp = await client.post(
+        _extend_url(rid),
+        json=_extend_body(datetime.now(timezone.utc) + timedelta(hours=4)),
+        headers=_auth(organizer.id),
+    )
+    assert resp.status_code == 409
+
+
+async def test_extend_voting_to_chosen_deadline(client, db_session):
+    organizer = await _seed_user(db_session, "org@example.com")
+    league = await _seed_league(db_session, organizer)
+    rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
+    await _advance(client, rid, organizer.id, "open_voting")
+    before = (await client.get(f"/api/v1/rounds/{rid}", headers=_auth(organizer.id))).json()
+    old_deadline = datetime.fromisoformat(before["voting_deadline"])
+    chosen = old_deadline + timedelta(hours=20)
+
+    resp = await client.post(
+        _extend_url(rid), json=_extend_body(chosen), headers=_auth(organizer.id)
+    )
+    assert resp.status_code == 200, resp.text
+    new_deadline = datetime.fromisoformat(resp.json()["voting_deadline"])
+    assert new_deadline == chosen
+
+
+async def test_extend_voting_is_repeatable(client, db_session):
+    organizer = await _seed_user(db_session, "org@example.com")
+    league = await _seed_league(db_session, organizer)
+    rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
+    await _advance(client, rid, organizer.id, "open_voting")
+    before = (await client.get(f"/api/v1/rounds/{rid}", headers=_auth(organizer.id))).json()
+    old_deadline = datetime.fromisoformat(before["voting_deadline"])
+
+    await client.post(
+        _extend_url(rid),
+        json=_extend_body(old_deadline + timedelta(hours=4)),
+        headers=_auth(organizer.id),
+    )
+    resp = await client.post(
+        _extend_url(rid),
+        json=_extend_body(old_deadline + timedelta(hours=8)),
+        headers=_auth(organizer.id),
+    )
+    assert resp.status_code == 200, resp.text
+    new_deadline = datetime.fromisoformat(resp.json()["voting_deadline"])
+    assert new_deadline == old_deadline + timedelta(hours=8)
+
+
+async def test_extend_voting_rejects_deadline_not_after_current(client, db_session):
+    organizer = await _seed_user(db_session, "org@example.com")
+    league = await _seed_league(db_session, organizer)
+    rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
+    await _advance(client, rid, organizer.id, "open_voting")
+    before = (await client.get(f"/api/v1/rounds/{rid}", headers=_auth(organizer.id))).json()
+    old_deadline = datetime.fromisoformat(before["voting_deadline"])
+
+    resp = await client.post(
+        _extend_url(rid), json=_extend_body(old_deadline), headers=_auth(organizer.id)
+    )
+    assert resp.status_code == 422
+
+    resp = await client.post(
+        _extend_url(rid),
+        json=_extend_body(old_deadline - timedelta(hours=1)),
+        headers=_auth(organizer.id),
+    )
+    assert resp.status_code == 422
+
+
+async def test_extend_voting_rejects_deadline_beyond_48h(client, db_session):
+    organizer = await _seed_user(db_session, "org@example.com")
+    league = await _seed_league(db_session, organizer)
+    rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
+    await _advance(client, rid, organizer.id, "open_voting")
+    before = (await client.get(f"/api/v1/rounds/{rid}", headers=_auth(organizer.id))).json()
+    old_deadline = datetime.fromisoformat(before["voting_deadline"])
+
+    resp = await client.post(
+        _extend_url(rid),
+        json=_extend_body(old_deadline + timedelta(hours=48, minutes=1)),
+        headers=_auth(organizer.id),
+    )
+    assert resp.status_code == 422
+
+    # Exactly the boundary is fine.
+    resp = await client.post(
+        _extend_url(rid),
+        json=_extend_body(old_deadline + timedelta(hours=48)),
+        headers=_auth(organizer.id),
+    )
+    assert resp.status_code == 200, resp.text
+
+
+async def test_extend_voting_resets_warning_marker(client, db_session):
+    organizer = await _seed_user(db_session, "org@example.com")
+    league = await _seed_league(db_session, organizer)
+    rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
+    await _advance(client, rid, organizer.id, "open_voting")
+    round_id = uuid.UUID(rid)
+
+    round_ = await db_session.get(Round, round_id)
+    round_.voting_warning_sent_at = datetime.now(timezone.utc)
+    await db_session.commit()
+
+    before = (await client.get(f"/api/v1/rounds/{rid}", headers=_auth(organizer.id))).json()
+    old_deadline = datetime.fromisoformat(before["voting_deadline"])
+    resp = await client.post(
+        _extend_url(rid),
+        json=_extend_body(old_deadline + timedelta(hours=4)),
+        headers=_auth(organizer.id),
+    )
+    assert resp.status_code == 200, resp.text
+
+    db_session.expire_all()
+    refreshed = await db_session.get(Round, round_id)
+    assert refreshed.voting_warning_sent_at is None

@@ -38,7 +38,9 @@ logger = logging.getLogger("app.services.notifications")
 # The lifecycle moments worth an email. Kept distinct from the raw round states
 # so "the next round auto-opened" and "this round opened" can both map to a
 # submission_open notification for their respective rounds.
-RoundEvent = Literal["submission_open", "voting_open", "round_closed", "league_complete"]
+RoundEvent = Literal[
+    "submission_open", "voting_open", "round_closed", "league_complete", "voting_extended"
+]
 
 # The two deadline phases a round can be warned about (MYS-162).
 DeadlinePhase = Literal["submission", "voting"]
@@ -119,6 +121,15 @@ def _subject_and_body(
             f"{league.name} — {label} results are in",
             f"<p><strong>{label}</strong> in <strong>{league.name}</strong> has closed. "
             f"The results and reveal are ready — see who picked what. {link}</p>",
+        )
+    if event == "voting_extended":
+        # MYS-180: round_.voting_deadline is always set by the time this fires —
+        # the caller only reaches here from an already-open_voting round.
+        by = _format_deadline(round_.voting_deadline) if round_.voting_deadline else ""
+        return (
+            f"{league.name} — voting extended for {label}",
+            f"<p>Voting for <strong>{label}</strong> in <strong>{league.name}</strong> has been "
+            f"extended. New deadline: {by}. {link}</p>",
         )
     # league_complete
     return (

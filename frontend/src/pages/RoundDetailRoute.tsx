@@ -6,6 +6,7 @@ import {
   castVotes,
   deleteSubmission,
   editSubmission,
+  extendVotingDeadline,
   getLeague,
   getLeagueMembers,
   getMyMembership,
@@ -51,6 +52,7 @@ import { CrownIcon } from "../components/CrownIcon";
 import { MedalIcon } from "../components/MedalIcon";
 import { MusicNoteIcon } from "../components/MusicNoteIcon";
 import { DeadlineChip } from "../components/DeadlineChip";
+import { toDatetimeLocalValue } from "../utils/deadline";
 
 const STATE_LABEL: Record<RoundState, string> = {
   pending: "upcoming",
@@ -109,6 +111,7 @@ export function RoundDetailRoute() {
   const [leagueRepeatWarning, setLeagueRepeatWarning] = useState(false);
   const [advancing, setAdvancing] = useState(false);
   const [rollingBack, setRollingBack] = useState(false);
+  const [extendingVoting, setExtendingVoting] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [casting, setCasting] = useState(false);
@@ -317,9 +320,7 @@ export function RoundDetailRoute() {
       // (the backend applies an explicit mode change to every song).
       setMySubmissions((current) =>
         current.map((s) =>
-          s.id === submissionId
-            ? result
-            : { ...s, participation_mode: result.participation_mode },
+          s.id === submissionId ? result : { ...s, participation_mode: result.participation_mode },
         ),
       );
       if (result.league_previously_submitted) setLeagueRepeatWarning(true);
@@ -350,7 +351,9 @@ export function RoundDetailRoute() {
       await refreshCount();
       return true;
     } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : "couldn't remove that song. try again.");
+      setActionError(
+        err instanceof ApiError ? err.message : "couldn't remove that song. try again.",
+      );
       return false;
     } finally {
       setRemovingId(null);
@@ -461,6 +464,27 @@ export function RoundDetailRoute() {
     }
   }
 
+  // Organizer: push voting to a chosen time, up to 48h out, without waiting for
+  // it to close and reopening submissions (MYS-180) — the round stays exactly
+  // where it is. `localDatetime` is the raw <input type="datetime-local"> value
+  // (browser-local, no timezone marker); Date() parses that as local time, so
+  // toISOString() below correctly converts it to UTC for the API.
+  async function handleExtendVoting(localDatetime: string) {
+    if (!id) return;
+    setExtendingVoting(true);
+    setActionError(null);
+    try {
+      const updated = await extendVotingDeadline(id, new Date(localDatetime).toISOString());
+      setRound(updated);
+      return true;
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "couldn't extend voting.");
+      return false;
+    } finally {
+      setExtendingVoting(false);
+    }
+  }
+
   if (loading) {
     return (
       <main className="flex flex-1 items-center justify-center px-4 sm:px-8">
@@ -484,41 +508,41 @@ export function RoundDetailRoute() {
 
   return (
     <>
-    {blocker.state === "blocked" ? (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 px-4">
-        <div className="w-full max-w-sm border border-border bg-cream p-6">
-          <p className="font-mono text-[13px] font-light text-ink">
-            you&apos;ve submitted {mySubmissions.length} of {submissionCap} songs. leave anyway?
-          </p>
-          <div className="mt-6 flex gap-4">
-            <Button type="button" onClick={() => blocker.proceed()}>
-              leave
-            </Button>
-            <Button type="button" variant="ghost" onClick={() => blocker.reset()}>
-              stay
-            </Button>
+      {blocker.state === "blocked" ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 px-4">
+          <div className="w-full max-w-sm border border-border bg-cream p-6">
+            <p className="font-mono text-[13px] font-light text-ink">
+              you&apos;ve submitted {mySubmissions.length} of {submissionCap} songs. leave anyway?
+            </p>
+            <div className="mt-6 flex gap-4">
+              <Button type="button" onClick={() => blocker.proceed()}>
+                leave
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => blocker.reset()}>
+                stay
+              </Button>
+            </div>
           </div>
         </div>
-      </div>
-    ) : null}
-    {/* Content-only: the shared TopNav is rendered once by AuthedLayout. The
+      ) : null}
+      {/* Content-only: the shared TopNav is rendered once by AuthedLayout. The
         round's league is reached via a named link above the title (not a generic
         "← league" in the nav), so members always see which league they're in. */}
-    <main className="mx-auto w-full max-w-lg px-4 pb-16 sm:px-8">
-      {league ? (
-        <button
-          type="button"
-          onClick={() => navigate(`/leagues/${round.league_id}`)}
-          className="inline-flex items-center gap-1.5 font-mono uppercase tracking-ui text-[11px] text-sage transition-colors duration-150 hover:text-ink"
-        >
-          <span aria-hidden="true">←</span>
-          {league.name}
-        </button>
-      ) : null}
-      <span className="mt-3 block font-mono uppercase tracking-label text-[9px] text-muted">
-        round {round.round_number}
-      </span>
-      <div className="mt-1 flex items-start justify-between gap-4">
+      <main className="mx-auto w-full max-w-lg px-4 pb-16 sm:px-8">
+        {league ? (
+          <button
+            type="button"
+            onClick={() => navigate(`/leagues/${round.league_id}`)}
+            className="inline-flex items-center gap-1.5 font-mono uppercase tracking-ui text-[11px] text-sage transition-colors duration-150 hover:text-ink"
+          >
+            <span aria-hidden="true">←</span>
+            {league.name}
+          </button>
+        ) : null}
+        <span className="mt-3 block font-mono uppercase tracking-label text-[9px] text-muted">
+          round {round.round_number}
+        </span>
+        <div className="mt-1 flex items-start justify-between gap-4">
           <h1 className="font-serif text-[32px] leading-tight text-ink">
             {round.theme ?? `Round ${round.round_number}`}
           </h1>
@@ -546,6 +570,9 @@ export function RoundDetailRoute() {
               isFinalRound={!!league && round.round_number >= league.total_rounds}
               onRollback={handleRollback}
               rollingBack={rollingBack}
+              votingDeadline={round.voting_deadline}
+              onExtendVoting={handleExtendVoting}
+              extendingVoting={extendingVoting}
               totalVotes={voteCounts.reduce((sum, entry) => sum + entry.vote_count, 0)}
             />
             <EditRoundForm
@@ -576,10 +603,7 @@ export function RoundDetailRoute() {
             </p>
           ) : round.state === "open_submission" ? (
             <>
-              <SubmissionProgress
-                submitted={round.submission_count}
-                total={round.member_count}
-              />
+              <SubmissionProgress submitted={round.submission_count} total={round.member_count} />
               <SubmissionManager
                 submissions={mySubmissions}
                 cap={league?.songs_per_submission ?? 1}
@@ -633,7 +657,7 @@ export function RoundDetailRoute() {
             </>
           )}
         </section>
-    </main>
+      </main>
     </>
   );
 }
@@ -645,6 +669,9 @@ function OrganizerControls({
   isFinalRound,
   onRollback,
   rollingBack,
+  votingDeadline,
+  onExtendVoting,
+  extendingVoting,
   totalVotes,
 }: {
   state: RoundState;
@@ -653,6 +680,9 @@ function OrganizerControls({
   isFinalRound: boolean;
   onRollback: () => void;
   rollingBack: boolean;
+  votingDeadline: string | null;
+  onExtendVoting: (localDatetime: string) => Promise<boolean | undefined>;
+  extendingVoting: boolean;
   totalVotes: number;
 }) {
   // Closing is the one forward transition that cascades and can't be undone
@@ -662,6 +692,12 @@ function OrganizerControls({
   // The one sanctioned backward step (MYS-168) — same two-step treatment,
   // since it discards any votes already cast.
   const [confirmingRollback, setConfirmingRollback] = useState(false);
+  // Extend voting to an organizer-chosen deadline, up to 48h past the current
+  // one (MYS-180). Non-destructive (nothing is discarded), so no confirm copy
+  // beyond the picker itself — but still a distinct step, since it needs the
+  // input.
+  const [extendingOpen, setExtendingOpen] = useState(false);
+  const [chosenDeadline, setChosenDeadline] = useState("");
 
   if (state === "closed") return null;
   const next: RoundState =
@@ -677,7 +713,32 @@ function OrganizerControls({
         ? "open voting"
         : "close round";
   const busyLabel = next === "closed" ? "closing…" : "opening…";
-  const busy = advancing || rollingBack;
+  const busy = advancing || rollingBack || extendingVoting;
+
+  // Bounds for the extend picker: must be after the current deadline, and no
+  // more than 48h past it (MYS-180) — mirrors the API's own validation so the
+  // picker can't offer a value the server would reject.
+  const currentDeadline = votingDeadline ? new Date(votingDeadline) : null;
+  const minDatetime = currentDeadline
+    ? toDatetimeLocalValue(new Date(currentDeadline.getTime() + 60_000))
+    : undefined;
+  const maxDatetime = currentDeadline
+    ? toDatetimeLocalValue(new Date(currentDeadline.getTime() + 48 * 60 * 60 * 1000))
+    : undefined;
+  const defaultDeadline = currentDeadline
+    ? toDatetimeLocalValue(new Date(currentDeadline.getTime() + 4 * 60 * 60 * 1000))
+    : "";
+
+  function openExtendPicker() {
+    setChosenDeadline(defaultDeadline);
+    setExtendingOpen(true);
+  }
+
+  async function handleSaveExtend() {
+    if (!chosenDeadline) return;
+    const ok = await onExtendVoting(chosenDeadline);
+    if (ok) setExtendingOpen(false);
+  }
 
   if (next === "closed" && confirmingClose) {
     return (
@@ -729,6 +790,45 @@ function OrganizerControls({
     );
   }
 
+  if (state === "open_voting" && extendingOpen) {
+    return (
+      <div className="mt-6 space-y-4 border-t border-border pt-6">
+        <label htmlFor="extend-voting-deadline" className="block">
+          <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
+            new voting deadline (up to 48h later)
+          </span>
+          <input
+            id="extend-voting-deadline"
+            type="datetime-local"
+            value={chosenDeadline}
+            min={minDatetime}
+            max={maxDatetime}
+            onChange={(e) => setChosenDeadline(e.target.value)}
+            disabled={extendingVoting}
+            className="mt-2 w-full border-0 border-b border-ink bg-transparent px-0 py-1 font-mono text-[13px] font-light text-ink focus:border-sage focus:outline-none disabled:opacity-50"
+          />
+        </label>
+        <div className="flex items-center gap-4">
+          <Button
+            type="button"
+            onClick={handleSaveExtend}
+            disabled={extendingVoting || !chosenDeadline}
+          >
+            {extendingVoting ? "saving…" : "save"}
+          </Button>
+          <Button
+            variant="ghost"
+            type="button"
+            onClick={() => setExtendingOpen(false)}
+            disabled={extendingVoting}
+          >
+            cancel
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mt-6 flex items-center gap-4 border-t border-border pt-6">
       <Button
@@ -738,6 +838,11 @@ function OrganizerControls({
       >
         {advancing ? busyLabel : label}
       </Button>
+      {state === "open_voting" ? (
+        <Button variant="ghost" type="button" onClick={openExtendPicker} disabled={busy}>
+          extend voting
+        </Button>
+      ) : null}
       {state === "open_voting" ? (
         <Button
           variant="ghost"
@@ -1485,7 +1590,9 @@ function VotingSection({
                     </span>
                   </div>
                   {entry.artist ? (
-                    <p className="mt-1 font-mono text-[11px] font-light text-muted">{entry.artist}</p>
+                    <p className="mt-1 font-mono text-[11px] font-light text-muted">
+                      {entry.artist}
+                    </p>
                   ) : null}
                   {entry.submitter_note ? (
                     <p className="mt-3 border-l-2 border-sage pl-3 font-mono text-[12px] font-light text-ink">
@@ -1986,10 +2093,7 @@ function RankBadge({ rank }: { rank: number }) {
   const first = rank === 1;
   return (
     <span
-      className={[
-        "relative shrink-0",
-        first ? "h-7 w-7 text-gold" : "h-6 w-6 text-sage",
-      ].join(" ")}
+      className={["relative shrink-0", first ? "h-7 w-7 text-gold" : "h-6 w-6 text-sage"].join(" ")}
     >
       <MedalIcon className="h-full w-full" />
       <span

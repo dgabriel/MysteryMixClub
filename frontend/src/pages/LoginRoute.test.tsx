@@ -44,9 +44,17 @@ describe("LoginRoute", () => {
     expect(screen.getByText("HOME")).toBeInTheDocument();
   });
 
-  it("shows invite-required contact info upfront, before any submission", () => {
+  it("shows invite-required contact info upfront, before any submission — email revealed only on click", async () => {
+    const user = userEvent.setup();
     renderLogin();
+
     expect(screen.getByText(/no invite yet\?/i)).toBeInTheDocument();
+    // The address itself isn't in the DOM until clicked (MYS-182: keeps it
+    // out of reach of scrapers that don't simulate interaction).
+    expect(screen.queryByText(/info@mysterymixclub\.com/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^email us$/i }));
+
     expect(screen.getByRole("link", { name: /info@mysterymixclub\.com/i })).toHaveAttribute(
       "href",
       "mailto:info@mysterymixclub.com",
@@ -86,8 +94,10 @@ describe("LoginRoute", () => {
     expect(await screen.findByText("check your email")).toBeInTheDocument();
     expect(screen.getByText("Friend@Example.com")).toBeInTheDocument();
     // Same neutral response either way (registered or not) — the invite
-    // contact note is shown unconditionally so it never reveals which.
+    // contact note is shown unconditionally so it never reveals which. The
+    // address itself stays hidden until clicked (MYS-182).
     expect(screen.getByText(/new here\?/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^email us$/i }));
     expect(screen.getByRole("link", { name: /info@mysterymixclub\.com/i })).toHaveAttribute(
       "href",
       "mailto:info@mysterymixclub.com",

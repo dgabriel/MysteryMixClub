@@ -1,4 +1,5 @@
 import { Button } from "../components/Button";
+import { ContactEmail } from "../components/ContactEmail";
 import { ConcentricRings } from "../components/ConcentricRings";
 
 type CheckEmailScreenProps = {
@@ -23,10 +24,13 @@ export function CheckEmailScreen({ email, onBack }: CheckEmailScreenProps) {
           open it on this device to continue. the link expires soon.
         </p>
         <p className="mt-6 font-mono text-[11px] font-light text-muted">
-          new here? you'll need an invite — email{" "}
-          <a href="mailto:info@mysterymixclub.com" className="text-ink underline underline-offset-[3px]">
-            info@mysterymixclub.com
-          </a>{" "}
+          new here? you'll need an invite —{" "}
+          <ContactEmail
+            user="info"
+            domain="mysterymixclub.com"
+            label="email us"
+            className="text-ink underline underline-offset-[3px]"
+          />{" "}
           to request one.
         </p>
 

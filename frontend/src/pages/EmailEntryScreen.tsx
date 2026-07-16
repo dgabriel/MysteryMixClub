@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "../components/Button";
+import { ContactEmail } from "../components/ContactEmail";
 import { TextField } from "../components/TextField";
 import { ConcentricRings } from "../components/ConcentricRings";
 
@@ -40,10 +41,14 @@ export function EmailEntryScreen({
           invite-only. sign in with your email.
         </p>
         <p className="mt-1 text-center font-mono text-[11px] font-light text-muted">
-          no invite yet? email{" "}
-          <a href="mailto:info@mysterymixclub.com" className="text-ink underline underline-offset-[3px]">
-            info@mysterymixclub.com
-          </a>
+          no invite yet?{" "}
+          <ContactEmail
+            user="info"
+            domain="mysterymixclub.com"
+            label="email us"
+            className="text-ink underline underline-offset-[3px]"
+          />{" "}
+          to request one.
         </p>
 
         <form onSubmit={handleSubmit} className="mt-10 space-y-8">

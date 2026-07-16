@@ -843,35 +843,6 @@ export type SpotifyStatus = {
   connected: boolean;
 };
 
-/** A track we couldn't match to Spotify when building the playlist. */
-export type SpotifyUnmatchedTrack = {
-  submission_id: string;
-  title: string;
-  artist: string;
-};
-
-/** Result of creating a round's Spotify playlist. `playlist_url` is null when
- *  no track matched (no empty playlist is created); `track_count` of
- *  `total_count` were added, and `unmatched` lists what couldn't be placed. */
-export type SpotifyPlaylistResult = {
-  round_id: string;
-  playlist_url: string | null;
-  track_count: number;
-  total_count: number;
-  unmatched: SpotifyUnmatchedTrack[];
-};
-
-/** One row on the admin screen's generate/regenerate list (MYS-169): every
- *  live round across every league, with a link if one's already been made. */
-export type AdminSpotifyRound = {
-  round_id: string;
-  league_name: string;
-  round_label: string;
-  state: string;
-  submission_count: number;
-  playlist_url: string | null;
-};
-
 /** Is Spotify configured, and is the shared playlist account connected? */
 export async function getSpotifyStatus(): Promise<SpotifyStatus> {
   const res = await authenticatedRequest("/api/v1/spotify/status");
@@ -899,9 +870,10 @@ export async function connectSpotify(returnTo?: string): Promise<{ authorize_url
   return (await res.json()) as { authorize_url: string };
 }
 
-/** Read-only: the round's existing Spotify playlist link, or null if a
- *  platform admin hasn't generated one yet (MYS-169). Never triggers
- *  generation — that's an admin-only action from the admin screen. */
+/** Read-only: the round's existing Spotify playlist link, or null if
+ *  generation hasn't run (or hasn't matched anything) yet (MYS-169, MYS-176).
+ *  Generation is automatic, triggered on the voting_open transition — this
+ *  never triggers it itself. */
 export async function getSpotifyPlaylistLink(
   roundId: string,
 ): Promise<{ playlist_url: string | null }> {
@@ -910,29 +882,6 @@ export async function getSpotifyPlaylistLink(
     throw new ApiError(res.status, await readErrorMessage(res));
   }
   return (await res.json()) as { playlist_url: string | null };
-}
-
-/** Every live round across every league, for the admin screen's
- *  generate/regenerate list (MYS-169, platform-admin only). */
-export async function adminListSpotifyPendingRounds(): Promise<AdminSpotifyRound[]> {
-  const res = await authenticatedRequest("/api/v1/admin/rounds/spotify-pending");
-  if (!res.ok) {
-    throw new ApiError(res.status, await readErrorMessage(res));
-  }
-  return (await res.json()) as AdminSpotifyRound[];
-}
-
-/** Create (or refresh) a round's PUBLIC Spotify playlist, owned by the shared
- *  MysteryMixClub account (MYS-169, platform-admin only — revised 2026-07-03).
- *  Called from the admin screen, not the round page. */
-export async function createSpotifyPlaylist(roundId: string): Promise<SpotifyPlaylistResult> {
-  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/spotify-playlist`, {
-    method: "POST",
-  });
-  if (!res.ok) {
-    throw new ApiError(res.status, await readErrorMessage(res));
-  }
-  return (await res.json()) as SpotifyPlaylistResult;
 }
 
 /** Get all submissions for a round (revealed only after it closes). */

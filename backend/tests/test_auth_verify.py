@@ -87,6 +87,24 @@ async def _seed_league_with_invite(db_session, *, expires_at: datetime | None = 
     return invite
 
 
+async def _seed_platform_invite(db_session, *, expires_at: datetime | None = None) -> Invite:
+    """Seed an admin-generated, league-less invite (MYS-182): grants signup
+    only, no league attachment."""
+    admin = User(email="admin@example.com", display_name="Admin")
+    db_session.add(admin)
+    await db_session.flush()
+    invite = Invite(
+        league_id=None,
+        created_by=admin.id,
+        token="tok_" + uuid.uuid4().hex,
+        expires_at=expires_at,
+    )
+    db_session.add(invite)
+    await db_session.commit()
+    await db_session.refresh(invite)
+    return invite
+
+
 async def _request_link(client, email_spy, email: str, invite_token: str | None = None) -> str:
     """Request a magic link and return the raw token from the email link."""
     body: dict[str, str] = {"email": email}
@@ -234,6 +252,24 @@ async def test_first_login_with_invite_joins_the_league(client, email_spy, db_se
     new_user = await db_session.scalar(select(User).where(User.email == "newbie@example.com"))
     assert new_user is not None
     assert await _active_member_count(db_session, league_id, new_user.id) == 1
+
+
+async def test_first_login_with_platform_invite_creates_account_without_joining_any_league(
+    client, email_spy, db_session
+):
+    # MYS-182: a platform (league-less) invite grants signup only — the new
+    # account is created but joined to nothing, unlike a league invite.
+    invite = await _seed_platform_invite(db_session)
+    token = invite.token
+
+    raw = await _request_link(client, email_spy, "newbie@example.com", invite_token=token)
+    resp = await client.get(VERIFY_URL, params={"token": raw, "invite": token})
+    assert resp.status_code == 200, resp.text
+
+    new_user = await db_session.scalar(select(User).where(User.email == "newbie@example.com"))
+    assert new_user is not None
+    assert new_user.display_name == ""
+    assert await _count(db_session, LeagueMember, user_id=new_user.id) == 0
 
 
 async def test_new_account_without_invite_param_returns_403(client, db_session):

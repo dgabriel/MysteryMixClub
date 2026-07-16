@@ -234,10 +234,11 @@ async def verify_magic_link(
 
     # Join the invite's league for both new and existing users following a link.
     # Capture user.id into a local before any further async work to avoid the
-    # expire_all/MissingGreenlet trap.
+    # expire_all/MissingGreenlet trap. A platform invite (MYS-182, league_id
+    # None) grants signup only — there's no league to join.
     user_id = user.id
     welcome_email: tuple[uuid.UUID, str] | None = None
-    if invite_row is not None:
+    if invite_row is not None and invite_row.league_id is not None:
         joined = await _join_via_invite(db, user_id, invite_row)
         if joined:
             league = await db.scalar(select(League).where(League.id == invite_row.league_id))

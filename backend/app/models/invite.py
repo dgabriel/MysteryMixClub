@@ -13,8 +13,10 @@ class Invite(Base):
     __tablename__ = "invites"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    league_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("leagues.id"), nullable=False, index=True
+    # Null marks a platform invite (MYS-182): grants signup only, no league
+    # attachment. Non-null is a normal per-league shareable invite.
+    league_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("leagues.id"), nullable=True, index=True
     )
     created_by: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False

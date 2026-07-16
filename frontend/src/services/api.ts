@@ -298,24 +298,29 @@ export type LeagueMember = {
   is_admin: boolean;
 };
 
-/** An invite to a league (POST /api/v1/leagues/:id/invites). */
+/** An invite (POST /api/v1/leagues/:id/invites, or POST /api/v1/admin/invites
+ *  for a platform invite). ``league_id`` is null for a platform invite
+ *  (MYS-182): grants signup only, no league attachment. */
 export type Invite = {
   id: string;
-  league_id: string;
+  league_id: string | null;
   token: string;
   created_by: string;
   created_at: string;
   expires_at: string | null;
 };
 
-/** Public preview of a league shown before joining (GET /api/v1/invites/:token). */
+/** Public preview of an invite shown before joining (GET /api/v1/invites/:token).
+ *  ``league_id``/``league_name``/``member_count`` are null for a platform
+ *  invite (MYS-182) — there's no league to preview, just a signup grant. */
 export type InvitePreview = {
-  league_id: string;
-  league_name: string;
-  member_count: number;
+  league_id: string | null;
+  league_name: string | null;
+  member_count: number | null;
   /** True when the viewer is already an active member of this league — the
    *  caller should redirect straight in rather than showing the join screen,
-   *  most relevant on an otherwise-expired link (MYS-181). */
+   *  most relevant on an otherwise-expired link (MYS-181). Always false for
+   *  a platform invite. */
   already_member: boolean;
 };
 
@@ -1139,6 +1144,18 @@ export async function adminDeleteUser(userId: string): Promise<void> {
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
+}
+
+/** Generate a platform invite (MYS-182, platform-admin only): grants signup
+ *  only, no league attachment. Same shareable-link shape as a league invite. */
+export async function adminCreateInvite(): Promise<Invite> {
+  const res = await authenticatedRequest("/api/v1/admin/invites", {
+    method: "POST",
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as Invite;
 }
 
 export { ApiError };

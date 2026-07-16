@@ -1,15 +1,21 @@
 import { useState } from "react";
 import { Navigate } from "react-router-dom";
 import { AdminScreen } from "./AdminScreen";
-import { ApiError, adminDeleteUser, adminSearchUsers, type AdminUser } from "../services/api";
+import {
+  ApiError,
+  adminCreateInvite,
+  adminDeleteUser,
+  adminSearchUsers,
+  type AdminUser,
+} from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 
 /**
  * Protected platform-admin route. Already behind ProtectedRoute for auth +
  * onboarding; here we additionally gate on `isPlatformAdmin` and bounce a
  * non-admin to /home (the nav entry is also hidden for non-admins, so this is a
- * defence-in-depth guard for a hand-typed URL). Wires the user search + the
- * hard-delete action to the admin API.
+ * defence-in-depth guard for a hand-typed URL). Wires the user search, the
+ * hard-delete action, and platform invite generation (MYS-182) to the admin API.
  */
 export function AdminRoute() {
   const { isPlatformAdmin } = useAuth();
@@ -22,6 +28,10 @@ export function AdminRoute() {
 
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const [platformInviteUrl, setPlatformInviteUrl] = useState<string | null>(null);
+  const [generatingInvite, setGeneratingInvite] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
 
   if (!isPlatformAdmin) {
     return <Navigate to="/home" replace />;
@@ -61,6 +71,22 @@ export function AdminRoute() {
     }
   }
 
+  async function handleGenerateInvite() {
+    setGeneratingInvite(true);
+    setInviteError(null);
+    try {
+      const invite = await adminCreateInvite();
+      // Canonical invite path is /invite/:token (matches the per-league flow).
+      setPlatformInviteUrl(`${window.location.origin}/invite/${invite.token}`);
+    } catch (err) {
+      setInviteError(
+        err instanceof ApiError ? err.message : "couldn't generate an invite. try again.",
+      );
+    } finally {
+      setGeneratingInvite(false);
+    }
+  }
+
   return (
     <AdminScreen
       query={query}
@@ -73,6 +99,10 @@ export function AdminRoute() {
       onDeleteUser={handleDeleteUser}
       deletingUserId={deletingUserId}
       deleteError={deleteError}
+      platformInviteUrl={platformInviteUrl}
+      generatingInvite={generatingInvite}
+      inviteError={inviteError}
+      onGenerateInvite={handleGenerateInvite}
     />
   );
 }

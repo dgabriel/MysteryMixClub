@@ -22,6 +22,13 @@ export function CheckEmailScreen({ email, onBack }: CheckEmailScreenProps) {
         <p className="mt-4 font-mono text-[13px] font-light text-muted">
           open it on this device to continue. the link expires soon.
         </p>
+        <p className="mt-6 font-mono text-[11px] font-light text-muted">
+          new here? you'll need an invite — email{" "}
+          <a href="mailto:info@mysterymixclub.com" className="text-ink underline underline-offset-[3px]">
+            info@mysterymixclub.com
+          </a>{" "}
+          to request one.
+        </p>
 
         {onBack ? (
           <div className="mt-10">

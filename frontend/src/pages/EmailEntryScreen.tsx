@@ -39,6 +39,12 @@ export function EmailEntryScreen({
         <p className="mt-2 text-center font-mono text-[13px] font-light text-muted">
           invite-only. sign in with your email.
         </p>
+        <p className="mt-1 text-center font-mono text-[11px] font-light text-muted">
+          no invite yet? email{" "}
+          <a href="mailto:info@mysterymixclub.com" className="text-ink underline underline-offset-[3px]">
+            info@mysterymixclub.com
+          </a>
+        </p>
 
         <form onSubmit={handleSubmit} className="mt-10 space-y-8">
           <TextField

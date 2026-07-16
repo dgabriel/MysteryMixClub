@@ -44,6 +44,15 @@ describe("LoginRoute", () => {
     expect(screen.getByText("HOME")).toBeInTheDocument();
   });
 
+  it("shows invite-required contact info upfront, before any submission", () => {
+    renderLogin();
+    expect(screen.getByText(/no invite yet\?/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /info@mysterymixclub\.com/i })).toHaveAttribute(
+      "href",
+      "mailto:info@mysterymixclub.com",
+    );
+  });
+
   it("no TopNav on the login screen (unauthenticated)", () => {
     renderLogin();
 
@@ -76,6 +85,13 @@ describe("LoginRoute", () => {
     // CheckEmail screen now shown with the submitted email.
     expect(await screen.findByText("check your email")).toBeInTheDocument();
     expect(screen.getByText("Friend@Example.com")).toBeInTheDocument();
+    // Same neutral response either way (registered or not) — the invite
+    // contact note is shown unconditionally so it never reveals which.
+    expect(screen.getByText(/new here\?/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /info@mysterymixclub\.com/i })).toHaveAttribute(
+      "href",
+      "mailto:info@mysterymixclub.com",
+    );
   });
 
   it("error path: when requestMagicLink rejects, shows an error and does NOT show CheckEmail", async () => {

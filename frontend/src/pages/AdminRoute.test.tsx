@@ -3,8 +3,8 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { AdminRoute } from "./AdminRoute";
-import { ApiError, adminDeleteUser, adminSearchUsers } from "../services/api";
-import type { AdminUser } from "../services/api";
+import { ApiError, adminCreateInvite, adminDeleteUser, adminSearchUsers } from "../services/api";
+import type { AdminUser, Invite } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 
 // Mock the API module (no network). Keep ApiError real.
@@ -14,6 +14,7 @@ vi.mock("../services/api", async () => {
     ...actual,
     adminSearchUsers: vi.fn(),
     adminDeleteUser: vi.fn(),
+    adminCreateInvite: vi.fn(),
   };
 });
 
@@ -21,6 +22,7 @@ vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
 
 const mockSearch = vi.mocked(adminSearchUsers);
 const mockDelete = vi.mocked(adminDeleteUser);
+const mockCreateInvite = vi.mocked(adminCreateInvite);
 const mockUseAuth = vi.mocked(useAuth);
 
 function setAuth(isPlatformAdmin: boolean) {
@@ -48,6 +50,18 @@ function userWith(overrides: Partial<AdminUser> = {}): AdminUser {
     email: "target@example.com",
     display_name: "Target",
     created_at: "2026-01-01T00:00:00Z",
+    ...overrides,
+  };
+}
+
+function platformInviteWith(overrides: Partial<Invite> = {}): Invite {
+  return {
+    id: "invite-1",
+    league_id: null,
+    token: "plat-tok-123",
+    created_by: "admin-1",
+    created_at: "2026-07-15T00:00:00Z",
+    expires_at: "2026-07-17T00:00:00Z",
     ...overrides,
   };
 }
@@ -150,5 +164,36 @@ describe("AdminRoute", () => {
 
     expect(await screen.findByText(/you can't delete your own account/i)).toBeInTheDocument();
     expect(screen.getByText("target@example.com")).toBeInTheDocument();
+  });
+
+  describe("platform invite (MYS-182)", () => {
+    it("generate calls the API and shows the shareable link", async () => {
+      mockCreateInvite.mockResolvedValue(platformInviteWith());
+      const user = userEvent.setup();
+
+      renderAdmin();
+
+      await user.click(screen.getByRole("button", { name: /^generate invite$/i }));
+
+      expect(mockCreateInvite).toHaveBeenCalledTimes(1);
+      const linkField = await screen.findByLabelText<HTMLInputElement>(/share link/i);
+      expect(linkField.value).toContain("/invite/plat-tok-123");
+      // The generate button is replaced by the share UI, not shown alongside it.
+      expect(
+        screen.queryByRole("button", { name: /^generate invite$/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("a failed generate shows a calm message and leaves the button in place", async () => {
+      mockCreateInvite.mockRejectedValue(new ApiError(403, "not authorized"));
+      const user = userEvent.setup();
+
+      renderAdmin();
+
+      await user.click(screen.getByRole("button", { name: /^generate invite$/i }));
+
+      expect(await screen.findByText(/not authorized/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /^generate invite$/i })).toBeInTheDocument();
+    });
   });
 });

@@ -85,14 +85,17 @@ async def _join_via_invite(db: AsyncSession, user_id: uuid.UUID, invite: Invite)
 
 
 class InvitePreviewResponse(BaseModel):
-    league_id: uuid.UUID
-    league_name: str
-    member_count: int
+    # Null for a platform (league-less) invite (MYS-182) — grants signup only,
+    # no league to preview.
+    league_id: uuid.UUID | None
+    league_name: str | None
+    member_count: int | None
     # True when the (optionally authenticated) caller is already an active
     # member of this league. The frontend redirects straight into the league
     # rather than showing the join screen — most useful on an expired link,
     # which would otherwise 410 before a legitimate member ever sees it
-    # (MYS-181).
+    # (MYS-181). Always false for a platform invite — there's no league to be
+    # a member of.
     already_member: bool = False
 
 
@@ -105,6 +108,16 @@ async def preview_invite(
     invite = await db.scalar(select(Invite).where(Invite.token == token))
     if invite is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invite not found")
+
+    if invite.league_id is None:
+        # Platform invite (MYS-182): a signup grant with no league to preview.
+        # Single-use (follow-up) — an already-used one reads the same as
+        # expired, same copy/CTA, no separate frontend state needed.
+        if _is_expired(invite, datetime.now(timezone.utc)) or invite.used_at is not None:
+            raise HTTPException(status_code=status.HTTP_410_GONE, detail=_EXPIRED_LINK_MESSAGE)
+        return InvitePreviewResponse(
+            league_id=None, league_name=None, member_count=None, already_member=False
+        )
 
     already_member = (
         await _is_active_member(db, invite.league_id, current_user.id)
@@ -147,6 +160,12 @@ async def accept_invite(
 ) -> LeagueResponse:
     invite = await db.scalar(select(Invite).where(Invite.token == token))
     if invite is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invite not found")
+
+    if invite.league_id is None:
+        # Platform invite (MYS-182): grants signup only. "Accept" only makes
+        # sense for a league invite — the frontend never calls this route for
+        # a league-less token, so a stray/direct call is treated as unknown.
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invite not found")
 
     membership = await db.scalar(

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
   acceptInvite,
+  adminCreateInvite,
   addNote,
   authenticatedRequest,
   castVotes,
@@ -855,6 +856,44 @@ describe("api.ts", () => {
         status: 403,
         message: "not a member of this league",
       });
+    });
+  });
+
+  describe("adminCreateInvite", () => {
+    const platformInvite: Invite = {
+      id: "invite-2",
+      league_id: null,
+      token: "xyz789",
+      created_by: "admin-1",
+      created_at: "2026-07-15T00:00:00Z",
+      expires_at: "2026-07-17T00:00:00Z",
+    };
+
+    it("POSTs /api/v1/admin/invites (Bearer + credentials) and resolves the Invite with a null league_id on 201", async () => {
+      setStoredAccessToken("admin-token");
+      const fetchMock = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(jsonResponse(201, platformInvite));
+
+      await expect(adminCreateInvite()).resolves.toEqual(platformInvite);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(`${V1_BASE}/admin/invites`);
+      expect(init?.method).toBe("POST");
+      const headers = new Headers(init?.headers);
+      expect(headers.get("Authorization")).toBe("Bearer admin-token");
+    });
+
+    it("throws ApiError(403) for a non-admin caller", async () => {
+      setStoredAccessToken("my-token");
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse(403, { detail: "not authorized" }),
+      );
+
+      const err = await adminCreateInvite().catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err).toMatchObject({ status: 403, message: "not authorized" });
     });
   });
 

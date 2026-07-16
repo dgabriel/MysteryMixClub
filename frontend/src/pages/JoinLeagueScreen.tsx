@@ -72,14 +72,26 @@ export function JoinLeagueScreen({
             {/* Motif — the screen's single Rust use lives in the off-center ring dot. */}
             <ConcentricRings size={72} accent className="mx-auto" />
 
-            <h1 className="mt-8 font-serif text-[34px] leading-tight text-ink">
-              {preview.league_name}
-            </h1>
-            <p className="mt-2 font-mono text-[13px] font-light text-muted">
-              {preview.member_count} members
-            </p>
+            {preview.league_id !== null ? (
+              <>
+                <h1 className="mt-8 font-serif text-[34px] leading-tight text-ink">
+                  {preview.league_name}
+                </h1>
+                <p className="mt-2 font-mono text-[13px] font-light text-muted">
+                  {preview.member_count} members
+                </p>
+              </>
+            ) : (
+              // Platform invite (MYS-182): a signup grant, not a specific
+              // league — no name/member count to show. An authenticated
+              // visitor never reaches this screen (the route sends them home
+              // instead), so only the signed-out copy below applies in practice.
+              <h1 className="mt-8 font-serif text-[34px] leading-tight text-ink">
+                you're invited to mysterymixclub
+              </h1>
+            )}
 
-            {isAuthenticated ? (
+            {isAuthenticated && preview.league_id !== null ? (
               <div className="mt-10 space-y-6">
                 <Button type="button" onClick={onJoin} disabled={joining} className="w-full">
                   {joining ? "joining…" : "join league"}
@@ -90,14 +102,16 @@ export function JoinLeagueScreen({
                   </p>
                 ) : null}
               </div>
-            ) : (
+            ) : !isAuthenticated ? (
               <div className="mt-10 space-y-6">
-                <p className="font-mono text-[13px] font-light text-muted">sign in to join</p>
+                <p className="font-mono text-[13px] font-light text-muted">
+                  {preview.league_id !== null ? "sign in to join" : "sign in to get started"}
+                </p>
                 <Button type="button" onClick={onSignIn} className="w-full">
                   sign in
                 </Button>
               </div>
-            )}
+            ) : null}
           </>
         ) : null}
       </div>

@@ -38,6 +38,16 @@ function preview(overrides: Partial<InvitePreview> = {}): InvitePreview {
   };
 }
 
+function platformPreview(overrides: Partial<InvitePreview> = {}): InvitePreview {
+  return {
+    league_id: null,
+    league_name: null,
+    member_count: null,
+    already_member: false,
+    ...overrides,
+  };
+}
+
 function leagueWith(id: string): League {
   return {
     id,
@@ -236,6 +246,44 @@ describe("JoinLeagueRoute", () => {
       expect(await screen.findByText("LEAGUE DETAIL CONTENT")).toBeInTheDocument();
       expect(screen.queryByText("Friday Mixtape")).not.toBeInTheDocument();
       expect(mockAcceptInvite).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("platform invite (MYS-182)", () => {
+    it("authenticated: redirects straight to /home, skipping the join screen", async () => {
+      setAuth(true);
+      mockGetInvitePreview.mockResolvedValue(platformPreview());
+
+      renderJoin("tok-abc");
+
+      expect(await screen.findByText("HOME CONTENT")).toBeInTheDocument();
+      expect(mockAcceptInvite).not.toHaveBeenCalled();
+    });
+
+    it("unauthenticated: shows generic copy and a sign-in button, no league name or member count", async () => {
+      setAuth(false);
+      mockGetInvitePreview.mockResolvedValue(platformPreview());
+
+      renderJoin("tok-abc");
+
+      expect(await screen.findByText(/you're invited to mysterymixclub/i)).toBeInTheDocument();
+      expect(screen.getByText(/sign in to get started/i)).toBeInTheDocument();
+      expect(screen.queryByText(/members/i)).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /join league/i })).not.toBeInTheDocument();
+    });
+
+    it("unauthenticated: sign-in stores pendingInvitePath and navigates to /login, same as a league invite", async () => {
+      setAuth(false);
+      mockGetInvitePreview.mockResolvedValue(platformPreview());
+      const user = userEvent.setup();
+
+      renderJoin("tok-abc");
+      await screen.findByText(/you're invited to mysterymixclub/i);
+
+      await user.click(screen.getByRole("button", { name: /sign in/i }));
+
+      expect(localStorage.getItem("pendingInvitePath")).toBe("/join/tok-abc");
+      expect(await screen.findByText("LOGIN CONTENT")).toBeInTheDocument();
     });
   });
 

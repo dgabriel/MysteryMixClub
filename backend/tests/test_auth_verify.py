@@ -87,6 +87,24 @@ async def _seed_league_with_invite(db_session, *, expires_at: datetime | None = 
     return invite
 
 
+async def _seed_platform_invite(db_session, *, expires_at: datetime | None = None) -> Invite:
+    """Seed an admin-generated, league-less invite (MYS-182): grants signup
+    only, no league attachment."""
+    admin = User(email="admin@example.com", display_name="Admin")
+    db_session.add(admin)
+    await db_session.flush()
+    invite = Invite(
+        league_id=None,
+        created_by=admin.id,
+        token="tok_" + uuid.uuid4().hex,
+        expires_at=expires_at,
+    )
+    db_session.add(invite)
+    await db_session.commit()
+    await db_session.refresh(invite)
+    return invite
+
+
 async def _request_link(client, email_spy, email: str, invite_token: str | None = None) -> str:
     """Request a magic link and return the raw token from the email link."""
     body: dict[str, str] = {"email": email}
@@ -234,6 +252,109 @@ async def test_first_login_with_invite_joins_the_league(client, email_spy, db_se
     new_user = await db_session.scalar(select(User).where(User.email == "newbie@example.com"))
     assert new_user is not None
     assert await _active_member_count(db_session, league_id, new_user.id) == 1
+
+
+async def test_first_login_with_platform_invite_creates_account_without_joining_any_league(
+    client, email_spy, db_session
+):
+    # MYS-182: a platform (league-less) invite grants signup only — the new
+    # account is created but joined to nothing, unlike a league invite.
+    invite = await _seed_platform_invite(db_session)
+    token = invite.token
+
+    raw = await _request_link(client, email_spy, "newbie@example.com", invite_token=token)
+    resp = await client.get(VERIFY_URL, params={"token": raw, "invite": token})
+    assert resp.status_code == 200, resp.text
+
+    new_user = await db_session.scalar(select(User).where(User.email == "newbie@example.com"))
+    assert new_user is not None
+    assert new_user.display_name == ""
+    assert await _count(db_session, LeagueMember, user_id=new_user.id) == 0
+
+
+async def test_platform_invite_is_stamped_used_after_first_signup(client, email_spy, db_session):
+    # Single-use (MYS-182 follow-up): the invite row records when it was
+    # consumed.
+    invite = await _seed_platform_invite(db_session)
+    token = invite.token
+    invite_id = invite.id
+
+    raw = await _request_link(client, email_spy, "newbie@example.com", invite_token=token)
+    resp = await client.get(VERIFY_URL, params={"token": raw, "invite": token})
+    assert resp.status_code == 200, resp.text
+
+    db_session.expire_all()
+    used = await db_session.scalar(select(Invite).where(Invite.id == invite_id))
+    assert used is not None
+    assert used.used_at is not None
+
+
+async def test_second_new_account_with_same_platform_invite_returns_403(
+    client, email_spy, db_session
+):
+    # Single-use (MYS-182 follow-up): once a platform invite has gated one new
+    # account, a second brand-new email can't use the same token.
+    invite = await _seed_platform_invite(db_session)
+    token = invite.token
+
+    raw1 = await _request_link(client, email_spy, "first@example.com", invite_token=token)
+    resp1 = await client.get(VERIFY_URL, params={"token": raw1, "invite": token})
+    assert resp1.status_code == 200, resp1.text
+
+    # /auth/request for a second new email with the now-used token: the
+    # invite no longer validates, so this is the same neutral no-send as no
+    # invite at all — no dev_token means no email would be sent.
+    req2 = await client.post(
+        REQUEST_URL, json={"email": "second@example.com", "invite_token": token}
+    )
+    assert req2.status_code == 200
+    assert req2.json().get("dev_token") is None
+
+    # Even a token minted before the first signup consumed it (e.g. a raced
+    # magic-link click) is rejected at verify time, since the invite is
+    # re-validated there.
+    db_session.add(
+        MagicLinkToken(
+            email="second@example.com",
+            token_hash=hash_token("second-raw-token"),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+            used=False,
+        )
+    )
+    await db_session.commit()
+    resp2 = await client.get(VERIFY_URL, params={"token": "second-raw-token", "invite": token})
+    assert resp2.status_code == 403, resp2.text
+    assert resp2.json()["detail"] == _INVITE_REQUIRED_MESSAGE
+
+    second_user = await db_session.scalar(select(User).where(User.email == "second@example.com"))
+    assert second_user is None
+
+
+async def test_league_invite_stays_multi_use_after_a_new_signup(client, email_spy, db_session):
+    # The single-use change is scoped to platform invites only — a league
+    # invite must keep working for every subsequent person (MYS-182 follow-up
+    # explicitly does not touch this path).
+    invite = await _seed_league_with_invite(db_session)
+    token = invite.token
+    league_id = invite.league_id
+    invite_id = invite.id
+
+    raw1 = await _request_link(client, email_spy, "first@example.com", invite_token=token)
+    resp1 = await client.get(VERIFY_URL, params={"token": raw1, "invite": token})
+    assert resp1.status_code == 200, resp1.text
+
+    raw2 = await _request_link(client, email_spy, "second@example.com", invite_token=token)
+    resp2 = await client.get(VERIFY_URL, params={"token": raw2, "invite": token})
+    assert resp2.status_code == 200, resp2.text
+
+    db_session.expire_all()
+    second_user = await db_session.scalar(select(User).where(User.email == "second@example.com"))
+    assert second_user is not None
+    assert await _active_member_count(db_session, league_id, second_user.id) == 1
+
+    invite_row = await db_session.scalar(select(Invite).where(Invite.id == invite_id))
+    assert invite_row is not None
+    assert invite_row.used_at is None
 
 
 async def test_new_account_without_invite_param_returns_403(client, db_session):

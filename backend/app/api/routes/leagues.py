@@ -89,7 +89,8 @@ _INVITE_TTL = timedelta(hours=48)
 
 class InviteResponse(BaseModel):
     id: str
-    league_id: str
+    # Null for a platform (league-less) invite (MYS-182).
+    league_id: str | None
     token: str
     created_by: str
     created_at: datetime
@@ -99,7 +100,7 @@ class InviteResponse(BaseModel):
 def _to_invite_response(invite: Invite) -> InviteResponse:
     return InviteResponse(
         id=str(invite.id),
-        league_id=str(invite.league_id),
+        league_id=str(invite.league_id) if invite.league_id is not None else None,
         token=invite.token,
         created_by=str(invite.created_by),
         created_at=invite.created_at,

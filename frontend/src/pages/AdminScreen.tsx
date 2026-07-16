@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from "react";
 import type { AdminUser } from "../services/api";
 import { Button } from "../components/Button";
+import { InviteShare } from "../components/InviteShare";
 import { TextField } from "../components/TextField";
 
 type AdminScreenProps = {
@@ -16,14 +17,20 @@ type AdminScreenProps = {
   onDeleteUser: (userId: string) => void;
   deletingUserId: string | null;
   deleteError?: string | null;
+  /** Platform invite (MYS-182): grants signup only, no league attachment. */
+  platformInviteUrl: string | null;
+  generatingInvite: boolean;
+  inviteError?: string | null;
+  onGenerateInvite: () => void;
 };
 
 /**
  * Thin platform-admin page: search users by email, then hard-delete a match
- * behind a typed confirm. Content-only — the shared TopNav is rendered by
- * AuthedLayout. The single Rust signal on this screen is the destructive
- * confirm action; everything else stays in the Sage/Ink family. Underline-only
- * inputs, ALL-CAPS labels, calm lowercase copy.
+ * behind a typed confirm; and generate a league-less signup invite (MYS-182).
+ * Content-only — the shared TopNav is rendered by AuthedLayout. The single
+ * Rust signal on this screen is the destructive confirm action; everything
+ * else, including the invite section, stays in the Sage/Ink family.
+ * Underline-only inputs, ALL-CAPS labels, calm lowercase copy.
  */
 export function AdminScreen({
   query,
@@ -36,6 +43,10 @@ export function AdminScreen({
   onDeleteUser,
   deletingUserId,
   deleteError,
+  platformInviteUrl,
+  generatingInvite,
+  inviteError,
+  onGenerateInvite,
 }: AdminScreenProps) {
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -97,6 +108,30 @@ export function AdminScreen({
             {deleteError}
           </p>
         ) : null}
+
+        <section className="mt-16">
+          <h2 className="font-serif lowercase text-[20px] leading-tight text-ink">invite</h2>
+          <p className="mt-2 font-mono text-[13px] font-light text-muted">
+            generate a signup invite. no league attached — whoever uses it creates their
+            own, or later joins an open one.
+          </p>
+
+          {inviteError ? (
+            <p role="alert" className="mt-4 font-mono text-[11px] text-ink">
+              {inviteError}
+            </p>
+          ) : null}
+
+          <div className="mt-6">
+            {platformInviteUrl ? (
+              <InviteShare inviteUrl={platformInviteUrl} />
+            ) : (
+              <Button type="button" onClick={onGenerateInvite} disabled={generatingInvite}>
+                {generatingInvite ? "generating…" : "generate invite"}
+              </Button>
+            )}
+          </div>
+        </section>
     </main>
   );
 }

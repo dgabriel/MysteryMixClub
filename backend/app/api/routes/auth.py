@@ -90,14 +90,20 @@ class LogoutResponse(BaseModel):
 async def _load_valid_invite(
     db: AsyncSession, invite_token: str | None, now: datetime
 ) -> Invite | None:
-    """Return the invite for ``invite_token`` if it exists and is unexpired, else
-    None. Legacy invites with no expires_at never expire (MYS-126/127)."""
+    """Return the invite for ``invite_token`` if it exists, is unexpired, and
+    (for a platform invite) hasn't already been used, else None. Legacy
+    invites with no expires_at never expire (MYS-126/127). A league invite
+    stays multi-use — used_at is never set for one, so that check never
+    excludes it. A platform (league-less) invite is single-use (MYS-182
+    follow-up): once used_at is stamped, it reads the same as nonexistent."""
     if not invite_token:
         return None
     invite = await db.scalar(select(Invite).where(Invite.token == invite_token))
     if invite is None:
         return None
     if invite.expires_at is not None and invite.expires_at <= now:
+        return None
+    if invite.league_id is None and invite.used_at is not None:
         return None
     return invite
 
@@ -228,16 +234,30 @@ async def verify_magic_link(
         if settings.max_users and (total_users or 0) >= settings.max_users:
             await db.commit()
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=_AT_CAPACITY_MESSAGE)
+        if invite_row.league_id is None:
+            # Single-use (MYS-182 follow-up): lock and re-check so two
+            # concurrent signups can't both consume the same platform invite.
+            # A league invite is untouched here — it stays multi-use.
+            locked_invite = await db.scalar(
+                select(Invite).where(Invite.id == invite_row.id).with_for_update()
+            )
+            if locked_invite is None or locked_invite.used_at is not None:
+                await db.commit()
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN, detail=_INVITE_REQUIRED_MESSAGE
+                )
+            locked_invite.used_at = now
         user = User(email=email, display_name="")
         db.add(user)
         await db.flush()
 
     # Join the invite's league for both new and existing users following a link.
     # Capture user.id into a local before any further async work to avoid the
-    # expire_all/MissingGreenlet trap.
+    # expire_all/MissingGreenlet trap. A platform invite (MYS-182, league_id
+    # None) grants signup only — there's no league to join.
     user_id = user.id
     welcome_email: tuple[uuid.UUID, str] | None = None
-    if invite_row is not None:
+    if invite_row is not None and invite_row.league_id is not None:
         joined = await _join_via_invite(db, user_id, invite_row)
         if joined:
             league = await db.scalar(select(League).where(League.id == invite_row.league_id))

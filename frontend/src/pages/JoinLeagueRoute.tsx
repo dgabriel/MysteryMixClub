@@ -55,6 +55,14 @@ export function JoinLeagueRoute() {
           navigate(`/leagues/${result.league_id}`, { replace: true });
           return;
         }
+        // Platform invite (MYS-182): league_id is null — it's a signup grant,
+        // not a league to join. An already-authenticated visitor has nothing
+        // to do here (a new account auto-completed signup via /auth/verify
+        // before ever reaching this page), so just send them home.
+        if (result.league_id === null && isAuthenticated) {
+          navigate("/home", { replace: true });
+          return;
+        }
         setPreview(result);
       } catch (err) {
         // A 410 means the link expired; anything else is treated as not-found.
@@ -68,7 +76,7 @@ export function JoinLeagueRoute() {
         setLoading(false);
       }
     })();
-  }, [token, status, navigate]);
+  }, [token, status, isAuthenticated, navigate]);
 
   async function handleJoin() {
     if (!token) return;

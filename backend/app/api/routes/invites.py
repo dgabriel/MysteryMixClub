@@ -111,7 +111,9 @@ async def preview_invite(
 
     if invite.league_id is None:
         # Platform invite (MYS-182): a signup grant with no league to preview.
-        if _is_expired(invite, datetime.now(timezone.utc)):
+        # Single-use (follow-up) — an already-used one reads the same as
+        # expired, same copy/CTA, no separate frontend state needed.
+        if _is_expired(invite, datetime.now(timezone.utc)) or invite.used_at is not None:
             raise HTTPException(status_code=status.HTTP_410_GONE, detail=_EXPIRED_LINK_MESSAGE)
         return InvitePreviewResponse(
             league_id=None, league_name=None, member_count=None, already_member=False

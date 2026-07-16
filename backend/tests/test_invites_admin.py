@@ -186,6 +186,16 @@ async def test_preview_platform_invite_expired_as_authenticated_visitor_still_41
     assert resp.status_code == 410, resp.text
 
 
+async def test_preview_platform_invite_already_used_returns_410(client, db_session):
+    # Single-use (MYS-182 follow-up): a used_at stamp reads the same as
+    # expired — same status/copy, no separate frontend state.
+    admin = await _seed_admin(db_session)
+    invite = await _seed_platform_invite(db_session, admin, used_at=datetime.now(timezone.utc))
+
+    resp = await client.get(_preview_url(invite.token))
+    assert resp.status_code == 410, resp.text
+
+
 # --------------------------------------------------------------------------- #
 # POST /invites/{token}/accept — rejected for a platform invite
 # --------------------------------------------------------------------------- #

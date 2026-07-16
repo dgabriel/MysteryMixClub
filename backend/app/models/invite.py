@@ -27,3 +27,7 @@ class Invite(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    # Set when a platform (league-less) invite is consumed by a new signup —
+    # makes it single-use. Never set for a league invite, which stays
+    # multi-use (MYS-182 follow-up).
+    used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

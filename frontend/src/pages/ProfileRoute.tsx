@@ -4,6 +4,7 @@ import { ProfileScreen } from "./ProfileScreen";
 import {
   ApiError,
   deleteAccount,
+  exportMyData,
   getLeagues,
   getMe,
   updateDisplayName,
@@ -37,6 +38,9 @@ export function ProfileRoute() {
   const [savedService, setSavedService] = useState(false);
 
   const [logoutAllBusy, setLogoutAllBusy] = useState(false);
+
+  const [exportingData, setExportingData] = useState(false);
+  const [exportDataError, setExportDataError] = useState<string | null>(null);
 
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null);
@@ -122,6 +126,27 @@ export function ProfileRoute() {
     }
   }
 
+  async function handleExportData() {
+    setExportingData(true);
+    setExportDataError(null);
+    try {
+      const data = await exportMyData();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `mysterymixclub-data-export-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setExportDataError(
+        err instanceof ApiError ? err.message : "couldn't export your data. try again.",
+      );
+    } finally {
+      setExportingData(false);
+    }
+  }
+
   async function handleDeleteAccount() {
     setDeletingAccount(true);
     setDeleteAccountError(null);
@@ -163,6 +188,9 @@ export function ProfileRoute() {
       savedService={savedService}
       onLogoutAll={handleLogoutAll}
       logoutAllBusy={logoutAllBusy}
+      onExportData={handleExportData}
+      exportingData={exportingData}
+      exportDataError={exportDataError}
       onDeleteAccount={handleDeleteAccount}
       deletingAccount={deletingAccount}
       deleteAccountError={deleteAccountError}

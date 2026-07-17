@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { ProfileRoute } from "./ProfileRoute";
 import { AuthedLayout } from "../components/AuthedLayout";
-import { ApiError, getLeagues, getMe, updateDisplayName } from "../services/api";
+import { ApiError, exportMyData, getLeagues, getMe, updateDisplayName } from "../services/api";
 import type { League, UserProfile } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 
@@ -16,6 +16,7 @@ vi.mock("../services/api", async () => {
     getLeagues: vi.fn(),
     getMe: vi.fn(),
     updateDisplayName: vi.fn(),
+    exportMyData: vi.fn(),
   };
 });
 
@@ -24,6 +25,7 @@ vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
 const mockGetLeagues = vi.mocked(getLeagues);
 const mockGetMe = vi.mocked(getMe);
 const mockUpdateDisplayName = vi.mocked(updateDisplayName);
+const mockExportMyData = vi.mocked(exportMyData);
 const mockUseAuth = vi.mocked(useAuth);
 const applyDisplayName = vi.fn();
 const mockLogoutAll = vi.fn();
@@ -224,5 +226,45 @@ describe("ProfileRoute", () => {
     await user.click(screen.getByRole("button", { name: /log out of all devices/i }));
 
     expect(mockLogoutAll).toHaveBeenCalledOnce();
+  });
+
+  it("your data: download my data fetches the export and triggers a file download", async () => {
+    mockExportMyData.mockResolvedValue({ profile: { email: "ada@example.com" } });
+    const user = userEvent.setup();
+    const originalCreateObjectURL = URL.createObjectURL;
+    const originalRevokeObjectURL = URL.revokeObjectURL;
+    const createObjectURL = vi.fn(() => "blob:mock-url");
+    const revokeObjectURL = vi.fn();
+    URL.createObjectURL = createObjectURL;
+    URL.revokeObjectURL = revokeObjectURL;
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+
+    try {
+      renderProfile();
+      await screen.findByText(/archived/i);
+
+      await user.click(screen.getByRole("button", { name: /download my data/i }));
+
+      await waitFor(() => expect(mockExportMyData).toHaveBeenCalledOnce());
+      expect(createObjectURL).toHaveBeenCalledOnce();
+      expect(clickSpy).toHaveBeenCalledOnce();
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:mock-url");
+    } finally {
+      clickSpy.mockRestore();
+      URL.createObjectURL = originalCreateObjectURL;
+      URL.revokeObjectURL = originalRevokeObjectURL;
+    }
+  });
+
+  it("your data: a failed export shows a calm retryable error", async () => {
+    mockExportMyData.mockRejectedValue(new ApiError(500, "boom"));
+    const user = userEvent.setup();
+
+    renderProfile();
+    await screen.findByText(/archived/i);
+
+    await user.click(screen.getByRole("button", { name: /download my data/i }));
+
+    expect(await screen.findByText(/boom/i)).toBeInTheDocument();
   });
 });

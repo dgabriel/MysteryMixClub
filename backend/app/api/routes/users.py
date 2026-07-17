@@ -10,8 +10,12 @@ from app.auth.deps import get_current_user
 from app.config import Settings, get_settings
 from app.db.session import get_db
 from app.models.league import League
+from app.models.league_member import LeagueMember
+from app.models.note import Note
 from app.models.session import Session
+from app.models.submission import Submission
 from app.models.user import User
+from app.models.vote import Vote
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -58,6 +62,49 @@ class UserProfileUpdate(BaseModel):
         return data
 
 
+class ExportSubmission(BaseModel):
+    id: str
+    round_id: str
+    isrc: str
+    title: str
+    artist: str
+    album: str | None
+    note: str | None
+    participation_mode: str
+    created_at: datetime
+
+
+class ExportVote(BaseModel):
+    id: str
+    round_id: str
+    submission_id: str
+    created_at: datetime
+
+
+class ExportNote(BaseModel):
+    id: str
+    round_id: str
+    submission_id: str
+    body: str
+    created_at: datetime
+
+
+class ExportLeagueMembership(BaseModel):
+    league_id: str
+    league_name: str
+    role: str
+    joined_at: datetime
+
+
+class UserDataExportResponse(BaseModel):
+    exported_at: datetime
+    profile: UserProfileResponse
+    submissions: list[ExportSubmission]
+    votes: list[ExportVote]
+    notes: list[ExportNote]
+    league_memberships: list[ExportLeagueMembership]
+
+
 def _to_profile(user: User, settings: Settings) -> UserProfileResponse:
     return UserProfileResponse(
         id=str(user.id),
@@ -76,6 +123,76 @@ async def get_me(
     settings: Settings = Depends(get_settings),
 ) -> UserProfileResponse:
     return _to_profile(current_user, settings)
+
+
+@router.get("/me/export", response_model=UserDataExportResponse)
+async def export_me(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> UserDataExportResponse:
+    """Right of access / data portability (GDPR Art. 15/20, MYS-185).
+
+    Returns a JSON dump of everything tied to the caller's own account: profile,
+    submissions, votes, notes, and league memberships. Read-only — mirrors the
+    same tables the hard-purge cascade touches (app.jobs.purge_accounts) but
+    selects rather than deletes.
+    """
+    submissions = await db.scalars(select(Submission).where(Submission.user_id == current_user.id))
+    votes = await db.scalars(select(Vote).where(Vote.voter_id == current_user.id))
+    notes = await db.scalars(select(Note).where(Note.author_id == current_user.id))
+    memberships = await db.execute(
+        select(LeagueMember, League.name)
+        .join(League, League.id == LeagueMember.league_id)
+        .where(LeagueMember.user_id == current_user.id)
+    )
+
+    return UserDataExportResponse(
+        exported_at=datetime.now(timezone.utc),
+        profile=_to_profile(current_user, settings),
+        submissions=[
+            ExportSubmission(
+                id=str(s.id),
+                round_id=str(s.round_id),
+                isrc=s.isrc,
+                title=s.title,
+                artist=s.artist,
+                album=s.album,
+                note=s.note,
+                participation_mode=s.participation_mode,
+                created_at=s.created_at,
+            )
+            for s in submissions
+        ],
+        votes=[
+            ExportVote(
+                id=str(v.id),
+                round_id=str(v.round_id),
+                submission_id=str(v.submission_id),
+                created_at=v.created_at,
+            )
+            for v in votes
+        ],
+        notes=[
+            ExportNote(
+                id=str(n.id),
+                round_id=str(n.round_id),
+                submission_id=str(n.submission_id),
+                body=n.body,
+                created_at=n.created_at,
+            )
+            for n in notes
+        ],
+        league_memberships=[
+            ExportLeagueMembership(
+                league_id=str(member.league_id),
+                league_name=league_name,
+                role=member.role,
+                joined_at=member.joined_at,
+            )
+            for member, league_name in memberships
+        ],
+    )
 
 
 @router.patch("/me", response_model=UserProfileResponse)

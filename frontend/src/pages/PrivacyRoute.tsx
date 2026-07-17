@@ -88,17 +88,12 @@ export function PrivacyRoute() {
                 your data, your control
               </p>
               <p className="mt-3">
-                delete your account any time from your profile page. this cascades to your
-                submissions, votes, notes, sessions, and league memberships, with a scheduled hard
-                purge of any remaining trace within 30 days. want a copy of your data instead of
-                deleting it?{" "}
-                <ContactEmail
-                  user="privacy"
-                  domain="mysterymixclub.com"
-                  label="email us"
-                  className="text-sage underline underline-offset-[3px] hover:text-ink"
-                />{" "}
-                and we'll send it to you.
+                download a copy of everything tied to your account (profile, submissions, votes,
+                and notes) any time from your profile page, satisfying your right of access and
+                data portability under gdpr articles 15 and 20. delete your account any time from
+                the same page: this cascades to your submissions, votes, notes, sessions, and
+                league memberships, with a scheduled hard purge of any remaining trace within 30
+                days.
               </p>
             </section>
 

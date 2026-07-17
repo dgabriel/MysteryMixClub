@@ -24,7 +24,12 @@ export function PrivacyRoute() {
             last updated july 2026
           </p>
 
-          <div className="mt-10 space-y-8 font-mono text-[13px] font-light leading-relaxed text-ink">
+          <p className="mt-8 font-mono text-[13px] font-semibold leading-relaxed text-ink">
+            while ai was used to help write the code, there are no ai features in this app and no
+            ai will ingest your data.
+          </p>
+
+          <div className="mt-8 space-y-8 font-mono text-[13px] font-light leading-relaxed text-ink">
             <section>
               <p>
                 this page explains what mysterymixclub collects, why, and what control you have

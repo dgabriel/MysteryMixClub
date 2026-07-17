@@ -410,6 +410,7 @@ Aligned with commitments in `problem-statement.md`.
 - Right to be forgotten: `DELETE /users/me` cascades to all submissions, votes, notes, sessions, and league membership records. Soft delete with a scheduled hard purge within 30 days.
 - No third-party analytics scripts (no Google Analytics, no Mixpanel) in v1
 - Ad provider must be vetted for political content policy before any ad integration is implemented
+- **Subprocessors (GDPR Art. 28, MYS-184):** two third parties process personal data on our behalf — Resend (email addresses, for magic links/notifications) and DigitalOcean (hosts the app servers and database). Both have a standard DPA covering their processing. The song-lookup/playback integrations (Spotify, YouTube, Apple Music, Deezer) only ever receive a title/artist/ISRC — never anything tying a lookup back to a specific user — so they are not subprocessors of personal data. Keep this section in sync with the Privacy Policy's "subprocessors" section (`frontend/src/pages/PrivacyRoute.tsx`).
 
 ---
 

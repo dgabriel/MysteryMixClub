@@ -72,14 +72,20 @@ export function PrivacyRoute() {
 
             <section>
               <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
-                who we share it with
+                subprocessors
               </p>
               <p className="mt-3">
-                we use a small number of third-party services to run the app: resend (sending
-                sign-in emails), spotify / youtube / deezer / apple music (resolving and playing
-                the songs you submit), and digitalocean (hosting our servers and database). each
-                only receives what it needs to do its job — we don't sell or share your data for
-                advertising.
+                two services process personal data on our behalf, each under its own data
+                processing agreement: resend (your email address, to deliver sign-in links and
+                notifications) and digitalocean (hosting our servers and database, so everything
+                you store in the app).
+              </p>
+              <p className="mt-3">
+                spotify, youtube, apple music, and deezer help us look up and play the songs you
+                submit. they only ever receive a song title, artist, and isrc to search for or play
+                back a track, never your email, name, or any other personal data, so they aren't
+                subprocessors of your personal data. we don't sell or share your data for
+                advertising with anyone.
               </p>
             </section>
 

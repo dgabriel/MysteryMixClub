@@ -273,8 +273,8 @@ async def test_first_login_with_platform_invite_creates_account_without_joining_
 
 
 async def test_platform_invite_is_stamped_used_after_first_signup(client, email_spy, db_session):
-    # Single-use (MYS-182 follow-up): the invite row records when it was
-    # consumed.
+    # Single-use (MYS-182 follow-up): the invite row records when — and by
+    # whom (MYS-183 fix) — it was consumed.
     invite = await _seed_platform_invite(db_session)
     token = invite.token
     invite_id = invite.id
@@ -283,10 +283,15 @@ async def test_platform_invite_is_stamped_used_after_first_signup(client, email_
     resp = await client.get(VERIFY_URL, params={"token": raw, "invite": token})
     assert resp.status_code == 200, resp.text
 
+    new_user = await db_session.scalar(select(User).where(User.email == "newbie@example.com"))
+    assert new_user is not None
+    new_user_id = new_user.id
+
     db_session.expire_all()
     used = await db_session.scalar(select(Invite).where(Invite.id == invite_id))
     assert used is not None
     assert used.used_at is not None
+    assert used.used_by_user_id == new_user_id
 
 
 async def test_second_new_account_with_same_platform_invite_returns_403(

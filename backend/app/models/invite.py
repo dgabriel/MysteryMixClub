@@ -31,3 +31,9 @@ class Invite(Base):
     # makes it single-use. Never set for a league invite, which stays
     # multi-use (MYS-182 follow-up).
     used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Who consumed it (paired with used_at). Lets the preview endpoint tell
+    # "the same visitor checking again" from "someone else hitting a dead
+    # link" — mirrors the already-member bypass a league invite gets.
+    used_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )

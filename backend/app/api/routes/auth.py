@@ -246,10 +246,15 @@ async def verify_magic_link(
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN, detail=_INVITE_REQUIRED_MESSAGE
                 )
-            locked_invite.used_at = now
         user = User(email=email, display_name="")
         db.add(user)
         await db.flush()
+        if invite_row.league_id is None:
+            # Stamped together so the preview endpoint can later tell this
+            # exact user apart from anyone else hitting the now-dead link.
+            assert locked_invite is not None
+            locked_invite.used_at = now
+            locked_invite.used_by_user_id = user.id
 
     # Join the invite's league for both new and existing users following a link.
     # Capture user.id into a local before any further async work to avoid the

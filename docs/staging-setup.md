@@ -274,3 +274,12 @@ Re-enable with `sudo systemctl enable --now mysterymixclub-advance-rounds.timer`
   and `sudo journalctl -u mysterymixclub-advance-rounds.service -f` (see §7). Rounds
   not advancing at their deadline → check the timer is enabled and the run summary
   for `errors=`.
+
+---
+
+## If this Droplet is ever compromised
+
+This is where real beta user data actually lives (magic-link emails, songs,
+notes, votes) — see `docs/security/breach-notification-runbook.md` for what to
+do: containment steps, scoping the exposure, and the GDPR 72-hour authority
+notification / user notification process (MYS-187).

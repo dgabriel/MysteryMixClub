@@ -48,13 +48,13 @@ Quick reference (never override these without reading the full guide first):
 |-------------|-----------|---------------------------------------------|
 | Cream       | `#F0EDE6` | Default background                          |
 | Ink         | `#2E2B27` | Primary text                                |
-| Sage        | `#7A9E82` | Primary accent                              |
+| Sage        | `#506755` | Primary accent                              |
 | Sage Light  | `#A8C4AD` | Secondary accent                            |
 | Sage Pale   | `#D4E3D7` | Backgrounds, hover states                   |
 | Rust        | `#B5533C` | **Signal color. One use per screen. Never decorative.** |
 | Gold        | `#C9A028` | Achievement signal — winner/most-noted reveals only |
 | Vinyl       | `#6B7EB5` | Avatar illustrations only (the 5 hardware icons) |
-| Muted       | `#8A8680` | Supporting text                             |
+| Muted       | `#6D6A66` | Supporting text                             |
 | Border      | `#D6D2CA` | Dividers, input underlines, card borders    |
 
 - Headings: `DM Serif Display`

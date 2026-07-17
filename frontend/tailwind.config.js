@@ -6,13 +6,13 @@ export default {
       colors: {
         cream: "#F0EDE6",
         ink: "#2E2B27",
-        sage: "#7A9E82",
+        sage: "#506755",
         "sage-light": "#A8C4AD",
         "sage-pale": "#D4E3D7",
         rust: "#B5533C",
         gold: "#C9A028",
         vinyl: "#6B7EB5",
-        muted: "#8A8680",
+        muted: "#6D6A66",
         border: "#D6D2CA",
       },
       fontFamily: {

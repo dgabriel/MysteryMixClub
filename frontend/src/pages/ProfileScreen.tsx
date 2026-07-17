@@ -26,6 +26,9 @@ type ProfileScreenProps = {
   savedService: boolean;
   onLogoutAll: () => void;
   logoutAllBusy?: boolean;
+  onExportData: () => void;
+  exportingData: boolean;
+  exportDataError?: string | null;
   onDeleteAccount: () => void;
   deletingAccount: boolean;
   deleteAccountError?: string | null;
@@ -57,6 +60,9 @@ export function ProfileScreen({
   savedService,
   onLogoutAll,
   logoutAllBusy = false,
+  onExportData,
+  exportingData,
+  exportDataError,
   onDeleteAccount,
   deletingAccount,
   deleteAccountError,
@@ -118,6 +124,12 @@ export function ProfileScreen({
               </Button>
             </div>
           </section>
+
+          <ExportDataSection
+            onExportData={onExportData}
+            exportingData={exportingData}
+            exportDataError={exportDataError}
+          />
 
           <DeleteAccountSection
             onDeleteAccount={onDeleteAccount}
@@ -293,6 +305,36 @@ function ArchivedLeagues({
           ))}
         </ul>
       )}
+    </section>
+  );
+}
+
+function ExportDataSection({
+  onExportData,
+  exportingData,
+  exportDataError,
+}: {
+  onExportData: () => void;
+  exportingData: boolean;
+  exportDataError?: string | null;
+}) {
+  return (
+    <section className="mt-12 border-t border-border pt-10">
+      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">your data</h2>
+      <p className="mt-2 font-mono text-[11px] font-light text-muted">
+        download a copy of everything tied to your account — profile, submissions, votes, and
+        notes.
+      </p>
+      <div className="mt-4">
+        <Button variant="ghost" type="button" onClick={onExportData} disabled={exportingData}>
+          {exportingData ? "preparing…" : "download my data"}
+        </Button>
+      </div>
+      {exportDataError ? (
+        <p role="alert" className="mt-3 font-mono text-[11px] text-ink">
+          {exportDataError}
+        </p>
+      ) : null}
     </section>
   );
 }

@@ -275,6 +275,18 @@ export async function deleteAccount(): Promise<void> {
   }
 }
 
+/** Fetch a JSON dump of the caller's own data (right of access / portability,
+ *  MYS-185): profile, submissions, votes, notes, league memberships. Returns
+ *  the raw parsed object — the caller decides what to do with it (e.g. trigger
+ *  a file download), so this isn't typed beyond "some JSON object". */
+export async function exportMyData(): Promise<Record<string, unknown>> {
+  const res = await authenticatedRequest("/api/v1/users/me/export");
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as Record<string, unknown>;
+}
+
 /** A league as returned by the backend (GET/POST /api/v1/leagues). */
 export type League = {
   id: string;

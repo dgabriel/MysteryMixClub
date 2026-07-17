@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import {
   resolveSong,
   searchSongs,
@@ -427,6 +427,7 @@ function ResultView({
   onNoteChange?: (text: string) => void;
 }) {
   const available = PLATFORMS.filter((p) => song.platforms[p.key]);
+  const noteId = useId();
   return (
     <div className="mt-5">
       <div className="flex items-start gap-4">
@@ -476,10 +477,14 @@ function ResultView({
 
       {onNoteChange !== undefined ? (
         <div className="mt-5">
-          <label className="block font-mono uppercase tracking-label text-[9px] text-muted">
+          <label
+            htmlFor={noteId}
+            className="block font-mono uppercase tracking-label text-[9px] text-muted"
+          >
             leave a note (optional)
           </label>
           <textarea
+            id={noteId}
             value={noteText ?? ""}
             onChange={(e) => onNoteChange(e.target.value)}
             maxLength={280}

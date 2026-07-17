@@ -1052,6 +1052,9 @@ function SubmittedSongCard({
             rows={2}
             value={noteText}
             onChange={(e) => setNoteText(e.target.value)}
+            // Focus follows the user's own click on "add/edit note" (openNoteEditor,
+            // above) — a disclosure pattern, not an unannounced page-load focus jump.
+            // eslint-disable-next-line jsx-a11y/no-autofocus
             autoFocus
             className="w-full resize-none border-b border-ink bg-transparent font-mono text-[12px] font-light text-ink placeholder:text-muted focus:border-sage focus:outline-none"
           />
@@ -2096,9 +2099,12 @@ function RankBadge({ rank }: { rank: number }) {
       className={["relative shrink-0", first ? "h-7 w-7 text-gold" : "h-6 w-6 text-sage"].join(" ")}
     >
       <MedalIcon className="h-full w-full" />
+      {/* The numeral is real text (not decorative like the medal outline above),
+          so it needs its own AA-contrast color — gold/sage-on-cream both fail
+          WCAG 1.4.3 at this size (MYS-186). */}
       <span
         className={[
-          "absolute left-1/2 top-[37.5%] -translate-x-1/2 -translate-y-1/2 font-mono leading-none",
+          "absolute left-1/2 top-[37.5%] -translate-x-1/2 -translate-y-1/2 font-mono leading-none text-ink",
           first ? "text-[12px]" : "text-[10px]",
         ].join(" ")}
       >

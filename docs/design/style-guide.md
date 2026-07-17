@@ -18,14 +18,14 @@
 | Name        | Hex       | Role                                              |
 |-------------|-----------|---------------------------------------------------|
 | Cream       | `#F0EDE6` | Primary background                                |
-| Sage        | `#7A9E82` | Primary surface, buttons, active states           |
+| Sage        | `#506755` | Primary surface, buttons, active states           |
 | Sage Light  | `#A8C4AD` | Hover states, secondary surfaces                  |
 | Sage Pale   | `#D4E3D7` | Badges, tags, subtle backgrounds                  |
 | Rust        | `#B5533C` | Single accent — one use per screen/composition    |
 | Gold        | `#C9A028` | Achievement signal — winner and most-noted moments |
 | Vinyl       | `#6B7EB5` | Avatar illustrations only — the 5 music hardware icons |
 | Ink         | `#2E2B27` | Primary text, headings                            |
-| Muted       | `#8A8680` | Secondary text, labels, placeholders              |
+| Muted       | `#6D6A66` | Secondary text, labels, placeholders              |
 | Border      | `#D6D2CA` | Dividers, input underlines, card borders          |
 
 ### Usage rules
@@ -84,7 +84,7 @@ Page horizontal padding: `32px` (desktop), `16px` (mobile)
 ### Buttons
 
 **Primary**
-- Background: Sage `#7A9E82`
+- Background: Sage `#506755`
 - Text: Cream `#F0EDE6`
 - Font: DM Mono, 11px, ALL CAPS, letter-spacing 0.12em
 - Padding: `10px 22px`
@@ -111,8 +111,8 @@ Page horizontal padding: `32px` (desktop), `16px` (mobile)
 - Background: transparent
 - Font: DM Mono, 13px
 - Label above: DM Mono, 9px, ALL CAPS, letter-spacing 0.15em, Muted color
-- Placeholder: Muted `#8A8680`
-- Focus state: underline color shifts to Sage `#7A9E82`
+- Placeholder: Muted `#6D6A66`
+- Focus state: underline color shifts to Sage `#506755`
 
 ---
 
@@ -137,7 +137,7 @@ Page horizontal padding: `32px` (desktop), `16px` (mobile)
 
 **Default (Sage)**
 - Background: Sage Pale `#D4E3D7`
-- Text: Sage `#7A9E82`
+- Text: Sage `#506755`
 - Font: DM Mono, 9px, ALL CAPS, letter-spacing 0.15em
 - Padding: `4px 10px`
 - Border radius: `1px`
@@ -205,4 +205,8 @@ The rings use the Sage color family (Sage Pale → Sage Light → Sage → Sage)
 
 ---
 
-*Last updated: July 2026 — added the Time signal (Ink) badge variant*
+*Last updated: July 2026 — Sage and Muted darkened for WCAG 2.1 AA text contrast
+(MYS-186): Sage `#7A9E82` → `#506755`, Muted `#8A8680` → `#6D6A66`. Both now clear
+4.5:1 against Cream and, for Sage, against Sage Pale (the badge background).
+Sage Light and Sage Pale are unchanged — they're never used as text color. Added
+the Time signal (Ink) badge variant*

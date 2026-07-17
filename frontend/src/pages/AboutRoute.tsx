@@ -105,6 +105,15 @@ export function AboutRoute() {
               thank you friends: big star
             </a>
           </div>
+
+          <div className="mt-8 flex justify-center gap-4 border-t border-border pt-6">
+            <a href="/terms" className={LINK_CLASS}>
+              terms
+            </a>
+            <a href="/privacy" className={LINK_CLASS}>
+              privacy
+            </a>
+          </div>
         </div>
       </main>
     </div>

@@ -75,6 +75,8 @@ describe("VerifyRoute", () => {
       isPlatformAdmin: false,
       applyDisplayName: vi.fn(),
     preferredService: null,
+    tosAccepted: true,
+    applyTosAccepted: vi.fn(),
     });
   });
 

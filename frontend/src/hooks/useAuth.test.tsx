@@ -33,6 +33,7 @@ function profileWith(displayName: string): UserProfile {
     email: "u@example.com",
     preferred_service: null,
     is_platform_admin: false,
+    tos_accepted: true,
   };
 }
 

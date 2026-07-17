@@ -44,6 +44,8 @@ function setAuth(displayName: string | null = "Ada") {
     needsOnboarding: false,
     applyDisplayName,
     preferredService: null,
+    tosAccepted: true,
+    applyTosAccepted: vi.fn(),
   });
 }
 
@@ -74,6 +76,7 @@ function profileWith(displayName: string): UserProfile {
     email: "ada@example.com",
     preferred_service: null,
     is_platform_admin: false,
+    tos_accepted: true,
   };
 }
 

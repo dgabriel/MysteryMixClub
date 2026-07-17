@@ -29,6 +29,9 @@ class UserProfileResponse(BaseModel):
     # Whether this account may use the platform-admin tools (MYS-128). Derived
     # from SEED_ADMIN_EMAILS so the UI can gate the /admin nav entry.
     is_platform_admin: bool
+    # Whether the user has accepted the current Terms of Service / Privacy
+    # Policy (MYS-183). Drives the frontend's consent gate.
+    tos_accepted: bool
 
 
 class UserProfileUpdate(BaseModel):
@@ -37,6 +40,11 @@ class UserProfileUpdate(BaseModel):
     display_name: DisplayName | None = None
     preferred_service: PreferredService | None = None
     email_notifications: bool | None = None
+    # Accepting the Terms of Service / Privacy Policy (MYS-183). Only `true` is
+    # a meaningful value — there's no client-initiated "unaccept" — so this is
+    # the sole literal accepted; the server stamps its own timestamp below,
+    # never trusting one from the client.
+    accept_terms: Literal[True] | None = None
 
     # display_name and email_notifications map to NOT NULL columns: allow omission
     # (partial update) but reject an explicit null (422).
@@ -58,6 +66,7 @@ def _to_profile(user: User, settings: Settings) -> UserProfileResponse:
         preferred_service=user.preferred_service,
         email_notifications=user.email_notifications,
         is_platform_admin=user.email.lower() in settings.seed_admin_email_set,
+        tos_accepted=user.tos_accepted_at is not None,
     )
 
 
@@ -76,8 +85,11 @@ async def update_me(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> UserProfileResponse:
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    fields = payload.model_dump(exclude_unset=True, exclude={"accept_terms"})
+    for field, value in fields.items():
         setattr(current_user, field, value)
+    if payload.accept_terms:
+        current_user.tos_accepted_at = datetime.now(timezone.utc)
     await db.commit()
     return _to_profile(current_user, settings)
 

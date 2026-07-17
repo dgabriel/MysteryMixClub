@@ -34,6 +34,8 @@ function setStatus(
     isPlatformAdmin: false,
     applyDisplayName: vi.fn(),
     preferredService: null,
+    tosAccepted: true,
+    applyTosAccepted: vi.fn(),
   });
 }
 

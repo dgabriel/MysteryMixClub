@@ -88,6 +88,8 @@ describe("HomeRoute (My Leagues)", () => {
       isPlatformAdmin: false,
       applyDisplayName: vi.fn(),
     preferredService: null,
+    tosAccepted: true,
+    applyTosAccepted: vi.fn(),
     });
   });
 
@@ -201,6 +203,8 @@ describe("HomeRoute (My Leagues)", () => {
       isPlatformAdmin: true,
       applyDisplayName: vi.fn(),
     preferredService: null,
+    tosAccepted: true,
+    applyTosAccepted: vi.fn(),
     });
     const user = userEvent.setup();
     renderHome();

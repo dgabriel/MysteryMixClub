@@ -25,3 +25,8 @@ class User(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Consent to the Terms of Service / Privacy Policy (MYS-183). NULL until the
+    # user explicitly accepts; set server-side only, never from client input.
+    tos_accepted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

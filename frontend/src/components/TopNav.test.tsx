@@ -26,6 +26,8 @@ function setAuth(isPlatformAdmin: boolean) {
     needsOnboarding: false,
     applyDisplayName: vi.fn(),
     preferredService: null,
+    tosAccepted: true,
+    applyTosAccepted: vi.fn(),
   });
 }
 
@@ -47,6 +49,8 @@ function setUnauthed(status: "unauthenticated" | "loading" = "unauthenticated") 
     needsOnboarding: false,
     applyDisplayName: vi.fn(),
     preferredService: null,
+    tosAccepted: true,
+    applyTosAccepted: vi.fn(),
   });
 }
 

@@ -231,6 +231,8 @@ function setAuth(userId: string) {
     isPlatformAdmin: false,
     applyDisplayName: vi.fn(),
     preferredService: null,
+    tosAccepted: true,
+    applyTosAccepted: vi.fn(),
   } as unknown as ReturnType<typeof useAuth>);
 }
 

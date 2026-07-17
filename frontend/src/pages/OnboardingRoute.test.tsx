@@ -3,7 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { OnboardingRoute } from "./OnboardingRoute";
-import { ApiError, updateDisplayName } from "../services/api";
+import { ApiError, acceptTerms } from "../services/api";
 import type { UserProfile } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 
@@ -14,7 +14,7 @@ vi.mock("../services/api", async () => {
   );
   return {
     ...actual,
-    updateDisplayName: vi.fn(),
+    acceptTerms: vi.fn(),
   };
 });
 
@@ -23,16 +23,22 @@ vi.mock("../hooks/useAuth", () => ({
   useAuth: vi.fn(),
 }));
 
-const mockUpdateDisplayName = vi.mocked(updateDisplayName);
+const mockAcceptTerms = vi.mocked(acceptTerms);
 const mockUseAuth = vi.mocked(useAuth);
 const applyDisplayName = vi.fn();
+const applyTosAccepted = vi.fn();
 
 type Status = "loading" | "authenticated" | "unauthenticated";
 type ProfileStatus = "idle" | "loading" | "ready";
 
 function setAuth(
   status: Status,
-  overrides: { profileStatus?: ProfileStatus; needsOnboarding?: boolean } = {},
+  overrides: {
+    profileStatus?: ProfileStatus;
+    needsOnboarding?: boolean;
+    displayName?: string;
+    tosAccepted?: boolean;
+  } = {},
 ) {
   const profileStatus =
     overrides.profileStatus ?? (status === "authenticated" ? "ready" : "idle");
@@ -43,7 +49,7 @@ function setAuth(
     clear: vi.fn(),
     logout: vi.fn(),
     logoutAll: vi.fn(),
-    displayName: overrides.needsOnboarding ? "" : "ada",
+    displayName: overrides.displayName ?? (overrides.needsOnboarding ? "" : "ada"),
     email: status === "authenticated" ? "ada@example.com" : null,
     userId: status === "authenticated" ? "11111111-1111-1111-1111-111111111111" : null,
     isPlatformAdmin: false,
@@ -51,6 +57,8 @@ function setAuth(
     needsOnboarding: overrides.needsOnboarding ?? false,
     applyDisplayName,
     preferredService: null,
+    tosAccepted: overrides.tosAccepted ?? true,
+    applyTosAccepted,
   });
 }
 
@@ -61,6 +69,7 @@ function profileWith(displayName: string): UserProfile {
     email: "new@example.com",
     preferred_service: null,
     is_platform_admin: false,
+    tos_accepted: true,
   };
 }
 
@@ -81,43 +90,108 @@ describe("OnboardingRoute", () => {
     vi.clearAllMocks();
   });
 
-  it("needsOnboarding: renders the OnboardingScreen", () => {
-    setAuth("authenticated", { needsOnboarding: true });
-    renderOnboarding();
+  describe("brand-new user (no display name, no consent)", () => {
+    function setBrandNew() {
+      setAuth("authenticated", { needsOnboarding: true, displayName: "", tosAccepted: false });
+    }
 
-    expect(screen.getByText("one more thing")).toBeInTheDocument();
-    expect(screen.getByLabelText(/display name/i)).toBeInTheDocument();
-    // The shared TopNav is not shown during onboarding.
-    expect(screen.queryByRole("button", { name: /^profile$/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^logout$/i })).not.toBeInTheDocument();
+    it("renders the display name field and the consent checkbox", () => {
+      setBrandNew();
+      renderOnboarding();
+
+      expect(screen.getByText("one more thing")).toBeInTheDocument();
+      expect(screen.getByLabelText(/display name/i)).toBeInTheDocument();
+      expect(screen.getByRole("checkbox")).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /terms of service/i })).toHaveAttribute(
+        "href",
+        "/terms",
+      );
+      expect(screen.getByRole("link", { name: /privacy policy/i })).toHaveAttribute(
+        "href",
+        "/privacy",
+      );
+      // The shared TopNav is not shown during onboarding.
+      expect(screen.queryByRole("button", { name: /^profile$/i })).not.toBeInTheDocument();
+    });
+
+    it("keeps submit disabled until both the name is filled and the box is checked", async () => {
+      setBrandNew();
+      const user = userEvent.setup();
+      renderOnboarding();
+
+      const submit = screen.getByRole("button", { name: /continue/i });
+      expect(submit).toBeDisabled();
+
+      await user.type(screen.getByLabelText(/display name/i), "Alice");
+      expect(submit).toBeDisabled();
+
+      await user.click(screen.getByRole("checkbox"));
+      expect(submit).not.toBeDisabled();
+    });
+
+    it("submit: trims the name, calls acceptTerms with the name, applies both, navigates home", async () => {
+      setBrandNew();
+      mockAcceptTerms.mockResolvedValue(profileWith("Alice"));
+      const user = userEvent.setup();
+
+      renderOnboarding();
+
+      await user.type(screen.getByLabelText(/display name/i), "  Alice  ");
+      await user.click(screen.getByRole("checkbox"));
+      await user.click(screen.getByRole("button", { name: /continue/i }));
+
+      expect(await screen.findByText("HOME CONTENT")).toBeInTheDocument();
+      expect(mockAcceptTerms).toHaveBeenCalledTimes(1);
+      expect(mockAcceptTerms).toHaveBeenCalledWith("Alice");
+      expect(applyDisplayName).toHaveBeenCalledWith("Alice");
+      expect(applyTosAccepted).toHaveBeenCalledTimes(1);
+    });
   });
 
-  it("successful submit: trims the name, calls updateDisplayName + applyDisplayName, navigates to /home", async () => {
-    setAuth("authenticated", { needsOnboarding: true });
-    mockUpdateDisplayName.mockResolvedValue(profileWith("Alice"));
-    const user = userEvent.setup();
+  describe("already-onboarded user missing consent only (retroactive gate)", () => {
+    function setNeedsConsentOnly() {
+      setAuth("authenticated", { needsOnboarding: true, displayName: "ada", tosAccepted: false });
+    }
 
-    renderOnboarding();
+    it("renders only the consent checkbox, no display name field", () => {
+      setNeedsConsentOnly();
+      renderOnboarding();
 
-    await user.type(screen.getByLabelText(/display name/i), "  Alice  ");
-    await user.click(screen.getByRole("button", { name: /continue/i }));
+      expect(screen.getByText("one more thing before you're back in")).toBeInTheDocument();
+      expect(screen.queryByLabelText(/display name/i)).not.toBeInTheDocument();
+      expect(screen.getByRole("checkbox")).toBeInTheDocument();
+    });
 
-    expect(await screen.findByText("HOME CONTENT")).toBeInTheDocument();
-    // Trimmed before the API call.
-    expect(mockUpdateDisplayName).toHaveBeenCalledTimes(1);
-    expect(mockUpdateDisplayName).toHaveBeenCalledWith("Alice");
-    // applyDisplayName is fed the name the server returned.
-    expect(applyDisplayName).toHaveBeenCalledWith("Alice");
+    it("submit: calls acceptTerms with no name, applies consent, navigates home", async () => {
+      setNeedsConsentOnly();
+      mockAcceptTerms.mockResolvedValue(profileWith("ada"));
+      const user = userEvent.setup();
+
+      renderOnboarding();
+
+      const submit = screen.getByRole("button", { name: /continue/i });
+      expect(submit).toBeDisabled();
+
+      await user.click(screen.getByRole("checkbox"));
+      expect(submit).not.toBeDisabled();
+      await user.click(submit);
+
+      expect(await screen.findByText("HOME CONTENT")).toBeInTheDocument();
+      expect(mockAcceptTerms).toHaveBeenCalledTimes(1);
+      expect(mockAcceptTerms).toHaveBeenCalledWith(undefined);
+      expect(applyTosAccepted).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("submit failure: shows the calm error and stays on the screen", async () => {
-    setAuth("authenticated", { needsOnboarding: true });
-    mockUpdateDisplayName.mockRejectedValue(new ApiError(422, "too long"));
+    setAuth("authenticated", { needsOnboarding: true, displayName: "", tosAccepted: false });
+    mockAcceptTerms.mockRejectedValue(new ApiError(422, "too long"));
     const user = userEvent.setup();
 
     renderOnboarding();
 
     await user.type(screen.getByLabelText(/display name/i), "Bob");
+    await user.click(screen.getByRole("checkbox"));
     await user.click(screen.getByRole("button", { name: /continue/i }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
@@ -127,6 +201,7 @@ describe("OnboardingRoute", () => {
     expect(screen.queryByText("HOME CONTENT")).not.toBeInTheDocument();
     expect(screen.getByText("one more thing")).toBeInTheDocument();
     expect(applyDisplayName).not.toHaveBeenCalled();
+    expect(applyTosAccepted).not.toHaveBeenCalled();
   });
 
   it("guard: unauthenticated redirects to /login (does not render the form)", () => {
@@ -137,7 +212,7 @@ describe("OnboardingRoute", () => {
     expect(screen.queryByText("one more thing")).not.toBeInTheDocument();
   });
 
-  it("guard: authenticated but already onboarded redirects to /home", () => {
+  it("guard: authenticated, onboarded, and consented redirects to /home", () => {
     setAuth("authenticated", { needsOnboarding: false });
     renderOnboarding();
 
@@ -155,9 +230,9 @@ describe("OnboardingRoute", () => {
   });
 
   it("disables the submit while a save is in flight (busy)", async () => {
-    setAuth("authenticated", { needsOnboarding: true });
+    setAuth("authenticated", { needsOnboarding: true, displayName: "", tosAccepted: false });
     let resolve!: (p: UserProfile) => void;
-    mockUpdateDisplayName.mockReturnValue(
+    mockAcceptTerms.mockReturnValue(
       new Promise<UserProfile>((r) => {
         resolve = r;
       }),
@@ -167,6 +242,7 @@ describe("OnboardingRoute", () => {
     renderOnboarding();
 
     await user.type(screen.getByLabelText(/display name/i), "Cleo");
+    await user.click(screen.getByRole("checkbox"));
     await user.click(screen.getByRole("button", { name: /continue/i }));
 
     await waitFor(() =>

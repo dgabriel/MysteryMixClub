@@ -44,6 +44,9 @@ export type UserProfile = {
   /** True for platform admins (email in the server's SEED_ADMIN_EMAILS). Gates
    *  the /admin page and its nav entry. */
   is_platform_admin: boolean;
+  /** True once the user has accepted the current Terms of Service / Privacy
+   *  Policy (MYS-183). Drives the onboarding/consent gate. */
+  tos_accepted: boolean;
 };
 
 class ApiError extends Error {
@@ -210,6 +213,24 @@ export async function authenticatedRequest(
 /** Fetch the current user's profile. Bearer-auth via authenticatedRequest. */
 export async function getMe(): Promise<UserProfile> {
   const res = await authenticatedRequest("/api/v1/users/me");
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as UserProfile;
+}
+
+/** Accept the Terms of Service / Privacy Policy, optionally setting the
+ *  display name in the same request (MYS-183 onboarding/consent gate). The
+ *  server stamps its own acceptance timestamp — nothing client-supplied is
+ *  trusted for that. Returns the updated profile. */
+export async function acceptTerms(displayName?: string): Promise<UserProfile> {
+  const body: Record<string, unknown> = { accept_terms: true };
+  if (displayName !== undefined) body.display_name = displayName;
+  const res = await authenticatedRequest("/api/v1/users/me", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }

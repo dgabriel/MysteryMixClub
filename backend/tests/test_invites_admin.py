@@ -188,12 +188,46 @@ async def test_preview_platform_invite_expired_as_authenticated_visitor_still_41
 
 async def test_preview_platform_invite_already_used_returns_410(client, db_session):
     # Single-use (MYS-182 follow-up): a used_at stamp reads the same as
-    # expired — same status/copy, no separate frontend state.
+    # expired — same status/copy, no separate frontend state — for anyone
+    # other than the visitor who used it (see the self-bypass tests below).
     admin = await _seed_admin(db_session)
     invite = await _seed_platform_invite(db_session, admin, used_at=datetime.now(timezone.utc))
 
     resp = await client.get(_preview_url(invite.token))
     assert resp.status_code == 410, resp.text
+
+
+async def test_preview_platform_invite_used_by_a_different_authenticated_user_still_410(
+    client, db_session
+):
+    admin = await _seed_admin(db_session)
+    user = await _seed_user(db_session, "used-it@example.com")
+    someone_else = await _seed_user(db_session, "someone-else@example.com")
+    invite = await _seed_platform_invite(
+        db_session, admin, used_at=datetime.now(timezone.utc), used_by_user_id=user.id
+    )
+
+    resp = await client.get(_preview_url(invite.token), headers=_auth(someone_else.id))
+    assert resp.status_code == 410, resp.text
+
+
+async def test_preview_platform_invite_used_by_self_passes_through(client, db_session):
+    """MYS-183 fix: onboarding stashes a pending-invite path that redirects
+    back to this same URL once it's done. The visitor who consumed the
+    invite during signup must not get bounced to an "expired" error for
+    revisiting the link they just used."""
+    admin = await _seed_admin(db_session)
+    user = await _seed_user(db_session, "used-it@example.com")
+    invite = await _seed_platform_invite(
+        db_session, admin, used_at=datetime.now(timezone.utc), used_by_user_id=user.id
+    )
+
+    resp = await client.get(_preview_url(invite.token), headers=_auth(user.id))
+
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["league_id"] is None
+    assert data["already_member"] is False
 
 
 # --------------------------------------------------------------------------- #

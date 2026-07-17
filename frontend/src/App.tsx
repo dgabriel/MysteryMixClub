@@ -3,6 +3,8 @@ import { AuthProvider } from "./hooks/useAuth";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { LoginRoute } from "./pages/LoginRoute";
 import { AboutRoute } from "./pages/AboutRoute";
+import { TermsRoute } from "./pages/TermsRoute";
+import { PrivacyRoute } from "./pages/PrivacyRoute";
 import { VerifyRoute } from "./pages/VerifyRoute";
 import { HomeRoute } from "./pages/HomeRoute";
 import { OnboardingRoute } from "./pages/OnboardingRoute";
@@ -22,6 +24,10 @@ import { AuthedLayout } from "./components/AuthedLayout";
  *   /onboarding    → first-login display-name capture (self-guarded; bounces
  *                    unauthenticated → /login, already-onboarded → /home)
  *   /about         → public static about page (MYS-155); linked from /login
+ *   /terms         → public Terms of Service (MYS-183); linked from /login,
+ *                    TopNav, and the onboarding/consent gate
+ *   /privacy       → public Privacy Policy (MYS-183); linked from /login,
+ *                    TopNav, and the onboarding/consent gate
  *
  *   Authed shell (ProtectedRoute + AuthedLayout, which renders the shared TopNav):
  *     /home        → My Leagues landing
@@ -46,6 +52,8 @@ const router = createBrowserRouter([
   { path: "/", element: <Navigate to="/login" replace /> },
   { path: "/login", element: <LoginRoute /> },
   { path: "/about", element: <AboutRoute /> },
+  { path: "/terms", element: <TermsRoute /> },
+  { path: "/privacy", element: <PrivacyRoute /> },
   { path: "/auth/verify", element: <VerifyRoute /> },
   { path: "/onboarding", element: <OnboardingRoute /> },
 

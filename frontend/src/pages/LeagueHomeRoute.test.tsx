@@ -204,6 +204,8 @@ function setAuth(userId: string | null) {
     needsOnboarding: false,
     applyDisplayName: vi.fn(),
     preferredService: null,
+    tosAccepted: true,
+    applyTosAccepted: vi.fn(),
   });
 }
 

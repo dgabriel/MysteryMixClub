@@ -83,6 +83,8 @@ function setAuth(isAuthenticated: boolean) {
     isPlatformAdmin: false,
     applyDisplayName: vi.fn(),
     preferredService: null,
+    tosAccepted: true,
+    applyTosAccepted: vi.fn(),
   });
 }
 
@@ -119,6 +121,8 @@ function loadingAuth() {
     isPlatformAdmin: false,
     applyDisplayName: vi.fn(),
     preferredService: null,
+    tosAccepted: true,
+    applyTosAccepted: vi.fn(),
   });
 }
 

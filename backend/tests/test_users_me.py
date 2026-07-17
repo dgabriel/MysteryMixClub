@@ -142,6 +142,7 @@ async def test_get_me_returns_exact_profile_shape(client, db_session):
         "preferred_service",
         "email_notifications",
         "is_platform_admin",
+        "tos_accepted",
     }
     assert body["id"] == str(user_id)
     assert body["display_name"] == "Bob"
@@ -149,6 +150,8 @@ async def test_get_me_returns_exact_profile_shape(client, db_session):
     assert body["preferred_service"] is None
     # Bob is not on SEED_ADMIN_EMAILS (empty by default in the client fixture).
     assert body["is_platform_admin"] is False
+    # A fresh user has not accepted the Terms/Privacy Policy yet (MYS-183).
+    assert body["tos_accepted"] is False
 
 
 async def test_get_me_includes_user_id(client, db_session):
@@ -376,3 +379,86 @@ async def test_patch_explicit_null_preferred_service_returns_200(client, db_sess
     db_session.expire_all()
     fresh = await db_session.scalar(select(User).where(User.id == user_id))
     assert fresh.preferred_service is None
+
+
+# --------------------------------------------------------------------------- #
+# PATCH /users/me — accept_terms (MYS-183 consent capture)
+# --------------------------------------------------------------------------- #
+
+
+async def test_patch_accept_terms_stamps_tos_accepted_and_reports_true(client, db_session):
+    user = await _seed_user(db_session)
+    user_id = user.id
+
+    resp = await client.patch(ME_URL, headers=_auth_header(user_id), json={"accept_terms": True})
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["tos_accepted"] is True
+
+    db_session.expire_all()
+    fresh = await db_session.scalar(select(User).where(User.id == user_id))
+    assert fresh.tos_accepted_at is not None
+
+
+async def test_patch_accept_terms_false_returns_422(client, db_session):
+    """There's no client-initiated "unaccept" — false is not a valid value."""
+    user = await _seed_user(db_session)
+
+    resp = await client.patch(ME_URL, headers=_auth_header(user.id), json={"accept_terms": False})
+
+    assert resp.status_code == 422, resp.text
+
+
+async def test_patch_omitting_accept_terms_leaves_unaccepted(client, db_session):
+    user = await _seed_user(db_session)
+    user_id = user.id
+
+    resp = await client.patch(
+        ME_URL, headers=_auth_header(user_id), json={"display_name": "Renamed"}
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["tos_accepted"] is False
+
+    db_session.expire_all()
+    fresh = await db_session.scalar(select(User).where(User.id == user_id))
+    assert fresh.tos_accepted_at is None
+
+
+async def test_patch_accept_terms_ignores_any_client_supplied_timestamp(client, db_session):
+    """The server always stamps its own time; a client can't backdate/forge one.
+
+    accept_terms is a bare boolean in the schema, so a client attempt to smuggle
+    a timestamp value is simply an invalid boolean and rejected outright.
+    """
+    user = await _seed_user(db_session)
+
+    resp = await client.patch(
+        ME_URL,
+        headers=_auth_header(user.id),
+        json={"accept_terms": "2020-01-01T00:00:00Z"},
+    )
+
+    assert resp.status_code == 422, resp.text
+
+
+async def test_patch_accept_terms_combined_with_other_fields(client, db_session):
+    """MYS-183: the onboarding screen submits display_name and accept_terms together."""
+    user = await _seed_user(db_session, display_name="")
+    user_id = user.id
+
+    resp = await client.patch(
+        ME_URL,
+        headers=_auth_header(user_id),
+        json={"display_name": "New User", "accept_terms": True},
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["display_name"] == "New User"
+    assert body["tos_accepted"] is True
+
+    db_session.expire_all()
+    fresh = await db_session.scalar(select(User).where(User.id == user_id))
+    assert fresh.display_name == "New User"
+    assert fresh.tos_accepted_at is not None

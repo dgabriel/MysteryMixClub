@@ -41,6 +41,8 @@ function setAuth(isPlatformAdmin: boolean) {
     needsOnboarding: false,
     applyDisplayName: vi.fn(),
     preferredService: null,
+    tosAccepted: true,
+    applyTosAccepted: vi.fn(),
   });
 }
 

@@ -54,12 +54,20 @@ type AuthContextValue = {
   isPlatformAdmin: boolean;
   /** Lifecycle of the profile fetch that follows authentication. */
   profileStatus: ProfileStatus;
-  /** True only when authenticated, profile loaded, and the name is the
-   *  empty-string sentinel — i.e. the user has not yet onboarded. */
+  /** True only when authenticated and profile loaded, and either the display
+   *  name is the empty-string sentinel (never onboarded) or the Terms of
+   *  Service / Privacy Policy haven't been accepted yet (MYS-183) — covers
+   *  both a brand-new user and an already-onboarded user who predates the
+   *  consent requirement. Either case routes to /onboarding. */
   needsOnboarding: boolean;
+  /** True once the current profile has accepted the Terms/Privacy Policy. */
+  tosAccepted: boolean;
   /** Apply a new display name locally (after a successful PATCH) so the
    *  onboarding gate flips false without a refetch. */
   applyDisplayName: (name: string) => void;
+  /** Apply Terms/Privacy acceptance locally (after a successful PATCH) so the
+   *  consent gate flips false without a refetch. */
+  applyTosAccepted: () => void;
   /** User's preferred streaming service from their profile; null if unset. */
   preferredService: string | null;
 };
@@ -74,6 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
   const [preferredService, setPreferredService] = useState<string | null>(null);
+  const [tosAccepted, setTosAccepted] = useState(false);
   const [profileStatus, setProfileStatus] = useState<ProfileStatus>("idle");
   const didInit = useRef(false);
   const didLoadProfile = useRef(false);
@@ -93,11 +102,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUserId(null);
     setIsPlatformAdmin(false);
     setPreferredService(null);
+    setTosAccepted(false);
     setProfileStatus("idle");
   }, []);
 
   const applyDisplayName = useCallback((name: string) => {
     setDisplayName(name);
+  }, []);
+
+  const applyTosAccepted = useCallback(() => {
+    setTosAccepted(true);
   }, []);
 
   // On mount: attempt a silent refresh to restore the session from the cookie.
@@ -145,6 +159,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUserId(profile.id);
         setIsPlatformAdmin(profile.is_platform_admin);
         setPreferredService(profile.preferred_service);
+        setTosAccepted(profile.tos_accepted);
         setProfileStatus("ready");
       } catch {
         didLoadProfile.current = false;
@@ -170,7 +185,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [clear]);
 
   const needsOnboarding =
-    status === "authenticated" && profileStatus === "ready" && displayName === "";
+    status === "authenticated" &&
+    profileStatus === "ready" &&
+    (displayName === "" || !tosAccepted);
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -185,9 +202,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       userId,
       isPlatformAdmin,
       preferredService,
+      tosAccepted,
       profileStatus,
       needsOnboarding,
       applyDisplayName,
+      applyTosAccepted,
     }),
     [
       status,
@@ -201,9 +220,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       userId,
       isPlatformAdmin,
       preferredService,
+      tosAccepted,
       profileStatus,
       needsOnboarding,
       applyDisplayName,
+      applyTosAccepted,
     ],
   );
 

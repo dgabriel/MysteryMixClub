@@ -322,8 +322,12 @@ function ExportDataSection({
     <section className="mt-12 border-t border-border pt-10">
       <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">your data</h2>
       <p className="mt-2 font-mono text-[11px] font-light text-muted">
-        download a copy of everything tied to your account — profile, submissions, votes, and
+        download a copy of everything tied to your account: profile, submissions, votes, and
         notes.
+      </p>
+      <p className="mt-2 font-mono text-[11px] font-light text-muted">
+        we provide this to meet gdpr's right of access (article 15) and data portability (article
+        20).
       </p>
       <div className="mt-4">
         <Button variant="ghost" type="button" onClick={onExportData} disabled={exportingData}>

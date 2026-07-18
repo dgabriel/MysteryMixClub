@@ -29,11 +29,11 @@ from app.auth.deps import get_current_user
 from app.db.session import get_db
 from app.models.user import User
 from app.services.apple_music_client import (
+    LIBRARY_URL,
     AppleMusicApiError,
     AppleMusicAuthError,
     AppleMusicClient,
     get_apple_music_client,
-    library_playlist_url,
 )
 from app.services.apple_music_token import AppleMusicTokenError
 from app.services.apple_playlist_generation import (
@@ -49,7 +49,11 @@ class DeveloperTokenResponse(BaseModel):
 
 
 class ApplePlaylistLinkResponse(BaseModel):
+    # Apple Music's Library, not the playlist — iOS can't deep-link to a library
+    # playlist (MYS-190). playlist_name is how the member finds it. The name is
+    # null for rows created before MYS-190 started recording it.
     playlist_url: str | None = None
+    playlist_name: str | None = None
 
 
 class UnmatchedTrack(BaseModel):
@@ -68,6 +72,7 @@ class GeneratePlaylistRequest(BaseModel):
 
 class GeneratePlaylistResponse(BaseModel):
     playlist_url: str
+    playlist_name: str
     track_count: int
     total_count: int
     unmatched: list[UnmatchedTrack] = []
@@ -110,7 +115,7 @@ async def get_round_apple_playlist(
     stored = await get_existing_playlist(db, round_id, current_user.id)
     if stored is None:
         return ApplePlaylistLinkResponse(playlist_url=None)
-    return ApplePlaylistLinkResponse(playlist_url=library_playlist_url(stored.playlist_id))
+    return ApplePlaylistLinkResponse(playlist_url=LIBRARY_URL, playlist_name=stored.playlist_name)
 
 
 @router.post("/rounds/{round_id}/apple-playlist", response_model=GeneratePlaylistResponse)
@@ -155,6 +160,7 @@ async def create_round_apple_playlist(
 
     return GeneratePlaylistResponse(
         playlist_url=result.playlist_url,
+        playlist_name=result.playlist_name,
         track_count=result.track_count,
         total_count=result.total_count,
         unmatched=[

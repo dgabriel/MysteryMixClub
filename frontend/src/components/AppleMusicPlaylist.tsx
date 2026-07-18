@@ -34,6 +34,7 @@ export function AppleMusicPlaylist({ roundId }: { roundId: string }) {
   // undefined = still loading, null = not configured / unavailable
   const [developerToken, setDeveloperToken] = useState<string | null | undefined>(undefined);
   const [playlistUrl, setPlaylistUrl] = useState<string | null | undefined>(undefined);
+  const [playlistName, setPlaylistName] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [unmatched, setUnmatched] = useState<number>(0);
@@ -56,7 +57,9 @@ export function AppleMusicPlaylist({ roundId }: { roundId: string }) {
     let active = true;
     getApplePlaylistLink(roundId)
       .then((r) => {
-        if (active) setPlaylistUrl(r.playlist_url);
+        if (!active) return;
+        setPlaylistUrl(r.playlist_url);
+        setPlaylistName(r.playlist_name);
       })
       .catch(() => {
         if (active) setPlaylistUrl(null);
@@ -76,6 +79,7 @@ export function AppleMusicPlaylist({ roundId }: { roundId: string }) {
       const musicUserToken = await authorizeAppleMusic(developerToken);
       const result = await createApplePlaylist(roundId, musicUserToken);
       setPlaylistUrl(result.playlist_url);
+      setPlaylistName(result.playlist_name);
       setUnmatched(result.total_count - result.track_count);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
@@ -101,10 +105,19 @@ export function AppleMusicPlaylist({ roundId }: { roundId: string }) {
         <>
           <a href={playlistUrl} target="_blank" rel="noopener noreferrer" className={LINK_CLASS}>
             <MusicNoteIcon />
-            open playlist in Apple Music
+            open apple music library
           </a>
+          {/* The playlist is named rather than linked: iOS can't deep-link to a
+              library playlist and dead-ends on "Item Not Available" (MYS-190).
+              Older rows have no recorded name, so fall back to a plain note. */}
           <p className={NOTE_CLASS}>
-            in your library — only you can open this link
+            {playlistName ? (
+              <>
+                in your library as <span className="text-ink">“{playlistName}”</span>
+              </>
+            ) : (
+              "in your library"
+            )}
             {unmatched > 0 ? ` · ${unmatched} not on apple music` : ""}
           </p>
         </>

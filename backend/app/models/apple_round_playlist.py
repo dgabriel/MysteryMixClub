@@ -31,6 +31,12 @@ class AppleRoundPlaylist(Base):
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
     )
     playlist_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    # The name as created in Apple, shown so a member can find the playlist in
+    # their library (MYS-190) — iOS can't deep-link to a library playlist, so
+    # naming it is the only way to point at it. Stored rather than recomputed
+    # because a revision's "[revised on HH:MM]" suffix is a wall-clock time.
+    # Nullable: rows created before MYS-190 have no recorded name.
+    playlist_name: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # Set when a rollback reopens the round (MYS-168): the playlist in the
     # member's library no longer reflects the round's submissions. The row is
     # kept rather than deleted so a rebuild knows it is a *revision* and can

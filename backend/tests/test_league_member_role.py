@@ -1,4 +1,4 @@
-"""Tests for MYS-99: PATCH /api/v1/leagues/{league_id}/members/{user_id}/role.
+"""Tests for MYS-99: PATCH /api/v1/clubs/{league_id}/members/{user_id}/role.
 
 Covers the co-organizer promote/demote endpoint: auth (401), not-found (404,
 both unknown league and a target who isn't an active member), authorization
@@ -46,9 +46,9 @@ async def _seed_league(db_session, organizer: User, **overrides) -> League:
         "name": "Summer Bangers",
         "description": "A league for hot tracks",
         "organizer_id": organizer.id,
-        "total_rounds": 6,
+        "total_mixes": 6,
         "votes_per_player": 5,
-        "current_round": 0,
+        "current_mix": 0,
         "state": "active",
     }
     defaults.update(overrides)
@@ -63,7 +63,7 @@ async def _seed_league(db_session, organizer: User, **overrides) -> League:
 
 async def _seed_member(db_session, league: League, user: User, **overrides) -> LeagueMember:
     """Insert and commit a LeagueMember row, returning it."""
-    defaults = {"league_id": league.id, "user_id": user.id}
+    defaults = {"club_id": league.id, "user_id": user.id}
     defaults.update(overrides)
     member = LeagueMember(**defaults)
     db_session.add(member)
@@ -77,11 +77,11 @@ def _auth_header(user_id: uuid.UUID) -> dict[str, str]:
 
 
 def _role_url(league_id, user_id) -> str:
-    return f"/api/v1/leagues/{league_id}/members/{user_id}/role"
+    return f"/api/v1/clubs/{league_id}/members/{user_id}/role"
 
 
 def _league_url(league_id) -> str:
-    return f"/api/v1/leagues/{league_id}"
+    return f"/api/v1/clubs/{league_id}"
 
 
 # ========================================================================== #

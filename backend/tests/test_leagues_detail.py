@@ -1,4 +1,4 @@
-"""Tests for MYS-34: GET /api/v1/leagues/{league_id} (league detail).
+"""Tests for MYS-34: GET /api/v1/clubs/{league_id} (league detail).
 
 TDD-first: written before the endpoint exists on the leagues router, so they
 are expected to FAIL (red) until the developer implements the route. See
@@ -24,10 +24,10 @@ _LEAGUE_KEYS = {
     "name",
     "description",
     "organizer_id",
-    "total_rounds",
+    "total_mixes",
     "votes_per_player",
     "songs_per_submission",
-    "current_round",
+    "current_mix",
     "default_vibe_mode",
     "submission_window_hours",
     "voting_window_hours",
@@ -63,9 +63,9 @@ async def _seed_league(db_session, organizer: User, **overrides) -> League:
         "name": "Summer Bangers",
         "description": "A league for hot tracks",
         "organizer_id": organizer.id,
-        "total_rounds": 6,
+        "total_mixes": 6,
         "votes_per_player": 5,
-        "current_round": 0,
+        "current_mix": 0,
         "state": "active",
     }
     defaults.update(overrides)
@@ -80,7 +80,7 @@ async def _seed_league(db_session, organizer: User, **overrides) -> League:
 
 async def _seed_member(db_session, league: League, user: User, **overrides) -> LeagueMember:
     """Insert and commit a LeagueMember row, returning it."""
-    defaults = {"league_id": league.id, "user_id": user.id}
+    defaults = {"club_id": league.id, "user_id": user.id}
     defaults.update(overrides)
     member = LeagueMember(**defaults)
     db_session.add(member)
@@ -94,7 +94,7 @@ def _auth_header(user_id: uuid.UUID) -> dict[str, str]:
 
 
 def _detail_url(league_id) -> str:
-    return f"/api/v1/leagues/{league_id}"
+    return f"/api/v1/clubs/{league_id}"
 
 
 # ========================================================================== #

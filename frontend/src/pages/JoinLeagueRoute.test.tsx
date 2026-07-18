@@ -30,8 +30,8 @@ const mockUseAuth = vi.mocked(useAuth);
 
 function preview(overrides: Partial<InvitePreview> = {}): InvitePreview {
   return {
-    league_id: "league-preview-1",
-    league_name: "Friday Mixtape",
+    club_id: "league-preview-1",
+    club_name: "Friday Mixtape",
     member_count: 4,
     already_member: false,
     ...overrides,
@@ -40,8 +40,8 @@ function preview(overrides: Partial<InvitePreview> = {}): InvitePreview {
 
 function platformPreview(overrides: Partial<InvitePreview> = {}): InvitePreview {
   return {
-    league_id: null,
-    league_name: null,
+    club_id: null,
+    club_name: null,
     member_count: null,
     already_member: false,
     ...overrides,
@@ -54,10 +54,10 @@ function leagueWith(id: string): League {
     name: "Friday Mixtape",
     description: null,
     organizer_id: "org-1",
-    total_rounds: 6,
+    total_mixes: 6,
     votes_per_player: 3,
     songs_per_submission: 1,
-    current_round: 0,
+    current_mix: 0,
     state: "active",
     created_at: "2026-01-01T00:00:00Z",
     default_vibe_mode: false,
@@ -242,7 +242,7 @@ describe("JoinLeagueRoute", () => {
   describe("already a member (MYS-181)", () => {
     it("preview with already_member true redirects straight into the league, skipping the join screen", async () => {
       mockGetInvitePreview.mockResolvedValue(
-        preview({ league_id: "league-99", already_member: true }),
+        preview({ club_id: "league-99", already_member: true }),
       );
 
       renderJoin("tok-abc");

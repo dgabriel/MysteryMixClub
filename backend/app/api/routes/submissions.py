@@ -25,7 +25,9 @@ from datetime import datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, StringConstraints
+from pydantic import StringConstraints
+
+from app.api.wire import WireModel
 from sqlalchemy import exists, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -49,7 +51,7 @@ Album = Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)]
 AlbumArtUrl = Annotated[str, StringConstraints(max_length=2048)]
 
 
-class SubmissionCreate(BaseModel):
+class SubmissionCreate(WireModel):
     # Canonical identity + display fields from the search/resolve result. The
     # cross-service links are assembled server-side from title/artist/isrc. Used
     # for both adding a song (POST) and replacing one wholesale (PATCH).
@@ -62,13 +64,13 @@ class SubmissionCreate(BaseModel):
     participation_mode: Literal["playing", "vibing"] | None = None
 
 
-class NoteUpdate(BaseModel):
+class NoteUpdate(WireModel):
     # Edit only the submitter note on an existing submission, leaving the track
     # untouched. `None` clears the note.
     note: Note | None = None
 
 
-class SubmissionResponse(BaseModel):
+class SubmissionResponse(WireModel):
     id: str
     round_id: str
     user_id: str
@@ -202,7 +204,7 @@ async def _resolve_mode(
 
 
 @router.post(
-    "/rounds/{round_id}/submissions",
+    "/mixes/{round_id}/submissions",
     response_model=SubmissionResponse,
     status_code=status.HTTP_201_CREATED,
 )
@@ -259,7 +261,7 @@ async def submit_song(
     return _to_response(submission, league_previously_submitted=league_repeat)
 
 
-@router.patch("/rounds/{round_id}/submissions/{submission_id}", response_model=SubmissionResponse)
+@router.patch("/mixes/{round_id}/submissions/{submission_id}", response_model=SubmissionResponse)
 async def edit_song(
     round_id: uuid.UUID,
     submission_id: uuid.UUID,
@@ -309,7 +311,7 @@ async def edit_song(
 
 
 @router.delete(
-    "/rounds/{round_id}/submissions/{submission_id}", status_code=status.HTTP_204_NO_CONTENT
+    "/mixes/{round_id}/submissions/{submission_id}", status_code=status.HTTP_204_NO_CONTENT
 )
 async def delete_song(
     round_id: uuid.UUID,
@@ -342,7 +344,7 @@ async def delete_song(
 
 
 @router.patch(
-    "/rounds/{round_id}/submissions/{submission_id}/note", response_model=SubmissionResponse
+    "/mixes/{round_id}/submissions/{submission_id}/note", response_model=SubmissionResponse
 )
 async def update_submission_note(
     round_id: uuid.UUID,
@@ -381,7 +383,7 @@ async def update_submission_note(
     return _to_response(submission)
 
 
-@router.get("/rounds/{round_id}/submissions/mine", response_model=list[SubmissionResponse])
+@router.get("/mixes/{round_id}/submissions/mine", response_model=list[SubmissionResponse])
 async def get_my_submissions(
     round_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
@@ -393,7 +395,7 @@ async def get_my_submissions(
     return [_to_response(s) for s in submissions]
 
 
-@router.get("/rounds/{round_id}/submissions", response_model=list[SubmissionResponse])
+@router.get("/mixes/{round_id}/submissions", response_model=list[SubmissionResponse])
 async def list_submissions(
     round_id: uuid.UUID,
     current_user: User = Depends(get_current_user),

@@ -3,7 +3,8 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+
+from app.api.wire import WireModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,7 +27,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 _USER_SEARCH_LIMIT = 50
 
 
-class AdminUserResponse(BaseModel):
+class AdminUserResponse(WireModel):
     id: str
     email: str
     display_name: str

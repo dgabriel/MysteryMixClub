@@ -142,8 +142,8 @@ export function RoundDetailRoute() {
     try {
       const loadedRound = await getRound(id);
       const [loadedLeague, loadedMembers] = await Promise.all([
-        getLeague(loadedRound.league_id),
-        getLeagueMembers(loadedRound.league_id),
+        getLeague(loadedRound.club_id),
+        getLeagueMembers(loadedRound.club_id),
       ]);
       setRound(loadedRound);
       setLeague(loadedLeague);
@@ -155,7 +155,7 @@ export function RoundDetailRoute() {
       } else if (loadedRound.state === "open_submission") {
         const [loadedMine, membership] = await Promise.all([
           getMySubmissions(id),
-          getMyMembership(loadedRound.league_id),
+          getMyMembership(loadedRound.club_id),
         ]);
         setMySubmissions(loadedMine);
         // Seed the round toggle: the player's current stance (uniform across
@@ -172,7 +172,7 @@ export function RoundDetailRoute() {
             getMyVotes(id),
             getMySubmissions(id),
             getVoteCounts(id),
-            getMyMembership(loadedRound.league_id),
+            getMyMembership(loadedRound.club_id),
           ]);
         setPlaylist(loadedPlaylist.entries);
         setYoutubePlaylistUrl(loadedPlaylist.youtube_playlist_url);
@@ -533,7 +533,7 @@ export function RoundDetailRoute() {
         {league ? (
           <button
             type="button"
-            onClick={() => navigate(`/clubs/${round.league_id}`)}
+            onClick={() => navigate(`/clubs/${round.club_id}`)}
             className="inline-flex items-center gap-1.5 font-mono uppercase tracking-ui text-[11px] text-sage transition-colors duration-150 hover:text-ink"
           >
             <span aria-hidden="true">←</span>
@@ -541,11 +541,11 @@ export function RoundDetailRoute() {
           </button>
         ) : null}
         <span className="mt-3 block font-mono uppercase tracking-label text-[9px] text-muted">
-          mystery mix {round.round_number}
+          mystery mix {round.mix_number}
         </span>
         <div className="mt-1 flex items-start justify-between gap-4">
           <h1 className="font-serif text-[32px] leading-tight text-ink">
-            {round.theme ?? `Mystery Mix ${round.round_number}`}
+            {round.theme ?? `Mystery Mix ${round.mix_number}`}
           </h1>
           <div className="shrink-0 pt-2">
             <Badge>{STATE_LABEL[round.state]}</Badge>
@@ -568,7 +568,7 @@ export function RoundDetailRoute() {
               state={round.state}
               advancing={advancing}
               onAdvance={handleAdvance}
-              isFinalRound={!!league && round.round_number >= league.total_rounds}
+              isFinalRound={!!league && round.mix_number >= league.total_mixes}
               onRollback={handleRollback}
               rollingBack={rollingBack}
               votingDeadline={round.voting_deadline}
@@ -614,7 +614,7 @@ export function RoundDetailRoute() {
                 onEdit={handleEditSong}
                 onRemove={handleRemoveSong}
                 onSaveNote={handleSaveNote}
-                onConfirm={() => navigate(`/clubs/${round.league_id}`)}
+                onConfirm={() => navigate(`/clubs/${round.club_id}`)}
               />
             </>
           ) : round.state === "open_voting" ? (

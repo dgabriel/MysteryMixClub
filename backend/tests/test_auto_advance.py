@@ -119,13 +119,13 @@ def _body(**over) -> dict:
 
 async def _submit(client, round_id, user_id, **over):
     return await client.post(
-        f"/api/v1/rounds/{round_id}/submissions", json=_body(**over), headers=_auth(user_id)
+        f"/api/v1/mixes/{round_id}/submissions", json=_body(**over), headers=_auth(user_id)
     )
 
 
 async def _cast(client, round_id, user_id, target_ids):
     return await client.post(
-        f"/api/v1/rounds/{round_id}/votes",
+        f"/api/v1/mixes/{round_id}/votes",
         json={"submission_ids": [str(t) for t in target_ids]},
         headers=_auth(user_id),
     )
@@ -357,8 +357,8 @@ async def _seed_voting_round(
         ).id
 
     return {
-        "league_id": league.id,
-        "round_id": round_.id,
+        "club_id": league.id,
+        "mix_id": round_.id,
         "player_ids": [p.id for p in players],
         "subs": subs,
         "vibe_sub_id": vibe_sub_id,
@@ -369,7 +369,7 @@ async def test_last_vote_closes_and_opens_next_round(session_factory, db_session
     # Scenario 6: all playing submitters vote -> round closes, next pending round
     # auto-opens, current_round advances, round_closed + submission_open fire.
     seed = await _seed_voting_round(db_session, n_players=3, total_rounds=2, with_next_pending=True)
-    round_id, league_id = seed["round_id"], seed["league_id"]
+    round_id, league_id = seed["mix_id"], seed["club_id"]
     p = seed["player_ids"]
     subs = seed["subs"]
     round2_id = await db_session.scalar(
@@ -399,7 +399,7 @@ async def test_final_round_voting_completes_league(session_factory, db_session, 
     seed = await _seed_voting_round(
         db_session, n_players=2, total_rounds=1, with_next_pending=False
     )
-    round_id, league_id = seed["round_id"], seed["league_id"]
+    round_id, league_id = seed["mix_id"], seed["club_id"]
     p = seed["player_ids"]
     subs = seed["subs"]
 
@@ -423,7 +423,7 @@ async def test_viber_excluded_from_voting_quorum(session_factory, db_session, em
     seed = await _seed_voting_round(
         db_session, n_players=2, total_rounds=1, with_next_pending=False, viber=True
     )
-    round_id, league_id = seed["round_id"], seed["league_id"]
+    round_id, league_id = seed["mix_id"], seed["club_id"]
     p = seed["player_ids"]
     subs = seed["subs"]
 
@@ -441,7 +441,7 @@ async def test_partial_votes_stay_open(session_factory, db_session, email_spy):
     seed = await _seed_voting_round(
         db_session, n_players=3, total_rounds=1, with_next_pending=False
     )
-    round_id = seed["round_id"]
+    round_id = seed["mix_id"]
     p = seed["player_ids"]
     subs = seed["subs"]
 
@@ -506,7 +506,7 @@ async def test_all_vibing_round_chains_to_closed(session_factory, db_session, em
         email_spy.sends.clear()
         # Organizer manually opens voting — quorum immediately met, chains to closed.
         resp = await client.patch(
-            f"/api/v1/rounds/{round_id}",
+            f"/api/v1/mixes/{round_id}",
             json={"state": "open_voting"},
             headers=_auth(org_id),
         )
@@ -552,7 +552,7 @@ async def test_manual_advance_still_works_below_quorum(session_factory, db_sessi
 
     async with _build_client(session_factory, email_spy) as client:
         resp = await client.patch(
-            f"/api/v1/rounds/{round_id}", json={"state": "open_voting"}, headers=_auth(org_id)
+            f"/api/v1/mixes/{round_id}", json={"state": "open_voting"}, headers=_auth(org_id)
         )
     assert resp.status_code == 200, resp.text
     assert resp.json()["state"] == "open_voting"
@@ -572,7 +572,7 @@ async def test_create_stamps_submission_opened_at(session_factory, db_session, e
 
     async with _build_client(session_factory, email_spy) as client:
         resp = await client.post(
-            f"/api/v1/leagues/{league_id}/rounds", json={"theme": "x"}, headers=_auth(org_id)
+            f"/api/v1/clubs/{league_id}/mixes", json={"theme": "x"}, headers=_auth(org_id)
         )
     assert resp.status_code == 201, resp.text
     round_id = uuid.UUID(resp.json()["id"])
@@ -596,7 +596,7 @@ async def test_advance_stamps_submission_opened_at(session_factory, db_session, 
 
     async with _build_client(session_factory, email_spy) as client:
         resp = await client.patch(
-            f"/api/v1/rounds/{round_id}",
+            f"/api/v1/mixes/{round_id}",
             json={"state": "open_submission"},
             headers=_auth(org_id),
         )
@@ -633,7 +633,7 @@ async def test_migration_backfill_stamps_non_pending_rounds(db_session):
 
     # The migration's backfill statement (verbatim from the upgrade()).
     await db_session.execute(
-        text("UPDATE rounds SET submission_opened_at = now() WHERE state != 'pending'")
+        text("UPDATE mixes SET submission_opened_at = now() WHERE state != 'pending'")
     )
     await db_session.commit()
 

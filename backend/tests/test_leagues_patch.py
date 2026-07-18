@@ -1,4 +1,4 @@
-"""Tests for MYS-14: PATCH /api/v1/leagues/{league_id} (update league).
+"""Tests for MYS-14: PATCH /api/v1/clubs/{league_id} (update league).
 
 TDD-first: written before the endpoint exists, so they are expected to FAIL
 (red) until the developer implements the route on the existing leagues router.
@@ -20,7 +20,7 @@ from app.models.league_member import LeagueMember
 from app.models.round import Round
 from app.models.user import User
 
-LEAGUES_URL = "/api/v1/leagues"
+LEAGUES_URL = "/api/v1/clubs"
 
 # The full league object key set, matching POST /leagues.
 _LEAGUE_KEYS = {
@@ -28,10 +28,10 @@ _LEAGUE_KEYS = {
     "name",
     "description",
     "organizer_id",
-    "total_rounds",
+    "total_mixes",
     "votes_per_player",
     "songs_per_submission",
-    "current_round",
+    "current_mix",
     "default_vibe_mode",
     "submission_window_hours",
     "voting_window_hours",
@@ -67,9 +67,9 @@ async def _seed_league(db_session, organizer: User, **overrides) -> League:
         "name": "Summer Bangers",
         "description": "A league for hot tracks",
         "organizer_id": organizer.id,
-        "total_rounds": 6,
+        "total_mixes": 6,
         "votes_per_player": 5,
-        "current_round": 0,
+        "current_mix": 0,
         "state": "active",
     }
     defaults.update(overrides)
@@ -84,7 +84,7 @@ async def _seed_league(db_session, organizer: User, **overrides) -> League:
 
 async def _seed_member(db_session, league: League, user: User, **overrides) -> LeagueMember:
     """Insert and commit a LeagueMember row, returning it."""
-    defaults = {"league_id": league.id, "user_id": user.id}
+    defaults = {"club_id": league.id, "user_id": user.id}
     defaults.update(overrides)
     member = LeagueMember(**defaults)
     db_session.add(member)
@@ -98,7 +98,7 @@ def _auth_header(user_id: uuid.UUID) -> dict[str, str]:
 
 
 def _patch_url(league_id) -> str:
-    return f"/api/v1/leagues/{league_id}"
+    return f"/api/v1/clubs/{league_id}"
 
 
 async def _create_league_via_api(client, user_id, *, total_rounds=6, votes_per_player=5):
@@ -108,7 +108,7 @@ async def _create_league_via_api(client, user_id, *, total_rounds=6, votes_per_p
         headers=_auth_header(user_id),
         json={
             "name": "Reconcile League",
-            "total_rounds": total_rounds,
+            "total_mixes": total_rounds,
             "votes_per_player": votes_per_player,
         },
     )
@@ -205,7 +205,7 @@ async def test_organizer_updates_all_fields_returns_200_full_shape_and_persists(
     resp = await client.patch(
         _patch_url(league.id),
         headers=_auth_header(organizer.id),
-        json={"name": "  Brand New  ", "description": "Fresh desc", "total_rounds": 8},
+        json={"name": "  Brand New  ", "description": "Fresh desc", "total_mixes": 8},
     )
 
     assert resp.status_code == 200, resp.text
@@ -213,7 +213,7 @@ async def test_organizer_updates_all_fields_returns_200_full_shape_and_persists(
     assert set(data.keys()) == _LEAGUE_KEYS
     assert data["name"] == "Brand New"  # trimmed
     assert data["description"] == "Fresh desc"
-    assert data["total_rounds"] == 8
+    assert data["total_mixes"] == 8
 
     league_id = league.id
     db_session.expire_all()
@@ -240,7 +240,7 @@ async def test_partial_update_only_name_leaves_other_fields_untouched(client, db
     data = resp.json()
     assert data["name"] == "Renamed"
     assert data["description"] == "Keep me"
-    assert data["total_rounds"] == 6
+    assert data["total_mixes"] == 6
 
     league_id = league.id
     db_session.expire_all()
@@ -258,11 +258,11 @@ async def test_extend_rounds_returns_200(client, db_session):
     resp = await client.patch(
         _patch_url(league.id),
         headers=_auth_header(organizer.id),
-        json={"total_rounds": 10},
+        json={"total_mixes": 10},
     )
 
     assert resp.status_code == 200, resp.text
-    assert resp.json()["total_rounds"] == 10
+    assert resp.json()["total_mixes"] == 10
 
 
 async def test_shorten_to_equal_current_round_returns_200(client, db_session):
@@ -272,11 +272,11 @@ async def test_shorten_to_equal_current_round_returns_200(client, db_session):
     resp = await client.patch(
         _patch_url(league.id),
         headers=_auth_header(organizer.id),
-        json={"total_rounds": 3},
+        json={"total_mixes": 3},
     )
 
     assert resp.status_code == 200, resp.text
-    assert resp.json()["total_rounds"] == 3
+    assert resp.json()["total_mixes"] == 3
 
 
 # ========================================================================== #
@@ -291,7 +291,7 @@ async def test_shorten_below_current_round_returns_409_and_unchanged(client, db_
     resp = await client.patch(
         _patch_url(league.id),
         headers=_auth_header(organizer.id),
-        json={"total_rounds": 2},
+        json={"total_mixes": 2},
     )
 
     assert resp.status_code == 409, resp.text
@@ -373,7 +373,7 @@ async def test_total_rounds_below_one_returns_422(client, db_session):
     resp = await client.patch(
         _patch_url(league.id),
         headers=_auth_header(organizer.id),
-        json={"total_rounds": 0},
+        json={"total_mixes": 0},
     )
 
     assert resp.status_code == 422, resp.text
@@ -388,7 +388,7 @@ async def test_total_rounds_above_max_returns_422(client, db_session):
     resp = await client.patch(
         _patch_url(league.id),
         headers=_auth_header(organizer.id),
-        json={"total_rounds": 51},
+        json={"total_mixes": 51},
     )
 
     assert resp.status_code == 422, resp.text
@@ -414,7 +414,7 @@ async def test_explicit_null_total_rounds_returns_422(client, db_session):
     resp = await client.patch(
         _patch_url(league.id),
         headers=_auth_header(organizer.id),
-        json={"total_rounds": None},
+        json={"total_mixes": None},
     )
 
     assert resp.status_code == 422, resp.text
@@ -459,10 +459,10 @@ async def test_grow_total_rounds_appends_pending_rounds(client, db_session):
     resp = await client.patch(
         _patch_url(league_id),
         headers=_auth_header(organizer.id),
-        json={"total_rounds": 6},
+        json={"total_mixes": 6},
     )
     assert resp.status_code == 200, resp.text
-    assert resp.json()["total_rounds"] == 6
+    assert resp.json()["total_mixes"] == 6
 
     db_session.expire_all()
     assert await _round_numbers(db_session, league_id) == [1, 2, 3, 4, 5, 6]
@@ -490,10 +490,10 @@ async def test_shrink_total_rounds_deletes_trailing_pending_rounds(client, db_se
     resp = await client.patch(
         _patch_url(league_id),
         headers=_auth_header(organizer.id),
-        json={"total_rounds": 4},
+        json={"total_mixes": 4},
     )
     assert resp.status_code == 200, resp.text
-    assert resp.json()["total_rounds"] == 4
+    assert resp.json()["total_mixes"] == 4
 
     db_session.expire_all()
     assert await _round_numbers(db_session, league_id) == [1, 2, 3, 4]
@@ -533,7 +533,7 @@ async def test_shrink_blocked_when_a_removed_round_has_started(client, db_sessio
     resp = await client.patch(
         _patch_url(league_id),
         headers=_auth_header(organizer.id),
-        json={"total_rounds": 1},
+        json={"total_mixes": 1},
     )
     assert resp.status_code == 409, resp.text
     assert "already started" in resp.json()["detail"]
@@ -570,7 +570,7 @@ async def test_total_rounds_below_current_round_returns_409(client, db_session):
     resp = await client.patch(
         _patch_url(league_id),
         headers=_auth_header(organizer.id),
-        json={"total_rounds": 1},
+        json={"total_mixes": 1},
     )
     assert resp.status_code == 409, resp.text
     assert "below the current mix" in resp.json()["detail"]

@@ -157,15 +157,13 @@ def _assert_blocked(resp, *, organizer_gated: bool = False) -> None:
 
 async def test_intruder_cannot_get_league_detail(client, db_session):
     s = await _build(db_session, round_a_state="open_voting")
-    resp = await client.get(f"/api/v1/leagues/{s.league_a_id}", headers=_auth(s.intruder_id))
+    resp = await client.get(f"/api/v1/clubs/{s.league_a_id}", headers=_auth(s.intruder_id))
     _assert_blocked(resp)
 
 
 async def test_intruder_cannot_list_league_members(client, db_session):
     s = await _build(db_session, round_a_state="open_voting")
-    resp = await client.get(
-        f"/api/v1/leagues/{s.league_a_id}/members", headers=_auth(s.intruder_id)
-    )
+    resp = await client.get(f"/api/v1/clubs/{s.league_a_id}/members", headers=_auth(s.intruder_id))
     _assert_blocked(resp)
 
 
@@ -173,7 +171,7 @@ async def test_intruder_cannot_patch_league(client, db_session):
     # Organizer-gated; the intruder is not even a member of A.
     s = await _build(db_session, round_a_state="open_voting")
     resp = await client.patch(
-        f"/api/v1/leagues/{s.league_a_id}",
+        f"/api/v1/clubs/{s.league_a_id}",
         json={"name": "Hijacked"},
         headers=_auth(s.intruder_id),
     )
@@ -182,9 +180,7 @@ async def test_intruder_cannot_patch_league(client, db_session):
 
 async def test_intruder_cannot_create_invite(client, db_session):
     s = await _build(db_session, round_a_state="open_voting")
-    resp = await client.post(
-        f"/api/v1/leagues/{s.league_a_id}/invites", headers=_auth(s.intruder_id)
-    )
+    resp = await client.post(f"/api/v1/clubs/{s.league_a_id}/invites", headers=_auth(s.intruder_id))
     _assert_blocked(resp)
 
 
@@ -192,7 +188,7 @@ async def test_intruder_cannot_create_round(client, db_session):
     # Organizer-gated.
     s = await _build(db_session, round_a_state="open_voting")
     resp = await client.post(
-        f"/api/v1/leagues/{s.league_a_id}/rounds",
+        f"/api/v1/clubs/{s.league_a_id}/mixes",
         json={"theme": "hijack theme"},
         headers=_auth(s.intruder_id),
     )
@@ -201,7 +197,7 @@ async def test_intruder_cannot_create_round(client, db_session):
 
 async def test_intruder_cannot_list_rounds(client, db_session):
     s = await _build(db_session, round_a_state="open_voting")
-    resp = await client.get(f"/api/v1/leagues/{s.league_a_id}/rounds", headers=_auth(s.intruder_id))
+    resp = await client.get(f"/api/v1/clubs/{s.league_a_id}/mixes", headers=_auth(s.intruder_id))
     _assert_blocked(resp)
 
 
@@ -212,14 +208,14 @@ async def test_intruder_cannot_list_rounds(client, db_session):
 
 async def test_intruder_cannot_get_round_detail(client, db_session):
     s = await _build(db_session, round_a_state="open_voting")
-    resp = await client.get(f"/api/v1/rounds/{s.round_a_id}", headers=_auth(s.intruder_id))
+    resp = await client.get(f"/api/v1/mixes/{s.round_a_id}", headers=_auth(s.intruder_id))
     _assert_blocked(resp)
 
 
 async def test_intruder_cannot_patch_round(client, db_session):
     s = await _build(db_session, round_a_state="open_voting")
     resp = await client.patch(
-        f"/api/v1/rounds/{s.round_a_id}",
+        f"/api/v1/mixes/{s.round_a_id}",
         json={"theme": "hijacked"},
         headers=_auth(s.intruder_id),
     )
@@ -228,21 +224,21 @@ async def test_intruder_cannot_patch_round(client, db_session):
 
 async def test_intruder_cannot_get_playlist(client, db_session):
     s = await _build(db_session, round_a_state="open_voting")
-    resp = await client.get(f"/api/v1/rounds/{s.round_a_id}/playlist", headers=_auth(s.intruder_id))
+    resp = await client.get(f"/api/v1/mixes/{s.round_a_id}/playlist", headers=_auth(s.intruder_id))
     _assert_blocked(resp)
 
 
 async def test_intruder_cannot_get_results(client, db_session):
     # Results require a closed round; membership is still checked first.
     s = await _build(db_session, round_a_state="closed")
-    resp = await client.get(f"/api/v1/rounds/{s.round_a_id}/results", headers=_auth(s.intruder_id))
+    resp = await client.get(f"/api/v1/mixes/{s.round_a_id}/results", headers=_auth(s.intruder_id))
     _assert_blocked(resp)
 
 
 async def test_intruder_cannot_submit(client, db_session):
     s = await _build(db_session, round_a_state="open_submission")
     resp = await client.post(
-        f"/api/v1/rounds/{s.round_a_id}/submissions",
+        f"/api/v1/mixes/{s.round_a_id}/submissions",
         json={"isrc": "USABC1234567", "title": "intrusion", "artist": "X"},
         headers=_auth(s.intruder_id),
     )
@@ -252,7 +248,7 @@ async def test_intruder_cannot_submit(client, db_session):
 async def test_intruder_cannot_get_own_submission(client, db_session):
     s = await _build(db_session, round_a_state="open_submission")
     resp = await client.get(
-        f"/api/v1/rounds/{s.round_a_id}/submissions/mine", headers=_auth(s.intruder_id)
+        f"/api/v1/mixes/{s.round_a_id}/submissions/mine", headers=_auth(s.intruder_id)
     )
     _assert_blocked(resp)
 
@@ -261,7 +257,7 @@ async def test_intruder_cannot_list_submissions(client, db_session):
     # Submission list reveals after close; membership is checked first.
     s = await _build(db_session, round_a_state="closed")
     resp = await client.get(
-        f"/api/v1/rounds/{s.round_a_id}/submissions", headers=_auth(s.intruder_id)
+        f"/api/v1/mixes/{s.round_a_id}/submissions", headers=_auth(s.intruder_id)
     )
     _assert_blocked(resp)
 
@@ -269,7 +265,7 @@ async def test_intruder_cannot_list_submissions(client, db_session):
 async def test_intruder_cannot_cast_votes(client, db_session):
     s = await _build(db_session, round_a_state="open_voting")
     resp = await client.post(
-        f"/api/v1/rounds/{s.round_a_id}/votes",
+        f"/api/v1/mixes/{s.round_a_id}/votes",
         json={"submission_ids": [str(s.submission_a_id)]},
         headers=_auth(s.intruder_id),
     )
@@ -279,7 +275,7 @@ async def test_intruder_cannot_cast_votes(client, db_session):
 async def test_intruder_cannot_get_own_votes(client, db_session):
     s = await _build(db_session, round_a_state="open_voting")
     resp = await client.get(
-        f"/api/v1/rounds/{s.round_a_id}/votes/mine", headers=_auth(s.intruder_id)
+        f"/api/v1/mixes/{s.round_a_id}/votes/mine", headers=_auth(s.intruder_id)
     )
     _assert_blocked(resp)
 
@@ -316,6 +312,6 @@ async def test_intruder_cannot_get_notes(client, db_session):
 async def test_genuine_league_a_member_can_read_league(client, db_session, actor):
     s = await _build(db_session, round_a_state="open_voting")
     actor_id = s.organizer_a_id if actor == "organizer" else s.member_a_id
-    resp = await client.get(f"/api/v1/leagues/{s.league_a_id}", headers=_auth(actor_id))
+    resp = await client.get(f"/api/v1/clubs/{s.league_a_id}", headers=_auth(actor_id))
     assert resp.status_code == 200, resp.text
     assert resp.json()["id"] == str(s.league_a_id)

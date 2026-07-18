@@ -7,8 +7,8 @@ import type { Round } from "../services/api";
 function roundWith(overrides: Partial<Round> = {}): Round {
   return {
     id: "r1",
-    league_id: "lg1",
-    round_number: 1,
+    club_id: "lg1",
+    mix_number: 1,
     theme: null,
     state: "open_submission",
     description: null,

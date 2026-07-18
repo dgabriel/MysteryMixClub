@@ -1,6 +1,6 @@
 """Tests for MYS-23: round results endpoint.
 
-``GET /api/v1/rounds/:id/results`` is the read-only reveal that surfaces, once a
+``GET /api/v1/mixes/:id/results`` is the read-only reveal that surfaces, once a
 round is closed: every submission with its submitter revealed and vote tally,
 per-submission notes, a leaderboard of playing players, and the Most Noted
 result (reusing ``compute_most_noted``).
@@ -125,7 +125,7 @@ def _auth(user_id: uuid.UUID) -> dict[str, str]:
 
 
 def _url(round_id) -> str:
-    return f"/api/v1/rounds/{round_id}/results"
+    return f"/api/v1/mixes/{round_id}/results"
 
 
 # --------------------------------------------------------------------------- #
@@ -206,8 +206,8 @@ async def test_results_full_submissions_revealed_and_ordered(client, db_session)
     assert resp.status_code == 200, resp.text
     body = resp.json()
 
-    assert body["round_id"] == str(round_id)
-    assert body["round_number"] == 1
+    assert body["mix_id"] == str(round_id)
+    assert body["mix_number"] == 1
     assert body["theme"] == "late summer feels"
     assert body["state"] == "closed"
 

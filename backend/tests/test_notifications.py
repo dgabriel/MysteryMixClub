@@ -42,8 +42,8 @@ def _auth(user_id: uuid.UUID) -> dict[str, str]:
 
 async def _create_league(client, user_id, *, total_rounds: int = 2):
     resp = await client.post(
-        "/api/v1/leagues",
-        json={"name": "Friday Mixtape", "total_rounds": total_rounds},
+        "/api/v1/clubs",
+        json={"name": "Friday Mixtape", "total_mixes": total_rounds},
         headers=_auth(user_id),
     )
     assert resp.status_code == 201, resp.text
@@ -56,17 +56,17 @@ async def _add_member(db_session, league_id, user) -> None:
 
 
 async def _round_id(client, league_id, user_id, number: int) -> str:
-    resp = await client.get(f"/api/v1/leagues/{league_id}/rounds", headers=_auth(user_id))
+    resp = await client.get(f"/api/v1/clubs/{league_id}/mixes", headers=_auth(user_id))
     assert resp.status_code == 200, resp.text
     for r in resp.json():
-        if r["round_number"] == number:
+        if r["mix_number"] == number:
             return r["id"]
     raise AssertionError(f"round {number} not found")
 
 
 async def _advance(client, round_id, organizer_id, state):
     return await client.patch(
-        f"/api/v1/rounds/{round_id}", json={"state": state}, headers=_auth(organizer_id)
+        f"/api/v1/mixes/{round_id}", json={"state": state}, headers=_auth(organizer_id)
     )
 
 
@@ -116,12 +116,12 @@ async def test_extend_voting_emails_new_deadline(client, db_session, email_spy):
     rid = await _round_id(client, league_id, organizer.id, 1)
     await _advance(client, rid, organizer.id, "open_submission")
     await _advance(client, rid, organizer.id, "open_voting")
-    current = (await client.get(f"/api/v1/rounds/{rid}", headers=_auth(organizer.id))).json()
+    current = (await client.get(f"/api/v1/mixes/{rid}", headers=_auth(organizer.id))).json()
     new_deadline = datetime.fromisoformat(current["voting_deadline"]) + timedelta(hours=4)
 
     email_spy.sends.clear()
     resp = await client.post(
-        f"/api/v1/rounds/{rid}/extend-voting",
+        f"/api/v1/mixes/{rid}/extend-voting",
         json={"voting_deadline": new_deadline.isoformat()},
         headers=_auth(organizer.id),
     )

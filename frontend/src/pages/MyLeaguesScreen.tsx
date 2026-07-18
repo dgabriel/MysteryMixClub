@@ -144,7 +144,7 @@ function LeagueCard({
         <h2 className="mt-1 font-serif text-[20px] leading-tight text-ink">{league.name}</h2>
         <div className="mt-3 flex items-center justify-between">
           <span className="font-mono text-[11px] font-light text-muted">
-            mix {league.current_round} of {league.total_rounds}
+            mix {league.current_mix} of {league.total_mixes}
           </span>
           <Badge>{league.state}</Badge>
         </div>

@@ -24,7 +24,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import Field, StringConstraints
+
+from app.api.wire import WireModel
 from sqlalchemy import delete, exists, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -66,7 +68,7 @@ _NEXT_STATE = {
 _ACTIVE_STATES = ("open_submission", "open_voting")
 
 
-class RoundCreate(BaseModel):
+class RoundCreate(WireModel):
     # Optional: rounds may be created without a theme (filled in while pending).
     theme: RoundTheme | None = None
     description: RoundDescription | None = None
@@ -76,7 +78,7 @@ class RoundCreate(BaseModel):
     votes_per_player: int | None = Field(default=None, ge=1)
 
 
-class RoundUpdate(BaseModel):
+class RoundUpdate(WireModel):
     # All optional: only provided fields are applied. `state` advances the machine.
     # theme is nullable and may be cleared (it maps to a nullable column now).
     theme: RoundTheme | None = None
@@ -86,7 +88,7 @@ class RoundUpdate(BaseModel):
     state: Literal["pending", "open_submission", "open_voting", "closed"] | None = None
 
 
-class RoundResponse(BaseModel):
+class RoundResponse(WireModel):
     id: str
     league_id: str
     round_number: int
@@ -404,7 +406,7 @@ async def voting_quorum_met(round_: Round, db: AsyncSession) -> bool:
     return playing_ids <= voter_ids
 
 
-@router.post("/leagues/{league_id}/rounds", status_code=201, response_model=RoundResponse)
+@router.post("/clubs/{league_id}/mixes", status_code=201, response_model=RoundResponse)
 async def create_round(
     league_id: uuid.UUID,
     payload: RoundCreate,
@@ -465,7 +467,7 @@ async def create_round(
     return _to_response(round_, 0, await _member_count(league_id, db))
 
 
-@router.get("/leagues/{league_id}/rounds", response_model=list[RoundResponse])
+@router.get("/clubs/{league_id}/mixes", response_model=list[RoundResponse])
 async def list_rounds(
     league_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
@@ -531,7 +533,7 @@ async def list_rounds(
     ]
 
 
-@router.get("/rounds/{round_id}", response_model=RoundResponse)
+@router.get("/mixes/{round_id}", response_model=RoundResponse)
 async def get_round(
     round_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
@@ -550,7 +552,7 @@ async def get_round(
     )
 
 
-@router.patch("/rounds/{round_id}", response_model=RoundResponse)
+@router.patch("/mixes/{round_id}", response_model=RoundResponse)
 async def update_round(
     round_id: uuid.UUID,
     payload: RoundUpdate,
@@ -680,11 +682,11 @@ async def update_round(
 _MAX_VOTING_EXTENSION = timedelta(hours=48)
 
 
-class ExtendVotingRequest(BaseModel):
+class ExtendVotingRequest(WireModel):
     voting_deadline: datetime
 
 
-@router.post("/rounds/{round_id}/extend-voting", response_model=RoundResponse)
+@router.post("/mixes/{round_id}/extend-voting", response_model=RoundResponse)
 async def extend_voting_deadline(
     round_id: uuid.UUID,
     payload: ExtendVotingRequest,
@@ -761,7 +763,7 @@ async def extend_voting_deadline(
 # --------------------------------------------------------------------------- #
 
 
-class PlaylistEntry(BaseModel):
+class PlaylistEntry(WireModel):
     submission_id: str
     isrc: str
     title: str
@@ -785,7 +787,7 @@ class PlaylistEntry(BaseModel):
     submitter_note: str | None
 
 
-class PlaylistResponse(BaseModel):
+class PlaylistResponse(WireModel):
     round_id: str
     round_number: int
     # Nullable: a round may not have a theme yet (clients fall back to "Round N").
@@ -817,7 +819,7 @@ def _preferred_url(platforms: dict[str, str], preferred_service: str | None) -> 
     return next(iter(platforms.values()), None)
 
 
-@router.get("/rounds/{round_id}/playlist", response_model=PlaylistResponse)
+@router.get("/mixes/{round_id}/playlist", response_model=PlaylistResponse)
 async def get_round_playlist(
     round_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
@@ -915,18 +917,18 @@ async def get_round_playlist(
 # --------------------------------------------------------------------------- #
 
 
-class ResultNote(BaseModel):
+class ResultNote(WireModel):
     body: str
     author_display_name: str
     created_at: datetime
 
 
-class ResultVoter(BaseModel):
+class ResultVoter(WireModel):
     user_id: str
     display_name: str
 
 
-class ResultSubmission(BaseModel):
+class ResultSubmission(WireModel):
     submission_id: str
     user_id: str
     submitter_display_name: str
@@ -953,14 +955,14 @@ class ResultSubmission(BaseModel):
     voters: list[ResultVoter]
 
 
-class LeaderboardEntry(BaseModel):
+class LeaderboardEntry(WireModel):
     user_id: str
     display_name: str
     vote_count: int
     rank: int
 
 
-class MostNotedWinner(BaseModel):
+class MostNotedWinner(WireModel):
     submission_id: str
     title: str
     artist: str
@@ -968,12 +970,12 @@ class MostNotedWinner(BaseModel):
     notes: list[ResultNote]
 
 
-class MostNotedResult(BaseModel):
+class MostNotedResult(WireModel):
     note_count: int
     winners: list[MostNotedWinner]
 
 
-class WinnerReveal(BaseModel):
+class WinnerReveal(WireModel):
     # The vibe-safe winner shape (MYS-112): the song(s) with the most votes,
     # named but WITHOUT a vote count. Sent to a vibing viewer, who sees who won
     # but no rankings/tallies.
@@ -983,7 +985,7 @@ class WinnerReveal(BaseModel):
     submitter_display_name: str
 
 
-class RevealPick(BaseModel):
+class RevealPick(WireModel):
     # The vibe-safe pick shape (MYS-134): a submitted song with its submitter and
     # notes, but NO vote count — so a vibing viewer can see the tracklist without
     # any scores/rankings leaking.
@@ -997,7 +999,7 @@ class RevealPick(BaseModel):
     notes: list[ResultNote]
 
 
-class ResultsResponse(BaseModel):
+class ResultsResponse(WireModel):
     round_id: str
     round_number: int
     # Nullable: a round may not have a theme yet (clients fall back to "Round N").
@@ -1018,7 +1020,7 @@ class ResultsResponse(BaseModel):
     picks: list[RevealPick] = []
 
 
-@router.get("/rounds/{round_id}/results", response_model=ResultsResponse)
+@router.get("/mixes/{round_id}/results", response_model=ResultsResponse)
 async def get_round_results(
     round_id: uuid.UUID,
     current_user: User = Depends(get_current_user),

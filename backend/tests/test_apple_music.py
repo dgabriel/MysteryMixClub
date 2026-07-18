@@ -241,7 +241,7 @@ def _auth(user_id: uuid.UUID) -> dict[str, str]:
 
 
 def _url(round_id) -> str:
-    return f"/api/v1/rounds/{round_id}/apple-playlist"
+    return f"/api/v1/mixes/{round_id}/apple-playlist"
 
 
 @pytest_asyncio.fixture

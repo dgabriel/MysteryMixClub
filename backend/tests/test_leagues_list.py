@@ -1,4 +1,4 @@
-"""Tests for MYS-34: GET /api/v1/leagues (list leagues for current user).
+"""Tests for MYS-34: GET /api/v1/clubs (list leagues for current user).
 
 TDD-first: written before the endpoint exists on the leagues router, so they
 are expected to FAIL (red) until the developer implements the route. See
@@ -18,7 +18,7 @@ from app.models.league import League
 from app.models.league_member import LeagueMember
 from app.models.user import User
 
-LEAGUES_URL = "/api/v1/leagues"
+LEAGUES_URL = "/api/v1/clubs"
 
 # The full league object key set, matching POST /leagues.
 _LEAGUE_KEYS = {
@@ -26,10 +26,10 @@ _LEAGUE_KEYS = {
     "name",
     "description",
     "organizer_id",
-    "total_rounds",
+    "total_mixes",
     "votes_per_player",
     "songs_per_submission",
-    "current_round",
+    "current_mix",
     "default_vibe_mode",
     "submission_window_hours",
     "voting_window_hours",
@@ -69,9 +69,9 @@ async def _seed_league(db_session, organizer: User, **overrides) -> League:
         "name": "Summer Bangers",
         "description": "A league for hot tracks",
         "organizer_id": organizer.id,
-        "total_rounds": 6,
+        "total_mixes": 6,
         "votes_per_player": 5,
-        "current_round": 0,
+        "current_mix": 0,
         "state": "active",
     }
     defaults.update(overrides)
@@ -89,7 +89,7 @@ async def _seed_member(db_session, league: League, user: User, **overrides) -> L
 
     Accepts column overrides (e.g. joined_at, removed_at).
     """
-    defaults = {"league_id": league.id, "user_id": user.id}
+    defaults = {"club_id": league.id, "user_id": user.id}
     defaults.update(overrides)
     member = LeagueMember(**defaults)
     db_session.add(member)

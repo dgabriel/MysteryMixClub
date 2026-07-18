@@ -21,7 +21,8 @@ replace-in-place pattern.
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
-from pydantic import BaseModel
+
+from app.api.wire import WireModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,18 +43,18 @@ from app.services.notifications import gather_recipients, queue_round_event
 router = APIRouter(tags=["votes"])
 
 
-class VotesCast(BaseModel):
+class VotesCast(WireModel):
     submission_ids: list[uuid.UUID]
 
 
-class VotesResponse(BaseModel):
+class VotesResponse(WireModel):
     round_id: str
     submission_ids: list[str]
     count: int
     votes_per_player: int
 
 
-@router.post("/rounds/{round_id}/votes", response_model=VotesResponse)
+@router.post("/mixes/{round_id}/votes", response_model=VotesResponse)
 async def cast_votes(
     round_id: uuid.UUID,
     payload: VotesCast,
@@ -191,7 +192,7 @@ async def cast_votes(
     )
 
 
-@router.get("/rounds/{round_id}/votes/mine", response_model=VotesResponse)
+@router.get("/mixes/{round_id}/votes/mine", response_model=VotesResponse)
 async def get_my_votes(
     round_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
@@ -215,19 +216,19 @@ async def get_my_votes(
     )
 
 
-class VoteCountEntry(BaseModel):
+class VoteCountEntry(WireModel):
     submission_id: str
     title: str
     artist: str
     vote_count: int
 
 
-class VoteCountsResponse(BaseModel):
+class VoteCountsResponse(WireModel):
     round_id: str
     entries: list[VoteCountEntry]
 
 
-@router.get("/rounds/{round_id}/vote-counts", response_model=VoteCountsResponse)
+@router.get("/mixes/{round_id}/vote-counts", response_model=VoteCountsResponse)
 async def get_vote_counts(
     round_id: uuid.UUID,
     current_user: User = Depends(get_current_user),

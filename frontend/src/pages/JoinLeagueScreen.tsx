@@ -72,10 +72,10 @@ export function JoinLeagueScreen({
             {/* Motif — the screen's single Rust use lives in the off-center ring dot. */}
             <ConcentricRings size={72} accent className="mx-auto" />
 
-            {preview.league_id !== null ? (
+            {preview.club_id !== null ? (
               <>
                 <h1 className="mt-8 font-serif text-[34px] leading-tight text-ink">
-                  {preview.league_name}
+                  {preview.club_name}
                 </h1>
                 <p className="mt-2 font-mono text-[13px] font-light text-muted">
                   {preview.member_count} members
@@ -91,7 +91,7 @@ export function JoinLeagueScreen({
               </h1>
             )}
 
-            {isAuthenticated && preview.league_id !== null ? (
+            {isAuthenticated && preview.club_id !== null ? (
               <div className="mt-10 space-y-6">
                 <Button type="button" onClick={onJoin} disabled={joining} className="w-full">
                   {joining ? "joining…" : "join club"}
@@ -105,7 +105,7 @@ export function JoinLeagueScreen({
             ) : !isAuthenticated ? (
               <div className="mt-10 space-y-6">
                 <p className="font-mono text-[13px] font-light text-muted">
-                  {preview.league_id !== null ? "sign in to join" : "sign in to get started"}
+                  {preview.club_id !== null ? "sign in to join" : "sign in to get started"}
                 </p>
                 <Button type="button" onClick={onSignIn} className="w-full">
                   sign in

@@ -25,10 +25,10 @@ function leagueWith(overrides: Partial<League> = {}): League {
     name: "Friday Mixtape",
     description: null,
     organizer_id: "22222222-2222-2222-2222-222222222222",
-    total_rounds: 6,
+    total_mixes: 6,
     votes_per_player: 3,
     songs_per_submission: 1,
-    current_round: 0,
+    current_mix: 0,
     state: "active",
     created_at: "2026-01-01T00:00:00Z",
     default_vibe_mode: false,
@@ -70,7 +70,7 @@ describe("CreateLeagueRoute", () => {
     expect(mockCreateLeague).toHaveBeenCalledWith(
       expect.objectContaining({
         name: "Friday Mixtape",
-        total_rounds: 6,
+        total_mixes: 6,
         votes_per_player: 3,
         songs_per_submission: 1,
         default_vibe_mode: false,

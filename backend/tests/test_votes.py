@@ -90,7 +90,7 @@ def _auth(user_id: uuid.UUID) -> dict[str, str]:
 
 
 def _votes_url(round_id) -> str:
-    return f"/api/v1/rounds/{round_id}/votes"
+    return f"/api/v1/mixes/{round_id}/votes"
 
 
 # --------------------------------------------------------------------------- #
@@ -454,7 +454,7 @@ async def test_cast_max_votes_happy_path(client, db_session):
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["round_id"] == str(round_id)
+    assert body["mix_id"] == str(round_id)
     assert body["count"] == 3
     assert body["votes_per_player"] == 3
     assert sorted(body["submission_ids"]) == sorted(target_ids)
@@ -558,7 +558,7 @@ async def test_get_mine_returns_cast_votes_ordered(client, db_session):
     resp = await client.get(f"{_votes_url(round_id)}/mine", headers=_auth(voter_id))
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["round_id"] == str(round_id)
+    assert body["mix_id"] == str(round_id)
     assert body["count"] == 2
     assert body["votes_per_player"] == 2
     # Ordered by created_at asc — preserves cast order.
@@ -582,7 +582,7 @@ async def test_get_mine_empty_when_nothing_cast(client, db_session):
 
 
 def _vote_counts_url(round_id) -> str:
-    return f"/api/v1/rounds/{round_id}/vote-counts"
+    return f"/api/v1/mixes/{round_id}/vote-counts"
 
 
 async def test_vote_counts_requires_auth(client, db_session):
@@ -622,7 +622,7 @@ async def test_vote_counts_empty_round(client, db_session):
     resp = await client.get(_vote_counts_url(round_.id), headers=_auth(organizer.id))
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["round_id"] == str(round_.id)
+    assert body["mix_id"] == str(round_.id)
     assert body["entries"] == []
 
 
@@ -666,7 +666,7 @@ async def test_vote_counts_shows_counts(client, db_session):
     resp = await client.get(_vote_counts_url(round_id), headers=_auth(voter_id))
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["round_id"] == str(round_id)
+    assert body["mix_id"] == str(round_id)
     # 3 entries: organizer song (0 votes), A (1 vote), B (2 votes)
     assert len(body["entries"]) == 3
 
@@ -722,7 +722,7 @@ async def test_vote_counts_honors_vote_limit(client, db_session):
 
 
 def _round_url(round_id) -> str:
-    return f"/api/v1/rounds/{round_id}"
+    return f"/api/v1/mixes/{round_id}"
 
 
 async def test_cast_after_organizer_rollback_rejected_and_not_persisted(client, db_session):

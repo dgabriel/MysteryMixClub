@@ -1,4 +1,4 @@
-"""Tests for MYS-13 + MYS-126: POST/DELETE /api/v1/leagues/{id}/invites.
+"""Tests for MYS-13 + MYS-126: POST/DELETE /api/v1/clubs/{id}/invites.
 
 A v2 invite is a single anonymous shareable link with a 48h expiry (MYS-126).
 Covers auth (401), missing league (404), non-member rejection (403), happy-path
@@ -21,7 +21,7 @@ from app.models.user import User
 # The exact key set the invite-create response must return.
 _INVITE_KEYS = {
     "id",
-    "league_id",
+    "club_id",
     "token",
     "created_by",
     "created_at",
@@ -59,9 +59,9 @@ async def _seed_league(db_session, organizer: User, **overrides) -> League:
         "name": "Summer Bangers",
         "description": "A league for hot tracks",
         "organizer_id": organizer.id,
-        "total_rounds": 6,
+        "total_mixes": 6,
         "votes_per_player": 5,
-        "current_round": 0,
+        "current_mix": 0,
         "state": "active",
     }
     defaults.update(overrides)
@@ -76,7 +76,7 @@ async def _seed_league(db_session, organizer: User, **overrides) -> League:
 
 async def _seed_member(db_session, league: League, user: User, **overrides) -> LeagueMember:
     """Insert and commit a LeagueMember row, returning it."""
-    defaults = {"league_id": league.id, "user_id": user.id}
+    defaults = {"club_id": league.id, "user_id": user.id}
     defaults.update(overrides)
     member = LeagueMember(**defaults)
     db_session.add(member)
@@ -90,7 +90,7 @@ def _auth_header(user_id: uuid.UUID) -> dict[str, str]:
 
 
 def _invites_url(league_id) -> str:
-    return f"/api/v1/leagues/{league_id}/invites"
+    return f"/api/v1/clubs/{league_id}/invites"
 
 
 # --------------------------------------------------------------------------- #
@@ -163,7 +163,7 @@ async def test_organizer_creates_invite_returns_201_and_shape(client, db_session
     assert resp.status_code == 201, resp.text
     data = resp.json()
     assert set(data.keys()) == _INVITE_KEYS
-    assert data["league_id"] == str(league.id)
+    assert data["club_id"] == str(league.id)
     assert data["created_by"] == str(organizer.id)
     # v2 (MYS-126): a shareable link now carries a 48h expiry.
     assert data["expires_at"] is not None
@@ -259,12 +259,12 @@ async def test_invite_expires_at_is_about_48h_from_creation(client, db_session):
 
 
 def _revoke_url(league_id, invite_id) -> str:
-    return f"/api/v1/leagues/{league_id}/invites/{invite_id}"
+    return f"/api/v1/clubs/{league_id}/invites/{invite_id}"
 
 
 async def _seed_invite(db_session, league: League, creator: User, **overrides) -> Invite:
     defaults = {
-        "league_id": league.id,
+        "club_id": league.id,
         "created_by": creator.id,
         "token": "tok_" + uuid.uuid4().hex,
         "expires_at": datetime.now(timezone.utc) + timedelta(hours=48),

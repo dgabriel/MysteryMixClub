@@ -1,4 +1,4 @@
-"""Tests for GET /api/v1/leagues/{league_id}/leaderboard (MYS-157).
+"""Tests for GET /api/v1/clubs/{league_id}/leaderboard (MYS-157).
 
 Covers: auth (401), not-found (404), non-member (403), happy-path ranking,
 tie-breaking, 0-vote members, exclusion of open-round votes, and exclusion of
@@ -85,7 +85,7 @@ def _auth(user_id: uuid.UUID) -> dict[str, str]:
 
 
 def _url(league_id) -> str:
-    return f"/api/v1/leagues/{league_id}/leaderboard"
+    return f"/api/v1/clubs/{league_id}/leaderboard"
 
 
 # --------------------------------------------------------------------------- #

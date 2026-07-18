@@ -27,7 +27,7 @@ from app.auth.jwt import create_access_token
 from app.models.league import League
 from app.models.user import User
 
-LEAGUES_URL = "/api/v1/leagues"
+LEAGUES_URL = "/api/v1/clubs"
 
 # Tolerance for "deadline is about now + N hours": the server stamps with its own
 # datetime.now, the test computes its expected with a slightly later one, so a
@@ -55,7 +55,7 @@ def _auth(user_id: uuid.UUID) -> dict[str, str]:
 
 async def _create_league(client, user_id: uuid.UUID, **overrides) -> dict:
     """Create a league via the API so its pending round slate auto-generates."""
-    body = {"name": "Deadline League", "total_rounds": 3, "votes_per_player": 3}
+    body = {"name": "Deadline League", "total_mixes": 3, "votes_per_player": 3}
     body.update(overrides)
     resp = await client.post(LEAGUES_URL, headers=_auth(user_id), json=body)
     assert resp.status_code == 201, resp.text
@@ -63,17 +63,17 @@ async def _create_league(client, user_id: uuid.UUID, **overrides) -> dict:
 
 
 async def _rounds(client, league_id, user_id) -> list[dict]:
-    resp = await client.get(f"{LEAGUES_URL}/{league_id}/rounds", headers=_auth(user_id))
+    resp = await client.get(f"{LEAGUES_URL}/{league_id}/mixes", headers=_auth(user_id))
     assert resp.status_code == 200, resp.text
     return resp.json()
 
 
 async def _round_by_number(client, league_id, user_id, number: int) -> dict:
-    return next(r for r in await _rounds(client, league_id, user_id) if r["round_number"] == number)
+    return next(r for r in await _rounds(client, league_id, user_id) if r["mix_number"] == number)
 
 
 async def _patch_round(client, round_id, user_id, **body) -> dict:
-    resp = await client.patch(f"/api/v1/rounds/{round_id}", json=body, headers=_auth(user_id))
+    resp = await client.patch(f"/api/v1/mixes/{round_id}", json=body, headers=_auth(user_id))
     assert resp.status_code == 200, resp.text
     return resp.json()
 

@@ -1,4 +1,4 @@
-"""Tests for DELETE /api/v1/leagues/{league_id}/members/{user_id}.
+"""Tests for DELETE /api/v1/clubs/{league_id}/members/{user_id}.
 
 Covers the organizer-remove path (MYS-14) and the self-leave path (MYS-97):
 auth (401), not-found (404), organizer-only authorization (403),
@@ -45,9 +45,9 @@ async def _seed_league(db_session, organizer: User, **overrides) -> League:
         "name": "Summer Bangers",
         "description": "A league for hot tracks",
         "organizer_id": organizer.id,
-        "total_rounds": 6,
+        "total_mixes": 6,
         "votes_per_player": 5,
-        "current_round": 0,
+        "current_mix": 0,
         "state": "active",
     }
     defaults.update(overrides)
@@ -62,7 +62,7 @@ async def _seed_league(db_session, organizer: User, **overrides) -> League:
 
 async def _seed_member(db_session, league: League, user: User, **overrides) -> LeagueMember:
     """Insert and commit a LeagueMember row, returning it."""
-    defaults = {"league_id": league.id, "user_id": user.id}
+    defaults = {"club_id": league.id, "user_id": user.id}
     defaults.update(overrides)
     member = LeagueMember(**defaults)
     db_session.add(member)
@@ -76,11 +76,11 @@ def _auth_header(user_id: uuid.UUID) -> dict[str, str]:
 
 
 def _remove_url(league_id, user_id) -> str:
-    return f"/api/v1/leagues/{league_id}/members/{user_id}"
+    return f"/api/v1/clubs/{league_id}/members/{user_id}"
 
 
 def _invites_url(league_id) -> str:
-    return f"/api/v1/leagues/{league_id}/invites"
+    return f"/api/v1/clubs/{league_id}/invites"
 
 
 # ========================================================================== #

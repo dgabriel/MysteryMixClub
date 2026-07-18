@@ -1,4 +1,4 @@
-"""Tests for MYS-12: POST /api/v1/leagues (create league).
+"""Tests for MYS-12: POST /api/v1/clubs (create league).
 
 TDD-first: these are written before the endpoint and the League /
 LeagueMember models exist, so they are expected to FAIL (red) until the
@@ -19,7 +19,7 @@ from app.models.league import League
 from app.models.league_member import LeagueMember
 from app.models.user import User
 
-LEAGUES_URL = "/api/v1/leagues"
+LEAGUES_URL = "/api/v1/clubs"
 
 # The exact key set the create response must return.
 _LEAGUE_KEYS = {
@@ -27,10 +27,10 @@ _LEAGUE_KEYS = {
     "name",
     "description",
     "organizer_id",
-    "total_rounds",
+    "total_mixes",
     "votes_per_player",
     "songs_per_submission",
-    "current_round",
+    "current_mix",
     "default_vibe_mode",
     "submission_window_hours",
     "voting_window_hours",
@@ -68,7 +68,7 @@ def _valid_body(**overrides) -> dict:
     body = {
         "name": "Summer Bangers",
         "description": "A league for hot tracks",
-        "total_rounds": 6,
+        "total_mixes": 6,
         "votes_per_player": 5,
     }
     body.update(overrides)
@@ -109,11 +109,11 @@ async def test_create_returns_201_and_full_league_shape(client, db_session):
     # Echoes input.
     assert data["name"] == "Summer Bangers"
     assert data["description"] == "A league for hot tracks"
-    assert data["total_rounds"] == 6
+    assert data["total_mixes"] == 6
     assert data["votes_per_player"] == 5
     # Server-set fields.
     assert data["organizer_id"] == str(user.id)
-    assert data["current_round"] == 0
+    assert data["current_mix"] == 0
     assert data["state"] == "active"
     assert data["completed_at"] is None
     # id is a valid UUID string.
@@ -272,19 +272,19 @@ async def test_missing_total_rounds_defaults_to_6(client, db_session):
     # 201 with six auto-generated pending rounds.
     user = await _seed_user(db_session)
     body = _valid_body()
-    body.pop("total_rounds")
+    body.pop("total_mixes")
 
     resp = await client.post(LEAGUES_URL, headers=_auth_header(user.id), json=body)
 
     assert resp.status_code == 201, resp.text
-    assert resp.json()["total_rounds"] == 6
+    assert resp.json()["total_mixes"] == 6
 
 
 async def test_total_rounds_below_one_returns_422(client, db_session):
     user = await _seed_user(db_session)
 
     resp = await client.post(
-        LEAGUES_URL, headers=_auth_header(user.id), json=_valid_body(total_rounds=0)
+        LEAGUES_URL, headers=_auth_header(user.id), json=_valid_body(**{"total_mixes": 0})
     )
 
     assert resp.status_code == 422, resp.text

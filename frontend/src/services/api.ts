@@ -287,18 +287,18 @@ export async function exportMyData(): Promise<Record<string, unknown>> {
   return (await res.json()) as Record<string, unknown>;
 }
 
-/** A league as returned by the backend (GET/POST /api/v1/leagues). */
+/** A league as returned by the backend (GET/POST /api/v1/clubs). */
 export type League = {
   id: string;
   name: string;
   description: string | null;
   organizer_id: string;
-  total_rounds: number;
+  total_mixes: number;
   votes_per_player: number;
   /** How many songs a player may submit per round (MYS-116). Fixed at league
    *  setup; 1 = classic one-song behaviour, max 5. */
   songs_per_submission: number;
-  current_round: number;
+  current_mix: number;
   state: string;
   /** Admin-set default participation mode for the league (MYS-112). A member's
    *  own setting lives on their membership (getMyMembership), not here. */
@@ -315,12 +315,12 @@ export type League = {
  *  /leagues/:id/membership). Vibing is private — this is only ever the caller's
  *  own setting, never another member's. */
 export type Membership = {
-  league_id: string;
+  club_id: string;
   user_id: string;
   vibe_mode: boolean;
 };
 
-/** A member of a league (GET /api/v1/leagues/:id/members). `is_admin` is true
+/** A member of a league (GET /api/v1/clubs/:id/members). `is_admin` is true
  *  for the fixed organizer or anyone holding the co-organizer `"admin"` role
  *  (MYS-99). */
 export type LeagueMember = {
@@ -331,12 +331,12 @@ export type LeagueMember = {
   is_admin: boolean;
 };
 
-/** An invite (POST /api/v1/leagues/:id/invites, or POST /api/v1/admin/invites
- *  for a platform invite). ``league_id`` is null for a platform invite
+/** An invite (POST /api/v1/clubs/:id/invites, or POST /api/v1/admin/invites
+ *  for a platform invite). ``club_id`` is null for a platform invite
  *  (MYS-182): grants signup only, no league attachment. */
 export type Invite = {
   id: string;
-  league_id: string | null;
+  club_id: string | null;
   token: string;
   created_by: string;
   created_at: string;
@@ -344,11 +344,11 @@ export type Invite = {
 };
 
 /** Public preview of an invite shown before joining (GET /api/v1/invites/:token).
- *  ``league_id``/``league_name``/``member_count`` are null for a platform
+ *  ``club_id``/``club_name``/``member_count`` are null for a platform
  *  invite (MYS-182) — there's no league to preview, just a signup grant. */
 export type InvitePreview = {
-  league_id: string | null;
-  league_name: string | null;
+  club_id: string | null;
+  club_name: string | null;
   member_count: number | null;
   /** True when the viewer is already an active member of this league — the
    *  caller should redirect straight in rather than showing the join screen,
@@ -361,7 +361,7 @@ export type InvitePreview = {
  *  fields are serialized; JSON.stringify drops undefined optional keys. */
 export async function createLeague(input: {
   name: string;
-  total_rounds: number;
+  total_mixes: number;
   votes_per_player?: number;
   songs_per_submission?: number;
   description?: string;
@@ -369,7 +369,7 @@ export async function createLeague(input: {
   submission_window_hours?: number;
   voting_window_hours?: number;
 }): Promise<League> {
-  const res = await authenticatedRequest("/api/v1/leagues", {
+  const res = await authenticatedRequest("/api/v1/clubs", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -382,7 +382,7 @@ export async function createLeague(input: {
 
 /** Get all leagues for the current user. */
 export async function getLeagues(): Promise<League[]> {
-  const res = await authenticatedRequest("/api/v1/leagues");
+  const res = await authenticatedRequest("/api/v1/clubs");
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
@@ -391,7 +391,7 @@ export async function getLeagues(): Promise<League[]> {
 
 /** Get a single league by id. */
 export async function getLeague(id: string): Promise<League> {
-  const res = await authenticatedRequest(`/api/v1/leagues/${id}`);
+  const res = await authenticatedRequest(`/api/v1/clubs/${id}`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
@@ -400,7 +400,7 @@ export async function getLeague(id: string): Promise<League> {
 
 /** Get the members of a league. */
 export async function getLeagueMembers(id: string): Promise<LeagueMember[]> {
-  const res = await authenticatedRequest(`/api/v1/leagues/${id}/members`);
+  const res = await authenticatedRequest(`/api/v1/clubs/${id}/members`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
@@ -410,7 +410,7 @@ export async function getLeagueMembers(id: string): Promise<LeagueMember[]> {
 /** All-time vote leaderboard for a league (MYS-157): ranked members by total
  *  votes received across all closed rounds, with 0-vote members included. */
 export async function getLeagueLeaderboard(id: string): Promise<LeaderboardEntry[]> {
-  const res = await authenticatedRequest(`/api/v1/leagues/${id}/leaderboard`);
+  const res = await authenticatedRequest(`/api/v1/clubs/${id}/leaderboard`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
@@ -424,13 +424,13 @@ export async function updateLeague(
   input: {
     name?: string;
     description?: string | null;
-    total_rounds?: number;
+    total_mixes?: number;
     default_vibe_mode?: boolean;
     submission_window_hours?: number;
     voting_window_hours?: number;
   },
 ): Promise<League> {
-  const res = await authenticatedRequest(`/api/v1/leagues/${id}`, {
+  const res = await authenticatedRequest(`/api/v1/clubs/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -443,7 +443,7 @@ export async function updateLeague(
 
 /** Get the caller's own per-league participation (vibe) setting. */
 export async function getMyMembership(leagueId: string): Promise<Membership> {
-  const res = await authenticatedRequest(`/api/v1/leagues/${leagueId}/membership`);
+  const res = await authenticatedRequest(`/api/v1/clubs/${leagueId}/membership`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
@@ -452,7 +452,7 @@ export async function getMyMembership(leagueId: string): Promise<Membership> {
 
 /** Remove a member from a league (organizer only). Resolves on 204. */
 export async function removeMember(leagueId: string, userId: string): Promise<void> {
-  const res = await authenticatedRequest(`/api/v1/leagues/${leagueId}/members/${userId}`, {
+  const res = await authenticatedRequest(`/api/v1/clubs/${leagueId}/members/${userId}`, {
     method: "DELETE",
   });
   if (!res.ok) {
@@ -469,7 +469,7 @@ export async function updateMemberRole(
   userId: string,
   role: "admin" | "member",
 ): Promise<LeagueMember> {
-  const res = await authenticatedRequest(`/api/v1/leagues/${leagueId}/members/${userId}/role`, {
+  const res = await authenticatedRequest(`/api/v1/clubs/${leagueId}/members/${userId}/role`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ role }),
@@ -482,7 +482,7 @@ export async function updateMemberRole(
 
 /** Generate an invite link for a league (organizer or member). Returns the Invite. */
 export async function createInvite(leagueId: string): Promise<Invite> {
-  const res = await authenticatedRequest(`/api/v1/leagues/${leagueId}/invites`, {
+  const res = await authenticatedRequest(`/api/v1/clubs/${leagueId}/invites`, {
     method: "POST",
   });
   if (!res.ok) {
@@ -495,7 +495,7 @@ export async function createInvite(leagueId: string): Promise<Invite> {
  *  when the league is in progress; the calm detail message ("cannot delete a
  *  league that is in progress") is surfaced on the thrown ApiError. */
 export async function deleteLeague(leagueId: string): Promise<void> {
-  const res = await authenticatedRequest(`/api/v1/leagues/${leagueId}`, {
+  const res = await authenticatedRequest(`/api/v1/clubs/${leagueId}`, {
     method: "DELETE",
   });
   if (!res.ok) {
@@ -614,8 +614,8 @@ export type RoundState = "pending" | "open_submission" | "open_voting" | "closed
  *  (rounds are auto-created as `pending` with no theme at league creation). */
 export type Round = {
   id: string;
-  league_id: string;
-  round_number: number;
+  club_id: string;
+  mix_number: number;
   theme: string | null;
   state: RoundState;
   description: string | null;
@@ -641,7 +641,7 @@ export type Round = {
 /** A song submitted to a round (GET .../submissions, .../submissions/mine). */
 export type SubmissionResult = {
   id: string;
-  round_id: string;
+  mix_id: string;
   user_id: string;
   isrc: string;
   title: string;
@@ -678,8 +678,8 @@ export type PlaylistEntry = {
  *  null when no track resolved to YouTube; `youtube_track_count` is how many
  *  tracks made it into that link (0 when null). */
 export type Playlist = {
-  round_id: string;
-  round_number: number;
+  mix_id: string;
+  mix_number: number;
   theme: string | null;
   state: RoundState;
   entries: PlaylistEntry[];
@@ -704,7 +704,7 @@ export async function createRound(
     voting_deadline?: string | null;
   },
 ): Promise<Round> {
-  const res = await authenticatedRequest(`/api/v1/leagues/${leagueId}/rounds`, {
+  const res = await authenticatedRequest(`/api/v1/clubs/${leagueId}/mixes`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -717,7 +717,7 @@ export async function createRound(
 
 /** Get all rounds for a league (members). */
 export async function getRounds(leagueId: string): Promise<Round[]> {
-  const res = await authenticatedRequest(`/api/v1/leagues/${leagueId}/rounds`);
+  const res = await authenticatedRequest(`/api/v1/clubs/${leagueId}/mixes`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
@@ -726,7 +726,7 @@ export async function getRounds(leagueId: string): Promise<Round[]> {
 
 /** Get a single round (members). */
 export async function getRound(roundId: string): Promise<Round> {
-  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}`);
+  const res = await authenticatedRequest(`/api/v1/mixes/${roundId}`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
@@ -744,7 +744,7 @@ export async function updateRound(
     voting_deadline?: string | null;
   },
 ): Promise<Round> {
-  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}`, {
+  const res = await authenticatedRequest(`/api/v1/mixes/${roundId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -762,7 +762,7 @@ export async function extendVotingDeadline(
   roundId: string,
   votingDeadline: string,
 ): Promise<Round> {
-  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/extend-voting`, {
+  const res = await authenticatedRequest(`/api/v1/mixes/${roundId}/extend-voting`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ voting_deadline: votingDeadline }),
@@ -792,7 +792,7 @@ export async function submitSong(
   roundId: string,
   input: SubmissionInput,
 ): Promise<SubmissionResult> {
-  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/submissions`, {
+  const res = await authenticatedRequest(`/api/v1/mixes/${roundId}/submissions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -810,7 +810,7 @@ export async function editSubmission(
   submissionId: string,
   input: SubmissionInput,
 ): Promise<SubmissionResult> {
-  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/submissions/${submissionId}`, {
+  const res = await authenticatedRequest(`/api/v1/mixes/${roundId}/submissions/${submissionId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -829,7 +829,7 @@ export async function updateSubmissionNote(
   note: string | null,
 ): Promise<SubmissionResult> {
   const res = await authenticatedRequest(
-    `/api/v1/rounds/${roundId}/submissions/${submissionId}/note`,
+    `/api/v1/mixes/${roundId}/submissions/${submissionId}/note`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -844,7 +844,7 @@ export async function updateSubmissionNote(
 
 /** Remove one of your songs from a round (MYS-116). Resolves on 204. */
 export async function deleteSubmission(roundId: string, submissionId: string): Promise<void> {
-  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/submissions/${submissionId}`, {
+  const res = await authenticatedRequest(`/api/v1/mixes/${roundId}/submissions/${submissionId}`, {
     method: "DELETE",
   });
   if (!res.ok) {
@@ -855,7 +855,7 @@ export async function deleteSubmission(roundId: string, submissionId: string): P
 /** Get your songs for a round (MYS-116) — a list of up to the league's cap,
  *  oldest first. Empty when you haven't submitted yet. */
 export async function getMySubmissions(roundId: string): Promise<SubmissionResult[]> {
-  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/submissions/mine`);
+  const res = await authenticatedRequest(`/api/v1/mixes/${roundId}/submissions/mine`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
@@ -864,7 +864,7 @@ export async function getMySubmissions(roundId: string): Promise<SubmissionResul
 
 /** Get a round's anonymous voting playlist (available once voting opens). */
 export async function getPlaylist(roundId: string): Promise<Playlist> {
-  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/playlist`);
+  const res = await authenticatedRequest(`/api/v1/mixes/${roundId}/playlist`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
@@ -915,7 +915,7 @@ export async function connectSpotify(returnTo?: string): Promise<{ authorize_url
 export async function getSpotifyPlaylistLink(
   roundId: string,
 ): Promise<{ playlist_url: string | null }> {
-  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/spotify-playlist`);
+  const res = await authenticatedRequest(`/api/v1/mixes/${roundId}/spotify-playlist`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
@@ -949,7 +949,7 @@ export async function getAppleDeveloperToken(): Promise<{ token: string | null }
 export async function getApplePlaylistLink(
   roundId: string,
 ): Promise<{ playlist_url: string | null; playlist_name: string | null }> {
-  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/apple-playlist`);
+  const res = await authenticatedRequest(`/api/v1/mixes/${roundId}/apple-playlist`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
@@ -967,7 +967,7 @@ export async function createApplePlaylist(
   // the opposite, so negate it. Lets a rebuilt playlist's "[revised on HH:MM]"
   // read in the member's own clock rather than UTC.
   const tzOffsetMinutes = -new Date().getTimezoneOffset();
-  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/apple-playlist`, {
+  const res = await authenticatedRequest(`/api/v1/mixes/${roundId}/apple-playlist`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -983,7 +983,7 @@ export async function createApplePlaylist(
 
 /** Get all submissions for a round (revealed only after it closes). */
 export async function getRoundSubmissions(roundId: string): Promise<SubmissionResult[]> {
-  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/submissions`);
+  const res = await authenticatedRequest(`/api/v1/mixes/${roundId}/submissions`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
@@ -1080,8 +1080,8 @@ export type RevealPick = {
  *  no vote counts or rankings leak. `picks` is the unscored tracklist a viber
  *  sees (MYS-134). `most_noted.winners` is empty when the round drew no notes. */
 export type RoundResults = {
-  round_id: string;
-  round_number: number;
+  mix_id: string;
+  mix_number: number;
   theme: string | null;
   state: RoundState;
   viewer_is_vibing: boolean;
@@ -1095,7 +1095,7 @@ export type RoundResults = {
 /** Get a closed round's reveal results. Backend returns 409 while the round is
  *  still open, surfaced here as an ApiError. */
 export async function getResults(roundId: string): Promise<RoundResults> {
-  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/results`);
+  const res = await authenticatedRequest(`/api/v1/mixes/${roundId}/results`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
@@ -1109,7 +1109,7 @@ export async function getResults(roundId: string): Promise<RoundResults> {
 /** The caller's votes for a round (POST/GET .../votes). `submission_ids` is the
  *  full set the caller has cast; `count` mirrors its length. */
 export type Votes = {
-  round_id: string;
+  mix_id: string;
   submission_ids: string[];
   count: number;
   votes_per_player: number;
@@ -1128,14 +1128,14 @@ export type VoteCountEntry = {
  *  tally during voting. The caller can see how many votes each song has, but
  *  notes remain hidden until the round closes. */
 export type VoteCounts = {
-  round_id: string;
+  mix_id: string;
   entries: VoteCountEntry[];
 };
 
 /** Replace the caller's votes for a round with `submissionIds` (idempotent).
  *  Round must be open_voting. Backend rejects an empty set (409). */
 export async function castVotes(roundId: string, submissionIds: string[]): Promise<Votes> {
-  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/votes`, {
+  const res = await authenticatedRequest(`/api/v1/mixes/${roundId}/votes`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ submission_ids: submissionIds }),
@@ -1148,7 +1148,7 @@ export async function castVotes(roundId: string, submissionIds: string[]): Promi
 
 /** Get the caller's current votes for a round (empty when nothing is cast). */
 export async function getMyVotes(roundId: string): Promise<Votes> {
-  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/votes/mine`);
+  const res = await authenticatedRequest(`/api/v1/mixes/${roundId}/votes/mine`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
@@ -1158,7 +1158,7 @@ export async function getMyVotes(roundId: string): Promise<Votes> {
 /** Get vote counts for all songs in a round. Shows running tally during voting
  *  without revealing notes (notes appear only after round closes). */
 export async function getVoteCounts(roundId: string): Promise<VoteCounts> {
-  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/vote-counts`);
+  const res = await authenticatedRequest(`/api/v1/mixes/${roundId}/vote-counts`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
@@ -1174,7 +1174,7 @@ export async function getVoteCounts(roundId: string): Promise<VoteCounts> {
 export type Note = {
   id: string;
   submission_id: string;
-  round_id: string;
+  mix_id: string;
   author_id: string;
   author_display_name: string;
   body: string;

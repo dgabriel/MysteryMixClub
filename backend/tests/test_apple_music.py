@@ -1,0 +1,435 @@
+"""Apple Music client + route tests (MYS-108).
+
+HTTP is mocked via httpx.MockTransport — nothing touches Apple. Covers the
+client's catalog resolution and create-then-add, and the three routes:
+developer token, read the caller's playlist, generate it.
+
+Per-player is the whole point here (MYS-107): playlists are keyed by
+(round, user), so one member must never see another's link.
+"""
+
+import json
+import uuid
+from collections.abc import AsyncGenerator
+
+import httpx
+import pytest
+import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
+
+from app.auth.jwt import create_access_token
+from app.db.session import get_db
+from app.main import create_app
+from app.models.apple_round_playlist import AppleRoundPlaylist
+from app.models.league import League
+from app.models.league_member import LeagueMember
+from app.models.round import Round
+from app.models.submission import Submission
+from app.models.user import User
+from app.services.apple_music_client import (
+    AppleMusicApiError,
+    AppleMusicAuthError,
+    AppleMusicClient,
+    get_apple_music_client,
+    library_playlist_url,
+)
+
+CATALOG_HOST = "api.music.apple.com"
+
+
+# --------------------------------------------------------------------------- #
+# Fakes
+# --------------------------------------------------------------------------- #
+
+
+class _FakeTokenService:
+    def __init__(self, configured: bool = True):
+        self._configured = configured
+
+    @property
+    def is_configured(self) -> bool:
+        return self._configured
+
+    async def get_developer_token(self) -> str:
+        return "dev-token"
+
+
+def _song(song_id: str, name: str, artist: str = "Radiohead"):
+    return {"id": song_id, "attributes": {"name": name, "artistName": artist}}
+
+
+class _Dispatch:
+    """Routes Apple API paths to canned responses and records every request."""
+
+    def __init__(self, *, catalog=None, create=None, add=None, storefront=None):
+        self.catalog = catalog
+        self.create = create
+        self.add = add
+        self.storefront = storefront
+        self.calls: list[httpx.Request] = []
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        self.calls.append(request)
+        path = request.url.path
+        if path.endswith("/me/storefront"):
+            return self.storefront or httpx.Response(200, json={"data": [{"id": "us"}]})
+        if "/catalog/" in path and path.endswith("/songs"):
+            return self.catalog or httpx.Response(200, json={"data": []})
+        if path.endswith("/tracks"):
+            return self.add or httpx.Response(201, json={})
+        if path.endswith("/me/library/playlists"):
+            return self.create or httpx.Response(201, json={"data": [{"id": "p.NEW"}]})
+        return httpx.Response(404)
+
+    def paths(self) -> list[str]:
+        return [c.url.path for c in self.calls]
+
+
+def _client(dispatch, *, configured=True, storefront="us") -> AppleMusicClient:
+    return AppleMusicClient(
+        _FakeTokenService(configured),
+        client_factory=lambda: httpx.AsyncClient(
+            transport=httpx.MockTransport(dispatch), timeout=5.0
+        ),
+        storefront=storefront,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Client — catalog resolution
+# --------------------------------------------------------------------------- #
+
+
+async def test_catalog_song_id_for_isrc_returns_id():
+    d = _Dispatch(catalog=httpx.Response(200, json={"data": [_song("123", "Creep")]}))
+    assert await _client(d).catalog_song_id_for_isrc("GBAYE9200070", "Creep", "Radiohead") == "123"
+
+
+async def test_catalog_song_id_scores_multiple_results():
+    """One ISRC → several songs is the norm; pick by title/artist, not order."""
+    d = _Dispatch(
+        catalog=httpx.Response(
+            200, json={"data": [_song("wrong", "Creep (Live)"), _song("right", "Creep")]}
+        )
+    )
+    assert await _client(d).catalog_song_id_for_isrc("I1", "Creep", "Radiohead") == "right"
+
+
+async def test_catalog_song_id_uses_configured_storefront():
+    d = _Dispatch(catalog=httpx.Response(200, json={"data": [_song("1", "x")]}))
+    await _client(d, storefront="gb").catalog_song_id_for_isrc("I1", "x", "y")
+    assert "/v1/catalog/gb/songs" in d.paths()
+
+
+async def test_catalog_song_id_none_on_empty_or_error():
+    assert await _client(_Dispatch()).catalog_song_id_for_isrc("I1", "x", "y") is None
+    d = _Dispatch(catalog=httpx.Response(500))
+    assert await _client(d).catalog_song_id_for_isrc("I1", "x", "y") is None
+
+
+async def test_storefront_for_user_reads_apple_then_falls_back():
+    d = _Dispatch(storefront=httpx.Response(200, json={"data": [{"id": "gb"}]}))
+    assert await _client(d).storefront_for_user("mut") == "gb"
+    bad = _Dispatch(storefront=httpx.Response(500))
+    assert await _client(bad).storefront_for_user("mut") == "us"
+
+
+# --------------------------------------------------------------------------- #
+# Client — playlist creation
+# --------------------------------------------------------------------------- #
+
+
+async def test_create_library_playlist_sends_both_tokens():
+    d = _Dispatch()
+    await _client(d).create_library_playlist("mut-abc", "Name", "Desc", ["1"])
+    create = next(c for c in d.calls if c.url.path.endswith("/me/library/playlists"))
+    assert create.headers["Authorization"] == "Bearer dev-token"
+    assert create.headers["Music-User-Token"] == "mut-abc"
+
+
+async def test_create_library_playlist_returns_id():
+    d = _Dispatch(create=httpx.Response(201, json={"data": [{"id": "p.XYZ"}]}))
+    assert await _client(d).create_library_playlist("m", "N", "D", ["1"]) == "p.XYZ"
+
+
+async def test_create_library_playlist_chunks_beyond_100_tracks():
+    """Apple caps tracks per request; the remainder must be appended, not dropped."""
+    d = _Dispatch()
+    await _client(d).create_library_playlist("m", "N", "D", [str(i) for i in range(250)])
+
+    create = next(c for c in d.calls if c.url.path.endswith("/me/library/playlists"))
+    sent_with_create = json.loads(create.read())["relationships"]["tracks"]["data"]
+    adds = [c for c in d.calls if c.url.path.endswith("/tracks")]
+    appended = [tid for c in adds for tid in json.loads(c.read())["data"]]
+
+    assert len(sent_with_create) == 100
+    assert len(appended) == 150
+    # Every track lands exactly once, in order — the add endpoint can't reorder.
+    all_ids = [t["id"] for t in sent_with_create] + [t["id"] for t in appended]
+    assert all_ids == [str(i) for i in range(250)]
+
+
+async def test_create_library_playlist_auth_error_on_401():
+    d = _Dispatch(create=httpx.Response(401, json={}))
+    with pytest.raises(AppleMusicAuthError):
+        await _client(d).create_library_playlist("m", "N", "D", ["1"])
+
+
+async def test_create_library_playlist_api_error_on_500():
+    d = _Dispatch(create=httpx.Response(500, json={}))
+    with pytest.raises(AppleMusicApiError):
+        await _client(d).create_library_playlist("m", "N", "D", ["1"])
+
+
+async def test_create_library_playlist_api_error_on_unreadable_body():
+    d = _Dispatch(create=httpx.Response(201, json={"data": []}))
+    with pytest.raises(AppleMusicApiError):
+        await _client(d).create_library_playlist("m", "N", "D", ["1"])
+
+
+def test_library_playlist_url_is_the_personal_link():
+    assert library_playlist_url("p.AB") == "https://music.apple.com/library/playlist/p.AB"
+
+
+# --------------------------------------------------------------------------- #
+# Route fixtures
+# --------------------------------------------------------------------------- #
+
+
+async def _seed_user(db_session, email: str) -> User:
+    user = User(email=email, display_name="U")
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    return user
+
+
+async def _seed_round(db_session, organizer: User) -> Round:
+    league = League(name="L", organizer_id=organizer.id, total_rounds=3, votes_per_player=3)
+    db_session.add(league)
+    await db_session.flush()
+    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id))
+    round_ = Round(league_id=league.id, round_number=1, theme="Late Summer", state="open_voting")
+    db_session.add(round_)
+    await db_session.commit()
+    await db_session.refresh(round_)
+    return round_
+
+
+async def _add_submission(db_session, round_id, user_id, *, isrc, title):
+    db_session.add(
+        Submission(
+            round_id=round_id,
+            user_id=user_id,
+            isrc=isrc,
+            title=title,
+            artist="A",
+            platform_links={},
+        )
+    )
+    await db_session.commit()
+
+
+def _auth(user_id: uuid.UUID) -> dict[str, str]:
+    return {"Authorization": f"Bearer {create_access_token(user_id)}"}
+
+
+def _url(round_id) -> str:
+    return f"/api/v1/rounds/{round_id}/apple-playlist"
+
+
+@pytest_asyncio.fixture
+async def apple_app(db_session, request) -> AsyncGenerator[AsyncClient, None]:
+    """App wired with a mock-transport Apple client. Parametrize the dispatch via
+    ``@pytest.mark.parametrize('apple_app', [dispatch], indirect=True)``."""
+    dispatch = getattr(request, "param", None) or _Dispatch()
+    app = create_app()
+
+    async def _get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = _get_db
+    app.dependency_overrides[get_apple_music_client] = lambda: _client(dispatch)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        ac.dispatch = dispatch  # type: ignore[attr-defined]
+        yield ac
+
+
+# --------------------------------------------------------------------------- #
+# Routes — developer token
+# --------------------------------------------------------------------------- #
+
+
+async def test_developer_token_requires_auth(apple_app):
+    assert (await apple_app.get("/api/v1/apple-music/developer-token")).status_code == 401
+
+
+async def test_developer_token_returned_when_configured(apple_app, db_session):
+    user = await _seed_user(db_session, "a@example.com")
+    r = await apple_app.get("/api/v1/apple-music/developer-token", headers=_auth(user.id))
+    assert r.status_code == 200
+    assert r.json()["token"] == "dev-token"
+
+
+async def test_developer_token_null_when_unconfigured(db_session):
+    """Unconfigured is a normal state, not an error — the client hides Apple."""
+    app = create_app()
+
+    async def _get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = _get_db
+    app.dependency_overrides[get_apple_music_client] = lambda: _client(
+        _Dispatch(), configured=False
+    )
+    user = await _seed_user(db_session, "b@example.com")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        r = await ac.get("/api/v1/apple-music/developer-token", headers=_auth(user.id))
+    assert r.status_code == 200
+    assert r.json()["token"] is None
+
+
+# --------------------------------------------------------------------------- #
+# Routes — read the caller's playlist
+# --------------------------------------------------------------------------- #
+
+
+async def test_get_playlist_null_when_none_generated(apple_app, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    r = await apple_app.get(_url(round_.id), headers=_auth(organizer.id))
+    assert r.status_code == 200
+    assert r.json()["playlist_url"] is None
+
+
+async def test_get_playlist_returns_own_link(apple_app, db_session):
+    organizer = await _seed_user(db_session, "o2@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    db_session.add(
+        AppleRoundPlaylist(round_id=round_.id, user_id=organizer.id, playlist_id="p.MINE")
+    )
+    await db_session.commit()
+    r = await apple_app.get(_url(round_.id), headers=_auth(organizer.id))
+    assert r.json()["playlist_url"] == "https://music.apple.com/library/playlist/p.MINE"
+
+
+async def test_get_playlist_is_per_user_not_shared(apple_app, db_session):
+    """Another member's playlist must never leak — the link is personal."""
+    organizer = await _seed_user(db_session, "o3@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    other = await _seed_user(db_session, "m3@example.com")
+    db_session.add(LeagueMember(league_id=round_.league_id, user_id=other.id))
+    db_session.add(
+        AppleRoundPlaylist(round_id=round_.id, user_id=organizer.id, playlist_id="p.ORG")
+    )
+    await db_session.commit()
+    r = await apple_app.get(_url(round_.id), headers=_auth(other.id))
+    assert r.json()["playlist_url"] is None
+
+
+async def test_get_playlist_forbidden_for_non_member(apple_app, db_session):
+    organizer = await _seed_user(db_session, "o4@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    outsider = await _seed_user(db_session, "x4@example.com")
+    r = await apple_app.get(_url(round_.id), headers=_auth(outsider.id))
+    assert r.status_code == 403
+
+
+# --------------------------------------------------------------------------- #
+# Routes — generate
+# --------------------------------------------------------------------------- #
+
+
+async def test_generate_creates_playlist_and_persists_it(apple_app, db_session):
+    organizer = await _seed_user(db_session, "o5@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    await _add_submission(db_session, round_.id, organizer.id, isrc="I1", title="Creep")
+    apple_app.dispatch.catalog = httpx.Response(200, json={"data": [_song("s1", "Creep")]})
+
+    r = await apple_app.post(
+        _url(round_.id), json={"music_user_token": "mut"}, headers=_auth(organizer.id)
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["playlist_url"] == "https://music.apple.com/library/playlist/p.NEW"
+    assert body["track_count"] == 1
+    assert body["total_count"] == 1
+    assert body["unmatched"] == []
+
+    # Persisted, so the link survives a reload.
+    follow_up = await apple_app.get(_url(round_.id), headers=_auth(organizer.id))
+    assert follow_up.json()["playlist_url"] == body["playlist_url"]
+
+
+async def test_generate_reports_unmatched_tracks(apple_app, db_session):
+    """No catalog match is expected, not fatal — MYS-166 tracks have no ISRC."""
+    organizer = await _seed_user(db_session, "o6@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    await _add_submission(db_session, round_.id, organizer.id, isrc="I1", title="Obscure")
+    apple_app.dispatch.catalog = httpx.Response(200, json={"data": []})
+
+    r = await apple_app.post(
+        _url(round_.id), json={"music_user_token": "mut"}, headers=_auth(organizer.id)
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["track_count"] == 0
+    assert body["total_count"] == 1
+    assert [u["title"] for u in body["unmatched"]] == ["Obscure"]
+
+
+async def test_generate_401_when_apple_rejects_user_token(apple_app, db_session):
+    """Expired/revoked MUT → 401 so the client re-runs the MusicKit popup."""
+    organizer = await _seed_user(db_session, "o7@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    await _add_submission(db_session, round_.id, organizer.id, isrc="I1", title="Creep")
+    apple_app.dispatch.catalog = httpx.Response(200, json={"data": [_song("s1", "Creep")]})
+    apple_app.dispatch.create = httpx.Response(401, json={})
+
+    r = await apple_app.post(
+        _url(round_.id), json={"music_user_token": "stale"}, headers=_auth(organizer.id)
+    )
+    assert r.status_code == 401
+    assert "reconnect" in r.json()["detail"]
+
+
+async def test_generate_502_on_apple_failure(apple_app, db_session):
+    organizer = await _seed_user(db_session, "o8@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    await _add_submission(db_session, round_.id, organizer.id, isrc="I1", title="Creep")
+    apple_app.dispatch.catalog = httpx.Response(200, json={"data": [_song("s1", "Creep")]})
+    apple_app.dispatch.create = httpx.Response(500, json={})
+
+    r = await apple_app.post(
+        _url(round_.id), json={"music_user_token": "mut"}, headers=_auth(organizer.id)
+    )
+    assert r.status_code == 502
+
+
+async def test_generate_forbidden_for_non_member(apple_app, db_session):
+    organizer = await _seed_user(db_session, "o9@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    outsider = await _seed_user(db_session, "x9@example.com")
+    r = await apple_app.post(
+        _url(round_.id), json={"music_user_token": "mut"}, headers=_auth(outsider.id)
+    )
+    assert r.status_code == 403
+
+
+async def test_generate_503_when_unconfigured(db_session):
+    app = create_app()
+
+    async def _get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = _get_db
+    app.dependency_overrides[get_apple_music_client] = lambda: _client(
+        _Dispatch(), configured=False
+    )
+    organizer = await _seed_user(db_session, "o10@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        r = await ac.post(
+            _url(round_.id), json={"music_user_token": "mut"}, headers=_auth(organizer.id)
+        )
+    assert r.status_code == 503

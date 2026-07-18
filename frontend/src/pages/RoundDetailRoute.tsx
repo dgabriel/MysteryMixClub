@@ -46,6 +46,7 @@ import { Card } from "../components/Card";
 import { TextField } from "../components/TextField";
 import { ConcentricRings } from "../components/ConcentricRings";
 import { SongSearchCard } from "../components/songs/SongSearchCard";
+import { AppleMusicPlaylist } from "../components/AppleMusicPlaylist";
 import { SpotifyPlaylist } from "../components/SpotifyPlaylist";
 import { CheckmarkIcon } from "../components/CheckmarkIcon";
 import { CrownIcon } from "../components/CrownIcon";
@@ -1394,6 +1395,7 @@ function ClosedListen({
         entryCount={entryCount}
       />
       <SpotifyPlaylist roundId={roundId} />
+      <AppleMusicPlaylist roundId={roundId} />
     </div>
   );
 }
@@ -1479,6 +1481,7 @@ function VotingSection({
             entryCount={entries.length}
           />
           <SpotifyPlaylist roundId={roundId} />
+          <AppleMusicPlaylist roundId={roundId} />
         </div>
         <ul className="mt-4 space-y-4">
           {entries.map((entry) => (
@@ -1514,6 +1517,7 @@ function VotingSection({
         entryCount={entries.length}
       />
       <SpotifyPlaylist roundId={roundId} />
+      <AppleMusicPlaylist roundId={roundId} />
       <div className="flex items-baseline justify-between gap-4">
         <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
           cast your votes

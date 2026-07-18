@@ -36,6 +36,11 @@ from urllib.parse import quote
 
 import httpx
 
+from app.services.apple_music_client import (
+    CATALOG_SONGS_URL,
+    DEFAULT_STOREFRONT,
+    pick_catalog_song,
+)
 from app.services.apple_music_token import (
     AppleMusicTokenError,
     AppleMusicTokenService,
@@ -47,11 +52,9 @@ from app.services.youtube_resolver import YouTubeResolver, get_youtube_resolver
 _DEEZER_SEARCH = "https://api.deezer.com/search"
 _DEEZER_TRACK_ISRC = "https://api.deezer.com/track/isrc:{isrc}"
 _ITUNES_SEARCH = "https://itunes.apple.com/search"
-_APPLE_CATALOG_SONGS = "https://api.music.apple.com/v1/catalog/{storefront}/songs"
-# Apple scopes the catalog per storefront. We have no per-user storefront to key
-# off yet, so everything resolves against `us`; a track missing there falls back
-# to the keyless iTunes path (MYS-106).
-_DEFAULT_STOREFRONT = "us"
+# Apple scopes the catalog per storefront. This path has no Music User Token to
+# read the caller's storefront from, so it resolves against the default; a track
+# missing there falls back to the keyless iTunes path (MYS-106).
 _DEFAULT_TIMEOUT = 10.0
 # Candidate pool widened from 1 so a best-match pick is possible (MYS-175).
 _DEEZER_RESULT_LIMIT = 5
@@ -107,7 +110,7 @@ class SongLinkAssembler:
         client_factory: Callable[[], httpx.AsyncClient] | None = None,
         youtube_resolver: YouTubeResolver | None = None,
         apple_token_service: AppleMusicTokenService | None = None,
-        storefront: str = _DEFAULT_STOREFRONT,
+        storefront: str = DEFAULT_STOREFRONT,
     ) -> None:
         self._client_factory = client_factory or (lambda: httpx.AsyncClient(timeout=timeout))
         self._youtube_resolver = youtube_resolver
@@ -164,22 +167,14 @@ class SongLinkAssembler:
             # Best-effort like every other lookup here: fall back, don't raise.
             return None
         data = await self._get_json(
-            _APPLE_CATALOG_SONGS.format(storefront=self._storefront),
+            CATALOG_SONGS_URL.format(storefront=self._storefront),
             {"filter[isrc]": isrc},
             headers={"Authorization": f"Bearer {token}"},
         )
-        if not data:
-            return None
         # One ISRC maps to several catalog songs more often than not — the same
         # recording reissued across album/EP/single — so rank rather than taking
-        # Apple's first. Album name doesn't disambiguate: duplicates can share it.
-        chosen = best_match(
-            title,
-            artist,
-            data.get("data") or [],
-            title_of=lambda item: (item.get("attributes") or {}).get("name") or "",
-            artist_of=lambda item: (item.get("attributes") or {}).get("artistName"),
-        )
+        # Apple's first. Shared with the playlist path so both pick the same one.
+        chosen = pick_catalog_song(title, artist, data)
         return (chosen.get("attributes") or {}).get("url") if chosen else None
 
     async def _apple_exact(self, title: str, artist: str | None, isrc: str | None) -> str | None:

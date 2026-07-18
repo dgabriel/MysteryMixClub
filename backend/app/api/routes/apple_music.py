@@ -1,0 +1,159 @@
+"""Apple Music routes — developer token + per-player round playlists (MYS-108).
+
+Three endpoints:
+
+* ``GET /apple-music/developer-token`` — MusicKit JS needs the developer token in
+  the browser to run the sign-in popup. This token identifies *the app*, not a
+  user, and Apple's own web embeds ship it client-side, so exposing it to an
+  authenticated caller is by design — unlike the ``.p8`` private key, which never
+  leaves the server.
+* ``GET  /rounds/{id}/apple-playlist`` — the caller's own playlist for a round.
+* ``POST /rounds/{id}/apple-playlist`` — generate it, using a Music User Token
+  supplied per request and never stored.
+
+Every playlist here is personal: MYS-107 established that Apple library playlists
+cannot be made public, so these links open only for their owner.
+"""
+
+from __future__ import annotations
+
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.routes.leagues import _load_league_as_member
+from app.api.routes.rounds import _load_round
+from app.auth.deps import get_current_user
+from app.db.session import get_db
+from app.models.user import User
+from app.services.apple_music_client import (
+    AppleMusicApiError,
+    AppleMusicAuthError,
+    AppleMusicClient,
+    get_apple_music_client,
+    library_playlist_url,
+)
+from app.services.apple_music_token import AppleMusicTokenError
+from app.services.apple_playlist_generation import (
+    generate_round_playlist,
+    get_existing_playlist,
+)
+
+router = APIRouter(tags=["apple-music"])
+
+
+class DeveloperTokenResponse(BaseModel):
+    token: str | None = None
+
+
+class ApplePlaylistLinkResponse(BaseModel):
+    playlist_url: str | None = None
+
+
+class UnmatchedTrack(BaseModel):
+    submission_id: uuid.UUID
+    title: str
+    artist: str
+
+
+class GeneratePlaylistRequest(BaseModel):
+    music_user_token: str = Field(min_length=1, max_length=4096)
+
+
+class GeneratePlaylistResponse(BaseModel):
+    playlist_url: str
+    track_count: int
+    total_count: int
+    unmatched: list[UnmatchedTrack] = []
+
+
+@router.get("/apple-music/developer-token", response_model=DeveloperTokenResponse)
+async def get_developer_token(
+    current_user: User = Depends(get_current_user),  # auth gate only
+    client: AppleMusicClient = Depends(get_apple_music_client),
+) -> DeveloperTokenResponse:
+    """The developer token for MusicKit JS, or null when Apple isn't configured.
+
+    Null rather than an error: an unconfigured deployment is a normal state, and
+    the client simply hides the Apple option.
+    """
+    if not client.is_configured:
+        return DeveloperTokenResponse(token=None)
+    try:
+        return DeveloperTokenResponse(token=await client.developer_token())
+    except AppleMusicTokenError:
+        # Configured but unsignable (malformed key, mid-rotation) — same quiet
+        # "unavailable" as unconfigured rather than a 500 on the round page.
+        return DeveloperTokenResponse(token=None)
+
+
+@router.get("/rounds/{round_id}/apple-playlist", response_model=ApplePlaylistLinkResponse)
+async def get_round_apple_playlist(
+    round_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ApplePlaylistLinkResponse:
+    """The caller's own Apple playlist link for this round, or null.
+
+    Scoped to the caller by construction — one member never sees another's
+    playlist, and the link wouldn't open for them anyway.
+    """
+    round_ = await _load_round(round_id, db)
+    await _load_league_as_member(round_.league_id, current_user, db)
+
+    stored = await get_existing_playlist(db, round_id, current_user.id)
+    if stored is None:
+        return ApplePlaylistLinkResponse(playlist_url=None)
+    return ApplePlaylistLinkResponse(playlist_url=library_playlist_url(stored.playlist_id))
+
+
+@router.post("/rounds/{round_id}/apple-playlist", response_model=GeneratePlaylistResponse)
+async def create_round_apple_playlist(
+    round_id: uuid.UUID,
+    payload: GeneratePlaylistRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    client: AppleMusicClient = Depends(get_apple_music_client),
+) -> GeneratePlaylistResponse:
+    """Generate this round's playlist in the caller's Apple Music library."""
+    if not client.is_configured:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="apple music is not configured",
+        )
+    round_ = await _load_round(round_id, db)
+    league = await _load_league_as_member(round_.league_id, current_user, db)
+
+    try:
+        result = await generate_round_playlist(
+            round_id,
+            round_,
+            league,
+            current_user.id,
+            payload.music_user_token,
+            db,
+            client,
+        )
+    except AppleMusicAuthError as exc:
+        # 401 so the client re-runs the MusicKit popup rather than showing a dead
+        # end — an expired/revoked MUT is the one failure the user can fix.
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="apple music authorization expired — reconnect and try again",
+        ) from exc
+    except AppleMusicApiError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail="apple music request failed"
+        ) from exc
+
+    return GeneratePlaylistResponse(
+        playlist_url=result.playlist_url,
+        track_count=result.track_count,
+        total_count=result.total_count,
+        unmatched=[
+            UnmatchedTrack(submission_id=u.submission_id, title=u.title, artist=u.artist)
+            for u in result.unmatched
+        ],
+    )

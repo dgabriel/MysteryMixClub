@@ -71,10 +71,10 @@ async def gather_recipients(db: AsyncSession, league_id: uuid.UUID) -> list[Reci
 
 
 def _round_label(round_: Round) -> str:
-    """A human label for the round: theme if set, else 'Round N'."""
+    """A human label for the mystery mix: theme if set, else 'Mystery Mix N'."""
     if round_.theme:
-        return f"Round {round_.round_number}: {round_.theme}"
-    return f"Round {round_.round_number}"
+        return f"Mystery Mix {round_.round_number}: {round_.theme}"
+    return f"Mystery Mix {round_.round_number}"
 
 
 def _format_deadline(deadline: datetime) -> str:
@@ -113,7 +113,7 @@ def _subject_and_body(
         return (
             f"{league.name} — voting is open for {label}",
             f"<p>Submissions are in for <strong>{label}</strong> in "
-            f"<strong>{league.name}</strong>. Listen to the playlist and cast your votes.{by} "
+            f"<strong>{league.name}</strong>. Listen to the mix and cast your votes.{by} "
             f"{link}</p>",
         )
     if event == "round_closed":
@@ -133,14 +133,14 @@ def _subject_and_body(
         )
     # league_complete
     return (
-        f"{league.name} — the league is complete",
-        f"<p><strong>{league.name}</strong> has wrapped after its final round. "
+        f"{league.name} — that's a wrap",
+        f"<p><strong>{league.name}</strong> has wrapped after its final mystery mix. "
         f"Check the standings for the final results. {link}</p>",
     )
 
 
 def _league_url(settings: Settings, league_id: uuid.UUID) -> str:
-    return f"{settings.app_base_url.rstrip('/')}/leagues/{league_id}"
+    return f"{settings.app_base_url.rstrip('/')}/clubs/{league_id}"
 
 
 def _unsubscribe_url(settings: Settings, user_id: uuid.UUID) -> str:
@@ -153,7 +153,7 @@ def _wrap_html(body: str, unsubscribe_url: str) -> str:
     return (
         f"{body}"
         f'<p style="color:#8A8680;font-size:12px;margin-top:24px">'
-        f"You're receiving this because you're in this MysteryMixClub league. "
+        f"You're receiving this because you're in this club on MysteryMixClub. "
         f'<a href="{unsubscribe_url}">Unsubscribe from these emails</a>.</p>'
     )
 
@@ -285,7 +285,7 @@ def send_empty_round_notice(
     body = (
         f"<p>The submission deadline for <strong>{label}</strong> in "
         f"<strong>{league.name}</strong> passed with no songs submitted. You can extend the "
-        f"deadline or advance the round manually. {link}</p>"
+        f"deadline or advance the mix manually. {link}</p>"
     )
     _send_direct(sender, settings, recipients, subject, body)
 

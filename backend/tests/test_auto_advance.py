@@ -414,7 +414,7 @@ async def test_final_round_voting_completes_league(session_factory, db_session, 
     assert league.completed_at is not None
     subjects = _subjects(email_spy)
     assert any("results are in" in s for s in subjects)
-    assert any("the league is complete" in s for s in subjects)
+    assert any("that's a wrap" in s for s in subjects)
 
 
 async def test_viber_excluded_from_voting_quorum(session_factory, db_session, email_spy):

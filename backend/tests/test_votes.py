@@ -114,7 +114,7 @@ async def test_cast_round_missing_404(client, db_session):
         headers=_auth(organizer.id),
     )
     assert resp.status_code == 404
-    assert resp.json()["detail"] == "round not found"
+    assert resp.json()["detail"] == "mystery mix not found"
 
 
 async def test_cast_non_member_403(client, db_session):
@@ -127,7 +127,7 @@ async def test_cast_non_member_403(client, db_session):
         headers=_auth(outsider.id),
     )
     assert resp.status_code == 403
-    assert resp.json()["detail"] == "you are not a member of this league"
+    assert resp.json()["detail"] == "you are not a member of this club"
 
 
 async def test_cast_round_not_open_voting_409(client, db_session):
@@ -139,7 +139,7 @@ async def test_cast_round_not_open_voting_409(client, db_session):
         headers=_auth(organizer.id),
     )
     assert resp.status_code == 409
-    assert resp.json()["detail"] == "voting is not open for this round"
+    assert resp.json()["detail"] == "voting is not open for this mystery mix"
 
 
 async def test_cast_without_own_submission_succeeds(client, db_session):
@@ -314,7 +314,7 @@ async def test_cast_removed_member_403(client, db_session):
         headers=_auth(voter.id),
     )
     assert resp.status_code == 403
-    assert resp.json()["detail"] == "you are not a member of this league"
+    assert resp.json()["detail"] == "you are not a member of this club"
 
 
 async def test_cast_zero_votes_409(client, db_session):
@@ -372,7 +372,7 @@ async def test_cast_id_not_in_round_404(client, db_session):
         headers=_auth(organizer.id),
     )
     assert resp.status_code == 404
-    assert resp.json()["detail"] == "submission not found in this round"
+    assert resp.json()["detail"] == "submission not found in this mystery mix"
 
 
 async def test_cast_id_from_another_round_404(client, db_session):
@@ -393,7 +393,7 @@ async def test_cast_id_from_another_round_404(client, db_session):
         headers=_auth(organizer.id),
     )
     assert resp.status_code == 404
-    assert resp.json()["detail"] == "submission not found in this round"
+    assert resp.json()["detail"] == "submission not found in this mystery mix"
 
 
 async def test_cast_for_own_song_409(client, db_session):
@@ -598,7 +598,7 @@ async def test_vote_counts_non_member_403(client, db_session):
     round_ = await _seed_league_with_round(db_session, organizer)
     resp = await client.get(_vote_counts_url(round_.id), headers=_auth(outsider.id))
     assert resp.status_code == 403
-    assert resp.json()["detail"] == "you are not a member of this league"
+    assert resp.json()["detail"] == "you are not a member of this club"
 
 
 async def test_vote_counts_unknown_round_404(client, db_session):
@@ -764,7 +764,7 @@ async def test_cast_after_organizer_rollback_rejected_and_not_persisted(client, 
         headers=_auth(voter_id),
     )
     assert cast_resp.status_code == 409, cast_resp.text
-    assert cast_resp.json()["detail"] == "voting is not open for this round"
+    assert cast_resp.json()["detail"] == "voting is not open for this mystery mix"
 
     # No vote was persisted for the rejected cast.
     db_session.expire_all()

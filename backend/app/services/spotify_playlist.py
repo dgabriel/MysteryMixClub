@@ -14,16 +14,17 @@ def playlist_name(league_name: str, round_number: int, theme: str | None) -> str
     """Human title for the saved playlist, e.g.
     ``MysteryMixClub: Friday Mixtape, Late Summer Feels``.
 
-    Includes the **league name** (MYS-86) so titles are unique per league, which
-    is also what lets us **reuse** a same-named playlist instead of creating a
-    duplicate (MYS-87). Falls back to ``Round N`` when the round has no theme yet.
+    Includes the **club name** (MYS-86) so titles are unique per club. Falls back
+    to ``Mix N`` when the mystery mix has no theme yet — the full phrase would
+    double the brand ("MysteryMixClub: …, Mystery Mix 3").
 
-    NOTE: playlist reuse keys on this exact name, so it must be stable and unique
-    per round. It relies on a round's theme being distinct within its league (the
-    normal case); a blank theme uses the unique ``Round N`` instead.
+    The name is display-only: playlist reuse keys on the stored playlist ID
+    (MYS-89), not this string, so renaming is safe and titles need only be
+    human-distinct, not machine-unique. (An earlier name-keyed reuse scheme,
+    MYS-87, was replaced; this docstring previously described it.)
     """
     league = league_name.strip() or "MysteryMixClub"
-    suffix = theme.strip() if theme and theme.strip() else f"Round {round_number}"
+    suffix = theme.strip() if theme and theme.strip() else f"Mix {round_number}"
     return f"MysteryMixClub: {league}, {suffix}"[:_MAX_NAME]
 
 
@@ -32,9 +33,9 @@ def playlist_description(league_name: str, round_number: int, theme: str | None)
     league = league_name.strip() or "MysteryMixClub"
     if theme and theme.strip():
         text = (
-            f"The full mix from Round {round_number} ({theme.strip()}) "
+            f"Every song from Mystery Mix {round_number} ({theme.strip()}) "
             f"of {league} on MysteryMixClub."
         )
     else:
-        text = f"The full mix from Round {round_number} of {league} on MysteryMixClub."
+        text = f"Every song from Mystery Mix {round_number} of {league} on MysteryMixClub."
     return text[:_MAX_DESCRIPTION]

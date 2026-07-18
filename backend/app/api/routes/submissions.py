@@ -218,7 +218,8 @@ async def submit_song(
     league = await _load_league_as_member(round_.league_id, current_user, db)
     if round_.state != "open_submission":
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="this round is not accepting submissions"
+            status_code=status.HTTP_409_CONFLICT,
+            detail="this mystery mix is not accepting submissions",
         )
 
     # Serialize concurrent submissions for the same (round, user) pair so two
@@ -237,7 +238,7 @@ async def submit_song(
     if await _isrc_in_round(payload.isrc, round_id, db):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="oops, someone else has great taste too — this track is already in this round",
+            detail="oops, someone else has great taste too — this track is already in this mystery mix",
         )
     league_repeat = await _isrc_in_prior_league_rounds(payload.isrc, round_.league_id, round_id, db)
 
@@ -272,7 +273,8 @@ async def edit_song(
     await _load_league_as_member(round_.league_id, current_user, db)
     if round_.state != "open_submission":
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="this round is not accepting submissions"
+            status_code=status.HTTP_409_CONFLICT,
+            detail="this mystery mix is not accepting submissions",
         )
 
     submission = await db.scalar(
@@ -280,7 +282,7 @@ async def edit_song(
     )
     if submission is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="submission not found in this round"
+            status_code=status.HTTP_404_NOT_FOUND, detail="submission not found in this mystery mix"
         )
     if submission.user_id != current_user.id:
         raise HTTPException(
@@ -290,7 +292,7 @@ async def edit_song(
     if await _isrc_in_round(payload.isrc, round_id, db, exclude_submission_id=submission_id):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="oops, someone else has great taste too — this track is already in this round",
+            detail="oops, someone else has great taste too — this track is already in this mystery mix",
         )
     league_repeat = await _isrc_in_prior_league_rounds(payload.isrc, round_.league_id, round_id, db)
 
@@ -319,7 +321,8 @@ async def delete_song(
     await _load_league_as_member(round_.league_id, current_user, db)
     if round_.state != "open_submission":
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="this round is not accepting submissions"
+            status_code=status.HTTP_409_CONFLICT,
+            detail="this mystery mix is not accepting submissions",
         )
 
     submission = await db.scalar(
@@ -327,7 +330,7 @@ async def delete_song(
     )
     if submission is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="submission not found in this round"
+            status_code=status.HTTP_404_NOT_FOUND, detail="submission not found in this mystery mix"
         )
     if submission.user_id != current_user.id:
         raise HTTPException(
@@ -358,14 +361,15 @@ async def update_submission_note(
     await _load_league_as_member(round_.league_id, current_user, db)
     if round_.state != "open_submission":
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="this round is not accepting submissions"
+            status_code=status.HTTP_409_CONFLICT,
+            detail="this mystery mix is not accepting submissions",
         )
     submission = await db.scalar(
         select(Submission).where(Submission.id == submission_id, Submission.round_id == round_id)
     )
     if submission is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="submission not found in this round"
+            status_code=status.HTTP_404_NOT_FOUND, detail="submission not found in this mystery mix"
         )
     if submission.user_id != current_user.id:
         raise HTTPException(
@@ -401,7 +405,7 @@ async def list_submissions(
     if round_.state != "closed":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="submissions are revealed after the round closes",
+            detail="submissions are revealed after the mystery mix closes",
         )
     submissions = await db.scalars(
         select(Submission)

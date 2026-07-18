@@ -87,7 +87,7 @@ def _auth_header(user_id: uuid.UUID) -> dict[str, str]:
     return {"Authorization": f"Bearer {create_access_token(user_id)}"}
 
 
-_BLOCK_DETAIL = "finish or hand off the leagues you organize before deleting your account"
+_BLOCK_DETAIL = "finish or hand off the clubs you organize before deleting your account"
 
 
 # --------------------------------------------------------------------------- #

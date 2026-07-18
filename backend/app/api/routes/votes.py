@@ -68,7 +68,7 @@ async def cast_votes(
 
     if round_.state != "open_voting":
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="voting is not open for this round"
+            status_code=status.HTTP_409_CONFLICT, detail="voting is not open for this mystery mix"
         )
 
     # Decision (MYS-167): any active member may vote, whether or not they
@@ -121,7 +121,8 @@ async def cast_votes(
         target = targets_by_id.get(sid)
         if target is None:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="submission not found in this round"
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="submission not found in this mystery mix",
             )
         if target.user_id == current_user.id:
             raise HTTPException(
@@ -145,7 +146,7 @@ async def cast_votes(
     )
     if locked is None or locked.state != "open_voting":
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="voting is not open for this round"
+            status_code=status.HTTP_409_CONFLICT, detail="voting is not open for this mystery mix"
         )
 
     # Replace the caller's votes for this round wholesale.

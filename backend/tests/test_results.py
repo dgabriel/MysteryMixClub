@@ -145,7 +145,7 @@ async def test_results_unknown_round_404(client, db_session):
     await _seed_league_with_round(db_session, organizer)
     resp = await client.get(_url(uuid.uuid4()), headers=_auth(organizer.id))
     assert resp.status_code == 404
-    assert resp.json()["detail"] == "round not found"
+    assert resp.json()["detail"] == "mystery mix not found"
 
 
 async def test_results_non_member_403(client, db_session):
@@ -154,7 +154,7 @@ async def test_results_non_member_403(client, db_session):
     round_ = await _seed_league_with_round(db_session, organizer)
     resp = await client.get(_url(round_.id), headers=_auth(outsider.id))
     assert resp.status_code == 403
-    assert resp.json()["detail"] == "you are not a member of this league"
+    assert resp.json()["detail"] == "you are not a member of this club"
 
 
 async def test_results_open_submission_409(client, db_session):
@@ -162,7 +162,7 @@ async def test_results_open_submission_409(client, db_session):
     round_ = await _seed_league_with_round(db_session, organizer, state="open_submission")
     resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
     assert resp.status_code == 409
-    assert resp.json()["detail"] == "results are available once the round closes"
+    assert resp.json()["detail"] == "results are available once the mystery mix closes"
 
 
 async def test_results_open_voting_409(client, db_session):
@@ -170,7 +170,7 @@ async def test_results_open_voting_409(client, db_session):
     round_ = await _seed_league_with_round(db_session, organizer, state="open_voting")
     resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
     assert resp.status_code == 409
-    assert resp.json()["detail"] == "results are available once the round closes"
+    assert resp.json()["detail"] == "results are available once the mystery mix closes"
 
 
 # --------------------------------------------------------------------------- #

@@ -136,7 +136,7 @@ async def _build(db_session, *, round_a_state: str) -> _Scenario:
 def _assert_blocked(resp, *, organizer_gated: bool = False) -> None:
     """403 must win over any 409/422 state/validation gate.
 
-    Member-gated routes deny with the "you are not a member of this league"
+    Member-gated routes deny with the "you are not a member of this club"
     detail. Organizer-gated routes (``_load_league_as_organizer``) gate purely on
     organizer identity and deny a non-member with an organizer-phrased detail
     ("only the organizer can ..."); the status is still the load-bearing 403, so

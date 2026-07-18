@@ -573,7 +573,7 @@ async def test_total_rounds_below_current_round_returns_409(client, db_session):
         json={"total_rounds": 1},
     )
     assert resp.status_code == 409, resp.text
-    assert "current_round" in resp.json()["detail"]
+    assert "below the current mix" in resp.json()["detail"]
 
     db_session.expire_all()
     persisted = await db_session.scalar(select(League).where(League.id == league_id))

@@ -647,7 +647,7 @@ async def test_branch5_final_round_completes_league(run_job, db_session, email_s
 
     subjects = [subj for (_to, subj, _h) in email_spy.sends]
     assert sum("results are in" in s for s in subjects) == 2  # round_closed × 2
-    assert sum("the league is complete" in s for s in subjects) == 2  # league_complete × 2
+    assert sum("that's a wrap" in s for s in subjects) == 2  # league_complete × 2
 
 
 # ========================================================================== #

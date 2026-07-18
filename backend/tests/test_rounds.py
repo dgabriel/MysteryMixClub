@@ -13,10 +13,12 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 
 from app.auth.jwt import create_access_token
+from app.models.apple_round_playlist import AppleRoundPlaylist
 from app.models.league import League
 from app.models.league_member import LeagueMember
 from app.models.note import Note
 from app.models.round import Round
+from app.models.spotify_round_playlist import SpotifyRoundPlaylist
 from app.models.submission import Submission
 from app.models.user import User
 from app.models.vote import Vote
@@ -388,6 +390,51 @@ async def test_rollback_happy_path_resets_deadlines_and_deletes_votes(client, db
         await db_session.scalars(select(Vote).where(Vote.round_id == round_id))
     ).all()
     assert remaining_votes == []
+
+
+async def test_rollback_clears_apple_playlists_but_keeps_spotify(client, db_session):
+    """Reopening submissions forgets Apple playlists so members can rebuild.
+
+    Apple has no replace-tracks for library playlists, so the stored row is what
+    blocks a rebuild; dropping it is the only way to let a member regenerate
+    against the new submission set (MYS-108). Spotify must survive — its
+    generation refreshes the same playlist in place, so clearing it would orphan
+    a public playlist and mint a duplicate.
+    """
+    organizer = await _seed_user(db_session, "org@example.com")
+    member = await _seed_user(db_session, "member@example.com")
+    league = await _seed_league(db_session, organizer)
+    await _add_member(db_session, league.id, member)
+    rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
+    round_id = uuid.UUID(rid)
+
+    await _add_submission_ret(db_session, round_id, organizer)
+    await _add_submission_ret(db_session, round_id, member)
+    assert (await _advance(client, rid, organizer.id, "open_voting")).status_code == 200
+
+    # Two members each built their own Apple playlist (they're per-user), plus a
+    # shared-account Spotify playlist for the same round.
+    db_session.add(AppleRoundPlaylist(round_id=round_id, user_id=organizer.id, playlist_id="p.ORG"))
+    db_session.add(AppleRoundPlaylist(round_id=round_id, user_id=member.id, playlist_id="p.MEM"))
+    db_session.add(SpotifyRoundPlaylist(round_id=round_id, user_id=organizer.id, playlist_id="sp1"))
+    await db_session.commit()
+
+    assert (await _advance(client, rid, organizer.id, "open_submission")).status_code == 200
+
+    db_session.expire_all()
+    apple_rows = (
+        await db_session.scalars(
+            select(AppleRoundPlaylist).where(AppleRoundPlaylist.round_id == round_id)
+        )
+    ).all()
+    spotify_rows = (
+        await db_session.scalars(
+            select(SpotifyRoundPlaylist).where(SpotifyRoundPlaylist.round_id == round_id)
+        )
+    ).all()
+
+    assert apple_rows == []
+    assert [r.playlist_id for r in spotify_rows] == ["sp1"]
 
 
 async def test_rollback_preserves_notes(client, db_session):

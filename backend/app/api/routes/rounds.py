@@ -32,6 +32,7 @@ from app.api.routes.leagues import _load_league_as_member, _load_league_as_organ
 from app.auth.deps import get_current_user
 from app.config import Settings, get_settings
 from app.db.session import get_db
+from app.models.apple_round_playlist import AppleRoundPlaylist
 from app.models.league import League
 from app.models.league_member import LeagueMember
 from app.models.note import Note
@@ -317,6 +318,20 @@ async def rollback_round_to_submission(round_: Round, league: League, db: AsyncS
     # next pass. Notes are kept — they're appreciation, remain state-gated, and
     # resurface at close.
     await db.execute(delete(Vote).where(Vote.round_id == round_.id))
+
+    # Apple playlists are forgotten so members can rebuild after the new
+    # submissions land (MYS-108). Apple has no replace-tracks for library
+    # playlists, so a rebuild necessarily creates a second one — dropping the
+    # row is what makes that rebuild reachable. The playlist already in the
+    # member's library is untouched; we can't reach into it, and it would
+    # otherwise sit there as the stale record of a superseded round.
+    #
+    # Spotify is deliberately NOT cleared: its generation reuses the stored id
+    # via replace_tracks, so the existing playlist refreshes in place and the
+    # link members already hold stays correct. Clearing it would orphan a public
+    # playlist on the shared account and mint a duplicate. YouTube needs nothing
+    # — it's computed from submissions at read time.
+    await db.execute(delete(AppleRoundPlaylist).where(AppleRoundPlaylist.round_id == round_.id))
 
 
 async def submission_quorum_met(round_: Round, db: AsyncSession) -> bool:

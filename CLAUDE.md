@@ -161,6 +161,7 @@ docs/
   feature-flags.md          ← Env-driven feature flags: registry + how to add one
   security/
     breach-notification-runbook.md  ← What to do if user data is exposed (MYS-187)
+    data-residency.md         ← DO hosting region + EU transfer safeguard (MYS-188)
 ```
 
 ---

@@ -283,3 +283,9 @@ This is where real beta user data actually lives (magic-link emails, songs,
 notes, votes) — see `docs/security/breach-notification-runbook.md` for what to
 do: containment steps, scoping the exposure, and the GDPR 72-hour authority
 notification / user notification process (MYS-187).
+
+## Where this Droplet actually is
+
+Its DO region isn't recorded here — see `docs/security/data-residency.md`
+(MYS-188) for what's confirmed, what's inferred, and the international-transfer
+safeguard reasoning if EU/EEA/UK users are ever in scope.

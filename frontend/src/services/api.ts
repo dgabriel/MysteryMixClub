@@ -922,6 +922,62 @@ export async function getSpotifyPlaylistLink(
   return (await res.json()) as { playlist_url: string | null };
 }
 
+export type ApplePlaylistResult = {
+  playlist_url: string;
+  track_count: number;
+  total_count: number;
+  unmatched: { submission_id: string; title: string; artist: string }[];
+};
+
+/** The developer token MusicKit JS needs to run Apple's sign-in popup (MYS-108).
+ *  Null when Apple Music isn't configured on this deployment — a normal state,
+ *  in which the caller hides the Apple option entirely. */
+export async function getAppleDeveloperToken(): Promise<{ token: string | null }> {
+  const res = await authenticatedRequest("/api/v1/apple-music/developer-token");
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as { token: string | null };
+}
+
+/** The caller's OWN Apple playlist link for a round, or null (MYS-108).
+ *  Apple library playlists can't be made public (MYS-107), so this is personal:
+ *  it opens only for the user who generated it. */
+export async function getApplePlaylistLink(
+  roundId: string,
+): Promise<{ playlist_url: string | null }> {
+  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/apple-playlist`);
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as { playlist_url: string | null };
+}
+
+/** Generate the round's playlist in the caller's Apple Music library (MYS-108).
+ *  Throws ApiError(401) when the Music User Token is expired/revoked — the
+ *  caller should re-run the MusicKit popup rather than show a dead end. */
+export async function createApplePlaylist(
+  roundId: string,
+  musicUserToken: string,
+): Promise<ApplePlaylistResult> {
+  // getTimezoneOffset() is minutes to add to LOCAL to get UTC — the server wants
+  // the opposite, so negate it. Lets a rebuilt playlist's "[revised on HH:MM]"
+  // read in the member's own clock rather than UTC.
+  const tzOffsetMinutes = -new Date().getTimezoneOffset();
+  const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/apple-playlist`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      music_user_token: musicUserToken,
+      tz_offset_minutes: tzOffsetMinutes,
+    }),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as ApplePlaylistResult;
+}
+
 /** Get all submissions for a round (revealed only after it closes). */
 export async function getRoundSubmissions(roundId: string): Promise<SubmissionResult[]> {
   const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/submissions`);

@@ -1,3 +1,4 @@
+from app.models.apple_round_playlist import AppleRoundPlaylist
 from app.models.invite import Invite
 from app.models.league import League
 from app.models.league_member import LeagueMember
@@ -12,6 +13,7 @@ from app.models.user import User
 from app.models.vote import Vote
 
 __all__ = [
+    "AppleRoundPlaylist",
     "Invite",
     "League",
     "LeagueMember",

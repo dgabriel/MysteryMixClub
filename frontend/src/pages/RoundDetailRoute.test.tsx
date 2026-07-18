@@ -686,13 +686,13 @@ describe("RoundDetailRoute", () => {
     expect(await screen.findByRole("button", { name: /open voting/i })).toBeInTheDocument();
   });
 
-  it("co-organizer viewer: sees EditRoundForm (edit round) on a pending round", async () => {
+  it("co-organizer viewer: sees EditRoundForm (edit mix) on a pending round", async () => {
     mockGetRound.mockResolvedValue(round({ state: "pending" }));
     mockGetLeagueMembers.mockResolvedValue(membersWithCoOrganizer());
     setAuth(CO_ORGANIZER);
     renderRound();
     await screen.findByText("late summer feels");
-    expect(await screen.findByRole("button", { name: /^edit round$/i })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /^edit mix$/i })).toBeInTheDocument();
   });
 
   it("plain member viewer: sees neither OrganizerControls nor EditRoundForm on a pending round", async () => {
@@ -702,7 +702,7 @@ describe("RoundDetailRoute", () => {
     renderRound();
     await screen.findByText("late summer feels");
     expect(screen.queryByRole("button", { name: /open mix/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^edit round$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^edit mix$/i })).not.toBeInTheDocument();
   });
 
   it("organizer can open a pending round; advancing calls updateRound directly, no confirm step — MYS-170", async () => {
@@ -1793,7 +1793,7 @@ describe("RoundDetailRoute", () => {
 
       expect(
         await screen.findByText(
-          /your votes are locked — they will be revealed when the round closes/i,
+          /your votes are locked — they will be revealed when the mystery mix closes/i,
         ),
       ).toBeInTheDocument();
     });

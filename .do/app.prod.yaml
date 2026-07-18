@@ -68,6 +68,22 @@ services:
       - key: RESEND_API_KEY
         scope: RUN_TIME
         type: SECRET
+      # Apple Music, per-player library playlists + exact ISRC link matching
+      # (MYS-104/105/106/108). All three are required together: with any of them
+      # unset the Apple UI renders nothing and Apple links fall back to the
+      # keyless iTunes lookup — a normal, supported state, not an error.
+      # APPLE_MUSIC_PRIVATE_KEY is the .p8 PEM; DO accepts it multi-line, and the
+      # app also un-escapes literal \n if it is pasted as a single line.
+      # Set all three in the DO dashboard / doctl, never here.
+      - key: APPLE_MUSIC_TEAM_ID
+        scope: RUN_TIME
+        type: SECRET
+      - key: APPLE_MUSIC_KEY_ID
+        scope: RUN_TIME
+        type: SECRET
+      - key: APPLE_MUSIC_PRIVATE_KEY
+        scope: RUN_TIME
+        type: SECRET
       # Points the unsubscribe link/header at the API host. Without it the app
       # falls back to APP_BASE_URL (the frontend host). Bound to this api
       # component's public URL.

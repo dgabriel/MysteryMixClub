@@ -163,13 +163,28 @@ These are runtime app config, set per app in the DO dashboard or via
 | `SECRET_KEY`   | SECRET   | JWT signing key — `python -c "import secrets; print(secrets.token_urlsafe(64))"` |
 | `ENVIRONMENT`  | GENERAL  | `production` / `staging`                           |
 | `RESEND_API_KEY`, `ODESLI_API_KEY`, `ALLOWED_ORIGINS`, `APP_BASE_URL` | SECRET/GENERAL | see `.env.example` |
+| `APPLE_MUSIC_TEAM_ID`, `APPLE_MUSIC_KEY_ID`, `APPLE_MUSIC_PRIVATE_KEY` | SECRET | Apple Music (MYS-104). **All three or none** — any missing and the Apple UI hides itself and links fall back to keyless iTunes. Provisioning walkthrough in `staging-setup.md` → "Enabling Apple Music". |
 
 ### Adding a new secret (the routine)
 
+**Staging and production take secrets by different routes** — staging is a
+self-managed Droplet, production is App Platform. Doing only one leaves the other
+silently unconfigured, which for optional integrations looks exactly like the
+feature "not working" rather than an error.
+
 1. Document the key (no value) in `.env.example`.
-2. Add it as a GitHub Actions secret **and/or** an `envs:` entry in **both**
-   `.do/app.staging.yaml` and `.do/app.prod.yaml` (`type: SECRET` for sensitive values).
-3. Set the real value in the DO dashboard or `doctl` — never commit it.
+2. **Staging (Droplet):** add the key to `scripts/staging.env.example` (no
+   value), then set the real value in `/etc/mysterymixclub/staging.env` on the
+   Droplet and `sudo systemctl restart mysterymixclub-api`. Settings are cached
+   per process, so an edit without the restart changes nothing.
+3. **Production (App Platform):** add an `envs:` entry to `.do/app.prod.yaml`
+   (`type: SECRET`), then set the value in the DO dashboard or via `doctl`.
+4. If a *workflow* needs it (not the app at runtime), add it as a GitHub Actions
+   secret instead.
+
+> `.do/app.staging.yaml` is **reference only** — staging moved to the Droplet
+> (MYS-39) and that spec is not used by the staging deploy. Adding a secret there
+> has no effect; use step 2.
 
 ---
 

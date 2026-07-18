@@ -107,16 +107,19 @@ export function AppleMusicPlaylist({ roundId }: { roundId: string }) {
             <MusicNoteIcon />
             open apple music library
           </a>
-          {/* The playlist is named rather than linked: iOS can't deep-link to a
-              library playlist and dead-ends on "Item Not Available" (MYS-190).
-              Older rows have no recorded name, so fall back to a plain note. */}
+          {/* Navigation instructions, not a link: Apple exposes no deep link to a
+              library playlist, and /library is as deep as iOS will go — confirmed
+              on-device, including the playlists section (MYS-190). So the member
+              has to make the last hop themselves, and the title is how they find
+              it. Older rows have no recorded name; fall back to a plain note. */}
           <p className={NOTE_CLASS}>
             {playlistName ? (
               <>
-                in your library as <span className="text-ink">“{playlistName}”</span>
+                go to your Apple Music playlists and look for{" "}
+                <span className="text-ink">“{playlistName}”</span>
               </>
             ) : (
-              "in your library"
+              "go to your Apple Music playlists to find it"
             )}
             {unmatched > 0 ? ` · ${unmatched} not on apple music` : ""}
           </p>

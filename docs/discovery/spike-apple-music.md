@@ -110,18 +110,69 @@ same quality as Deezer's keyless match. So matching is *not* a risk here.
 
 ### Known wrinkles to verify at build time
 
-- **Public link to the result.** Spotify/Deezer return a public, shareable
-  playlist URL. Apple **library** playlists live in the user's own library and do
-  **not** reliably expose a public `share`/`url` in the API response (historically
-  inconsistent). The deliverable for the playlist feature is "a clickable link" —
-  we must confirm what URL we can surface (likely `music.apple.com/library/...`,
-  which only opens for that signed-in user) before promising a shareable mix link.
-  **This is the single biggest open question for the Apple playlist feature.**
+- **Public link to the result — ANSWERED 2026-07-18 (MYS-107): owner-only.**
+  See §4.1 below. There is no shareable link. Scope Phase B accordingly.
 - **"Add to Apple-curated playlist not supported"** — only matters for editing
   Apple's own playlists; creating/adding to *our* user-owned playlist is fine.
 - **Storefront** — ISRC catalog lookup is per-storefront (`{storefront}` = ISO
   country). Use the user's storefront (available from `/v1/me/storefront` with the
-  MUT) so matches resolve in their region.
+  MUT) so matches resolve in their region. Verified working: `/v1/me/storefront`
+  returned `us` / United States / `en-US` for the test account. MYS-106 currently
+  hardcodes `us`; wiring the real value is a Phase B follow-on.
+
+---
+
+## 4.1 Shareable-link question — settled (MYS-107, 2026-07-18)
+
+**Answer: an API-created Apple library playlist yields NO shareable link.**
+Phase B is "each player generates the playlist in their own library," *not*
+"one shared mix link." Do not promise a shared Apple link in UI copy.
+
+### How this was established
+
+Not from documentation — measured. A Music User Token was obtained via a
+MusicKit JS harness (a real Apple ID with an active subscription), a playlist
+was created through `POST /v1/me/library/playlists` with two ISRC-matched
+tracks, and the result was read back three ways.
+
+### Observed response (all three read shapes identical)
+
+```
+isPublic   : false
+globalId   : (absent)
+url        : (absent)
+hasCatalog : false
+playParams : {"id": "p.…", "isLibrary": true, "kind": "playlist"}
+```
+
+| Read shape | `relationships` | `catalog` data |
+|---|---|---|
+| plain `GET` | *(none)* | — |
+| `?include=catalog` | `['catalog']` | empty |
+| `?relate=catalog` | `['catalog']` | empty |
+
+The `catalog` relationship exists but is **empty**: a library playlist has no
+catalog counterpart, so there is nothing to build a public
+`music.apple.com/{storefront}/playlist/{globalId}` URL from.
+
+### Why it can't be worked around
+
+`isPublic` cannot be set programmatically — playlists are created private and
+`globalId` (the id a public catalog URL needs) does not exist until the **user
+manually** turns on "Show on My Profile and in Search" or uses Share in the
+Music app. Apple's own developer-forum guidance states playlist sharing is not
+supported through the Apple Music API. So no ordering of API calls produces a
+shareable link; it is gated on a manual, per-user action in Apple's own client.
+
+### Consequence for Phase B (MYS-108)
+
+- Each player connects their own Apple Music account and gets the round
+  playlist **in their own library**. Still useful — it's the "listen in my app
+  of choice" outcome — but it is *not* parity with Spotify/Deezer.
+- Every listener needs an Apple Music **subscription** and must complete the
+  MusicKit auth popup. Higher friction than pasting a Spotify link.
+- The round's existing per-track Apple links (MYS-106, exact via ISRC) remain
+  the zero-friction path and should stay the default presentation.
 
 ---
 
@@ -202,9 +253,10 @@ A pure deep-link-to-search is **not** a playlist (that's already what
 - **Playlist creation: technically GO.** `create-then-add` library-playlist
   endpoints exist and work with developer token + Music User Token; no closed-door
   like Deezer, no anonymous trick like YouTube.
-- **Two real gates, both non-technical:** the **$99/yr** spend, and the **shareable
-  link** open question. Neither blocks a decision to proceed; both should be settled
-  before the Phase B build.
+- **Two real gates, both non-technical — both now settled (2026-07-18).** The
+  **$99/yr** membership is approved and provisioned (MYS-104), and the
+  **shareable link** question is answered: **owner-only, no shared link**
+  (§4.1, MYS-107). Phase B is per-player library playlists, not Spotify parity.
 - **Recommended first step if we proceed:** the **matching upgrade** (developer
   token only) — cheap, immediately improves Apple links, and proves out the
   developer-token plumbing before tackling MusicKit client-side auth.

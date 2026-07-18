@@ -1,4 +1,4 @@
-"""Tests for MYS-34: GET /api/v1/leagues/{league_id}/members (member list).
+"""Tests for MYS-34: GET /api/v1/clubs/{league_id}/members (member list).
 
 TDD-first: written before the endpoint exists on the leagues router, so they
 are expected to FAIL (red) until the developer implements the route. See
@@ -57,16 +57,16 @@ async def _seed_league(db_session, organizer: User, **overrides) -> League:
         "name": "Summer Bangers",
         "description": "A league for hot tracks",
         "organizer_id": organizer.id,
-        "total_rounds": 6,
+        "total_mixes": 6,
         "votes_per_player": 5,
-        "current_round": 0,
+        "current_mix": 0,
         "state": "active",
     }
     defaults.update(overrides)
     league = League(**defaults)
     db_session.add(league)
     await db_session.flush()
-    member_kwargs = {"league_id": league.id, "user_id": organizer.id}
+    member_kwargs = {"club_id": league.id, "user_id": organizer.id}
     if organizer_joined_at is not None:
         member_kwargs["joined_at"] = organizer_joined_at
     db_session.add(LeagueMember(**member_kwargs))
@@ -80,7 +80,7 @@ async def _seed_member(db_session, league: League, user: User, **overrides) -> L
 
     Accepts column overrides (e.g. joined_at, removed_at).
     """
-    defaults = {"league_id": league.id, "user_id": user.id}
+    defaults = {"club_id": league.id, "user_id": user.id}
     defaults.update(overrides)
     member = LeagueMember(**defaults)
     db_session.add(member)
@@ -94,7 +94,7 @@ def _auth_header(user_id: uuid.UUID) -> dict[str, str]:
 
 
 def _members_url(league_id) -> str:
-    return f"/api/v1/leagues/{league_id}/members"
+    return f"/api/v1/clubs/{league_id}/members"
 
 
 # ========================================================================== #

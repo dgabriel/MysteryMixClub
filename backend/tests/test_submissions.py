@@ -132,7 +132,7 @@ def _body(**over) -> dict:
 
 
 def _sub_url(round_id) -> str:
-    return f"/api/v1/rounds/{round_id}/submissions"
+    return f"/api/v1/mixes/{round_id}/submissions"
 
 
 # --------------------------------------------------------------------------- #

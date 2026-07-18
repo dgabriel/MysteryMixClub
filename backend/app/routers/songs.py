@@ -15,7 +15,9 @@ onto HTTP status codes.
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, StringConstraints, model_validator
+from pydantic import StringConstraints, model_validator
+
+from app.api.wire import WireModel
 
 from app.auth.deps import get_current_user
 from app.models.user import User
@@ -50,7 +52,7 @@ Isrc = Annotated[str, StringConstraints(strip_whitespace=True, max_length=32)]
 Url = Annotated[str, StringConstraints(max_length=2048)]
 
 
-class ResolveRequest(BaseModel):
+class ResolveRequest(WireModel):
     # Either a pasted platform URL, or a known song identity (from a search
     # result). Identity is preferred — it skips the URL-identification step.
     url: Url | None = None

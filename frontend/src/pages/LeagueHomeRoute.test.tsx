@@ -66,10 +66,10 @@ function leagueWith(overrides: Partial<League> = {}): League {
     name: "Friday Mixtape",
     description: "the vibe",
     organizer_id: ORGANIZER_ID,
-    total_rounds: 6,
+    total_mixes: 6,
     votes_per_player: 3,
     songs_per_submission: 1,
-    current_round: 2,
+    current_mix: 2,
     state: "active",
     created_at: "2026-01-01T00:00:00Z",
     default_vibe_mode: false,
@@ -127,7 +127,7 @@ function leaderboardFor(memberList: LeagueMember[]): LeaderboardEntry[] {
 function inviteWith(token: string): Invite {
   return {
     id: "invite-1",
-    league_id: "league-1",
+    club_id: "league-1",
     token,
     created_by: ORGANIZER_ID,
     created_at: "2026-01-03T00:00:00Z",
@@ -138,8 +138,8 @@ function inviteWith(token: string): Invite {
 function closedRound(overrides: Partial<Round> = {}): Round {
   return {
     id: "round-1",
-    league_id: "league-1",
-    round_number: 1,
+    club_id: "league-1",
+    mix_number: 1,
     theme: "late summer feels",
     state: "closed",
     description: null,
@@ -160,8 +160,8 @@ function closedRound(overrides: Partial<Round> = {}): Round {
 
 function resultsWith(overrides: Partial<RoundResults> = {}): RoundResults {
   return {
-    round_id: "round-1",
-    round_number: 1,
+    mix_id: "round-1",
+    mix_number: 1,
     theme: "late summer feels",
     state: "closed",
     viewer_is_vibing: false,

@@ -28,7 +28,7 @@ CREATE_URL = "/api/v1/admin/invites"
 
 # The exact key set the create response must return — same shape as a league
 # invite (InviteResponse), just with a null league_id.
-_INVITE_KEYS = {"id", "league_id", "token", "created_by", "created_at", "expires_at"}
+_INVITE_KEYS = {"id", "club_id", "token", "created_by", "created_at", "expires_at"}
 
 
 @pytest.fixture
@@ -53,7 +53,7 @@ async def _seed_admin(db_session) -> User:
 
 async def _seed_platform_invite(db_session, admin: User, **overrides) -> Invite:
     defaults = {
-        "league_id": None,
+        "club_id": None,
         "created_by": admin.id,
         "token": "tok_" + uuid.uuid4().hex,
         "expires_at": None,
@@ -100,7 +100,7 @@ async def test_create_platform_invite_returns_201_and_null_league_id(client, db_
     assert resp.status_code == 201, resp.text
     data = resp.json()
     assert set(data.keys()) == _INVITE_KEYS
-    assert data["league_id"] is None
+    assert data["club_id"] is None
     assert data["created_by"] == str(admin.id)
 
 
@@ -146,8 +146,8 @@ async def test_preview_platform_invite_returns_null_league_fields(client, db_ses
 
     assert resp.status_code == 200, resp.text
     data = resp.json()
-    assert data["league_id"] is None
-    assert data["league_name"] is None
+    assert data["club_id"] is None
+    assert data["club_name"] is None
     assert data["member_count"] is None
     assert data["already_member"] is False
 
@@ -226,7 +226,7 @@ async def test_preview_platform_invite_used_by_self_passes_through(client, db_se
 
     assert resp.status_code == 200, resp.text
     data = resp.json()
-    assert data["league_id"] is None
+    assert data["club_id"] is None
     assert data["already_member"] is False
 
 

@@ -59,7 +59,7 @@ function userWith(overrides: Partial<AdminUser> = {}): AdminUser {
 function platformInviteWith(overrides: Partial<Invite> = {}): Invite {
   return {
     id: "invite-1",
-    league_id: null,
+    club_id: null,
     token: "plat-tok-123",
     created_by: "admin-1",
     created_at: "2026-07-15T00:00:00Z",

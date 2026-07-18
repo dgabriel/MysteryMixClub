@@ -178,7 +178,7 @@ async def test_post_self_note_allowed(client, db_session):
     assert resp.status_code == 201, resp.text
     body = resp.json()
     assert body["submission_id"] == str(sub_id)
-    assert body["round_id"] == str(round_id)
+    assert body["mix_id"] == str(round_id)
     assert body["author_id"] == str(organizer.id)
     assert body["author_display_name"] == "Org"
     assert body["body"] == "shameless self-love"  # stripped

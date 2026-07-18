@@ -13,7 +13,9 @@ from fastapi import (
     Response,
     status,
 )
-from pydantic import BaseModel, EmailStr
+from pydantic import EmailStr
+
+from app.api.wire import WireModel
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -61,7 +63,7 @@ _INVITE_REQUIRED_MESSAGE = "you need an invite to create an account"
 _AT_CAPACITY_MESSAGE = "MysteryMixClub is at capacity right now"
 
 
-class MagicLinkRequest(BaseModel):
+class MagicLinkRequest(WireModel):
     email: EmailStr
     # Shareable invite-link token (MYS-127). A new account can only be created by
     # someone arriving through a valid unexpired link; existing users sign in
@@ -69,7 +71,7 @@ class MagicLinkRequest(BaseModel):
     invite_token: str | None = None
 
 
-class MagicLinkResponse(BaseModel):
+class MagicLinkResponse(WireModel):
     message: str = _NEUTRAL_MESSAGE
     # Dev/staging only: the raw magic-link token, so non-production UIs can show a
     # clickable sign-in link for testing. Omitted entirely in production (the
@@ -78,12 +80,12 @@ class MagicLinkResponse(BaseModel):
     dev_token: str | None = None
 
 
-class VerifyResponse(BaseModel):
+class VerifyResponse(WireModel):
     access_token: str
     token_type: str = "bearer"
 
 
-class LogoutResponse(BaseModel):
+class LogoutResponse(WireModel):
     message: str
 
 

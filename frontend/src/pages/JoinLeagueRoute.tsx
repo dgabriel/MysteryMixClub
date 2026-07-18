@@ -52,14 +52,14 @@ export function JoinLeagueRoute() {
         // Already a member (most relevant on an otherwise-expired link, MYS-181)
         // — skip the join screen entirely and land them in the league.
         if (result.already_member) {
-          navigate(`/clubs/${result.league_id}`, { replace: true });
+          navigate(`/clubs/${result.club_id}`, { replace: true });
           return;
         }
-        // Platform invite (MYS-182): league_id is null — it's a signup grant,
+        // Platform invite (MYS-182): club_id is null — it's a signup grant,
         // not a league to join. An already-authenticated visitor has nothing
         // to do here (a new account auto-completed signup via /auth/verify
         // before ever reaching this page), so just send them home.
-        if (result.league_id === null && isAuthenticated) {
+        if (result.club_id === null && isAuthenticated) {
           navigate("/home", { replace: true });
           return;
         }

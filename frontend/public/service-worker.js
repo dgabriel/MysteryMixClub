@@ -2,7 +2,7 @@
 // Offline shell only: data requests always go to the network.
 // Bump CACHE_VERSION to force clients to drop stale shells on next load.
 
-const CACHE_VERSION = "mmc-shell-v1";
+const CACHE_VERSION = "mmc-shell-v2";
 const SHELL_ASSETS = ["/", "/index.html", "/manifest.json"];
 
 self.addEventListener("install", (event) => {

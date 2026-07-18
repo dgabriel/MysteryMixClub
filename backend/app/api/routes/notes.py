@@ -21,7 +21,9 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, StringConstraints
+from pydantic import StringConstraints
+
+from app.api.wire import WireModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,11 +40,11 @@ router = APIRouter(tags=["notes"])
 NoteBody = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=280)]
 
 
-class NoteCreate(BaseModel):
+class NoteCreate(WireModel):
     body: NoteBody
 
 
-class NoteResponse(BaseModel):
+class NoteResponse(WireModel):
     id: str
     submission_id: str
     round_id: str

@@ -64,7 +64,7 @@ def _auth(user_id: uuid.UUID) -> dict[str, str]:
 
 
 def _rounds_url(league_id: uuid.UUID) -> str:
-    return f"/api/v1/leagues/{league_id}/rounds"
+    return f"/api/v1/clubs/{league_id}/mixes"
 
 
 async def _create_round(client, league_id, organizer_id, **body):
@@ -74,7 +74,7 @@ async def _create_round(client, league_id, organizer_id, **body):
 
 async def _advance(client, round_id, organizer_id, state):
     return await client.patch(
-        f"/api/v1/rounds/{round_id}", json={"state": state}, headers=_auth(organizer_id)
+        f"/api/v1/mixes/{round_id}", json={"state": state}, headers=_auth(organizer_id)
     )
 
 
@@ -122,7 +122,7 @@ async def test_create_first_round_defaults(client, db_session):
     resp = await _create_round(client, league_id, organizer.id, theme="  golden hour  ")
     assert resp.status_code == 201, resp.text
     body = resp.json()
-    assert body["round_number"] == 1
+    assert body["mix_number"] == 1
     assert body["state"] == "open_submission"
     assert body["theme"] == "golden hour"  # trimmed
     assert body["votes_per_player"] == 5  # inherited from the league
@@ -164,7 +164,7 @@ async def test_sequential_numbering_after_closing(client, db_session):
 
     r2 = await _create_round(client, league.id, organizer.id)
     assert r2.status_code == 201
-    assert r2.json()["round_number"] == 2
+    assert r2.json()["mix_number"] == 2
 
 
 # --------------------------------------------------------------------------- #
@@ -182,7 +182,7 @@ async def test_list_rounds_ordered_for_member(client, db_session):
     resp = await client.get(_rounds_url(league.id), headers=_auth(member.id))
     assert resp.status_code == 200, resp.text
     rounds = resp.json()
-    assert [r["round_number"] for r in rounds] == [1]
+    assert [r["mix_number"] for r in rounds] == [1]
 
 
 async def test_list_rounds_non_member_forbidden(client, db_session):
@@ -199,7 +199,7 @@ async def test_get_round_detail(client, db_session):
     created = await _create_round(client, league.id, organizer.id, theme="the one that got away")
     rid = created.json()["id"]
 
-    resp = await client.get(f"/api/v1/rounds/{rid}", headers=_auth(organizer.id))
+    resp = await client.get(f"/api/v1/mixes/{rid}", headers=_auth(organizer.id))
     assert resp.status_code == 200, resp.text
     assert resp.json()["theme"] == "the one that got away"
 
@@ -207,7 +207,7 @@ async def test_get_round_detail(client, db_session):
 async def test_get_unknown_round_404(client, db_session):
     organizer = await _seed_user(db_session, "org@example.com")
     await _seed_league(db_session, organizer)
-    resp = await client.get(f"/api/v1/rounds/{uuid.uuid4()}", headers=_auth(organizer.id))
+    resp = await client.get(f"/api/v1/mixes/{uuid.uuid4()}", headers=_auth(organizer.id))
     assert resp.status_code == 404
 
 
@@ -290,7 +290,7 @@ async def test_editing_closed_round_is_rejected(client, db_session):
     await _advance(client, rid, organizer.id, "closed")
 
     resp = await client.patch(
-        f"/api/v1/rounds/{rid}", json={"theme": "too late"}, headers=_auth(organizer.id)
+        f"/api/v1/mixes/{rid}", json={"theme": "too late"}, headers=_auth(organizer.id)
     )
     assert resp.status_code == 409
 
@@ -303,7 +303,7 @@ async def test_patch_requires_organizer(client, db_session):
     rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
 
     resp = await client.patch(
-        f"/api/v1/rounds/{rid}", json={"state": "open_voting"}, headers=_auth(member.id)
+        f"/api/v1/mixes/{rid}", json={"state": "open_voting"}, headers=_auth(member.id)
     )
     assert resp.status_code == 403
 
@@ -317,7 +317,7 @@ async def test_patch_updates_deadline_on_open_round(client, db_session):
 
     deadline = (datetime.now(timezone.utc) + timedelta(days=3)).isoformat()
     resp = await client.patch(
-        f"/api/v1/rounds/{rid}",
+        f"/api/v1/mixes/{rid}",
         json={"submission_deadline": deadline},
         headers=_auth(organizer.id),
     )
@@ -333,7 +333,7 @@ async def test_patch_theme_on_open_round_is_rejected(client, db_session):
     rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
 
     resp = await client.patch(
-        f"/api/v1/rounds/{rid}",
+        f"/api/v1/mixes/{rid}",
         json={"theme": "rainy day b-sides"},
         headers=_auth(organizer.id),
     )
@@ -529,7 +529,7 @@ async def test_rollback_requires_organizer(client, db_session):
     await _advance(client, rid, organizer.id, "open_voting")
 
     resp = await client.patch(
-        f"/api/v1/rounds/{rid}", json={"state": "open_submission"}, headers=_auth(member.id)
+        f"/api/v1/mixes/{rid}", json={"state": "open_submission"}, headers=_auth(member.id)
     )
     assert resp.status_code == 403
 
@@ -633,7 +633,7 @@ async def test_round_reports_submission_and_member_counts(client, db_session):
 
     await _add_submission(db_session, uuid.UUID(rid), organizer)
 
-    detail = await client.get(f"/api/v1/rounds/{rid}", headers=_auth(member.id))
+    detail = await client.get(f"/api/v1/mixes/{rid}", headers=_auth(member.id))
     assert detail.status_code == 200, detail.text
     body = detail.json()
     assert body["submission_count"] == 1  # 3 members, 1 has submitted
@@ -652,7 +652,7 @@ async def test_list_rounds_includes_per_round_submission_counts(client, db_sessi
 
     resp = await client.get(_rounds_url(league.id), headers=_auth(member.id))
     assert resp.status_code == 200, resp.text
-    by_number = {r["round_number"]: r for r in resp.json()}
+    by_number = {r["mix_number"]: r for r in resp.json()}
     assert by_number[1]["submission_count"] == 2
     assert by_number[1]["member_count"] == 2
 
@@ -671,7 +671,7 @@ async def test_submission_count_is_distinct_submitters(client, db_session):
     await _add_submission(db_session, uuid.UUID(rid), organizer)
     await _add_submission(db_session, uuid.UUID(rid), member)
 
-    detail = await client.get(f"/api/v1/rounds/{rid}", headers=_auth(member.id))
+    detail = await client.get(f"/api/v1/mixes/{rid}", headers=_auth(member.id))
     assert detail.status_code == 200, detail.text
     assert detail.json()["submission_count"] == 2  # 3 songs, 2 people
 
@@ -711,7 +711,7 @@ async def test_round_reports_zero_voted_counts_before_voting(client, db_session)
 
     rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
 
-    detail = await client.get(f"/api/v1/rounds/{rid}", headers=_auth(member.id))
+    detail = await client.get(f"/api/v1/mixes/{rid}", headers=_auth(member.id))
     body = detail.json()
     assert body["voted_count"] == 0
     assert body["voting_eligible_count"] == 0
@@ -730,7 +730,7 @@ async def test_round_reports_voted_and_eligible_counts(client, db_session):
     mem_sub = await _add_submission_ret(db_session, round_id, member)
 
     # Both playing — eligible count should be 2, voted count 0 before any votes.
-    detail = await client.get(f"/api/v1/rounds/{rid}", headers=_auth(member.id))
+    detail = await client.get(f"/api/v1/mixes/{rid}", headers=_auth(member.id))
     body = detail.json()
     assert body["voting_eligible_count"] == 2
     assert body["voted_count"] == 0
@@ -738,7 +738,7 @@ async def test_round_reports_voted_and_eligible_counts(client, db_session):
     # Organizer casts a vote for member's song.
     await _add_vote(db_session, round_id, organizer, mem_sub)
 
-    detail2 = await client.get(f"/api/v1/rounds/{rid}", headers=_auth(member.id))
+    detail2 = await client.get(f"/api/v1/mixes/{rid}", headers=_auth(member.id))
     body2 = detail2.json()
     assert body2["voting_eligible_count"] == 2
     assert body2["voted_count"] == 1
@@ -746,7 +746,7 @@ async def test_round_reports_voted_and_eligible_counts(client, db_session):
     # Member votes too — both have voted.
     await _add_vote(db_session, round_id, member, org_sub)
 
-    detail3 = await client.get(f"/api/v1/rounds/{rid}", headers=_auth(member.id))
+    detail3 = await client.get(f"/api/v1/mixes/{rid}", headers=_auth(member.id))
     body3 = detail3.json()
     assert body3["voted_count"] == 2
 
@@ -763,7 +763,7 @@ async def test_voting_eligible_excludes_vibing_submitters(client, db_session):
     await _add_submission_ret(db_session, round_id, organizer, mode="playing")
     await _add_submission_ret(db_session, round_id, viber, mode="vibing")
 
-    detail = await client.get(f"/api/v1/rounds/{rid}", headers=_auth(organizer.id))
+    detail = await client.get(f"/api/v1/mixes/{rid}", headers=_auth(organizer.id))
     body = detail.json()
     # Only the playing submitter counts as eligible; the viber is excluded.
     assert body["voting_eligible_count"] == 1
@@ -785,7 +785,7 @@ async def test_list_rounds_includes_voted_counts(client, db_session):
 
     resp = await client.get(_rounds_url(league.id), headers=_auth(member.id))
     assert resp.status_code == 200, resp.text
-    by_number = {r["round_number"]: r for r in resp.json()}
+    by_number = {r["mix_number"]: r for r in resp.json()}
     assert by_number[1]["voting_eligible_count"] == 2
     assert by_number[1]["voted_count"] == 1
 
@@ -796,7 +796,7 @@ async def test_list_rounds_includes_voted_counts(client, db_session):
 
 
 def _extend_url(round_id) -> str:
-    return f"/api/v1/rounds/{round_id}/extend-voting"
+    return f"/api/v1/mixes/{round_id}/extend-voting"
 
 
 def _extend_body(deadline: datetime) -> dict:
@@ -847,7 +847,7 @@ async def test_extend_voting_to_chosen_deadline(client, db_session):
     league = await _seed_league(db_session, organizer)
     rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
     await _advance(client, rid, organizer.id, "open_voting")
-    before = (await client.get(f"/api/v1/rounds/{rid}", headers=_auth(organizer.id))).json()
+    before = (await client.get(f"/api/v1/mixes/{rid}", headers=_auth(organizer.id))).json()
     old_deadline = datetime.fromisoformat(before["voting_deadline"])
     chosen = old_deadline + timedelta(hours=20)
 
@@ -864,7 +864,7 @@ async def test_extend_voting_is_repeatable(client, db_session):
     league = await _seed_league(db_session, organizer)
     rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
     await _advance(client, rid, organizer.id, "open_voting")
-    before = (await client.get(f"/api/v1/rounds/{rid}", headers=_auth(organizer.id))).json()
+    before = (await client.get(f"/api/v1/mixes/{rid}", headers=_auth(organizer.id))).json()
     old_deadline = datetime.fromisoformat(before["voting_deadline"])
 
     await client.post(
@@ -887,7 +887,7 @@ async def test_extend_voting_rejects_deadline_not_after_current(client, db_sessi
     league = await _seed_league(db_session, organizer)
     rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
     await _advance(client, rid, organizer.id, "open_voting")
-    before = (await client.get(f"/api/v1/rounds/{rid}", headers=_auth(organizer.id))).json()
+    before = (await client.get(f"/api/v1/mixes/{rid}", headers=_auth(organizer.id))).json()
     old_deadline = datetime.fromisoformat(before["voting_deadline"])
 
     resp = await client.post(
@@ -908,7 +908,7 @@ async def test_extend_voting_rejects_deadline_beyond_48h(client, db_session):
     league = await _seed_league(db_session, organizer)
     rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
     await _advance(client, rid, organizer.id, "open_voting")
-    before = (await client.get(f"/api/v1/rounds/{rid}", headers=_auth(organizer.id))).json()
+    before = (await client.get(f"/api/v1/mixes/{rid}", headers=_auth(organizer.id))).json()
     old_deadline = datetime.fromisoformat(before["voting_deadline"])
 
     resp = await client.post(
@@ -938,7 +938,7 @@ async def test_extend_voting_resets_warning_marker(client, db_session):
     round_.voting_warning_sent_at = datetime.now(timezone.utc)
     await db_session.commit()
 
-    before = (await client.get(f"/api/v1/rounds/{rid}", headers=_auth(organizer.id))).json()
+    before = (await client.get(f"/api/v1/mixes/{rid}", headers=_auth(organizer.id))).json()
     old_deadline = datetime.fromisoformat(before["voting_deadline"])
     resp = await client.post(
         _extend_url(rid),

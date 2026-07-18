@@ -12,7 +12,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, synonym
 
 from app.db.base import Base
 
@@ -22,17 +22,18 @@ ROUND_STATES = ("pending", "open_submission", "open_voting", "closed")
 
 
 class Round(Base):
-    __tablename__ = "rounds"
-    # A league's round numbers are unique and sequential.
-    __table_args__ = (
-        UniqueConstraint("league_id", "round_number", name="uq_rounds_league_number"),
-    )
+    # DB is renamed to mix vocabulary (MYS-196 cutover); Python attrs keep the
+    # old names until R3/R4 cleanup. The mapped_column("new_name") pins are the
+    # seam. UniqueConstraint references DB column names, so it uses the new ones.
+    __tablename__ = "mixes"
+    # A club's mix numbers are unique and sequential.
+    __table_args__ = (UniqueConstraint("club_id", "mix_number", name="uq_mixes_club_number"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     league_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("leagues.id"), nullable=False, index=True
+        "club_id", UUID(as_uuid=True), ForeignKey("clubs.id"), nullable=False, index=True
     )
-    round_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    round_number: Mapped[int] = mapped_column("mix_number", Integer, nullable=False)
     # Nullable: rounds are auto-generated at league creation without a theme;
     # the organizer fills it in while the round is still pending (MYS-62).
     theme: Mapped[Optional[str]] = mapped_column(String, nullable=True)
@@ -72,3 +73,8 @@ class Round(Base):
     empty_round_notice_sent_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+    # New-vocabulary synonym (MYS-196 seam): both names work as attrs and
+    # constructor kwargs until the R3/R4 cleanup makes the new name primary.
+    club_id = synonym("league_id")
+    mix_number = synonym("round_number")

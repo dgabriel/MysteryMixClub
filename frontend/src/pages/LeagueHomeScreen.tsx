@@ -66,7 +66,7 @@ type LeagueHomeScreenProps = {
   onUpdateLeague: (input: {
     name?: string;
     description?: string | null;
-    total_rounds?: number;
+    total_mixes?: number;
     submission_window_hours?: number;
     voting_window_hours?: number;
   }) => void;
@@ -170,7 +170,7 @@ export function LeagueHomeScreen({
           <p className="mt-2 font-mono text-[13px] font-light text-muted">{league.description}</p>
         ) : null}
         <p className="mt-3 font-mono text-[11px] font-light text-muted">
-          mix {league.current_round} of {league.total_rounds}
+          mix {league.current_mix} of {league.total_mixes}
         </p>
         {isComplete ? (
           <p className="mt-4 font-serif italic text-[18px] text-muted">
@@ -584,7 +584,7 @@ function RoundRow({
         <div className="flex items-start justify-between gap-4">
           <span className="min-w-0">
             <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
-              mystery mix {round.round_number}
+              mystery mix {round.mix_number}
             </span>
             {named ? (
               <span className="mt-0.5 block truncate font-serif text-[16px] text-ink">
@@ -760,7 +760,7 @@ function RoundEditForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
-        mystery mix {round.round_number}
+        mystery mix {round.mix_number}
       </span>
 
       <TextField
@@ -821,7 +821,7 @@ function OrganizerEdit({
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(league.name);
   const [description, setDescription] = useState(league.description ?? "");
-  const [totalRounds, setTotalRounds] = useState(String(league.total_rounds));
+  const [totalRounds, setTotalRounds] = useState(String(league.total_mixes));
   const initialSubmissionWindow = hoursToDaysAndHours(league.submission_window_hours);
   const initialVotingWindow = hoursToDaysAndHours(league.voting_window_hours);
   const [submissionWindowDays, setSubmissionWindowDays] = useState(
@@ -837,7 +837,7 @@ function OrganizerEdit({
   function openForm() {
     setName(league.name);
     setDescription(league.description ?? "");
-    setTotalRounds(String(league.total_rounds));
+    setTotalRounds(String(league.total_mixes));
     const submissionWindow = hoursToDaysAndHours(league.submission_window_hours);
     setSubmissionWindowDays(String(submissionWindow.days));
     setSubmissionWindowHours(String(submissionWindow.hours));
@@ -853,7 +853,7 @@ function OrganizerEdit({
     const input: {
       name?: string;
       description?: string | null;
-      total_rounds?: number;
+      total_mixes?: number;
       submission_window_hours?: number;
       voting_window_hours?: number;
     } = {};
@@ -868,8 +868,8 @@ function OrganizerEdit({
     }
 
     const rounds = Number(totalRounds);
-    if (Number.isFinite(rounds) && rounds >= 1 && rounds !== league.total_rounds) {
-      input.total_rounds = rounds;
+    if (Number.isFinite(rounds) && rounds >= 1 && rounds !== league.total_mixes) {
+      input.total_mixes = rounds;
     }
 
     const submissionHours = daysAndHoursToTotal(
@@ -929,7 +929,7 @@ function OrganizerEdit({
       <TextField
         id="edit-league-total-rounds"
         label="mystery mixes"
-        name="total_rounds"
+        name="total_mixes"
         type="number"
         min={1}
         value={totalRounds}

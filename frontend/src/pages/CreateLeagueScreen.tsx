@@ -8,7 +8,7 @@ import { daysAndHoursToTotal, validateWindowHours } from "../utils/deadlineWindo
 type CreateLeagueInput = {
   name: string;
   description?: string;
-  total_rounds: number;
+  total_mixes: number;
   votes_per_player: number;
   songs_per_submission: number;
   default_vibe_mode: boolean;
@@ -89,7 +89,7 @@ export function CreateLeagueScreen({
     onSubmit({
       name: trimmedName,
       ...(trimmedDescription ? { description: trimmedDescription } : {}),
-      total_rounds: rounds,
+      total_mixes: rounds,
       votes_per_player: votes,
       songs_per_submission: songs,
       default_vibe_mode: defaultVibeMode,
@@ -131,7 +131,7 @@ export function CreateLeagueScreen({
             <TextField
               id="league-total-rounds"
               label="number of mystery mixes"
-              name="total_rounds"
+              name="total_mixes"
               type="number"
               min={1}
               value={totalRounds}

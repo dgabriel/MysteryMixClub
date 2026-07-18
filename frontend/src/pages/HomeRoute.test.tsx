@@ -34,10 +34,10 @@ function leagueWith(overrides: Partial<League> = {}): League {
     name: "Friday Mixtape",
     description: null,
     organizer_id: "22222222-2222-2222-2222-222222222222",
-    total_rounds: 6,
+    total_mixes: 6,
     votes_per_player: 3,
     songs_per_submission: 1,
-    current_round: 2,
+    current_mix: 2,
     state: "active",
     created_at: "2026-01-01T00:00:00Z",
     default_vibe_mode: false,
@@ -107,7 +107,7 @@ describe("HomeRoute (My Leagues)", () => {
   it("groups completed leagues below active ones under a 'completed' heading with gold accent", async () => {
     mockGetLeagues.mockResolvedValue([
       leagueWith({ id: "a1", name: "Active One", state: "active" }),
-      leagueWith({ id: "c1", name: "Finished One", state: "complete", current_round: 6 }),
+      leagueWith({ id: "c1", name: "Finished One", state: "complete", current_mix: 6 }),
     ]);
     renderHome();
 

@@ -17,7 +17,7 @@ export function CreateLeagueRoute() {
   async function handleSubmit(input: {
     name: string;
     description?: string;
-    total_rounds: number;
+    total_mixes: number;
     votes_per_player: number;
     songs_per_submission: number;
     default_vibe_mode: boolean;

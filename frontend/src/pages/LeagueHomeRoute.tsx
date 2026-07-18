@@ -217,7 +217,7 @@ export function LeagueHomeRoute() {
   async function handleUpdateLeague(input: {
     name?: string;
     description?: string | null;
-    total_rounds?: number;
+    total_mixes?: number;
     submission_window_hours?: number;
     voting_window_hours?: number;
   }) {
@@ -227,9 +227,9 @@ export function LeagueHomeRoute() {
     try {
       const updated = await updateLeague(id, input);
       setLeague(updated);
-      // Changing total_rounds reconciles the round slate server-side (adds or
+      // Changing total_mixes reconciles the round slate server-side (adds or
       // removes trailing pending rounds); refetch so the list matches. Non-fatal.
-      if (input.total_rounds !== undefined) {
+      if (input.total_mixes !== undefined) {
         try {
           setRounds(await getRounds(id));
         } catch {
@@ -298,10 +298,10 @@ export function LeagueHomeRoute() {
     name: "",
     description: null,
     organizer_id: "",
-    total_rounds: 0,
+    total_mixes: 0,
     votes_per_player: 0,
     songs_per_submission: 1,
-    current_round: 0,
+    current_mix: 0,
     state: "active",
     default_vibe_mode: false,
     submission_window_hours: 72,

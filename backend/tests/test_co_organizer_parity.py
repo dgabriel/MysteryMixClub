@@ -44,9 +44,9 @@ async def _seed_league(db_session, organizer: User, **overrides) -> League:
         "name": "Summer Bangers",
         "description": "A league for hot tracks",
         "organizer_id": organizer.id,
-        "total_rounds": 6,
+        "total_mixes": 6,
         "votes_per_player": 5,
-        "current_round": 0,
+        "current_mix": 0,
         "state": "active",
     }
     defaults.update(overrides)
@@ -60,7 +60,7 @@ async def _seed_league(db_session, organizer: User, **overrides) -> League:
 
 
 async def _seed_member(db_session, league: League, user: User, **overrides) -> LeagueMember:
-    defaults = {"league_id": league.id, "user_id": user.id}
+    defaults = {"club_id": league.id, "user_id": user.id}
     defaults.update(overrides)
     member = LeagueMember(**defaults)
     db_session.add(member)
@@ -74,27 +74,27 @@ def _auth_header(user_id: uuid.UUID) -> dict[str, str]:
 
 
 def _league_url(league_id) -> str:
-    return f"/api/v1/leagues/{league_id}"
+    return f"/api/v1/clubs/{league_id}"
 
 
 def _rounds_url(league_id) -> str:
-    return f"/api/v1/leagues/{league_id}/rounds"
+    return f"/api/v1/clubs/{league_id}/mixes"
 
 
 def _round_url(round_id) -> str:
-    return f"/api/v1/rounds/{round_id}"
+    return f"/api/v1/mixes/{round_id}"
 
 
 def _remove_url(league_id, user_id) -> str:
-    return f"/api/v1/leagues/{league_id}/members/{user_id}"
+    return f"/api/v1/clubs/{league_id}/members/{user_id}"
 
 
 def _invites_url(league_id) -> str:
-    return f"/api/v1/leagues/{league_id}/invites"
+    return f"/api/v1/clubs/{league_id}/invites"
 
 
 def _revoke_invite_url(league_id, invite_id) -> str:
-    return f"/api/v1/leagues/{league_id}/invites/{invite_id}"
+    return f"/api/v1/clubs/{league_id}/invites/{invite_id}"
 
 
 # ========================================================================== #

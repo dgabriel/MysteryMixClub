@@ -2,7 +2,9 @@ from datetime import datetime, timezone
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, StringConstraints, model_validator
+from pydantic import StringConstraints, model_validator
+
+from app.api.wire import WireModel
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,7 +26,7 @@ PreferredService = Literal["spotify", "youtube", "deezer"]
 DisplayName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=50)]
 
 
-class UserProfileResponse(BaseModel):
+class UserProfileResponse(WireModel):
     id: str
     display_name: str
     email: str
@@ -38,7 +40,7 @@ class UserProfileResponse(BaseModel):
     tos_accepted: bool
 
 
-class UserProfileUpdate(BaseModel):
+class UserProfileUpdate(WireModel):
     # All fields optional: only those explicitly provided are applied. email is
     # intentionally not updatable.
     display_name: DisplayName | None = None
@@ -62,7 +64,7 @@ class UserProfileUpdate(BaseModel):
         return data
 
 
-class ExportSubmission(BaseModel):
+class ExportSubmission(WireModel):
     id: str
     round_id: str
     isrc: str
@@ -74,14 +76,14 @@ class ExportSubmission(BaseModel):
     created_at: datetime
 
 
-class ExportVote(BaseModel):
+class ExportVote(WireModel):
     id: str
     round_id: str
     submission_id: str
     created_at: datetime
 
 
-class ExportNote(BaseModel):
+class ExportNote(WireModel):
     id: str
     round_id: str
     submission_id: str
@@ -89,14 +91,14 @@ class ExportNote(BaseModel):
     created_at: datetime
 
 
-class ExportLeagueMembership(BaseModel):
+class ExportLeagueMembership(WireModel):
     league_id: str
     league_name: str
     role: str
     joined_at: datetime
 
 
-class UserDataExportResponse(BaseModel):
+class UserDataExportResponse(WireModel):
     exported_at: datetime
     profile: UserProfileResponse
     submissions: list[ExportSubmission]

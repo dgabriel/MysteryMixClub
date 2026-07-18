@@ -4,7 +4,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field, StringConstraints, model_validator
+from pydantic import Field, StringConstraints, model_validator
+
+from app.api.wire import WIRE_ALIASES, WireModel
 from sqlalchemy import and_, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,13 +21,13 @@ from app.models.submission import Submission
 from app.models.user import User
 from app.models.vote import Vote
 
-router = APIRouter(prefix="/leagues", tags=["leagues"])
+router = APIRouter(prefix="/clubs", tags=["leagues"])
 
 LeagueName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
 LeagueDescription = Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000)]
 
 
-class LeagueCreate(BaseModel):
+class LeagueCreate(WireModel):
     name: LeagueName
     # Default 6; the backend auto-generates this many pending rounds at creation.
     # Upper-bounded to keep slate sizes sane.
@@ -45,7 +47,7 @@ class LeagueCreate(BaseModel):
     voting_window_hours: int = Field(default=72, ge=4, le=168)
 
 
-class LeagueUpdate(BaseModel):
+class LeagueUpdate(WireModel):
     # All fields optional: only those explicitly provided are applied.
     name: LeagueName | None = None
     description: LeagueDescription | None = None
@@ -74,8 +76,11 @@ class LeagueUpdate(BaseModel):
                 "submission_window_hours",
                 "voting_window_hours",
             ):
-                if field in data and data[field] is None:
-                    raise ValueError(f"{field} may not be null")
+                # mode="before" sees the RAW wire dict, so a renamed field
+                # arrives under its alias (MYS-196) — check both spellings.
+                for key in {field, WIRE_ALIASES.get(field, field)}:
+                    if key in data and data[key] is None:
+                        raise ValueError(f"{key} may not be null")
         return data
 
 
@@ -87,7 +92,7 @@ _INVITE_TOKEN_BYTES = 32
 _INVITE_TTL = timedelta(hours=48)
 
 
-class InviteResponse(BaseModel):
+class InviteResponse(WireModel):
     id: str
     # Null for a platform (league-less) invite (MYS-182).
     league_id: str | None
@@ -108,7 +113,7 @@ def _to_invite_response(invite: Invite) -> InviteResponse:
     )
 
 
-class LeagueResponse(BaseModel):
+class LeagueResponse(WireModel):
     id: str
     name: str
     description: str | None
@@ -148,7 +153,7 @@ def _to_response(league: League) -> LeagueResponse:
     )
 
 
-class MemberResponse(BaseModel):
+class MemberResponse(WireModel):
     # Privacy-safe member shape: no email is exposed to fellow members.
     user_id: str
     display_name: str
@@ -322,7 +327,7 @@ async def list_league_members(
     return [_to_member_response(member, user, league.organizer_id) for member, user in rows.all()]
 
 
-class LeagueLeaderboardEntry(BaseModel):
+class LeagueLeaderboardEntry(WireModel):
     user_id: str
     display_name: str
     vote_count: int
@@ -391,7 +396,7 @@ async def get_league_leaderboard(
     return entries
 
 
-class MembershipResponse(BaseModel):
+class MembershipResponse(WireModel):
     # The caller's own per-league participation setting (MYS-112). Vibing is
     # private, so this only ever reports the caller's own setting — never anyone
     # else's (the members list deliberately omits it).
@@ -400,7 +405,7 @@ class MembershipResponse(BaseModel):
     vibe_mode: bool
 
 
-class MembershipUpdate(BaseModel):
+class MembershipUpdate(WireModel):
     vibe_mode: bool
 
 
@@ -591,7 +596,7 @@ async def remove_member(
     await db.commit()
 
 
-class MemberRoleUpdate(BaseModel):
+class MemberRoleUpdate(WireModel):
     role: Literal["admin", "member"]
 
 

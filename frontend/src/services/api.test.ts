@@ -49,10 +49,10 @@ const sampleLeague: League = {
   name: "Friday Mixers",
   description: "weekly picks",
   organizer_id: "user-1",
-  total_rounds: 6,
+  total_mixes: 6,
   votes_per_player: 3,
   songs_per_submission: 1,
-  current_round: 0,
+  current_mix: 0,
   state: "active",
   default_vibe_mode: false,
   submission_window_hours: 72,
@@ -456,12 +456,12 @@ describe("api.ts", () => {
   describe("createLeague", () => {
     const input = {
       name: "Friday Mixers",
-      total_rounds: 6,
+      total_mixes: 6,
       votes_per_player: 3,
       description: "weekly picks",
     };
 
-    it("POSTs /api/v1/leagues with a JSON body (Bearer + credentials) and resolves the League on 201", async () => {
+    it("POSTs /api/v1/clubs with a JSON body (Bearer + credentials) and resolves the League on 201", async () => {
       setStoredAccessToken("my-token");
       const fetchMock = vi
         .spyOn(globalThis, "fetch")
@@ -471,7 +471,7 @@ describe("api.ts", () => {
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0];
-      expect(url).toBe(`${V1_BASE}/leagues`);
+      expect(url).toBe(`${V1_BASE}/clubs`);
       expect(init?.method).toBe("POST");
       expect(init?.credentials).toBe("include");
       expect(init?.body).toBe(JSON.stringify(input));
@@ -486,7 +486,7 @@ describe("api.ts", () => {
         .spyOn(globalThis, "fetch")
         .mockResolvedValue(jsonResponse(201, sampleLeague));
 
-      const minimal = { name: "Solo", total_rounds: 1 };
+      const minimal = { name: "Solo", total_mixes: 1 };
       await createLeague(minimal);
 
       const [, init] = fetchMock.mock.calls[0];
@@ -496,14 +496,14 @@ describe("api.ts", () => {
     it("throws ApiError with the backend detail on a 422 validation failure", async () => {
       setStoredAccessToken("my-token");
       vi.spyOn(globalThis, "fetch").mockResolvedValue(
-        jsonResponse(422, { detail: "total_rounds must be at least 1" }),
+        jsonResponse(422, { detail: "total_mixes must be at least 1" }),
       );
 
       const err = await createLeague(input).catch((e: unknown) => e);
       expect(err).toBeInstanceOf(ApiError);
       expect(err).toMatchObject({
         status: 422,
-        message: "total_rounds must be at least 1",
+        message: "total_mixes must be at least 1",
       });
     });
 
@@ -519,7 +519,7 @@ describe("api.ts", () => {
   });
 
   describe("getLeagues", () => {
-    it("GETs /api/v1/leagues (Bearer + credentials) and resolves the array on 200", async () => {
+    it("GETs /api/v1/clubs (Bearer + credentials) and resolves the array on 200", async () => {
       setStoredAccessToken("my-token");
       const fetchMock = vi
         .spyOn(globalThis, "fetch")
@@ -529,7 +529,7 @@ describe("api.ts", () => {
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0];
-      expect(url).toBe(`${V1_BASE}/leagues`);
+      expect(url).toBe(`${V1_BASE}/clubs`);
       expect(init?.method ?? "GET").toBe("GET");
       expect(init?.credentials).toBe("include");
       const headers = new Headers(init?.headers);
@@ -554,7 +554,7 @@ describe("api.ts", () => {
   });
 
   describe("getLeague", () => {
-    it("GETs /api/v1/leagues/{id} (Bearer + credentials) and resolves the League on 200", async () => {
+    it("GETs /api/v1/clubs/{id} (Bearer + credentials) and resolves the League on 200", async () => {
       setStoredAccessToken("my-token");
       const fetchMock = vi
         .spyOn(globalThis, "fetch")
@@ -564,7 +564,7 @@ describe("api.ts", () => {
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0];
-      expect(url).toBe(`${V1_BASE}/leagues/league-1`);
+      expect(url).toBe(`${V1_BASE}/clubs/league-1`);
       expect(init?.method ?? "GET").toBe("GET");
       expect(init?.credentials).toBe("include");
       const headers = new Headers(init?.headers);
@@ -615,7 +615,7 @@ describe("api.ts", () => {
       },
     ];
 
-    it("GETs /api/v1/leagues/{id}/members (Bearer + credentials) and resolves the array on 200", async () => {
+    it("GETs /api/v1/clubs/{id}/members (Bearer + credentials) and resolves the array on 200", async () => {
       setStoredAccessToken("my-token");
       const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, members));
 
@@ -623,7 +623,7 @@ describe("api.ts", () => {
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0];
-      expect(url).toBe(`${V1_BASE}/leagues/league-1/members`);
+      expect(url).toBe(`${V1_BASE}/clubs/league-1/members`);
       expect(init?.method ?? "GET").toBe("GET");
       expect(init?.credentials).toBe("include");
       const headers = new Headers(init?.headers);
@@ -646,7 +646,7 @@ describe("api.ts", () => {
   });
 
   describe("updateLeague", () => {
-    it("PATCHes /api/v1/leagues/{id} with a JSON body (Bearer + credentials) and resolves the League on 200", async () => {
+    it("PATCHes /api/v1/clubs/{id} with a JSON body (Bearer + credentials) and resolves the League on 200", async () => {
       setStoredAccessToken("my-token");
       const updated: League = { ...sampleLeague, name: "Saturday Mixers" };
       const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, updated));
@@ -656,7 +656,7 @@ describe("api.ts", () => {
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0];
-      expect(url).toBe(`${V1_BASE}/leagues/league-1`);
+      expect(url).toBe(`${V1_BASE}/clubs/league-1`);
       expect(init?.method).toBe("PATCH");
       expect(init?.credentials).toBe("include");
       expect(init?.body).toBe(JSON.stringify(input));
@@ -678,23 +678,23 @@ describe("api.ts", () => {
       expect(init?.body).toBe(JSON.stringify(input));
     });
 
-    it("throws ApiError(409) with the backend detail when total_rounds is below current_round", async () => {
+    it("throws ApiError(409) with the backend detail when total_mixes is below current_mix", async () => {
       setStoredAccessToken("my-token");
       vi.spyOn(globalThis, "fetch").mockResolvedValue(
-        jsonResponse(409, { detail: "total_rounds cannot be below current_round" }),
+        jsonResponse(409, { detail: "total_mixes cannot be below current_mix" }),
       );
 
-      const err = await updateLeague("league-1", { total_rounds: 1 }).catch((e: unknown) => e);
+      const err = await updateLeague("league-1", { total_mixes: 1 }).catch((e: unknown) => e);
       expect(err).toBeInstanceOf(ApiError);
       expect(err).toMatchObject({
         status: 409,
-        message: "total_rounds cannot be below current_round",
+        message: "total_mixes cannot be below current_mix",
       });
     });
   });
 
   describe("removeMember", () => {
-    it("DELETEs /api/v1/leagues/{leagueId}/members/{userId} (Bearer + credentials) and resolves undefined on 204", async () => {
+    it("DELETEs /api/v1/clubs/{leagueId}/members/{userId} (Bearer + credentials) and resolves undefined on 204", async () => {
       setStoredAccessToken("my-token");
       const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(emptyResponse(204));
 
@@ -702,7 +702,7 @@ describe("api.ts", () => {
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0];
-      expect(url).toBe(`${V1_BASE}/leagues/league-1/members/user-2`);
+      expect(url).toBe(`${V1_BASE}/clubs/league-1/members/user-2`);
       expect(init?.method).toBe("DELETE");
       expect(init?.credentials).toBe("include");
       const headers = new Headers(init?.headers);
@@ -736,7 +736,7 @@ describe("api.ts", () => {
   });
 
   describe("updateMemberRole", () => {
-    it("PATCHes /api/v1/leagues/{leagueId}/members/{userId}/role with a JSON body (Bearer + credentials) and resolves the updated LeagueMember on 200", async () => {
+    it("PATCHes /api/v1/clubs/{leagueId}/members/{userId}/role with a JSON body (Bearer + credentials) and resolves the updated LeagueMember on 200", async () => {
       setStoredAccessToken("my-token");
       const updated: LeagueMember = {
         user_id: "user-2",
@@ -751,7 +751,7 @@ describe("api.ts", () => {
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0];
-      expect(url).toBe(`${V1_BASE}/leagues/league-1/members/user-2/role`);
+      expect(url).toBe(`${V1_BASE}/clubs/league-1/members/user-2/role`);
       expect(init?.method).toBe("PATCH");
       expect(init?.credentials).toBe("include");
       expect(init?.body).toBe(JSON.stringify({ role: "admin" }));
@@ -824,14 +824,14 @@ describe("api.ts", () => {
   describe("createInvite", () => {
     const invite: Invite = {
       id: "invite-1",
-      league_id: "league-1",
+      club_id: "league-1",
       token: "abc123",
       created_by: "user-1",
       created_at: "2026-06-03T00:00:00Z",
       expires_at: null,
     };
 
-    it("POSTs /api/v1/leagues/{leagueId}/invites (Bearer + credentials) and resolves the Invite on 201", async () => {
+    it("POSTs /api/v1/clubs/{leagueId}/invites (Bearer + credentials) and resolves the Invite on 201", async () => {
       setStoredAccessToken("my-token");
       const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(201, invite));
 
@@ -839,7 +839,7 @@ describe("api.ts", () => {
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0];
-      expect(url).toBe(`${V1_BASE}/leagues/league-1/invites`);
+      expect(url).toBe(`${V1_BASE}/clubs/league-1/invites`);
       expect(init?.method).toBe("POST");
       expect(init?.credentials).toBe("include");
       const headers = new Headers(init?.headers);
@@ -864,14 +864,14 @@ describe("api.ts", () => {
   describe("adminCreateInvite", () => {
     const platformInvite: Invite = {
       id: "invite-2",
-      league_id: null,
+      club_id: null,
       token: "xyz789",
       created_by: "admin-1",
       created_at: "2026-07-15T00:00:00Z",
       expires_at: "2026-07-17T00:00:00Z",
     };
 
-    it("POSTs /api/v1/admin/invites (Bearer + credentials) and resolves the Invite with a null league_id on 201", async () => {
+    it("POSTs /api/v1/admin/invites (Bearer + credentials) and resolves the Invite with a null club_id on 201", async () => {
       setStoredAccessToken("admin-token");
       const fetchMock = vi
         .spyOn(globalThis, "fetch")
@@ -901,8 +901,8 @@ describe("api.ts", () => {
 
   describe("getInvitePreview", () => {
     const preview: InvitePreview = {
-      league_id: "league-1",
-      league_name: "Friday Mixers",
+      club_id: "league-1",
+      club_name: "Friday Mixers",
       member_count: 4,
       already_member: false,
     };
@@ -1010,13 +1010,13 @@ describe("api.ts", () => {
 
   describe("castVotes", () => {
     const votes: Votes = {
-      round_id: "r1",
+      mix_id: "r1",
       submission_ids: ["s1", "s2"],
       count: 2,
       votes_per_player: 3,
     };
 
-    it("POSTs /api/v1/rounds/{id}/votes with the submission_ids body (Bearer + credentials) and resolves the Votes on 200", async () => {
+    it("POSTs /api/v1/mixes/{id}/votes with the submission_ids body (Bearer + credentials) and resolves the Votes on 200", async () => {
       setStoredAccessToken("my-token");
       const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, votes));
 
@@ -1024,7 +1024,7 @@ describe("api.ts", () => {
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0];
-      expect(url).toBe(`${V1_BASE}/rounds/r1/votes`);
+      expect(url).toBe(`${V1_BASE}/mixes/r1/votes`);
       expect(init?.method).toBe("POST");
       expect(init?.credentials).toBe("include");
       expect(init?.body).toBe(JSON.stringify({ submission_ids: ["s1", "s2"] }));
@@ -1074,13 +1074,13 @@ describe("api.ts", () => {
 
   describe("getMyVotes", () => {
     const votes: Votes = {
-      round_id: "r1",
+      mix_id: "r1",
       submission_ids: ["s1"],
       count: 1,
       votes_per_player: 3,
     };
 
-    it("GETs /api/v1/rounds/{id}/votes/mine (Bearer + credentials) and resolves the Votes on 200", async () => {
+    it("GETs /api/v1/mixes/{id}/votes/mine (Bearer + credentials) and resolves the Votes on 200", async () => {
       setStoredAccessToken("my-token");
       const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, votes));
 
@@ -1088,7 +1088,7 @@ describe("api.ts", () => {
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0];
-      expect(url).toBe(`${V1_BASE}/rounds/r1/votes/mine`);
+      expect(url).toBe(`${V1_BASE}/mixes/r1/votes/mine`);
       expect(init?.method ?? "GET").toBe("GET");
       expect(init?.credentials).toBe("include");
       const headers = new Headers(init?.headers);
@@ -1098,7 +1098,7 @@ describe("api.ts", () => {
     it("resolves the empty-set case when nothing has been cast", async () => {
       setStoredAccessToken("my-token");
       const empty: Votes = {
-        round_id: "r1",
+        mix_id: "r1",
         submission_ids: [],
         count: 0,
         votes_per_player: 3,
@@ -1127,7 +1127,7 @@ describe("api.ts", () => {
     const note: Note = {
       id: "n1",
       submission_id: "sub-1",
-      round_id: "r1",
+      mix_id: "r1",
       author_id: "user-1",
       author_display_name: "Ada",
       body: "lovely pick",
@@ -1181,7 +1181,7 @@ describe("api.ts", () => {
       {
         id: "n1",
         submission_id: "sub-1",
-        round_id: "r1",
+        mix_id: "r1",
         author_id: "user-1",
         author_display_name: "Ada",
         body: "lovely pick",
@@ -1190,7 +1190,7 @@ describe("api.ts", () => {
       {
         id: "n2",
         submission_id: "sub-1",
-        round_id: "r1",
+        mix_id: "r1",
         author_id: "user-2",
         author_display_name: "Bo",
         body: "this slaps",
@@ -1237,8 +1237,8 @@ describe("api.ts", () => {
 
   describe("getResults", () => {
     const sampleResults: RoundResults = {
-      round_id: "r1",
-      round_number: 1,
+      mix_id: "r1",
+      mix_number: 1,
       theme: "late summer feels",
       state: "closed",
       viewer_is_vibing: false,
@@ -1276,7 +1276,7 @@ describe("api.ts", () => {
       },
     };
 
-    it("GETs /api/v1/rounds/{id}/results (Bearer + credentials) and resolves the results on 200", async () => {
+    it("GETs /api/v1/mixes/{id}/results (Bearer + credentials) and resolves the results on 200", async () => {
       setStoredAccessToken("my-token");
       const fetchMock = vi
         .spyOn(globalThis, "fetch")
@@ -1286,7 +1286,7 @@ describe("api.ts", () => {
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0];
-      expect(url).toBe(`${V1_BASE}/rounds/r1/results`);
+      expect(url).toBe(`${V1_BASE}/mixes/r1/results`);
       expect(init?.method ?? "GET").toBe("GET");
       expect(init?.credentials).toBe("include");
       const headers = new Headers(init?.headers);

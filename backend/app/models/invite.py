@@ -4,7 +4,7 @@ from typing import Optional
 
 from sqlalchemy import DateTime, ForeignKey, String, func
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, synonym
 
 from app.db.base import Base
 
@@ -15,8 +15,9 @@ class Invite(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     # Null marks a platform invite (MYS-182): grants signup only, no league
     # attachment. Non-null is a normal per-league shareable invite.
+    # DB column is club_id (MYS-196); attr name stays until R3/R4 cleanup.
     league_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("leagues.id"), nullable=True, index=True
+        "club_id", UUID(as_uuid=True), ForeignKey("clubs.id"), nullable=True, index=True
     )
     created_by: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
@@ -37,3 +38,7 @@ class Invite(Base):
     used_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
+
+    # New-vocabulary synonym (MYS-196 seam): both names work as attrs and
+    # constructor kwargs until the R3/R4 cleanup makes the new name primary.
+    club_id = synonym("league_id")

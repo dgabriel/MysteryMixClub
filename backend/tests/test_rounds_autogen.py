@@ -25,7 +25,7 @@ from tests.test_rounds import (  # reuse established helpers
     _seed_user,
 )
 
-LEAGUES_URL = "/api/v1/leagues"
+LEAGUES_URL = "/api/v1/clubs"
 
 
 async def _create_league(client, user_id, *, name="Autogen League", **fields):
@@ -47,7 +47,7 @@ async def _round_id_by_number(client, league_id, user_id, number):
     resp = await client.get(_rounds_url(league_id), headers=_auth(user_id))
     assert resp.status_code == 200, resp.text
     for r in resp.json():
-        if r["round_number"] == number:
+        if r["mix_number"] == number:
             return r["id"]
     raise AssertionError(f"round {number} not found")
 
@@ -63,7 +63,7 @@ async def test_create_league_autogenerates_n_pending_rounds(client, db_session):
     resp = await _create_league(client, organizer.id, total_rounds=4, votes_per_player=7)
     assert resp.status_code == 201, resp.text
     league_id = uuid.UUID(resp.json()["id"])
-    assert resp.json()["current_round"] == 0
+    assert resp.json()["current_mix"] == 0
 
     rounds = await _rounds_for(db_session, league_id)
     assert [r.round_number for r in rounds] == [1, 2, 3, 4]
@@ -89,7 +89,7 @@ async def test_create_league_defaults_to_six_pending_rounds(client, db_session):
 
     resp = await _create_league(client, organizer.id)  # total_rounds omitted
     assert resp.status_code == 201, resp.text
-    assert resp.json()["total_rounds"] == 6
+    assert resp.json()["total_mixes"] == 6
     league_id = uuid.UUID(resp.json()["id"])
 
     rounds = await _rounds_for(db_session, league_id)
@@ -138,7 +138,7 @@ async def test_member_sees_all_pending_rounds(client, db_session):
     listed = await client.get(_rounds_url(league_id), headers=_auth(member.id))
     assert listed.status_code == 200, listed.text
     rounds = listed.json()
-    assert [r["round_number"] for r in rounds] == [1, 2, 3]
+    assert [r["mix_number"] for r in rounds] == [1, 2, 3]
     assert all(r["state"] == "pending" for r in rounds)
     assert all(r["theme"] is None for r in rounds)
 
@@ -157,7 +157,7 @@ async def test_theme_set_and_cleared_while_pending(client, db_session):
 
     # Set theme + description on the pending round.
     set_resp = await client.patch(
-        f"/api/v1/rounds/{round1_id}",
+        f"/api/v1/mixes/{round1_id}",
         json={"theme": "  golden hour  ", "description": "warm, late-day songs"},
         headers=_auth(organizer.id),
     )
@@ -166,13 +166,13 @@ async def test_theme_set_and_cleared_while_pending(client, db_session):
     assert set_resp.json()["description"] == "warm, late-day songs"
 
     # GET reflects the set values.
-    got = await client.get(f"/api/v1/rounds/{round1_id}", headers=_auth(organizer.id))
+    got = await client.get(f"/api/v1/mixes/{round1_id}", headers=_auth(organizer.id))
     assert got.json()["theme"] == "golden hour"
     assert got.json()["description"] == "warm, late-day songs"
 
     # Clear theme back to null (round still pending — nullable column, no validator).
     clear_resp = await client.patch(
-        f"/api/v1/rounds/{round1_id}",
+        f"/api/v1/mixes/{round1_id}",
         json={"theme": None},
         headers=_auth(organizer.id),
     )
@@ -200,7 +200,7 @@ async def test_edit_lock_and_activation_on_autogen_round(client, db_session):
 
     # theme is now locked (round left pending).
     locked = await client.patch(
-        f"/api/v1/rounds/{round1_id}",
+        f"/api/v1/mixes/{round1_id}",
         json={"theme": "too late"},
         headers=_auth(organizer.id),
     )

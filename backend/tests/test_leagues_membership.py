@@ -61,8 +61,8 @@ async def _membership(db_session, league_id, user_id) -> LeagueMember:
 async def test_create_with_default_vibe_seeds_league_and_organizer(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
     resp = await client.post(
-        "/api/v1/leagues",
-        json={"name": "Vibes", "total_rounds": 3, "default_vibe_mode": True},
+        "/api/v1/clubs",
+        json={"name": "Vibes", "total_mixes": 3, "default_vibe_mode": True},
         headers=_auth(organizer.id),
     )
     assert resp.status_code == 201, resp.text
@@ -76,8 +76,8 @@ async def test_create_with_default_vibe_seeds_league_and_organizer(client, db_se
 async def test_create_defaults_to_playing(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
     resp = await client.post(
-        "/api/v1/leagues",
-        json={"name": "L", "total_rounds": 3},
+        "/api/v1/clubs",
+        json={"name": "L", "total_mixes": 3},
         headers=_auth(organizer.id),
     )
     assert resp.status_code == 201, resp.text
@@ -94,12 +94,12 @@ async def test_create_defaults_to_playing(client, db_session):
 async def test_get_membership_returns_caller_setting(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
     league = await _seed_league(db_session, organizer, default_vibe_mode=True)
-    resp = await client.get(f"/api/v1/leagues/{league.id}/membership", headers=_auth(organizer.id))
+    resp = await client.get(f"/api/v1/clubs/{league.id}/membership", headers=_auth(organizer.id))
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["vibe_mode"] is True
     assert body["user_id"] == str(organizer.id)
-    assert body["league_id"] == str(league.id)
+    assert body["club_id"] == str(league.id)
 
 
 async def test_patch_membership_updates_caller_setting(client, db_session):
@@ -109,7 +109,7 @@ async def test_patch_membership_updates_caller_setting(client, db_session):
     league_id, organizer_id = league.id, organizer.id
 
     resp = await client.patch(
-        f"/api/v1/leagues/{league_id}/membership",
+        f"/api/v1/clubs/{league_id}/membership",
         json={"vibe_mode": True},
         headers=_auth(organizer_id),
     )
@@ -126,7 +126,7 @@ async def test_patch_membership_can_toggle_back_off(client, db_session):
     league = await _seed_league(db_session, organizer, default_vibe_mode=True)
 
     resp = await client.patch(
-        f"/api/v1/leagues/{league.id}/membership",
+        f"/api/v1/clubs/{league.id}/membership",
         json={"vibe_mode": False},
         headers=_auth(organizer.id),
     )
@@ -142,7 +142,7 @@ async def test_patch_membership_can_toggle_back_off(client, db_session):
 async def test_membership_requires_auth(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
     league = await _seed_league(db_session, organizer)
-    assert (await client.get(f"/api/v1/leagues/{league.id}/membership")).status_code == 401
+    assert (await client.get(f"/api/v1/clubs/{league.id}/membership")).status_code == 401
 
 
 async def test_membership_non_member_forbidden(client, db_session):
@@ -150,12 +150,10 @@ async def test_membership_non_member_forbidden(client, db_session):
     outsider = await _seed_user(db_session, "x@example.com")
     league = await _seed_league(db_session, organizer)
 
-    get_resp = await client.get(
-        f"/api/v1/leagues/{league.id}/membership", headers=_auth(outsider.id)
-    )
+    get_resp = await client.get(f"/api/v1/clubs/{league.id}/membership", headers=_auth(outsider.id))
     assert get_resp.status_code == 403
     patch_resp = await client.patch(
-        f"/api/v1/leagues/{league.id}/membership",
+        f"/api/v1/clubs/{league.id}/membership",
         json={"vibe_mode": True},
         headers=_auth(outsider.id),
     )

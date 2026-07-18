@@ -120,7 +120,7 @@ def _auth(user_id: uuid.UUID) -> dict[str, str]:
 
 
 def _playlist_url(round_id) -> str:
-    return f"/api/v1/rounds/{round_id}/spotify-playlist"
+    return f"/api/v1/mixes/{round_id}/spotify-playlist"
 
 
 # --------------------------------------------------------------------------- #
@@ -578,7 +578,7 @@ async def test_playlist_track_order_matches_seeded_shuffle(db_session):
 
 
 def _link_url(round_id) -> str:
-    return f"/api/v1/rounds/{round_id}/spotify-playlist"
+    return f"/api/v1/mixes/{round_id}/spotify-playlist"
 
 
 async def test_link_requires_auth(client, db_session):
@@ -645,7 +645,7 @@ async def test_voting_open_auto_generates_playlist(spotify_client, db_session, f
     await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
 
     resp = await spotify_client.patch(
-        f"/api/v1/rounds/{round_.id}", json={"state": "open_voting"}, headers=_auth(organizer.id)
+        f"/api/v1/mixes/{round_.id}", json={"state": "open_voting"}, headers=_auth(organizer.id)
     )
     assert resp.status_code == 200, resp.text
 
@@ -662,7 +662,7 @@ async def test_voting_open_does_not_auto_generate_when_unconfigured(client, db_s
     await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
 
     resp = await client.patch(
-        f"/api/v1/rounds/{round_.id}", json={"state": "open_voting"}, headers=_auth(organizer.id)
+        f"/api/v1/mixes/{round_.id}", json={"state": "open_voting"}, headers=_auth(organizer.id)
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["state"] == "open_voting"
@@ -686,7 +686,7 @@ async def test_voting_open_auto_generate_failure_does_not_block_transition(
 
     async with _client_with_spotify(session_factory, _RejectingClient()) as ac:
         resp = await ac.patch(
-            f"/api/v1/rounds/{round_.id}",
+            f"/api/v1/mixes/{round_.id}",
             json={"state": "open_voting"},
             headers=_auth(organizer.id),
         )

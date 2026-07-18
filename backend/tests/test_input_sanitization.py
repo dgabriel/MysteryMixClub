@@ -49,7 +49,7 @@ from app.services.song_links import get_link_assembler
 from app.services.youtube_resolver import get_youtube_resolver
 
 ME_URL = "/api/v1/users/me"
-LEAGUES_URL = "/api/v1/leagues"
+LEAGUES_URL = "/api/v1/clubs"
 
 _LINKS = {
     "spotify": "https://open.spotify.com/search/x",
@@ -105,7 +105,7 @@ async def _seed_league(db_session, organizer: User, **overrides) -> League:
     defaults = {
         "name": "Summer Bangers",
         "organizer_id": organizer.id,
-        "total_rounds": 6,
+        "total_mixes": 6,
         "votes_per_player": 3,
     }
     defaults.update(overrides)
@@ -152,7 +152,7 @@ def _auth(user_id: uuid.UUID) -> dict[str, str]:
 
 
 def _league_body(**over) -> dict:
-    body = {"name": "Summer Bangers", "total_rounds": 6, "votes_per_player": 3}
+    body = {"name": "Summer Bangers", "total_mixes": 6, "votes_per_player": 3}
     body.update(over)
     return body
 
@@ -164,7 +164,7 @@ def _sub_body(**over) -> dict:
 
 
 def _sub_url(round_id) -> str:
-    return f"/api/v1/rounds/{round_id}/submissions"
+    return f"/api/v1/mixes/{round_id}/submissions"
 
 
 def _notes_url(submission_id) -> str:
@@ -437,7 +437,7 @@ async def test_round_theme_201_returns_422(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
     league = await _seed_league(db_session, organizer)
     resp = await client.post(
-        f"{LEAGUES_URL}/{league.id}/rounds",
+        f"{LEAGUES_URL}/{league.id}/mixes",
         headers=_auth(organizer.id),
         json={"theme": "t" * 201},
     )
@@ -448,7 +448,7 @@ async def test_round_theme_200_accepted(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
     league = await _seed_league(db_session, organizer)
     resp = await client.post(
-        f"{LEAGUES_URL}/{league.id}/rounds",
+        f"{LEAGUES_URL}/{league.id}/mixes",
         headers=_auth(organizer.id),
         json={"theme": "t" * 200},
     )

@@ -23,7 +23,7 @@ from app.models.league_member import LeagueMember
 from app.models.user import User
 
 # The exact key set the preview response must return.
-_PREVIEW_KEYS = {"league_id", "league_name", "member_count", "already_member"}
+_PREVIEW_KEYS = {"club_id", "club_name", "member_count", "already_member"}
 
 # The full league object key set, matching POST /leagues.
 _LEAGUE_KEYS = {
@@ -31,10 +31,10 @@ _LEAGUE_KEYS = {
     "name",
     "description",
     "organizer_id",
-    "total_rounds",
+    "total_mixes",
     "votes_per_player",
     "songs_per_submission",
-    "current_round",
+    "current_mix",
     "default_vibe_mode",
     "submission_window_hours",
     "voting_window_hours",
@@ -70,9 +70,9 @@ async def _seed_league(db_session, organizer: User, **overrides) -> League:
         "name": "Summer Bangers",
         "description": "A league for hot tracks",
         "organizer_id": organizer.id,
-        "total_rounds": 6,
+        "total_mixes": 6,
         "votes_per_player": 5,
-        "current_round": 0,
+        "current_mix": 0,
         "state": "active",
     }
     defaults.update(overrides)
@@ -87,7 +87,7 @@ async def _seed_league(db_session, organizer: User, **overrides) -> League:
 
 async def _seed_member(db_session, league: League, user: User, **overrides) -> LeagueMember:
     """Insert and commit a LeagueMember row, returning it."""
-    defaults = {"league_id": league.id, "user_id": user.id}
+    defaults = {"club_id": league.id, "user_id": user.id}
     defaults.update(overrides)
     member = LeagueMember(**defaults)
     db_session.add(member)
@@ -99,7 +99,7 @@ async def _seed_member(db_session, league: League, user: User, **overrides) -> L
 async def _seed_invite(db_session, league: League, creator: User, **overrides) -> Invite:
     """Insert and commit an Invite row, returning it."""
     defaults = {
-        "league_id": league.id,
+        "club_id": league.id,
         "created_by": creator.id,
         "token": "tok_" + uuid.uuid4().hex,
         "expires_at": None,
@@ -158,8 +158,8 @@ async def test_preview_works_without_auth_header_returns_200_and_shape(client, d
     assert resp.status_code == 200, resp.text
     data = resp.json()
     assert set(data.keys()) == _PREVIEW_KEYS
-    assert data["league_name"] == league.name
-    assert data["league_id"] == str(league.id)
+    assert data["club_name"] == league.name
+    assert data["club_id"] == str(league.id)
     assert data["already_member"] is False
 
 
@@ -380,7 +380,7 @@ async def test_preview_expired_link_as_active_member_returns_200_and_redirect_si
     assert resp.status_code == 200, resp.text
     data = resp.json()
     assert data["already_member"] is True
-    assert data["league_id"] == str(league.id)
+    assert data["club_id"] == str(league.id)
 
 
 async def test_preview_expired_link_as_non_member_still_returns_410(client, db_session):

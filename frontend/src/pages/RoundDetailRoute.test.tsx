@@ -89,8 +89,8 @@ const CO_ORGANIZER = "co-3";
 function round(overrides: Partial<Round> = {}): Round {
   return {
     id: "r1",
-    league_id: "lg1",
-    round_number: 1,
+    club_id: "lg1",
+    mix_number: 1,
     theme: "late summer feels",
     state: "open_submission",
     description: null,
@@ -115,10 +115,10 @@ function league(): League {
     name: "Friday Mixtape",
     description: null,
     organizer_id: ORGANIZER,
-    total_rounds: 6,
+    total_mixes: 6,
     votes_per_player: 3,
     songs_per_submission: 1,
-    current_round: 1,
+    current_mix: 1,
     state: "active",
     created_at: "2026-01-01T00:00:00Z",
     default_vibe_mode: false,
@@ -184,7 +184,7 @@ function entry(overrides: Partial<PlaylistEntry> = {}): PlaylistEntry {
 function mine(overrides: Partial<SubmissionResult> = {}): SubmissionResult {
   return {
     id: "s-mine",
-    round_id: "r1",
+    mix_id: "r1",
     user_id: ORGANIZER,
     isrc: "IM",
     title: "My Song",
@@ -201,8 +201,8 @@ function mine(overrides: Partial<SubmissionResult> = {}): SubmissionResult {
 
 function results(overrides: Partial<RoundResults> = {}): RoundResults {
   return {
-    round_id: "r1",
-    round_number: 1,
+    mix_id: "r1",
+    mix_number: 1,
     theme: "late summer feels",
     state: "closed",
     viewer_is_vibing: false,
@@ -254,7 +254,7 @@ describe("RoundDetailRoute", () => {
     mockGetLeague.mockResolvedValue(league());
     mockGetLeagueMembers.mockResolvedValue(members());
     mockGetMyMembership.mockResolvedValue({
-      league_id: "lg1",
+      club_id: "lg1",
       user_id: ORGANIZER,
       vibe_mode: false,
     });
@@ -262,8 +262,8 @@ describe("RoundDetailRoute", () => {
     // Spotify feature hidden by default in these tests (not configured).
     mockGetSpotifyStatus.mockResolvedValue({ configured: false, connected: false });
     mockGetPlaylist.mockResolvedValue({
-      round_id: "r1",
-      round_number: 1,
+      mix_id: "r1",
+      mix_number: 1,
       theme: "t",
       state: "open_voting",
       entries: [],
@@ -275,13 +275,13 @@ describe("RoundDetailRoute", () => {
     });
     mockGetResults.mockResolvedValue(results());
     mockGetMyVotes.mockResolvedValue({
-      round_id: "r1",
+      mix_id: "r1",
       submission_ids: [],
       count: 0,
       votes_per_player: 3,
     });
     mockCastVotes.mockResolvedValue({
-      round_id: "r1",
+      mix_id: "r1",
       submission_ids: [],
       count: 0,
       votes_per_player: 3,
@@ -290,14 +290,14 @@ describe("RoundDetailRoute", () => {
     mockAddNote.mockResolvedValue({
       id: "n1",
       submission_id: "p1",
-      round_id: "r1",
+      mix_id: "r1",
       author_id: OTHER,
       author_display_name: "Bob",
       body: "lovely pick",
       created_at: "2026-01-01T00:00:00Z",
     });
     mockGetVoteCounts.mockResolvedValue({
-      round_id: "r1",
+      mix_id: "r1",
       entries: [],
     });
     setAuth(ORGANIZER);
@@ -397,7 +397,7 @@ describe("RoundDetailRoute", () => {
     } as Awaited<ReturnType<typeof resolveSong>>);
     mockSubmitSong.mockResolvedValue({
       id: "s1",
-      round_id: "r1",
+      mix_id: "r1",
       user_id: ORGANIZER,
       isrc: "I1",
       title: "Debaser",
@@ -735,7 +735,7 @@ describe("RoundDetailRoute", () => {
     });
 
     it("confirm panel shows the non-final-round copy when more rounds remain", async () => {
-      // default league() has total_rounds: 6; round() defaults round_number: 1.
+      // default league() has total_mixes: 6; round() defaults mix_number: 1.
       const user = userEvent.setup();
       renderRound();
       await user.click(await screen.findByRole("button", { name: "close mix" }));
@@ -748,9 +748,9 @@ describe("RoundDetailRoute", () => {
       expect(screen.queryByText(/completes the club/i)).not.toBeInTheDocument();
     });
 
-    it("confirm panel shows the final-round copy when round_number >= league.total_rounds", async () => {
-      mockGetRound.mockResolvedValue(round({ state: "open_voting", round_number: 6 }));
-      mockGetLeague.mockResolvedValue({ ...league(), total_rounds: 6 });
+    it("confirm panel shows the final-round copy when mix_number >= league.total_mixes", async () => {
+      mockGetRound.mockResolvedValue(round({ state: "open_voting", mix_number: 6 }));
+      mockGetLeague.mockResolvedValue({ ...league(), total_mixes: 6 });
       const user = userEvent.setup();
       renderRound();
       await user.click(await screen.findByRole("button", { name: "close mix" }));
@@ -815,7 +815,7 @@ describe("RoundDetailRoute", () => {
 
     it("confirm copy mentions the vote count (pluralized) when votes have been cast", async () => {
       mockGetVoteCounts.mockResolvedValue({
-        round_id: "r1",
+        mix_id: "r1",
         entries: [
           { submission_id: "p1", title: "Debaser", artist: "Pixies", vote_count: 2 },
           { submission_id: "p2", title: "Bad Guy", artist: "Billie Eilish", vote_count: 1 },
@@ -834,7 +834,7 @@ describe("RoundDetailRoute", () => {
 
     it("confirm copy uses singular 'vote' for exactly one cast vote", async () => {
       mockGetVoteCounts.mockResolvedValue({
-        round_id: "r1",
+        mix_id: "r1",
         entries: [{ submission_id: "p1", title: "Debaser", artist: "Pixies", vote_count: 1 }],
       });
       const user = userEvent.setup();
@@ -1013,8 +1013,8 @@ describe("RoundDetailRoute", () => {
       },
     ];
     mockGetPlaylist.mockResolvedValue({
-      round_id: "r1",
-      round_number: 1,
+      mix_id: "r1",
+      mix_number: 1,
       theme: "t",
       state: "open_voting",
       entries,
@@ -1183,8 +1183,8 @@ describe("RoundDetailRoute", () => {
       const vpp = opts.votesPerPlayer ?? 3;
       mockGetRound.mockResolvedValue(round({ state: "open_voting", votes_per_player: vpp }));
       mockGetPlaylist.mockResolvedValue({
-        round_id: "r1",
-        round_number: 1,
+        mix_id: "r1",
+        mix_number: 1,
         theme: "t",
         state: "open_voting",
         entries: opts.entries,
@@ -1195,7 +1195,7 @@ describe("RoundDetailRoute", () => {
         vibing_count: opts.vibingCount ?? 0,
       });
       mockGetMyVotes.mockResolvedValue({
-        round_id: "r1",
+        mix_id: "r1",
         submission_ids: opts.myVotes ?? [],
         count: (opts.myVotes ?? []).length,
         votes_per_player: vpp,
@@ -1285,11 +1285,11 @@ describe("RoundDetailRoute", () => {
       let casted = false;
       mockCastVotes.mockImplementation(async () => {
         casted = true;
-        return { round_id: "r1", submission_ids: ["p1"], count: 1, votes_per_player: 3 };
+        return { mix_id: "r1", submission_ids: ["p1"], count: 1, votes_per_player: 3 };
       });
       // After casting, the playlist shows 2 voted and the vote counts update
       mockGetVoteCounts.mockImplementation(async () => ({
-        round_id: "r1",
+        mix_id: "r1",
         entries: casted
           ? [
               { submission_id: "p1", title: "Debaser", artist: "Pixies", vote_count: 1 },
@@ -1298,8 +1298,8 @@ describe("RoundDetailRoute", () => {
           : [],
       }));
       mockGetPlaylist.mockImplementation(async () => ({
-        round_id: "r1",
-        round_number: 1,
+        mix_id: "r1",
+        mix_number: 1,
         theme: "t",
         state: "open_voting",
         entries: [
@@ -1441,7 +1441,7 @@ describe("RoundDetailRoute", () => {
         myVotes: [],
       });
       mockCastVotes.mockResolvedValue({
-        round_id: "r1",
+        mix_id: "r1",
         submission_ids: ["p1"],
         count: 1,
         votes_per_player: 3,
@@ -1469,7 +1469,7 @@ describe("RoundDetailRoute", () => {
         () =>
           new Promise((resolve) => {
             resolveCast = () =>
-              resolve({ round_id: "r1", submission_ids: ["p1"], count: 1, votes_per_player: 3 });
+              resolve({ mix_id: "r1", submission_ids: ["p1"], count: 1, votes_per_player: 3 });
           }),
       );
       renderRound();
@@ -1537,7 +1537,7 @@ describe("RoundDetailRoute", () => {
       // per-league membership: vibe_mode true → they sit voting out, matching the
       // backend which rejects such a ballot.
       mockGetMyMembership.mockResolvedValue({
-        league_id: "lg1",
+        club_id: "lg1",
         user_id: ORGANIZER,
         vibe_mode: true,
       });
@@ -1560,7 +1560,7 @@ describe("RoundDetailRoute", () => {
       // Playing membership + no submission → the ballot is available, matching the
       // backend which now accepts non-submitter votes from playing members.
       mockGetMyMembership.mockResolvedValue({
-        league_id: "lg1",
+        club_id: "lg1",
         user_id: ORGANIZER,
         vibe_mode: false,
       });
@@ -1622,8 +1622,8 @@ describe("RoundDetailRoute", () => {
       const vpp = opts.votesPerPlayer ?? 3;
       mockGetRound.mockResolvedValue(round({ state: "open_voting", votes_per_player: vpp }));
       mockGetPlaylist.mockResolvedValue({
-        round_id: "r1",
-        round_number: 1,
+        mix_id: "r1",
+        mix_number: 1,
         theme: "t",
         state: "open_voting",
         entries: opts.voteCounts.map((v) =>
@@ -1636,13 +1636,13 @@ describe("RoundDetailRoute", () => {
         vibing_count: 0,
       });
       mockGetMyVotes.mockResolvedValue({
-        round_id: "r1",
+        mix_id: "r1",
         submission_ids: opts.myVotes,
         count: opts.myVotes.length,
         votes_per_player: vpp,
       });
       mockGetMine.mockResolvedValue([mine()]);
-      mockGetVoteCounts.mockResolvedValue({ round_id: "r1", entries: opts.voteCounts });
+      mockGetVoteCounts.mockResolvedValue({ mix_id: "r1", entries: opts.voteCounts });
     }
 
     /** Finds the tally row div for a given song title — three levels up from
@@ -1743,7 +1743,7 @@ describe("RoundDetailRoute", () => {
         myVotes: [], // not locked yet — voting controls shown first
       });
       mockCastVotes.mockResolvedValue({
-        round_id: "r1",
+        mix_id: "r1",
         submission_ids: [],
         count: 0,
         votes_per_player: 3,
@@ -1803,8 +1803,8 @@ describe("RoundDetailRoute", () => {
     function setupVoting(opts: { entries: PlaylistEntry[]; mine?: SubmissionResult | null }) {
       mockGetRound.mockResolvedValue(round({ state: "open_voting" }));
       mockGetPlaylist.mockResolvedValue({
-        round_id: "r1",
-        round_number: 1,
+        mix_id: "r1",
+        mix_number: 1,
         theme: "t",
         state: "open_voting",
         entries: opts.entries,
@@ -1815,7 +1815,7 @@ describe("RoundDetailRoute", () => {
         vibing_count: 0,
       });
       mockGetMyVotes.mockResolvedValue({
-        round_id: "r1",
+        mix_id: "r1",
         submission_ids: [],
         count: 0,
         votes_per_player: 3,
@@ -1855,7 +1855,7 @@ describe("RoundDetailRoute", () => {
         {
           id: "n1",
           submission_id: "p1",
-          round_id: "r1",
+          mix_id: "r1",
           author_id: OTHER,
           author_display_name: "Bob",
           body: "this slaps",
@@ -1894,7 +1894,7 @@ describe("RoundDetailRoute", () => {
       mockAddNote.mockResolvedValue({
         id: "n1",
         submission_id: "p1",
-        round_id: "r1",
+        mix_id: "r1",
         author_id: OTHER,
         author_display_name: "Bob",
         body: "great taste",
@@ -2590,8 +2590,8 @@ describe("RoundDetailRoute", () => {
 
     it("closed round shows a 'listen back' affordance when there are tracks (MYS-133)", async () => {
       mockGetPlaylist.mockResolvedValue({
-        round_id: "r1",
-        round_number: 1,
+        mix_id: "r1",
+        mix_number: 1,
         theme: "t",
         state: "closed",
         entries: [entry({ submission_id: "p1", title: "Debaser" })],

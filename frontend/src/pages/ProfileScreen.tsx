@@ -295,7 +295,7 @@ function ArchivedLeagues({
                   </h3>
                   <div className="mt-3 flex items-center justify-between">
                     <span className="font-mono text-[11px] font-light text-muted">
-                      {league.total_rounds} mixes
+                      {league.total_mixes} mixes
                     </span>
                     <Badge>{league.state}</Badge>
                   </div>

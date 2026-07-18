@@ -13,21 +13,23 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, synonym
 
 from app.db.base import Base
 
 
 class LeagueMember(Base):
-    __tablename__ = "league_members"
+    # DB uses club/mix vocabulary (MYS-196 cutover); Python attr names stay old
+    # until the R3/R4 identifier cleanup — mapped_column("new_name") is the seam.
+    __tablename__ = "club_members"
     __table_args__ = (
-        UniqueConstraint("league_id", "user_id", name="uq_league_members_league_user"),
+        UniqueConstraint("club_id", "user_id", name="uq_club_members_club_user"),
         CheckConstraint("role IN ('member', 'admin')", name="ck_league_members_role"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     league_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("leagues.id"), nullable=False, index=True
+        "club_id", UUID(as_uuid=True), ForeignKey("clubs.id"), nullable=False, index=True
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
@@ -49,3 +51,7 @@ class LeagueMember(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     removed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # New-vocabulary synonym (MYS-196 seam): both names work as attrs and
+    # constructor kwargs until the R3/R4 cleanup makes the new name primary.
+    club_id = synonym("league_id")

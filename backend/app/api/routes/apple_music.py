@@ -20,7 +20,9 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from app.api.wire import WireModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.leagues import _load_league_as_member
@@ -44,11 +46,11 @@ from app.services.apple_playlist_generation import (
 router = APIRouter(tags=["apple-music"])
 
 
-class DeveloperTokenResponse(BaseModel):
+class DeveloperTokenResponse(WireModel):
     token: str | None = None
 
 
-class ApplePlaylistLinkResponse(BaseModel):
+class ApplePlaylistLinkResponse(WireModel):
     # Apple Music's Library, not the playlist — iOS can't deep-link to a library
     # playlist (MYS-190). playlist_name is how the member finds it. The name is
     # null for rows created before MYS-190 started recording it.
@@ -56,13 +58,13 @@ class ApplePlaylistLinkResponse(BaseModel):
     playlist_name: str | None = None
 
 
-class UnmatchedTrack(BaseModel):
+class UnmatchedTrack(WireModel):
     submission_id: uuid.UUID
     title: str
     artist: str
 
 
-class GeneratePlaylistRequest(BaseModel):
+class GeneratePlaylistRequest(WireModel):
     music_user_token: str = Field(min_length=1, max_length=4096)
     # Minutes to add to UTC for the caller's local time, so a rebuilt playlist's
     # "[revised on HH:MM]" reads in their own clock. Bounded to real-world
@@ -70,7 +72,7 @@ class GeneratePlaylistRequest(BaseModel):
     tz_offset_minutes: int | None = Field(default=None, ge=-720, le=840)
 
 
-class GeneratePlaylistResponse(BaseModel):
+class GeneratePlaylistResponse(WireModel):
     playlist_url: str
     playlist_name: str
     track_count: int
@@ -98,7 +100,7 @@ async def get_developer_token(
         return DeveloperTokenResponse(token=None)
 
 
-@router.get("/rounds/{round_id}/apple-playlist", response_model=ApplePlaylistLinkResponse)
+@router.get("/mixes/{round_id}/apple-playlist", response_model=ApplePlaylistLinkResponse)
 async def get_round_apple_playlist(
     round_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
@@ -118,7 +120,7 @@ async def get_round_apple_playlist(
     return ApplePlaylistLinkResponse(playlist_url=LIBRARY_URL, playlist_name=stored.playlist_name)
 
 
-@router.post("/rounds/{round_id}/apple-playlist", response_model=GeneratePlaylistResponse)
+@router.post("/mixes/{round_id}/apple-playlist", response_model=GeneratePlaylistResponse)
 async def create_round_apple_playlist(
     round_id: uuid.UUID,
     payload: GeneratePlaylistRequest,

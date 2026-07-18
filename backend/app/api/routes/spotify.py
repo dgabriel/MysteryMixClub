@@ -34,7 +34,8 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel
+
+from app.api.wire import WireModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -82,18 +83,18 @@ def _safe_return_path(path: str | None) -> str | None:
 # --------------------------------------------------------------------------- #
 
 
-class ConnectResponse(BaseModel):
+class ConnectResponse(WireModel):
     authorize_url: str
 
 
-class StatusResponse(BaseModel):
+class StatusResponse(WireModel):
     # Whether the server has Spotify app credentials at all (drives whether the
     # UI shows the feature). False on environments where the secret isn't set.
     configured: bool
     connected: bool
 
 
-class SpotifyPlaylistLinkResponse(BaseModel):
+class SpotifyPlaylistLinkResponse(WireModel):
     """The round page's read-only view (MYS-169/MYS-176): just the link, or null
     if generation hasn't run (or hasn't matched anything) yet."""
 
@@ -219,7 +220,7 @@ async def spotify_disconnect(
 # --------------------------------------------------------------------------- #
 
 
-@router.get("/rounds/{round_id}/spotify-playlist", response_model=SpotifyPlaylistLinkResponse)
+@router.get("/mixes/{round_id}/spotify-playlist", response_model=SpotifyPlaylistLinkResponse)
 async def get_round_spotify_playlist_link(
     round_id: uuid.UUID,
     current_user: User = Depends(get_current_user),

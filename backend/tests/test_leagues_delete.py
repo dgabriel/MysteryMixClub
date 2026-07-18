@@ -1,4 +1,4 @@
-"""Tests for MYS-124: DELETE /api/v1/leagues/{league_id} (organizer-only, cascade).
+"""Tests for MYS-124: DELETE /api/v1/clubs/{league_id} (organizer-only, cascade).
 
 A league can be hard-deleted by its organizer in ANY state (MYS-137) — not
 started, in progress (a round open), or complete. The delete cascades, in FK
@@ -52,9 +52,9 @@ async def _seed_league(db_session, organizer: User, **overrides) -> League:
         "name": "Summer Bangers",
         "description": "A league for hot tracks",
         "organizer_id": organizer.id,
-        "total_rounds": 6,
+        "total_mixes": 6,
         "votes_per_player": 5,
-        "current_round": 0,
+        "current_mix": 0,
         "state": "active",
     }
     defaults.update(overrides)
@@ -68,7 +68,7 @@ async def _seed_league(db_session, organizer: User, **overrides) -> League:
 
 
 async def _seed_member(db_session, league: League, user: User, **overrides) -> LeagueMember:
-    defaults = {"league_id": league.id, "user_id": user.id}
+    defaults = {"club_id": league.id, "user_id": user.id}
     defaults.update(overrides)
     member = LeagueMember(**defaults)
     db_session.add(member)
@@ -82,7 +82,7 @@ def _auth_header(user_id: uuid.UUID) -> dict[str, str]:
 
 
 def _delete_url(league_id) -> str:
-    return f"/api/v1/leagues/{league_id}"
+    return f"/api/v1/clubs/{league_id}"
 
 
 async def _count(db_session, model, **filters) -> int:

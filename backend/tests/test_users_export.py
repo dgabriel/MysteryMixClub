@@ -175,8 +175,8 @@ async def test_export_includes_league_membership(client, db_session):
     assert resp.status_code == 200, resp.text
     memberships = resp.json()["league_memberships"]
     assert len(memberships) == 1
-    assert memberships[0]["league_id"] == str(league.id)
-    assert memberships[0]["league_name"] == "Fall Mix"
+    assert memberships[0]["club_id"] == str(league.id)
+    assert memberships[0]["club_name"] == "Fall Mix"
     assert memberships[0]["role"] == "member"
 
 

@@ -2,7 +2,8 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
-from pydantic import BaseModel
+
+from app.api.wire import WireModel
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -84,7 +85,7 @@ async def _join_via_invite(db: AsyncSession, user_id: uuid.UUID, invite: Invite)
         return True
 
 
-class InvitePreviewResponse(BaseModel):
+class InvitePreviewResponse(WireModel):
     # Null for a platform (league-less) invite (MYS-182) — grants signup only,
     # no league to preview.
     league_id: uuid.UUID | None

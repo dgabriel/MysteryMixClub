@@ -211,12 +211,12 @@ function setAuth(userId: string | null) {
 
 function renderLeague(id = "league-1") {
   return render(
-    <MemoryRouter initialEntries={[`/leagues/${id}`]}>
+    <MemoryRouter initialEntries={[`/clubs/${id}`]}>
       <Routes>
         {/* Mirror production: the route lives under AuthedLayout, which renders
             the shared TopNav once above the routed content. */}
         <Route element={<AuthedLayout />}>
-          <Route path="/leagues/:id" element={<LeagueHomeRoute />} />
+          <Route path="/clubs/:id" element={<LeagueHomeRoute />} />
         </Route>
         <Route path="/home" element={<div>HOME CONTENT</div>} />
       </Routes>
@@ -520,8 +520,8 @@ describe("LeagueHomeRoute", () => {
       renderLeague();
       await screen.findByText("Friday Mixtape");
 
-      expect(screen.getByRole("button", { name: /^delete league$/i })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /^leave league$/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /^delete club$/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /^leave club$/i })).toBeInTheDocument();
     });
   });
 
@@ -529,8 +529,8 @@ describe("LeagueHomeRoute", () => {
     renderLeague();
     await screen.findByText("Friday Mixtape");
 
-    expect(screen.getByRole("button", { name: /^delete league$/i })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^leave league$/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^delete club$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^leave club$/i })).not.toBeInTheDocument();
   });
 
   it("a plain member sees only the leave-league section, not delete-league", async () => {
@@ -538,8 +538,8 @@ describe("LeagueHomeRoute", () => {
     renderLeague();
     await screen.findByText("Friday Mixtape");
 
-    expect(screen.queryByRole("button", { name: /^delete league$/i })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^leave league$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^delete club$/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^leave club$/i })).toBeInTheDocument();
   });
 
   it("nav: the TopNav home link navigates to /home", async () => {
@@ -571,7 +571,7 @@ describe("LeagueHomeRoute", () => {
   });
 
   it("active round: shows the static deadline line on the card — MYS-161", async () => {
-    // An open round with a deadline shows "closes …" (lowercase DOM; uppercase CSS).
+    // An open mix with a deadline shows "closes …" (lowercase DOM; uppercase CSS).
     mockGetRounds.mockResolvedValue([
       closedRound({
         id: "round-open",
@@ -661,9 +661,9 @@ describe("LeagueHomeRoute", () => {
     expect(screen.queryByText("most noted")).not.toBeInTheDocument();
   });
 
-  // --- Organizer admin: delete league (MYS-124) ---
+  // --- Organizer admin: delete club (MYS-124) ---
 
-  it("delete league: confirm step calls deleteLeague and navigates to /home", async () => {
+  it("delete club: confirm step calls deleteLeague and navigates to /home", async () => {
     mockDeleteLeague.mockResolvedValue(undefined);
     const user = userEvent.setup();
 
@@ -671,14 +671,14 @@ describe("LeagueHomeRoute", () => {
     await screen.findByText("Friday Mixtape");
 
     // First click arms the confirm; the destructive action only fires on the second.
-    await user.click(screen.getByRole("button", { name: /^delete league$/i }));
-    await user.click(screen.getByRole("button", { name: /^delete this league$/i }));
+    await user.click(screen.getByRole("button", { name: /^delete club$/i }));
+    await user.click(screen.getByRole("button", { name: /^delete this club$/i }));
 
     await waitFor(() => expect(mockDeleteLeague).toHaveBeenCalledWith("league-1"));
     expect(await screen.findByText("HOME CONTENT")).toBeInTheDocument();
   });
 
-  it("delete league: a failure shows a calm error and does not navigate", async () => {
+  it("delete club: a failure shows a calm error and does not navigate", async () => {
     // Delete is allowed in any state now (MYS-137); this covers the generic
     // error path (e.g. a server error), which still keeps the user in place.
     mockDeleteLeague.mockRejectedValue(new ApiError(500, "couldn't delete the league"));
@@ -687,8 +687,8 @@ describe("LeagueHomeRoute", () => {
     renderLeague();
     await screen.findByText("Friday Mixtape");
 
-    await user.click(screen.getByRole("button", { name: /^delete league$/i }));
-    await user.click(screen.getByRole("button", { name: /^delete this league$/i }));
+    await user.click(screen.getByRole("button", { name: /^delete club$/i }));
+    await user.click(screen.getByRole("button", { name: /^delete this club$/i }));
 
     expect(await screen.findByText(/couldn't delete the league/i)).toBeInTheDocument();
     expect(screen.queryByText("HOME CONTENT")).not.toBeInTheDocument();

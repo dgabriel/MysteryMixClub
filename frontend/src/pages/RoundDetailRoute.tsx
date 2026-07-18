@@ -207,7 +207,7 @@ export function RoundDetailRoute() {
         setYoutubeTrackCount(loadedPlaylist.youtube_track_count);
       }
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "couldn't load this round.");
+      setError(err instanceof ApiError ? err.message : "couldn't load this mystery mix.");
     } finally {
       setLoading(false);
     }
@@ -292,7 +292,7 @@ export function RoundDetailRoute() {
     } catch (err) {
       if (err instanceof ApiError && err.message.includes("already in this round")) {
         setActionError(
-          `"${song.title}" by ${song.artist} is already in this round — someone else has great taste too.`,
+          `"${song.title}" by ${song.artist} is already in this mystery mix — someone else has great taste too.`,
         );
       } else {
         setActionError(err instanceof ApiError ? err.message : "couldn't submit. try again.");
@@ -329,7 +329,7 @@ export function RoundDetailRoute() {
     } catch (err) {
       if (err instanceof ApiError && err.message.includes("already in this round")) {
         setActionError(
-          `"${song.title}" by ${song.artist} is already in this round — someone else has great taste too.`,
+          `"${song.title}" by ${song.artist} is already in this mystery mix — someone else has great taste too.`,
         );
       } else {
         setActionError(
@@ -425,7 +425,7 @@ export function RoundDetailRoute() {
       setRound(updated);
       return true;
     } catch (err) {
-      setEditError(err instanceof ApiError ? err.message : "couldn't save the round. try again.");
+      setEditError(err instanceof ApiError ? err.message : "couldn't save the mystery mix. try again.");
       return false;
     } finally {
       setSavingEdit(false);
@@ -440,7 +440,7 @@ export function RoundDetailRoute() {
       await updateRound(id, { state: next });
       await load();
     } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : "couldn't update the round.");
+      setActionError(err instanceof ApiError ? err.message : "couldn't update the mystery mix.");
     } finally {
       // Reset on success too — otherwise the button sticks on "opening…" after
       // the round has opened (MYS-95).
@@ -497,7 +497,7 @@ export function RoundDetailRoute() {
   if (error || !round || !id) {
     return (
       <main className="flex flex-1 flex-col items-center justify-center px-4 text-center sm:px-8">
-        <p className="font-mono text-[13px] font-light text-muted">{error ?? "round not found."}</p>
+        <p className="font-mono text-[13px] font-light text-muted">{error ?? "mystery mix not found."}</p>
         <div className="mt-6">
           <Button variant="ghost" type="button" onClick={() => navigate("/home")}>
             home
@@ -533,7 +533,7 @@ export function RoundDetailRoute() {
         {league ? (
           <button
             type="button"
-            onClick={() => navigate(`/leagues/${round.league_id}`)}
+            onClick={() => navigate(`/clubs/${round.league_id}`)}
             className="inline-flex items-center gap-1.5 font-mono uppercase tracking-ui text-[11px] text-sage transition-colors duration-150 hover:text-ink"
           >
             <span aria-hidden="true">←</span>
@@ -541,11 +541,11 @@ export function RoundDetailRoute() {
           </button>
         ) : null}
         <span className="mt-3 block font-mono uppercase tracking-label text-[9px] text-muted">
-          round {round.round_number}
+          mystery mix {round.round_number}
         </span>
         <div className="mt-1 flex items-start justify-between gap-4">
           <h1 className="font-serif text-[32px] leading-tight text-ink">
-            {round.theme ?? `Round ${round.round_number}`}
+            {round.theme ?? `Mystery Mix ${round.round_number}`}
           </h1>
           <div className="shrink-0 pt-2">
             <Badge>{STATE_LABEL[round.state]}</Badge>
@@ -593,14 +593,14 @@ export function RoundDetailRoute() {
         ) : null}
         {leagueRepeatWarning && !actionError ? (
           <p className="mt-6 font-mono text-[11px] text-muted">
-            this song was submitted in a previous round — submitted anyway.
+            this song was submitted in a previous mystery mix — submitted anyway.
           </p>
         ) : null}
 
         <section className="mt-10">
           {round.state === "pending" ? (
             <p className="font-mono text-[13px] font-light text-muted">
-              this round hasn&apos;t opened yet.
+              this mystery mix hasn&apos;t opened yet.
             </p>
           ) : round.state === "open_submission" ? (
             <>
@@ -614,7 +614,7 @@ export function RoundDetailRoute() {
                 onEdit={handleEditSong}
                 onRemove={handleRemoveSong}
                 onSaveNote={handleSaveNote}
-                onConfirm={() => navigate(`/leagues/${round.league_id}`)}
+                onConfirm={() => navigate(`/clubs/${round.league_id}`)}
               />
             </>
           ) : round.state === "open_voting" ? (
@@ -687,7 +687,7 @@ function OrganizerControls({
   totalVotes: number;
 }) {
   // Closing is the one forward transition that cascades and can't be undone
-  // in-app (MYS-170) — gated behind an explicit second step. "open round" /
+  // in-app (MYS-170) — gated behind an explicit second step. "open mix" /
   // "open voting" stay one-click; they're lower-risk and easy to reason about.
   const [confirmingClose, setConfirmingClose] = useState(false);
   // The one sanctioned backward step (MYS-168) — same two-step treatment,
@@ -709,10 +709,10 @@ function OrganizerControls({
         : "closed";
   const label =
     state === "pending"
-      ? "open round"
+      ? "open mix"
       : state === "open_submission"
         ? "open voting"
-        : "close round";
+        : "close mix";
   const busyLabel = next === "closed" ? "closing…" : "opening…";
   const busy = advancing || rollingBack || extendingVoting;
 
@@ -746,12 +746,12 @@ function OrganizerControls({
       <div className="mt-6 space-y-4 border-t border-border pt-6">
         <p className="font-mono text-[13px] font-light text-muted">
           {isFinalRound
-            ? "this closes the round and completes the league. it can't be undone."
-            : "this closes the round and opens the next one, starting its submission deadline. it can't be undone."}
+            ? "this closes the mystery mix and completes the club. it can't be undone."
+            : "this closes the mystery mix and opens the next one, starting its submission deadline. it can't be undone."}
         </p>
         <div className="flex items-center gap-4">
           <Button type="button" onClick={() => onAdvance(next)} disabled={advancing}>
-            {advancing ? busyLabel : "yes, close round"}
+            {advancing ? busyLabel : "yes, close mix"}
           </Button>
           <Button
             variant="ghost"
@@ -1140,7 +1140,7 @@ function ComposerSlot({
   return (
     <>
       <SongSearchCard
-        eyebrow="this round"
+        eyebrow="this mix"
         heading={heading}
         idPrefix={idPrefix}
         submitting={submitting}
@@ -2146,7 +2146,7 @@ function VibeWinnersSection({ winners }: { winners: WinnerReveal[] }) {
         {tie ? "winners" : "winner"}
       </h2>
       <p className="mt-2 font-mono text-[13px] font-light text-muted">
-        {tie ? "the most-loved picks this round" : "the most-loved pick this round"}
+        {tie ? "the most-loved picks this mystery mix" : "the most-loved pick this mystery mix"}
       </p>
       <ul className="mt-4 space-y-4">
         {winners.map((w) => (
@@ -2265,7 +2265,7 @@ function WinnersSection({
         {tie ? "winners" : "winner"}
       </h2>
       <p className="mt-2 font-mono text-[13px] font-light text-muted">
-        {tie ? "tied for the most votes this round" : "the most votes this round"}
+        {tie ? "tied for the most votes this mystery mix" : "the most votes this mystery mix"}
       </p>
       <ul className="mt-4 space-y-4">
         {winners.map((w) => (

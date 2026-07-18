@@ -58,8 +58,8 @@ function renderHome() {
           <Route path="/home" element={<HomeRoute />} />
         </Route>
         <Route path="/login" element={<div>LOGIN CONTENT</div>} />
-        <Route path="/leagues/new" element={<div>NEW LEAGUE CONTENT</div>} />
-        <Route path="/leagues/:id" element={<div>LEAGUE DETAIL CONTENT</div>} />
+        <Route path="/clubs/new" element={<div>NEW LEAGUE CONTENT</div>} />
+        <Route path="/clubs/:id" element={<div>LEAGUE DETAIL CONTENT</div>} />
         <Route path="/join/:token" element={<div>JOIN CONTENT</div>} />
         <Route path="/admin" element={<div>ADMIN CONTENT</div>} />
       </Routes>
@@ -132,7 +132,7 @@ describe("HomeRoute (My Leagues)", () => {
     mockGetLeagues.mockResolvedValue([]);
     renderHome();
 
-    expect(await screen.findByText("no leagues yet")).toBeInTheDocument();
+    expect(await screen.findByText("no clubs yet")).toBeInTheDocument();
   });
 
   it("error: getLeagues rejecting surfaces a calm error via the error prop", async () => {
@@ -142,17 +142,17 @@ describe("HomeRoute (My Leagues)", () => {
     expect(await screen.findByRole("alert")).toBeInTheDocument();
   });
 
-  it("create: the create-a-league action navigates to /leagues/new", async () => {
+  it("create: the create-a-league action navigates to /clubs/new", async () => {
     mockGetLeagues.mockResolvedValue([]);
     const user = userEvent.setup();
     renderHome();
 
-    await user.click(await screen.findByRole("button", { name: /create a league/i }));
+    await user.click(await screen.findByRole("button", { name: /create a club/i }));
 
     expect(await screen.findByText("NEW LEAGUE CONTENT")).toBeInTheDocument();
   });
 
-  it("open: clicking a league navigates to /leagues/{id}", async () => {
+  it("open: clicking a league navigates to /clubs/{id}", async () => {
     const user = userEvent.setup();
     renderHome();
 

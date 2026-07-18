@@ -52,7 +52,7 @@ export function JoinLeagueRoute() {
         // Already a member (most relevant on an otherwise-expired link, MYS-181)
         // — skip the join screen entirely and land them in the league.
         if (result.already_member) {
-          navigate(`/leagues/${result.league_id}`, { replace: true });
+          navigate(`/clubs/${result.league_id}`, { replace: true });
           return;
         }
         // Platform invite (MYS-182): league_id is null — it's a signup grant,
@@ -84,7 +84,7 @@ export function JoinLeagueRoute() {
     setJoinError(null);
     try {
       const league = await acceptInvite(token);
-      navigate(`/leagues/${league.id}`, { replace: true });
+      navigate(`/clubs/${league.id}`, { replace: true });
     } catch (err) {
       // A link that expired between preview and accept flips to the expired state.
       if (err instanceof ApiError && err.status === 410) {
@@ -93,7 +93,7 @@ export function JoinLeagueRoute() {
         return;
       }
       setJoinError(
-        err instanceof ApiError ? err.message : "couldn't join the league. try again.",
+        err instanceof ApiError ? err.message : "couldn't join the club. try again.",
       );
       setJoining(false);
     }

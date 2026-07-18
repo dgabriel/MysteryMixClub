@@ -94,7 +94,7 @@ export function JoinLeagueScreen({
             {isAuthenticated && preview.league_id !== null ? (
               <div className="mt-10 space-y-6">
                 <Button type="button" onClick={onJoin} disabled={joining} className="w-full">
-                  {joining ? "joining…" : "join league"}
+                  {joining ? "joining…" : "join club"}
                 </Button>
                 {joinError ? (
                   <p role="alert" className="font-mono text-[11px] text-ink">

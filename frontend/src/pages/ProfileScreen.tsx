@@ -271,7 +271,7 @@ function ArchivedLeagues({
         archived ({leagues.length})
       </h2>
       {leagues.length === 0 ? (
-        <p className="mt-4 font-mono text-[13px] font-light text-muted">no completed leagues yet</p>
+        <p className="mt-4 font-mono text-[13px] font-light text-muted">no completed clubs yet</p>
       ) : (
         <ul className="mt-4 space-y-4">
           {leagues.map((league, index) => (
@@ -288,14 +288,14 @@ function ArchivedLeagues({
                   className="block w-full text-left"
                 >
                   <span className="font-mono uppercase tracking-label text-[9px] text-muted">
-                    league
+                    club
                   </span>
                   <h3 className="mt-1 font-serif text-[20px] leading-tight text-ink">
                     {league.name}
                   </h3>
                   <div className="mt-3 flex items-center justify-between">
                     <span className="font-mono text-[11px] font-light text-muted">
-                      {league.total_rounds} rounds
+                      {league.total_rounds} mixes
                     </span>
                     <Badge>{league.state}</Badge>
                   </div>

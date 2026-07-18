@@ -41,11 +41,11 @@ function leagueWith(overrides: Partial<League> = {}): League {
 
 function renderCreate() {
   return render(
-    <MemoryRouter initialEntries={["/leagues/new"]}>
+    <MemoryRouter initialEntries={["/clubs/new"]}>
       <Routes>
-        <Route path="/leagues/new" element={<CreateLeagueRoute />} />
+        <Route path="/clubs/new" element={<CreateLeagueRoute />} />
         <Route path="/home" element={<div>HOME CONTENT</div>} />
-        <Route path="/leagues/:id" element={<div>LEAGUE DETAIL CONTENT</div>} />
+        <Route path="/clubs/:id" element={<div>LEAGUE DETAIL CONTENT</div>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -56,7 +56,7 @@ describe("CreateLeagueRoute", () => {
     vi.clearAllMocks();
   });
 
-  it("happy path: valid submit calls createLeague and navigates to /leagues/{newId}", async () => {
+  it("happy path: valid submit calls createLeague and navigates to /clubs/{newId}", async () => {
     mockCreateLeague.mockResolvedValue(leagueWith({ id: "new-league-99" }));
     const user = userEvent.setup();
 

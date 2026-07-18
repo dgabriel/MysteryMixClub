@@ -33,7 +33,7 @@ export function HomeRoute() {
         setLeagues(result);
       } catch (err) {
         setError(
-          err instanceof ApiError ? err.message : "couldn't load your leagues. try again.",
+          err instanceof ApiError ? err.message : "couldn't load your clubs. try again.",
         );
       } finally {
         setLoading(false);
@@ -48,8 +48,8 @@ export function HomeRoute() {
       loading={loading}
       error={error}
       preferredService={preferredService}
-      onCreateLeague={() => navigate("/leagues/new")}
-      onOpenLeague={(id) => navigate(`/leagues/${id}`)}
+      onCreateLeague={() => navigate("/clubs/new")}
+      onOpenLeague={(id) => navigate(`/clubs/${id}`)}
     />
   );
 }

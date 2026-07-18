@@ -177,7 +177,7 @@ export function ProfileRoute() {
       archivedLeagues={archived}
       loading={loading}
       error={error}
-      onOpenLeague={(id) => navigate(`/leagues/${id}`)}
+      onOpenLeague={(id) => navigate(`/clubs/${id}`)}
       onSaveName={handleSaveName}
       saving={saving}
       saveError={saveError}

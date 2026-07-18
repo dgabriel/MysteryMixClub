@@ -27,7 +27,7 @@ export function TermsRoute() {
           <div className="mt-10 space-y-8 font-mono text-[13px] font-light leading-relaxed text-ink">
             <section>
               <p>
-                mysterymixclub ("we," "us," "the app") is an invite-only music league for
+                mysterymixclub ("we," "us," "the app") is an invite-only music club for
                 close-knit friend groups. by creating an account, you agree to these terms.
               </p>
             </section>

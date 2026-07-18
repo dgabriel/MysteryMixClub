@@ -95,7 +95,7 @@ function joinTree(token: string) {
         <Route path="/join/:token" element={<JoinLeagueRoute />} />
         <Route path="/login" element={<div>LOGIN CONTENT</div>} />
         <Route path="/home" element={<div>HOME CONTENT</div>} />
-        <Route path="/leagues/:id" element={<div>LEAGUE DETAIL CONTENT</div>} />
+        <Route path="/clubs/:id" element={<div>LEAGUE DETAIL CONTENT</div>} />
       </Routes>
     </MemoryRouter>
   );
@@ -164,7 +164,7 @@ describe("JoinLeagueRoute", () => {
     expect(screen.queryByText("Friday Mixtape")).not.toBeInTheDocument();
   });
 
-  it("authenticated: clicking join calls acceptInvite and navigates to /leagues/{league.id}", async () => {
+  it("authenticated: clicking join calls acceptInvite and navigates to /clubs/{league.id}", async () => {
     setAuth(true);
     mockAcceptInvite.mockResolvedValue(leagueWith("joined-league-7"));
     const user = userEvent.setup();
@@ -172,7 +172,7 @@ describe("JoinLeagueRoute", () => {
     renderJoin("tok-abc");
     await screen.findByText("Friday Mixtape");
 
-    await user.click(screen.getByRole("button", { name: /join league/i }));
+    await user.click(screen.getByRole("button", { name: /join club/i }));
 
     expect(mockAcceptInvite).toHaveBeenCalledWith("tok-abc");
     expect(await screen.findByText("LEAGUE DETAIL CONTENT")).toBeInTheDocument();
@@ -188,7 +188,7 @@ describe("JoinLeagueRoute", () => {
     renderJoin();
     await screen.findByText("Friday Mixtape");
 
-    await user.click(screen.getByRole("button", { name: /join league/i }));
+    await user.click(screen.getByRole("button", { name: /join club/i }));
 
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     expect(screen.queryByText("LEAGUE DETAIL CONTENT")).not.toBeInTheDocument();
@@ -273,7 +273,7 @@ describe("JoinLeagueRoute", () => {
       expect(await screen.findByText(/you're invited to mysterymixclub/i)).toBeInTheDocument();
       expect(screen.getByText(/sign in to get started/i)).toBeInTheDocument();
       expect(screen.queryByText(/members/i)).not.toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: /join league/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /join club/i })).not.toBeInTheDocument();
     });
 
     it("unauthenticated: sign-in stores pendingInvitePath and navigates to /login, same as a league invite", async () => {

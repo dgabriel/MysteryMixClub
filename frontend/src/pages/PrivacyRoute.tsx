@@ -43,7 +43,7 @@ export function PrivacyRoute() {
               </p>
               <p className="mt-3">
                 your email, display name, and preferred streaming service; the songs, notes, and
-                votes you submit to leagues you're a member of; and basic session data needed to
+                votes you submit to clubs you're a member of; and basic session data needed to
                 keep you signed in.
               </p>
             </section>
@@ -55,7 +55,7 @@ export function PrivacyRoute() {
               <p className="mt-3">
                 no individual behavior tracking and no third-party analytics scripts (no google
                 analytics, no mixpanel). we only look at aggregate, app-wide numbers — total
-                leagues, total rounds, total submissions — never a single user's activity pattern.
+                clubs, total mystery mixes, total submissions — never a single user's activity pattern.
               </p>
             </section>
 
@@ -98,7 +98,7 @@ export function PrivacyRoute() {
                 and notes) any time from your profile page, satisfying your right of access and
                 data portability under gdpr articles 15 and 20. delete your account any time from
                 the same page: this cascades to your submissions, votes, notes, sessions, and
-                league memberships, with a scheduled hard purge of any remaining trace within 30
+                club memberships, with a scheduled hard purge of any remaining trace within 30
                 days.
               </p>
             </section>

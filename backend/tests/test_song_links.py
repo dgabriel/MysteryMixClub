@@ -8,6 +8,7 @@ best-effort behaviour when an upstream errors.
 
 import httpx
 
+from app.services.apple_music_token import AppleMusicTokenError
 from app.services.song_links import SongLinkAssembler
 
 _DEEZER_ISRC_OK = {"id": 1, "link": "https://www.deezer.com/track/111", "isrc": "USXYZ"}
@@ -15,11 +16,20 @@ _DEEZER_SEARCH_OK = {"data": [{"id": 2, "link": "https://www.deezer.com/track/22
 _ITUNES_OK = {"resultCount": 1, "results": [{"trackViewUrl": "https://music.apple.com/track/333"}]}
 
 
+def _catalog_song(name, artist, url, album=None):
+    """Shape one entry of an Apple Music catalog `/songs` response."""
+    return {
+        "id": url.rsplit("/", 1)[-1],
+        "attributes": {"name": name, "artistName": artist, "albumName": album, "url": url},
+    }
+
+
 class _Dispatch:
-    def __init__(self, *, isrc=None, search=None, itunes=None):
+    def __init__(self, *, isrc=None, search=None, itunes=None, catalog=None):
         self.isrc = isrc
         self.search = search
         self.itunes = itunes
+        self.catalog = catalog
         self.calls: list[httpx.Request] = []
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
@@ -29,16 +39,48 @@ class _Dispatch:
             return self.isrc or httpx.Response(404)
         if host == "api.deezer.com" and path == "/search":
             return self.search or httpx.Response(200, json={"data": [], "total": 0})
+        if host == "api.music.apple.com":
+            return self.catalog or httpx.Response(200, json={"data": []})
         if host == "itunes.apple.com":
             return self.itunes or httpx.Response(200, json={"resultCount": 0, "results": []})
         return httpx.Response(404)
 
+    def hosts(self) -> list[str]:
+        return [c.url.host for c in self.calls]
 
-def _assembler(dispatch, *, youtube_resolver=None) -> SongLinkAssembler:
+
+class _FakeAppleTokenService:
+    """Stub matching AppleMusicTokenService's interface, without signing anything."""
+
+    def __init__(self, token: str | None = "dev-token"):
+        # token=None models configured-but-unusable credentials (raises on mint).
+        self._token = token
+
+    @property
+    def is_configured(self) -> bool:
+        return True
+
+    async def get_developer_token(self) -> str:
+        if self._token is None:
+            raise AppleMusicTokenError("boom")
+        return self._token
+
+
+class _UnconfiguredAppleTokenService(_FakeAppleTokenService):
+    @property
+    def is_configured(self) -> bool:
+        return False
+
+
+def _assembler(dispatch, *, youtube_resolver=None, apple_token_service=None) -> SongLinkAssembler:
     def factory() -> httpx.AsyncClient:
         return httpx.AsyncClient(transport=httpx.MockTransport(dispatch), timeout=5.0)
 
-    return SongLinkAssembler(client_factory=factory, youtube_resolver=youtube_resolver)
+    return SongLinkAssembler(
+        client_factory=factory,
+        youtube_resolver=youtube_resolver,
+        apple_token_service=apple_token_service,
+    )
 
 
 class _FakeYouTubeResolver:
@@ -221,3 +263,115 @@ async def test_assemble_resolves_youtube_video_id_only_once():
     assert calls == 0
     assert links["youtube"] == "https://www.youtube.com/watch?v=precomputed"
     assert links["youtubeMusic"] == "https://music.youtube.com/watch?v=precomputed"
+
+
+# --- Apple Music ISRC catalog matching (MYS-106) ------------------------------
+
+
+async def test_apple_catalog_isrc_preferred_over_itunes():
+    d = _Dispatch(
+        catalog=httpx.Response(
+            200,
+            json={
+                "data": [_catalog_song("Creep", "Radiohead", "https://music.apple.com/us/song/1")]
+            },
+        ),
+        itunes=httpx.Response(200, json=_ITUNES_OK),
+    )
+    links = await _assembler(d, apple_token_service=_FakeAppleTokenService()).assemble(
+        "Creep", "Radiohead", "GBAYE9200070"
+    )
+    assert links["appleMusic"] == "https://music.apple.com/us/song/1"
+    # The catalog hit short-circuits the keyless path entirely.
+    assert "itunes.apple.com" not in d.hosts()
+
+
+async def test_apple_catalog_sends_bearer_token_and_isrc_filter():
+    d = _Dispatch(
+        catalog=httpx.Response(
+            200,
+            json={
+                "data": [_catalog_song("Creep", "Radiohead", "https://music.apple.com/us/song/1")]
+            },
+        )
+    )
+    await _assembler(d, apple_token_service=_FakeAppleTokenService("tok-123")).assemble(
+        "Creep", "Radiohead", "GBAYE9200070"
+    )
+    call = next(c for c in d.calls if c.url.host == "api.music.apple.com")
+    assert call.headers["Authorization"] == "Bearer tok-123"
+    assert call.url.params["filter[isrc]"] == "GBAYE9200070"
+    assert call.url.path == "/v1/catalog/us/songs"
+
+
+async def test_apple_catalog_scores_multiple_songs_for_one_isrc():
+    """One ISRC returning several songs is the norm, not an edge case.
+
+    Verified against the live API: GBAYE9200070 (Radiohead - Creep) returns
+    three. Duplicates can share an album name, so ranking is on title+artist.
+    """
+    d = _Dispatch(
+        catalog=httpx.Response(
+            200,
+            json={
+                "data": [
+                    _catalog_song(
+                        "Creep (Live)", "Radiohead", "https://music.apple.com/us/song/wrong", "EP"
+                    ),
+                    _catalog_song(
+                        "Creep", "Radiohead", "https://music.apple.com/us/song/right", "Pablo Honey"
+                    ),
+                ]
+            },
+        )
+    )
+    links = await _assembler(d, apple_token_service=_FakeAppleTokenService()).assemble(
+        "Creep", "Radiohead", "GBAYE9200070"
+    )
+    assert links["appleMusic"] == "https://music.apple.com/us/song/right"
+
+
+async def test_apple_falls_back_to_itunes_when_catalog_has_no_match():
+    d = _Dispatch(
+        catalog=httpx.Response(200, json={"data": []}),
+        itunes=httpx.Response(200, json=_ITUNES_OK),
+    )
+    links = await _assembler(d, apple_token_service=_FakeAppleTokenService()).assemble(
+        "x", "y", "USXYZ1234567"
+    )
+    assert links["appleMusic"] == "https://music.apple.com/track/333"
+
+
+async def test_apple_falls_back_to_itunes_when_catalog_errors():
+    d = _Dispatch(catalog=httpx.Response(500), itunes=httpx.Response(200, json=_ITUNES_OK))
+    links = await _assembler(d, apple_token_service=_FakeAppleTokenService()).assemble(
+        "x", "y", "USXYZ1234567"
+    )
+    assert links["appleMusic"] == "https://music.apple.com/track/333"
+
+
+async def test_apple_skips_catalog_when_unconfigured():
+    """No credentials: behave exactly as before MYS-106, with no wasted call."""
+    d = _Dispatch(itunes=httpx.Response(200, json=_ITUNES_OK))
+    links = await _assembler(d, apple_token_service=_UnconfiguredAppleTokenService()).assemble(
+        "x", "y", "USXYZ1234567"
+    )
+    assert links["appleMusic"] == "https://music.apple.com/track/333"
+    assert "api.music.apple.com" not in d.hosts()
+
+
+async def test_apple_skips_catalog_when_token_unusable():
+    """Configured but unsignable (malformed key / mid-rotation) must not raise."""
+    d = _Dispatch(itunes=httpx.Response(200, json=_ITUNES_OK))
+    links = await _assembler(d, apple_token_service=_FakeAppleTokenService(None)).assemble(
+        "x", "y", "USXYZ1234567"
+    )
+    assert links["appleMusic"] == "https://music.apple.com/track/333"
+
+
+async def test_apple_skips_catalog_without_isrc():
+    """The catalog filter is ISRC-keyed; with no ISRC there's nothing to ask."""
+    d = _Dispatch(itunes=httpx.Response(200, json=_ITUNES_OK))
+    links = await _assembler(d, apple_token_service=_FakeAppleTokenService()).assemble("x", "y")
+    assert links["appleMusic"] == "https://music.apple.com/track/333"
+    assert "api.music.apple.com" not in d.hosts()

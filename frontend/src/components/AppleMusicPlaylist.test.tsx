@@ -40,7 +40,7 @@ describe("AppleMusicPlaylist", () => {
     render(<AppleMusicPlaylist roundId="r1" />);
 
     expect(
-      await screen.findByRole("button", { name: /build this round in apple music/i }),
+      await screen.findByRole("button", { name: /build this mystery mix in apple music/i }),
     ).toBeInTheDocument();
     expect(screen.getByText(/requires apple music subscription/i)).toBeInTheDocument();
   });
@@ -91,7 +91,7 @@ describe("AppleMusicPlaylist", () => {
 
     render(<AppleMusicPlaylist roundId="r1" />);
     await userEvent.click(
-      await screen.findByRole("button", { name: /build this round in apple music/i }),
+      await screen.findByRole("button", { name: /build this mystery mix in apple music/i }),
     );
 
     await waitFor(() => expect(mockAuthorize).toHaveBeenCalledWith("dev-token"));
@@ -116,7 +116,7 @@ describe("AppleMusicPlaylist", () => {
 
     render(<AppleMusicPlaylist roundId="r1" />);
     await userEvent.click(
-      await screen.findByRole("button", { name: /build this round in apple music/i }),
+      await screen.findByRole("button", { name: /build this mystery mix in apple music/i }),
     );
 
     expect(await screen.findByText(/2 not on apple music/i)).toBeInTheDocument();
@@ -127,13 +127,13 @@ describe("AppleMusicPlaylist", () => {
 
     render(<AppleMusicPlaylist roundId="r1" />);
     await userEvent.click(
-      await screen.findByRole("button", { name: /build this round in apple music/i }),
+      await screen.findByRole("button", { name: /build this mystery mix in apple music/i }),
     );
 
     expect(await screen.findByText(/connection expired/i)).toBeInTheDocument();
     // Still offering the retry, not a dead end.
     expect(
-      screen.getByRole("button", { name: /build this round in apple music/i }),
+      screen.getByRole("button", { name: /build this mystery mix in apple music/i }),
     ).toBeEnabled();
   });
 
@@ -142,7 +142,7 @@ describe("AppleMusicPlaylist", () => {
 
     render(<AppleMusicPlaylist roundId="r1" />);
     await userEvent.click(
-      await screen.findByRole("button", { name: /build this round in apple music/i }),
+      await screen.findByRole("button", { name: /build this mystery mix in apple music/i }),
     );
 
     expect(await screen.findByText(/couldn't build the playlist/i)).toBeInTheDocument();

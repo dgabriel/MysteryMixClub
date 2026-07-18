@@ -932,7 +932,7 @@ function EditRoundForm({
     return (
       <div className="mt-4">
         <Button variant="ghost" type="button" onClick={openForm}>
-          edit round
+          edit mix
         </Button>
       </div>
     );
@@ -1469,7 +1469,7 @@ function VotingSection({
       <>
         <VotingProgress acted={votingActed} eligible={votingEligible} vibing={vibingCount} />
         <p className="font-mono text-[13px] font-light text-muted">
-          you&apos;re just vibing this round, so you sit voting out — settle in and enjoy the mix.
+          you&apos;re just vibing this one, so you sit voting out — settle in and enjoy the mix.
         </p>
         <h2 className="mt-8 font-mono uppercase tracking-label text-[9px] text-muted">
           playlist ({entries.length})
@@ -1718,7 +1718,7 @@ function VotingTally({
       {myVotes.length > 0 && (
         <div className="mt-6 border-t border-border pt-6">
           <p className="font-mono uppercase tracking-label text-[9px] text-muted">
-            your votes are locked — they will be revealed when the round closes
+            your votes are locked — they will be revealed when the mystery mix closes
           </p>
         </div>
       )}

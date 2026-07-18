@@ -128,7 +128,7 @@ export function AppleMusicPlaylist({ roundId }: { roundId: string }) {
         <>
           <button type="button" onClick={handleGenerate} disabled={busy} className={BUTTON_CLASS}>
             <MusicNoteIcon />
-            {busy ? "building playlist…" : "build this round in Apple Music"}
+            {busy ? "building playlist…" : "build this mystery mix in Apple Music"}
           </button>
           <p className={NOTE_CLASS}>(requires apple music subscription)</p>
         </>

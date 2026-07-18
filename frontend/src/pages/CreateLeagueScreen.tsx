@@ -139,7 +139,7 @@ export function CreateLeagueScreen({
               disabled={submitting}
             />
             <p className="mt-2 font-mono text-[11px] font-light text-muted">
-              we&apos;ll create this many rounds for you — name each one later.
+              we&apos;ll create this many mystery mixes for you — name each one later.
             </p>
           </div>
 
@@ -166,7 +166,7 @@ export function CreateLeagueScreen({
               disabled={submitting}
             />
             <p className="mt-2 font-mono text-[11px] font-light text-muted">
-              how many songs each player can submit per round — 1 to 5.
+              how many songs each player can submit per mystery mix — 1 to 5.
             </p>
           </div>
 
@@ -190,7 +190,7 @@ export function CreateLeagueScreen({
               disabled={submitting}
             />
             <p className="font-mono text-[11px] font-light text-muted">
-              rounds also close early if everyone finishes.
+              mystery mixes also close early if everyone finishes.
             </p>
           </div>
 

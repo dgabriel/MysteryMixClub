@@ -290,7 +290,7 @@ export function RoundDetailRoute() {
       await refreshCount();
       return true;
     } catch (err) {
-      if (err instanceof ApiError && err.message.includes("already in this round")) {
+      if (err instanceof ApiError && err.message.includes("already in this")) {
         setActionError(
           `"${song.title}" by ${song.artist} is already in this mystery mix — someone else has great taste too.`,
         );
@@ -327,7 +327,7 @@ export function RoundDetailRoute() {
       if (result.league_previously_submitted) setLeagueRepeatWarning(true);
       return true;
     } catch (err) {
-      if (err instanceof ApiError && err.message.includes("already in this round")) {
+      if (err instanceof ApiError && err.message.includes("already in this")) {
         setActionError(
           `"${song.title}" by ${song.artist} is already in this mystery mix — someone else has great taste too.`,
         );

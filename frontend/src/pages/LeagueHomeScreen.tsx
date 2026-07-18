@@ -174,7 +174,7 @@ export function LeagueHomeScreen({
         </p>
         {isComplete ? (
           <p className="mt-4 font-serif italic text-[18px] text-muted">
-            the league is complete.
+            this club has wrapped.
           </p>
         ) : null}
 
@@ -360,7 +360,7 @@ function DeleteLeagueSection({
       {confirming ? (
         <div className="mt-4 space-y-4">
           <p className="font-mono text-[13px] font-light text-muted">
-            this removes the league and everything in it. it can't be undone.
+            this removes the club and everything in it. it can't be undone.
           </p>
           <div className="flex items-center gap-4">
             {/* The screen's single Rust use: the destructive confirm. */}
@@ -426,7 +426,7 @@ function LeaveLeagueSection({
       {confirming ? (
         <div className="mt-4 space-y-4">
           <p className="font-mono text-[13px] font-light text-muted">
-            you'll lose access to this league's rounds and results.
+            you'll lose access to this club's mystery mixes and results.
           </p>
           <div className="flex items-center gap-4">
             <Button
@@ -489,7 +489,7 @@ function RoundsSection({
   return (
     <section className="mt-12">
       <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
-        rounds ({rounds.length})
+        mystery mixes ({rounds.length})
       </h2>
 
       {rounds.length === 0 ? (
@@ -642,7 +642,7 @@ function RoundRow({
             </button>
           ) : (
             <p className="font-mono text-[11px] font-light text-muted">
-              theme locks once a round opens
+              theme locks once a mystery mix opens
             </p>
           )}
         </div>
@@ -955,8 +955,8 @@ function OrganizerEdit({
         disabled={updating}
       />
       <p className="font-mono text-[11px] font-light text-muted">
-        this only applies going forward — a round already collecting submissions or
-        votes keeps its current deadline. it takes effect the next time a round (or
+        this only applies going forward — a mystery mix already collecting submissions or
+        votes keeps its current deadline. it takes effect the next time a mystery mix (or
         its next phase) opens.
       </p>
       {windowError ? (

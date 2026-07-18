@@ -61,7 +61,7 @@ export function MyLeaguesScreen({
                   </p>
                 ) : null}
                 <h1 className="mt-1 font-serif lowercase text-[28px] leading-tight text-ink">
-                  my leagues
+                  my clubs
                 </h1>
 
                 <div className="mt-4">

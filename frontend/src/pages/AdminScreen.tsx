@@ -112,7 +112,7 @@ export function AdminScreen({
         <section className="mt-16">
           <h2 className="font-serif lowercase text-[20px] leading-tight text-ink">invite</h2>
           <p className="mt-2 font-mono text-[13px] font-light text-muted">
-            generate a signup invite. no league attached — whoever uses it creates their
+            generate a signup invite. no club attached — whoever uses it creates their
             own, or later joins an open one.
           </p>
 

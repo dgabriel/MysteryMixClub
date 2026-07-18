@@ -28,6 +28,7 @@ def upgrade() -> None:
         sa.Column("round_id", sa.UUID(), nullable=False),
         sa.Column("user_id", sa.UUID(), nullable=False),
         sa.Column("playlist_id", sa.String(length=255), nullable=False),
+        sa.Column("superseded_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),

@@ -25,7 +25,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel, Field, StringConstraints
-from sqlalchemy import delete, exists, func, select
+from sqlalchemy import delete, exists, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.leagues import _load_league_as_member, _load_league_as_organizer
@@ -319,19 +319,26 @@ async def rollback_round_to_submission(round_: Round, league: League, db: AsyncS
     # resurface at close.
     await db.execute(delete(Vote).where(Vote.round_id == round_.id))
 
-    # Apple playlists are forgotten so members can rebuild after the new
-    # submissions land (MYS-108). Apple has no replace-tracks for library
-    # playlists, so a rebuild necessarily creates a second one — dropping the
-    # row is what makes that rebuild reachable. The playlist already in the
-    # member's library is untouched; we can't reach into it, and it would
-    # otherwise sit there as the stale record of a superseded round.
+    # Apple playlists are marked superseded so members can rebuild against the
+    # new submissions (MYS-108). Marked, not deleted: Apple has no
+    # replace-tracks for library playlists, so a rebuild necessarily creates a
+    # second one, and keeping the row is what lets that rebuild know it's a
+    # revision and name itself distinctly. The playlist already in the member's
+    # library is untouched — we can't reach into it.
     #
     # Spotify is deliberately NOT cleared: its generation reuses the stored id
     # via replace_tracks, so the existing playlist refreshes in place and the
     # link members already hold stays correct. Clearing it would orphan a public
     # playlist on the shared account and mint a duplicate. YouTube needs nothing
     # — it's computed from submissions at read time.
-    await db.execute(delete(AppleRoundPlaylist).where(AppleRoundPlaylist.round_id == round_.id))
+    await db.execute(
+        update(AppleRoundPlaylist)
+        .where(
+            AppleRoundPlaylist.round_id == round_.id,
+            AppleRoundPlaylist.superseded_at.is_(None),
+        )
+        .values(superseded_at=func.now())
+    )
 
 
 async def submission_quorum_met(round_: Round, db: AsyncSession) -> bool:

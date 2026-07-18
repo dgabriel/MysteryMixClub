@@ -60,6 +60,10 @@ class UnmatchedTrack(BaseModel):
 
 class GeneratePlaylistRequest(BaseModel):
     music_user_token: str = Field(min_length=1, max_length=4096)
+    # Minutes to add to UTC for the caller's local time, so a rebuilt playlist's
+    # "[revised on HH:MM]" reads in their own clock. Bounded to real-world
+    # offsets (UTC-12 .. UTC+14). Omitted → UTC.
+    tz_offset_minutes: int | None = Field(default=None, ge=-720, le=840)
 
 
 class GeneratePlaylistResponse(BaseModel):
@@ -135,6 +139,7 @@ async def create_round_apple_playlist(
             payload.music_user_token,
             db,
             client,
+            tz_offset_minutes=payload.tz_offset_minutes,
         )
     except AppleMusicAuthError as exc:
         # 401 so the client re-runs the MusicKit popup rather than showing a dead

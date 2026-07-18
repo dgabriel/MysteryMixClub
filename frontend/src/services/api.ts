@@ -960,10 +960,17 @@ export async function createApplePlaylist(
   roundId: string,
   musicUserToken: string,
 ): Promise<ApplePlaylistResult> {
+  // getTimezoneOffset() is minutes to add to LOCAL to get UTC — the server wants
+  // the opposite, so negate it. Lets a rebuilt playlist's "[revised on HH:MM]"
+  // read in the member's own clock rather than UTC.
+  const tzOffsetMinutes = -new Date().getTimezoneOffset();
   const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/apple-playlist`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ music_user_token: musicUserToken }),
+    body: JSON.stringify({
+      music_user_token: musicUserToken,
+      tz_offset_minutes: tzOffsetMinutes,
+    }),
   });
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));

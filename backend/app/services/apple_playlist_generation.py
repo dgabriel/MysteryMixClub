@@ -16,6 +16,7 @@ from __future__ import annotations
 import random
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,12 +47,43 @@ class GeneratedApplePlaylist:
 async def get_existing_playlist(
     db: AsyncSession, round_id: uuid.UUID, user_id: uuid.UUID
 ) -> AppleRoundPlaylist | None:
+    """The caller's *current* playlist for a round, or None.
+
+    Superseded rows (the round was reopened for submission) are treated as
+    absent, so the UI offers a rebuild — but they stay in the table so the
+    rebuild knows to name itself as a revision.
+    """
+    return await db.scalar(
+        select(AppleRoundPlaylist).where(
+            AppleRoundPlaylist.round_id == round_id,
+            AppleRoundPlaylist.user_id == user_id,
+            AppleRoundPlaylist.superseded_at.is_(None),
+        )
+    )
+
+
+async def _any_previous_playlist(
+    db: AsyncSession, round_id: uuid.UUID, user_id: uuid.UUID
+) -> AppleRoundPlaylist | None:
+    """Any row for this (round, user), superseded or not."""
     return await db.scalar(
         select(AppleRoundPlaylist).where(
             AppleRoundPlaylist.round_id == round_id,
             AppleRoundPlaylist.user_id == user_id,
         )
     )
+
+
+def revised_playlist_name(name: str, when: datetime, tz_offset_minutes: int | None) -> str:
+    """Append a ``[revised on HH:MM]`` suffix to a rebuilt playlist's name.
+
+    Apple accepts two identically-named playlists without complaint, which
+    leaves the member's library ambiguous after a round is reopened. The time is
+    rendered in the member's own timezone when the client sends its offset,
+    since a UTC clock time on a personal playlist is worse than no clock time.
+    """
+    local = when + timedelta(minutes=tz_offset_minutes) if tz_offset_minutes is not None else when
+    return f"{name} [revised on {local:%H:%M}]"
 
 
 async def generate_round_playlist(
@@ -62,6 +94,7 @@ async def generate_round_playlist(
     music_user_token: str,
     db: AsyncSession,
     client: AppleMusicClient,
+    tz_offset_minutes: int | None = None,
 ) -> GeneratedApplePlaylist:
     """Create this round's playlist in the caller's Apple Music library.
 
@@ -93,18 +126,26 @@ async def generate_round_playlist(
 
     name = playlist_name(league.name, round_.round_number, round_.theme)
     description = playlist_description(league.name, round_.round_number, round_.theme)
+
+    # A prior row — superseded or current — means this is a rebuild, so name it
+    # distinctly; Apple would otherwise leave two same-named playlists sitting
+    # side by side in the member's library.
+    previous = await _any_previous_playlist(db, round_id, user_id)
+    if previous is not None:
+        name = revised_playlist_name(name, datetime.now(timezone.utc), tz_offset_minutes)
+
     playlist_id = await client.create_library_playlist(
         music_user_token, name, description, track_ids
     )
 
-    # Record it so the round page can surface the link on later visits. Apple has
-    # no "replace tracks" for library playlists, so a repeat generation makes a
-    # new playlist; the stored row points at the most recent one.
-    stored = await get_existing_playlist(db, round_id, user_id)
-    if stored is None:
+    # Record it so the round page can surface the link on later visits. One row
+    # per (round, user): the rebuild takes over the existing row and clears the
+    # superseded mark, so the table tracks the live playlist, not a history.
+    if previous is None:
         db.add(AppleRoundPlaylist(round_id=round_id, user_id=user_id, playlist_id=playlist_id))
     else:
-        stored.playlist_id = playlist_id
+        previous.playlist_id = playlist_id
+        previous.superseded_at = None
     await db.commit()
 
     return GeneratedApplePlaylist(

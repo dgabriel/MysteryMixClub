@@ -31,6 +31,12 @@ class AppleRoundPlaylist(Base):
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
     )
     playlist_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Set when a rollback reopens the round (MYS-168): the playlist in the
+    # member's library no longer reflects the round's submissions. The row is
+    # kept rather than deleted so a rebuild knows it is a *revision* and can
+    # name itself distinctly — Apple happily accepts two identically-named
+    # playlists, which is confusing in the member's library.
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

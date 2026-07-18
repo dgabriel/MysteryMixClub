@@ -10,12 +10,15 @@ Per-player is the whole point here (MYS-107): playlists are keyed by
 
 import json
 import uuid
+from datetime import datetime, timezone
 from collections.abc import AsyncGenerator
 
 import httpx
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+
+from sqlalchemy import select
 
 from app.auth.jwt import create_access_token
 from app.db.session import get_db
@@ -26,6 +29,7 @@ from app.models.league_member import LeagueMember
 from app.models.round import Round
 from app.models.submission import Submission
 from app.models.user import User
+from app.services.apple_playlist_generation import revised_playlist_name
 from app.services.apple_music_client import (
     AppleMusicApiError,
     AppleMusicAuthError,
@@ -433,3 +437,98 @@ async def test_generate_503_when_unconfigured(db_session):
             _url(round_.id), json={"music_user_token": "mut"}, headers=_auth(organizer.id)
         )
     assert r.status_code == 503
+
+
+# --------------------------------------------------------------------------- #
+# Revision naming after a round is reopened (MYS-108)
+# --------------------------------------------------------------------------- #
+
+
+def test_revised_playlist_name_uses_local_time():
+    when = datetime(2026, 7, 18, 22, 5, tzinfo=timezone.utc)
+    # UTC-4: 22:05Z is 18:05 locally.
+    assert revised_playlist_name("Mix: R1", when, -240) == "Mix: R1 [revised on 18:05]"
+
+
+def test_revised_playlist_name_falls_back_to_utc():
+    when = datetime(2026, 7, 18, 22, 5, tzinfo=timezone.utc)
+    assert revised_playlist_name("Mix: R1", when, None) == "Mix: R1 [revised on 22:05]"
+
+
+def test_revised_playlist_name_wraps_across_midnight():
+    """UTC+14 pushes 22:05Z into the next day — the clock must wrap, not overflow."""
+    when = datetime(2026, 7, 18, 22, 5, tzinfo=timezone.utc)
+    assert revised_playlist_name("Mix: R1", when, 840) == "Mix: R1 [revised on 12:05]"
+
+
+async def test_first_generation_has_no_revision_suffix(apple_app, db_session):
+    organizer = await _seed_user(db_session, "rev1@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    await _add_submission(db_session, round_.id, organizer.id, isrc="I1", title="Creep")
+    apple_app.dispatch.catalog = httpx.Response(200, json={"data": [_song("s1", "Creep")]})
+
+    await apple_app.post(
+        _url(round_.id), json={"music_user_token": "mut"}, headers=_auth(organizer.id)
+    )
+
+    create = next(c for c in apple_app.dispatch.calls if c.url.path.endswith("/library/playlists"))
+    assert "[revised on" not in json.loads(create.read())["attributes"]["name"]
+
+
+async def test_rebuild_after_supersede_is_named_as_a_revision(apple_app, db_session):
+    """The whole point: Apple allows two same-named playlists, so say which is new."""
+    organizer = await _seed_user(db_session, "rev2@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    # Captured before the expire_all() below — reading round_.id afterwards
+    # triggers a lazy refresh and raises MissingGreenlet.
+    round_id = round_.id
+    await _add_submission(db_session, round_id, organizer.id, isrc="I1", title="Creep")
+    apple_app.dispatch.catalog = httpx.Response(200, json={"data": [_song("s1", "Creep")]})
+
+    # A superseded playlist from before the round was reopened.
+    db_session.add(
+        AppleRoundPlaylist(
+            round_id=round_id,
+            user_id=organizer.id,
+            playlist_id="p.OLD",
+            superseded_at=datetime.now(timezone.utc),
+        )
+    )
+    await db_session.commit()
+
+    # It's hidden from the round page, so the build CTA is offered again.
+    assert (await apple_app.get(_url(round_id), headers=_auth(organizer.id))).json()[
+        "playlist_url"
+    ] is None
+
+    r = await apple_app.post(
+        _url(round_id),
+        json={"music_user_token": "mut", "tz_offset_minutes": 0},
+        headers=_auth(organizer.id),
+    )
+    assert r.status_code == 200, r.text
+
+    create = next(c for c in apple_app.dispatch.calls if c.url.path.endswith("/library/playlists"))
+    assert "[revised on" in json.loads(create.read())["attributes"]["name"]
+
+    # One row per (round, user): the rebuild takes over rather than piling up.
+    db_session.expire_all()
+    rows = (
+        await db_session.scalars(
+            select(AppleRoundPlaylist).where(AppleRoundPlaylist.round_id == round_id)
+        )
+    ).all()
+    assert len(rows) == 1
+    assert rows[0].playlist_id == "p.NEW"
+    assert rows[0].superseded_at is None
+
+
+async def test_rejects_absurd_tz_offset(apple_app, db_session):
+    organizer = await _seed_user(db_session, "rev3@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    r = await apple_app.post(
+        _url(round_.id),
+        json={"music_user_token": "mut", "tz_offset_minutes": 5000},
+        headers=_auth(organizer.id),
+    )
+    assert r.status_code == 422

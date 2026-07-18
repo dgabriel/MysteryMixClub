@@ -392,14 +392,14 @@ async def test_rollback_happy_path_resets_deadlines_and_deletes_votes(client, db
     assert remaining_votes == []
 
 
-async def test_rollback_clears_apple_playlists_but_keeps_spotify(client, db_session):
-    """Reopening submissions forgets Apple playlists so members can rebuild.
+async def test_rollback_supersedes_apple_playlists_but_keeps_spotify(client, db_session):
+    """Reopening submissions supersedes Apple playlists so members can rebuild.
 
-    Apple has no replace-tracks for library playlists, so the stored row is what
-    blocks a rebuild; dropping it is the only way to let a member regenerate
-    against the new submission set (MYS-108). Spotify must survive — its
-    generation refreshes the same playlist in place, so clearing it would orphan
-    a public playlist and mint a duplicate.
+    Marked rather than deleted (MYS-108): the row is what tells a rebuild it's a
+    revision, so it can name itself distinctly instead of leaving two
+    same-named playlists in the member's library. Spotify must survive
+    untouched — its generation refreshes the same playlist in place, so
+    clearing it would orphan a public playlist and mint a duplicate.
     """
     organizer = await _seed_user(db_session, "org@example.com")
     member = await _seed_user(db_session, "member@example.com")
@@ -433,7 +433,11 @@ async def test_rollback_clears_apple_playlists_but_keeps_spotify(client, db_sess
         )
     ).all()
 
-    assert apple_rows == []
+    # Both members' rows survive, all marked superseded — kept so a rebuild
+    # knows it's a revision, hidden from the round page so the CTA returns.
+    assert len(apple_rows) == 2
+    assert all(r.superseded_at is not None for r in apple_rows)
+    assert sorted(r.playlist_id for r in apple_rows) == ["p.MEM", "p.ORG"]
     assert [r.playlist_id for r in spotify_rows] == ["sp1"]
 
 

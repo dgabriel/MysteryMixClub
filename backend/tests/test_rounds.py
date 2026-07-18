@@ -595,7 +595,7 @@ async def test_cannot_create_round_on_complete_league(client, db_session):
 
     resp = await _create_round(client, league.id, organizer.id)
     assert resp.status_code == 409
-    assert "complete" in resp.json()["detail"]
+    assert "wrapped" in resp.json()["detail"]
 
 
 # --------------------------------------------------------------------------- #

@@ -211,7 +211,7 @@ async def _voting_eligible_count(round_id: uuid.UUID, db: AsyncSession) -> int:
 async def _load_round(round_id: uuid.UUID, db: AsyncSession) -> Round:
     round_ = await db.scalar(select(Round).where(Round.id == round_id))
     if round_ is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="round not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="mystery mix not found")
     return round_
 
 
@@ -412,10 +412,10 @@ async def create_round(
     db: AsyncSession = Depends(get_db),
 ) -> RoundResponse:
     league = await _load_league_as_organizer(
-        league_id, current_user, db, "only an organizer or co-organizer can create rounds"
+        league_id, current_user, db, "only an organizer or co-organizer can create mixes"
     )
     if league.state == "complete":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="league is complete")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="the club has wrapped")
 
     # Rounds are strictly sequential: the current one must close first.
     open_round = await db.scalar(
@@ -424,7 +424,7 @@ async def create_round(
     if open_round is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="the current round must be closed before starting a new one",
+            detail="the current mystery mix must be closed before starting a new one",
         )
 
     existing = await db.scalar(
@@ -434,7 +434,7 @@ async def create_round(
     if next_number > league.total_rounds:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="all rounds for this league have already been created",
+            detail="all mixes for this club have already been created",
         )
 
     round_ = Round(
@@ -563,7 +563,7 @@ async def update_round(
 ) -> RoundResponse:
     round_ = await _load_round(round_id, db)
     league = await _load_league_as_organizer(
-        round_.league_id, current_user, db, "only an organizer or co-organizer can update rounds"
+        round_.league_id, current_user, db, "only an organizer or co-organizer can update mixes"
     )
 
     updates = payload.model_dump(exclude_unset=True)
@@ -574,13 +574,13 @@ async def update_round(
 
     # Field edits (theme, deadlines) are frozen once the round is closed.
     if updates and round_.state == "closed":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="round is closed")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="mystery mix is closed")
     # theme/description are the round's identity: editable only while pending.
     # Once the round opens, they are locked even though deadlines stay editable.
     if round_.state != "pending" and ("theme" in updates or "description" in updates):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="theme and description are locked once the round opens",
+            detail="theme and description are locked once the mystery mix opens",
         )
     for field, value in updates.items():
         setattr(round_, field, value)
@@ -592,7 +592,7 @@ async def update_round(
         if not is_rollback and new_state != _NEXT_STATE.get(round_.state):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"cannot move round from {round_.state} to {new_state}",
+                detail=f"cannot move mystery mix from {round_.state} to {new_state}",
             )
         # Opening a pending round: only one round may be active per league. This
         # guard is the organizer's manual step only; auto-advance never makes the
@@ -612,7 +612,7 @@ async def update_round(
             if active is not None:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail="another round is already active",
+                    detail="another mix is already active",
                 )
         if is_rollback:
             # Serialize with the deadline force-advance job and the vote-cast
@@ -628,7 +628,7 @@ async def update_round(
             if locked is None or locked.state != "open_voting":
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail="round is no longer open for voting",
+                    detail="this mystery mix is no longer open for voting",
                 )
             await rollback_round_to_submission(round_, league, db)
             # Silent (product decision 2026-07-04): the organizer tells the
@@ -715,7 +715,7 @@ async def extend_voting_deadline(
     if locked is None or locked.state != "open_voting":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="round is not open for voting",
+            detail="mystery mix is not open for voting",
         )
 
     current_deadline = locked.voting_deadline or datetime.now(timezone.utc)
@@ -1030,7 +1030,7 @@ async def get_round_results(
     if round_.state != "closed":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="results are available once the round closes",
+            detail="results are available once the mystery mix closes",
         )
 
     # Submissions joined to their submitter (revealed now the round is closed).

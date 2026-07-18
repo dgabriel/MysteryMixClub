@@ -364,7 +364,7 @@ async def test_demoting_last_admin_with_purged_organizer_returns_409(client, db_
     )
 
     assert resp.status_code == 409, resp.text
-    assert resp.json()["detail"] == "cannot remove the last admin from a league with no organizer"
+    assert resp.json()["detail"] == "cannot remove the last admin from a club with no organizer"
 
 
 async def test_demoting_an_admin_with_purged_organizer_and_another_admin_succeeds(
@@ -448,7 +448,7 @@ async def test_demoting_last_admin_when_other_admin_is_soft_deleted_returns_409(
     )
 
     assert resp.status_code == 409, resp.text
-    assert resp.json()["detail"] == "cannot remove the last admin from a league with no organizer"
+    assert resp.json()["detail"] == "cannot remove the last admin from a club with no organizer"
 
 
 # ========================================================================== #

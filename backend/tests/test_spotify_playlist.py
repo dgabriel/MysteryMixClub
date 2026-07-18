@@ -13,8 +13,8 @@ def test_name_includes_league_and_theme():
 
 
 def test_name_without_theme_falls_back_to_round_number():
-    assert playlist_name("Friday Mixtape", 2, None) == "MysteryMixClub: Friday Mixtape, Round 2"
-    assert playlist_name("Friday Mixtape", 2, "   ") == "MysteryMixClub: Friday Mixtape, Round 2"
+    assert playlist_name("Friday Mixtape", 2, None) == "MysteryMixClub: Friday Mixtape, Mix 2"
+    assert playlist_name("Friday Mixtape", 2, "   ") == "MysteryMixClub: Friday Mixtape, Mix 2"
 
 
 def test_name_is_capped_at_100_chars():
@@ -23,14 +23,14 @@ def test_name_is_capped_at_100_chars():
 
 def test_description_mentions_league_theme_and_round():
     desc = playlist_description("Friday Mixtape", 3, "Late Summer Feels")
-    assert "Round 3" in desc
+    assert "Mystery Mix 3" in desc
     assert "Late Summer Feels" in desc
     assert "Friday Mixtape" in desc
 
 
 def test_description_without_theme():
     desc = playlist_description("Friday Mixtape", 4, None)
-    assert "Round 4" in desc
+    assert "Mystery Mix 4" in desc
     assert "Friday Mixtape" in desc
     assert "(" not in desc  # no empty parenthetical
 

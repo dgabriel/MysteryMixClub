@@ -212,7 +212,7 @@ async def update_me(
 
 
 # Calm, actionable detail when the caller still organizes a live league.
-_ACTIVE_LEAGUE_BLOCK = "finish or hand off the leagues you organize before deleting your account"
+_ACTIVE_LEAGUE_BLOCK = "finish or hand off the clubs you organize before deleting your account"
 
 
 @router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)

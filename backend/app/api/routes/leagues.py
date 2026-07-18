@@ -255,7 +255,7 @@ async def _load_league_as_organizer(
     """
     league = await db.scalar(select(League).where(League.id == league_id))
     if league is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="league not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="club not found")
     if league.organizer_id != current_user.id:
         is_admin_member = await db.scalar(
             select(LeagueMember.id).where(
@@ -276,7 +276,7 @@ async def _load_league_as_member(
     """Load a league or 404, then require the caller to be an active member or 403."""
     league = await db.scalar(select(League).where(League.id == league_id))
     if league is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="league not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="club not found")
     membership = await db.scalar(
         select(LeagueMember).where(
             LeagueMember.league_id == league_id,
@@ -287,7 +287,7 @@ async def _load_league_as_member(
     if membership is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="you are not a member of this league",
+            detail="you are not a member of this club",
         )
     return league
 
@@ -460,10 +460,10 @@ async def update_league(
     db: AsyncSession = Depends(get_db),
 ) -> LeagueResponse:
     league = await _load_league_as_organizer(
-        league_id, current_user, db, "only an organizer or co-organizer can update this league"
+        league_id, current_user, db, "only an organizer or co-organizer can update this club"
     )
     if league.state == "complete":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="league is complete")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="the club has wrapped")
 
     updates = payload.model_dump(exclude_unset=True)
     new_total = updates.pop("total_rounds", None)
@@ -490,7 +490,7 @@ async def _reconcile_rounds(league: League, new_total: int, db: AsyncSession) ->
     if new_total < league.current_round:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="total_rounds cannot be below current_round",
+            detail="mystery mixes cannot be set below the current mix",
         )
 
     rounds = list(
@@ -519,7 +519,7 @@ async def _reconcile_rounds(league: League, new_total: int, db: AsyncSession) ->
         if any(r.state != "pending" for r in to_remove):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="cannot remove rounds that have already started",
+                detail="cannot remove mixes that have already started",
             )
         for r in to_remove:
             await db.delete(r)
@@ -532,7 +532,7 @@ async def delete_league(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     await _load_league_as_organizer(
-        league_id, current_user, db, "only an organizer or co-organizer can delete this league"
+        league_id, current_user, db, "only an organizer or co-organizer can delete this club"
     )
     # The organizer may delete the league in any state (MYS-137) — including an
     # in-progress round. The two-step UI confirm guards the destructive intent;
@@ -565,7 +565,7 @@ async def remove_member(
         if user_id == league.organizer_id:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="organizers cannot leave their own league",
+                detail="organizers cannot leave their own club",
             )
     else:
         # Organizer removing another member.
@@ -648,7 +648,7 @@ async def set_member_role(
         if other_admin is None:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="cannot remove the last admin from a league with no organizer",
+                detail="cannot remove the last admin from a club with no organizer",
             )
 
     membership.role = payload.role
@@ -667,7 +667,7 @@ async def create_invite(
 ) -> InviteResponse:
     league = await db.scalar(select(League).where(League.id == league_id))
     if league is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="league not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="club not found")
 
     # Only an active member (removed_at IS NULL) may generate invites. The
     # organizer has such a row from league creation, so the organizer passes.

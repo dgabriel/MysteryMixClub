@@ -108,7 +108,7 @@ async def test_post_non_member_forbidden(client, db_session):
     sub = await _seed_submission(db_session, round_, organizer)
     resp = await client.post(_url(sub.id), json={"body": "love this"}, headers=_auth(outsider.id))
     assert resp.status_code == 403
-    assert resp.json()["detail"] == "you are not a member of this league"
+    assert resp.json()["detail"] == "you are not a member of this club"
 
 
 async def test_post_when_not_open_voting_409(client, db_session):

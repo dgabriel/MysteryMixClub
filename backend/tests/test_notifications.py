@@ -163,7 +163,7 @@ async def test_closing_final_round_emails_completion(client, db_session, email_s
     subjects = [subj for (_to, subj, _html) in email_spy.sends]
     # 2 members (organizer + m0) × (round_closed + league_complete)
     assert sum("results are in" in s for s in subjects) == 2
-    assert sum("the league is complete" in s for s in subjects) == 2
+    assert sum("that's a wrap" in s for s in subjects) == 2
 
 
 # --------------------------------------------------------------------------- #

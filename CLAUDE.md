@@ -135,13 +135,27 @@ Re-install hooks after a fresh clone with `npm install` (runs `prepare` → `hus
 
 **Adding a new secret**
 
+Staging and prod take secrets by **different routes** — staging is a Droplet,
+prod is App Platform. Doing only one leaves the other silently unconfigured,
+which for an optional integration looks like "the feature doesn't work" rather
+than an error.
+
 1. Add the key to `.env.example` (no value) so the contract is documented.
-2. GitHub → Settings → Secrets and variables → Actions → add the repo/environment secret.
-3. If the app needs it at runtime, add an `envs:` entry in **both**
-   `.do/app.staging.yaml` and `.do/app.prod.yaml` (`type: SECRET`) and set its
-   value in the DO dashboard or via `doctl apps update`.
-4. Never commit real secret values. The only pipeline secret today is
+2. **Staging (Droplet):** add the key to `scripts/staging.env.example` (no
+   value); set the real value in `/etc/mysterymixclub/staging.env` on the
+   Droplet, then `sudo systemctl restart mysterymixclub-api` — settings are
+   cached per process, so editing the file alone changes nothing.
+3. **Prod (App Platform):** add an `envs:` entry to `.do/app.prod.yaml`
+   (`type: SECRET`) and set its value in the DO dashboard or via
+   `doctl apps update`. `.do/app.staging.yaml` is reference-only and is **not**
+   used by the staging deploy — adding a secret there has no effect.
+4. Only if a *workflow* needs it (not the app at runtime): GitHub → Settings →
+   Secrets and variables → Actions.
+5. Never commit real secret values. The only pipeline secret today is
    `DIGITALOCEAN_ACCESS_TOKEN`.
+
+Worked example (Apple Music): `docs/ci-cd.md` → "Adding a new secret";
+`docs/staging-setup.md` → "Enabling Apple Music".
 
 ---
 

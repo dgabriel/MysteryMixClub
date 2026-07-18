@@ -76,6 +76,11 @@ Fill in at least:
   `python3 -c "import secrets; print(secrets.token_urlsafe(64))"`
 - `RESEND_API_KEY` — set this so magic-link emails are actually sent. If left
   empty, links are only written to the service journal (see Troubleshooting).
+- `APPLE_MUSIC_TEAM_ID` / `APPLE_MUSIC_KEY_ID` / `APPLE_MUSIC_PRIVATE_KEY` —
+  optional, but **all three or none**: with any unset the Apple Music UI renders
+  nothing and Apple links fall back to the keyless iTunes lookup. The private key
+  must be a single line here, quoted, with literal `\n` between PEM lines. See
+  "Enabling Apple Music" below.
 - `ALLOWED_ORIGINS` / `APP_BASE_URL` — your staging URL.
 - `VITE_API_BASE_URL` — leave **empty**. The SPA then calls the API same-origin
   (relative `/api/v1/...`), which nginx proxies to the backend. An absolute host
@@ -249,6 +254,59 @@ sudo systemctl disable --now mysterymixclub-advance-rounds.timer
 ```
 
 Re-enable with `sudo systemctl enable --now mysterymixclub-advance-rounds.timer`.
+
+---
+
+## Enabling Apple Music (MYS-104)
+
+Apple Music is **off** until three credentials are present, and the app treats
+that as a normal state: the round page renders no Apple UI at all, and Apple
+per-track links fall back to the keyless iTunes lookup. So this can be done long
+after the code ships, and skipping it breaks nothing.
+
+**Credentials come from the Apple Developer portal** (paid membership required).
+Certificates, Identifiers & Profiles → **Identifiers → ＋ → Media IDs** first —
+the Keys page reports *"no identifiers available that can be associated with the
+key"* until a Media ID exists, and an App ID with the MusicKit capability ticked
+does **not** satisfy it. Then Keys → ＋ → Media Services (MusicKit) → download
+the `.p8`. **That download is one-time and non-recoverable** — store the original
+in a password manager before doing anything else.
+
+- `APPLE_MUSIC_TEAM_ID` — membership details page, 10 chars
+- `APPLE_MUSIC_KEY_ID` — the 10 chars in the `AuthKey_XXXXXXXXXX.p8` filename
+- `APPLE_MUSIC_PRIVATE_KEY` — the `.p8` PEM contents
+
+On the Droplet, add all three to the env file. The PEM must be **one quoted
+line** with literal `\n` between PEM lines (the app un-escapes them —
+`apple_music_token.py`):
+
+```bash
+sudo nano /etc/mysterymixclub/staging.env
+# APPLE_MUSIC_TEAM_ID=A1B2C3D4E5
+# APPLE_MUSIC_KEY_ID=XXXXXXXXXX
+# APPLE_MUSIC_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIGT...\n-----END PRIVATE KEY-----"
+
+sudo systemctl restart mysterymixclub-api
+```
+
+To flatten the PEM to that one-line form without pasting it through anything:
+
+```bash
+awk '{printf "%s\\n", $0}' AuthKey_XXXXXXXXXX.p8
+```
+
+**Verify** — the endpoint returns a token only when all three are valid and
+Apple accepts the signature. It requires a logged-in user's bearer token:
+
+```bash
+curl -s https://staging.mysterymixclub.com/api/v1/apple-music/developer-token \
+     -H "Authorization: Bearer <access-token>"
+# {"token":"eyJ..."}   → working
+# {"token":null}       → unconfigured or the key can't sign; check the journal
+```
+
+A restart is required: the settings and the token service are cached per
+process, so editing the env file alone changes nothing.
 
 ---
 

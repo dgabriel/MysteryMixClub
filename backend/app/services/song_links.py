@@ -9,8 +9,10 @@ the master key (see MYS-52).
 Per platform:
 - Deezer      — exact track link via ``/track/isrc:{isrc}`` (else search, ranked
                 against the query — MYS-175); keyless.
-- Apple Music — exact track link via the iTunes Search API, ranked against the
-                query rather than trusting iTunes' own top hit (MYS-175); keyless.
+- Apple Music — exact track link via the Apple Music catalog's ``filter[isrc]``
+                when a developer token is configured (MYS-106); otherwise, and
+                on any miss, the keyless iTunes Search API ranked against the
+                query rather than trusting iTunes' own top hit (MYS-175).
 - Spotify     — universal open-on-service deep link (keyless).
 - YouTube     — exact video link via the YouTube Data API when a resolver is
                 configured (ranked, MYS-175); falls back to a deep link when
@@ -34,12 +36,22 @@ from urllib.parse import quote
 
 import httpx
 
+from app.services.apple_music_token import (
+    AppleMusicTokenError,
+    AppleMusicTokenService,
+    get_apple_music_token_service,
+)
 from app.services.search_relevance import best_match
 from app.services.youtube_resolver import YouTubeResolver, get_youtube_resolver
 
 _DEEZER_SEARCH = "https://api.deezer.com/search"
 _DEEZER_TRACK_ISRC = "https://api.deezer.com/track/isrc:{isrc}"
 _ITUNES_SEARCH = "https://itunes.apple.com/search"
+_APPLE_CATALOG_SONGS = "https://api.music.apple.com/v1/catalog/{storefront}/songs"
+# Apple scopes the catalog per storefront. We have no per-user storefront to key
+# off yet, so everything resolves against `us`; a track missing there falls back
+# to the keyless iTunes path (MYS-106).
+_DEFAULT_STOREFRONT = "us"
 _DEFAULT_TIMEOUT = 10.0
 # Candidate pool widened from 1 so a best-match pick is possible (MYS-175).
 _DEEZER_RESULT_LIMIT = 5
@@ -94,15 +106,21 @@ class SongLinkAssembler:
         timeout: float = _DEFAULT_TIMEOUT,
         client_factory: Callable[[], httpx.AsyncClient] | None = None,
         youtube_resolver: YouTubeResolver | None = None,
+        apple_token_service: AppleMusicTokenService | None = None,
+        storefront: str = _DEFAULT_STOREFRONT,
     ) -> None:
         self._client_factory = client_factory or (lambda: httpx.AsyncClient(timeout=timeout))
         self._youtube_resolver = youtube_resolver
+        self._apple_token_service = apple_token_service
+        self._storefront = storefront
 
-    async def _get_json(self, url: str, params: dict | None = None) -> dict | None:
+    async def _get_json(
+        self, url: str, params: dict | None = None, *, headers: dict | None = None
+    ) -> dict | None:
         """Best-effort GET returning parsed JSON, or None on any failure."""
         try:
             async with self._client_factory() as client:
-                resp = await client.get(url, params=params)
+                resp = await client.get(url, params=params, headers=headers)
             if resp.status_code != 200:
                 return None
             return resp.json()
@@ -130,7 +148,45 @@ class SongLinkAssembler:
                 return chosen["link"]
         return None
 
-    async def _apple_exact(self, title: str, artist: str | None) -> str | None:
+    async def _apple_catalog_isrc(self, title: str, artist: str | None, isrc: str) -> str | None:
+        """Exact Apple catalog link for an ISRC, or None to fall back (MYS-106).
+
+        Returns None whenever Apple Music isn't configured or the lookup doesn't
+        land, so the caller drops to the keyless iTunes path unchanged.
+        """
+        service = self._apple_token_service
+        if service is None or not service.is_configured:
+            return None
+        try:
+            token = await service.get_developer_token()
+        except AppleMusicTokenError:
+            # Credentials present but unusable (malformed key, rotation mid-flight).
+            # Best-effort like every other lookup here: fall back, don't raise.
+            return None
+        data = await self._get_json(
+            _APPLE_CATALOG_SONGS.format(storefront=self._storefront),
+            {"filter[isrc]": isrc},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        if not data:
+            return None
+        # One ISRC maps to several catalog songs more often than not — the same
+        # recording reissued across album/EP/single — so rank rather than taking
+        # Apple's first. Album name doesn't disambiguate: duplicates can share it.
+        chosen = best_match(
+            title,
+            artist,
+            data.get("data") or [],
+            title_of=lambda item: (item.get("attributes") or {}).get("name") or "",
+            artist_of=lambda item: (item.get("attributes") or {}).get("artistName"),
+        )
+        return (chosen.get("attributes") or {}).get("url") if chosen else None
+
+    async def _apple_exact(self, title: str, artist: str | None, isrc: str | None) -> str | None:
+        if isrc:
+            exact = await self._apple_catalog_isrc(title, artist, isrc)
+            if exact:
+                return exact
         q = _query(title, artist)
         data = await self._get_json(
             _ITUNES_SEARCH, {"term": q, "entity": "song", "limit": _APPLE_RESULT_LIMIT}
@@ -170,7 +226,7 @@ class SongLinkAssembler:
         and pass it through here to avoid a second YouTube Data API call."""
         q = _query(title, artist)
         deezer = await self._deezer_exact(title, artist, isrc)
-        apple = await self._apple_exact(title, artist)
+        apple = await self._apple_exact(title, artist, isrc)
         video_id = (
             await self._youtube_video_id(title, artist)
             if youtube_video_id is _UNRESOLVED
@@ -196,4 +252,7 @@ class SongLinkAssembler:
 @lru_cache
 def get_link_assembler() -> SongLinkAssembler:
     """FastAPI dependency providing the link assembler."""
-    return SongLinkAssembler(youtube_resolver=get_youtube_resolver())
+    return SongLinkAssembler(
+        youtube_resolver=get_youtube_resolver(),
+        apple_token_service=get_apple_music_token_service(),
+    )

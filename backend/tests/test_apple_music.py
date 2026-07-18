@@ -31,11 +31,11 @@ from app.models.submission import Submission
 from app.models.user import User
 from app.services.apple_playlist_generation import revised_playlist_name
 from app.services.apple_music_client import (
+    LIBRARY_URL,
     AppleMusicApiError,
     AppleMusicAuthError,
     AppleMusicClient,
     get_apple_music_client,
-    library_playlist_url,
 )
 
 CATALOG_HOST = "api.music.apple.com"
@@ -191,8 +191,10 @@ async def test_create_library_playlist_api_error_on_unreadable_body():
         await _client(d).create_library_playlist("m", "N", "D", ["1"])
 
 
-def test_library_playlist_url_is_the_personal_link():
-    assert library_playlist_url("p.AB") == "https://music.apple.com/library/playlist/p.AB"
+def test_library_url_points_at_the_library_not_the_playlist():
+    """iOS dead-ends on a library-playlist deep link, so we link the Library
+    itself and name the playlist instead (MYS-190)."""
+    assert LIBRARY_URL == "https://music.apple.com/library"
 
 
 # --------------------------------------------------------------------------- #
@@ -310,11 +312,17 @@ async def test_get_playlist_returns_own_link(apple_app, db_session):
     organizer = await _seed_user(db_session, "o2@example.com")
     round_ = await _seed_round(db_session, organizer)
     db_session.add(
-        AppleRoundPlaylist(round_id=round_.id, user_id=organizer.id, playlist_id="p.MINE")
+        AppleRoundPlaylist(
+            round_id=round_.id,
+            user_id=organizer.id,
+            playlist_id="p.MINE",
+            playlist_name="Mix: Round 1",
+        )
     )
     await db_session.commit()
     r = await apple_app.get(_url(round_.id), headers=_auth(organizer.id))
-    assert r.json()["playlist_url"] == "https://music.apple.com/library/playlist/p.MINE"
+    assert r.json()["playlist_url"] == "https://music.apple.com/library"
+    assert r.json()["playlist_name"] == "Mix: Round 1"
 
 
 async def test_get_playlist_is_per_user_not_shared(apple_app, db_session):
@@ -355,7 +363,8 @@ async def test_generate_creates_playlist_and_persists_it(apple_app, db_session):
     )
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["playlist_url"] == "https://music.apple.com/library/playlist/p.NEW"
+    assert body["playlist_url"] == "https://music.apple.com/library"
+    assert body["playlist_name"]
     assert body["track_count"] == 1
     assert body["total_count"] == 1
     assert body["unmatched"] == []
@@ -532,3 +541,35 @@ async def test_rejects_absurd_tz_offset(apple_app, db_session):
         headers=_auth(organizer.id),
     )
     assert r.status_code == 422
+
+
+async def test_get_playlist_name_null_for_pre_mys190_rows(apple_app, db_session):
+    """Rows created before names were recorded still return a usable link."""
+    organizer = await _seed_user(db_session, "legacy@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    db_session.add(
+        AppleRoundPlaylist(round_id=round_.id, user_id=organizer.id, playlist_id="p.OLD")
+    )
+    await db_session.commit()
+
+    r = await apple_app.get(_url(round_.id), headers=_auth(organizer.id))
+    assert r.json()["playlist_url"] == "https://music.apple.com/library"
+    assert r.json()["playlist_name"] is None
+
+
+async def test_generated_name_is_persisted_for_later_visits(apple_app, db_session):
+    organizer = await _seed_user(db_session, "persist@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    await _add_submission(db_session, round_.id, organizer.id, isrc="I1", title="Creep")
+    apple_app.dispatch.catalog = httpx.Response(200, json={"data": [_song("s1", "Creep")]})
+
+    created = await apple_app.post(
+        _url(round_.id), json={"music_user_token": "mut"}, headers=_auth(organizer.id)
+    )
+    name = created.json()["playlist_name"]
+    assert name
+
+    # Same name on a later read — it's stored, not recomputed (a revision's
+    # "[revised on HH:MM]" suffix could never be reconstructed).
+    follow_up = await apple_app.get(_url(round_.id), headers=_auth(organizer.id))
+    assert follow_up.json()["playlist_name"] == name

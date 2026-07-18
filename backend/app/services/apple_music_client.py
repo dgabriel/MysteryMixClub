@@ -75,11 +75,23 @@ def pick_catalog_song(
     )
 
 
-def library_playlist_url(playlist_id: str) -> str:
-    """Personal link to a library playlist.
+# Apple Music's Library, as deep as any link can usefully go (MYS-190).
+#
+# We deliberately do NOT link to /library/playlist/{id}. iOS cannot deep-link to
+# a library playlist: the Music app receives such a URL, fails to resolve it, and
+# shows "Item Not Available" even though the playlist is right there in the
+# library. (Desktop works only because the *web player* resolves /library/ paths;
+# `music://` changes which app handles the link, not whether it can resolve it.)
+# A link that dead-ends reads as "we failed to make your playlist", so we point
+# at the Library — which works in both the app and the web player — and name the
+# playlist so the member knows what to look for.
+LIBRARY_URL = "https://music.apple.com/library"
 
-    Opens only for the signed-in owner — there is no public URL (MYS-107). Verified
-    working for the owner against a real playlist during the MYS-107 spike.
+
+def library_playlist_url(playlist_id: str) -> str:
+    """Deprecated (MYS-190): direct library-playlist links dead-end on iOS.
+
+    Retained only so stored ids remain interpretable; use :data:`LIBRARY_URL`.
     """
     return f"https://music.apple.com/library/playlist/{playlist_id}"
 

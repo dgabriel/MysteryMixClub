@@ -25,7 +25,7 @@ from app.models.apple_round_playlist import AppleRoundPlaylist
 from app.models.league import League
 from app.models.round import Round
 from app.models.submission import Submission
-from app.services.apple_music_client import AppleMusicClient, library_playlist_url
+from app.services.apple_music_client import LIBRARY_URL, AppleMusicClient
 from app.services.spotify_playlist import playlist_description, playlist_name
 
 
@@ -38,7 +38,10 @@ class UnmatchedSubmission:
 
 @dataclass
 class GeneratedApplePlaylist:
+    # Apple Music's Library, not the playlist itself — iOS can't deep-link to a
+    # library playlist (MYS-190). `playlist_name` is what lets the member find it.
     playlist_url: str
+    playlist_name: str
     track_count: int
     total_count: int
     unmatched: list[UnmatchedSubmission] = field(default_factory=list)
@@ -142,14 +145,23 @@ async def generate_round_playlist(
     # per (round, user): the rebuild takes over the existing row and clears the
     # superseded mark, so the table tracks the live playlist, not a history.
     if previous is None:
-        db.add(AppleRoundPlaylist(round_id=round_id, user_id=user_id, playlist_id=playlist_id))
+        db.add(
+            AppleRoundPlaylist(
+                round_id=round_id,
+                user_id=user_id,
+                playlist_id=playlist_id,
+                playlist_name=name,
+            )
+        )
     else:
         previous.playlist_id = playlist_id
+        previous.playlist_name = name
         previous.superseded_at = None
     await db.commit()
 
     return GeneratedApplePlaylist(
-        playlist_url=library_playlist_url(playlist_id),
+        playlist_url=LIBRARY_URL,
+        playlist_name=name,
         track_count=len(track_ids),
         total_count=len(submissions),
         unmatched=unmatched,

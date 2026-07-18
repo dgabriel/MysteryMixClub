@@ -31,7 +31,7 @@ const mockAuthorize = vi.mocked(authorizeAppleMusic);
 beforeEach(() => {
   vi.clearAllMocks();
   mockToken.mockResolvedValue({ token: "dev-token" });
-  mockLink.mockResolvedValue({ playlist_url: null });
+  mockLink.mockResolvedValue({ playlist_url: null, playlist_name: null });
   mockAuthorize.mockResolvedValue("mut-123");
 });
 
@@ -47,20 +47,39 @@ describe("AppleMusicPlaylist", () => {
 
   it("shows the personal link when one was already generated", async () => {
     mockLink.mockResolvedValue({
-      playlist_url: "https://music.apple.com/library/playlist/p.MINE",
+      playlist_url: "https://music.apple.com/library",
+      playlist_name: "Mix: Round 1",
     });
 
     render(<AppleMusicPlaylist roundId="r1" />);
 
-    const link = await screen.findByRole("link", { name: /open playlist in apple music/i });
-    expect(link).toHaveAttribute("href", "https://music.apple.com/library/playlist/p.MINE");
-    // The link is owner-only (MYS-107) — say so rather than imply it's shareable.
-    expect(screen.getByText(/only you can open this link/i)).toBeInTheDocument();
+    // Links the LIBRARY, never the playlist: iOS dead-ends on a library-playlist
+    // deep link with "Item Not Available" (MYS-190).
+    const link = await screen.findByRole("link", { name: /open apple music library/i });
+    expect(link).toHaveAttribute("href", "https://music.apple.com/library");
+    // The playlist is named so it can be found by hand.
+    expect(screen.getByText(/Mix: Round 1/)).toBeInTheDocument();
+  });
+
+  it("still shows a usable link when the name was never recorded", async () => {
+    // Rows predating MYS-190 have no stored name; the library link must still work.
+    mockLink.mockResolvedValue({
+      playlist_url: "https://music.apple.com/library",
+      playlist_name: null,
+    });
+
+    render(<AppleMusicPlaylist roundId="r1" />);
+
+    expect(
+      await screen.findByRole("link", { name: /open apple music library/i }),
+    ).toHaveAttribute("href", "https://music.apple.com/library");
+    expect(screen.getByText(/in your library/i)).toBeInTheDocument();
   });
 
   it("authorizes then generates, and surfaces the resulting link", async () => {
     mockCreate.mockResolvedValue({
-      playlist_url: "https://music.apple.com/library/playlist/p.NEW",
+      playlist_url: "https://music.apple.com/library",
+      playlist_name: "Mix: Round 1",
       track_count: 5,
       total_count: 5,
       unmatched: [],
@@ -74,13 +93,15 @@ describe("AppleMusicPlaylist", () => {
     await waitFor(() => expect(mockAuthorize).toHaveBeenCalledWith("dev-token"));
     expect(mockCreate).toHaveBeenCalledWith("r1", "mut-123");
     expect(
-      await screen.findByRole("link", { name: /open playlist in apple music/i }),
-    ).toHaveAttribute("href", "https://music.apple.com/library/playlist/p.NEW");
+      await screen.findByRole("link", { name: /open apple music library/i }),
+    ).toHaveAttribute("href", "https://music.apple.com/library");
+    expect(screen.getByText(/Mix: Round 1/)).toBeInTheDocument();
   });
 
   it("reports how many tracks were not on apple music", async () => {
     mockCreate.mockResolvedValue({
-      playlist_url: "https://music.apple.com/library/playlist/p.NEW",
+      playlist_url: "https://music.apple.com/library",
+      playlist_name: "Mix: Round 1",
       track_count: 14,
       total_count: 16,
       unmatched: [

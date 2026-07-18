@@ -923,7 +923,10 @@ export async function getSpotifyPlaylistLink(
 }
 
 export type ApplePlaylistResult = {
+  /** Apple Music's Library, not the playlist itself — iOS can't deep-link to a
+   *  library playlist (MYS-190). `playlist_name` is what locates it. */
   playlist_url: string;
+  playlist_name: string;
   track_count: number;
   total_count: number;
   unmatched: { submission_id: string; title: string; artist: string }[];
@@ -945,12 +948,12 @@ export async function getAppleDeveloperToken(): Promise<{ token: string | null }
  *  it opens only for the user who generated it. */
 export async function getApplePlaylistLink(
   roundId: string,
-): Promise<{ playlist_url: string | null }> {
+): Promise<{ playlist_url: string | null; playlist_name: string | null }> {
   const res = await authenticatedRequest(`/api/v1/rounds/${roundId}/apple-playlist`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
-  return (await res.json()) as { playlist_url: string | null };
+  return (await res.json()) as { playlist_url: string | null; playlist_name: string | null };
 }
 
 /** Generate the round's playlist in the caller's Apple Music library (MYS-108).

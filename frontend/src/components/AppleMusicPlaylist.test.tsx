@@ -57,7 +57,11 @@ describe("AppleMusicPlaylist", () => {
     // deep link with "Item Not Available" (MYS-190).
     const link = await screen.findByRole("link", { name: /open apple music library/i });
     expect(link).toHaveAttribute("href", "https://music.apple.com/library");
-    // The playlist is named so it can be found by hand.
+    // Apple exposes no deep link to a library playlist, so the member makes the
+    // last hop by hand and the title is how they find it (MYS-190).
+    expect(
+      screen.getByText(/go to your Apple Music playlists and look for/i),
+    ).toBeInTheDocument();
     expect(screen.getByText(/Mix: Round 1/)).toBeInTheDocument();
   });
 
@@ -73,7 +77,7 @@ describe("AppleMusicPlaylist", () => {
     expect(
       await screen.findByRole("link", { name: /open apple music library/i }),
     ).toHaveAttribute("href", "https://music.apple.com/library");
-    expect(screen.getByText(/in your library/i)).toBeInTheDocument();
+    expect(screen.getByText(/go to your Apple Music playlists to find it/i)).toBeInTheDocument();
   });
 
   it("authorizes then generates, and surfaces the resulting link", async () => {

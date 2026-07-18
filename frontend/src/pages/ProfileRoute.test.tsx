@@ -92,7 +92,7 @@ function renderProfile() {
           <Route path="/profile" element={<ProfileRoute />} />
         </Route>
         <Route path="/home" element={<div>HOME CONTENT</div>} />
-        <Route path="/leagues/:id" element={<div>LEAGUE DETAIL CONTENT</div>} />
+        <Route path="/clubs/:id" element={<div>LEAGUE DETAIL CONTENT</div>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -138,7 +138,7 @@ describe("ProfileRoute", () => {
 
     renderProfile();
 
-    expect(await screen.findByText(/no completed leagues yet/i)).toBeInTheDocument();
+    expect(await screen.findByText(/no completed clubs yet/i)).toBeInTheDocument();
   });
 
   it("save: a changed name calls updateDisplayName, applies it, and acknowledges", async () => {

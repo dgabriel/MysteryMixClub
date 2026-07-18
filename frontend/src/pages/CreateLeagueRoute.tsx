@@ -28,10 +28,10 @@ export function CreateLeagueRoute() {
     setError(null);
     try {
       const league = await createLeague(input);
-      navigate(`/leagues/${league.id}`, { replace: true });
+      navigate(`/clubs/${league.id}`, { replace: true });
     } catch (err) {
       setError(
-        err instanceof ApiError ? err.message : "couldn't create the league. try again.",
+        err instanceof ApiError ? err.message : "couldn't create the club. try again.",
       );
       setSubmitting(false);
     }

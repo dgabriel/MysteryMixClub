@@ -58,11 +58,11 @@ export function CreateLeagueScreen({
     const votingHours = daysAndHoursToTotal(Number(votingWindowDays), Number(votingWindowHours));
 
     if (!trimmedName) {
-      setGuard("a league needs a name.");
+      setGuard("a club needs a name.");
       return;
     }
     if (!Number.isFinite(rounds) || rounds < 1) {
-      setGuard("rounds must be at least 1.");
+      setGuard("a club needs at least one mystery mix.");
       return;
     }
     if (!Number.isFinite(votes) || votes < 1) {
@@ -104,14 +104,14 @@ export function CreateLeagueScreen({
         {/* Motif — the screen's single Rust use lives in the off-center ring dot. */}
         <ConcentricRings size={72} accent className="mx-auto" />
 
-        <h1 className="mt-8 text-center font-serif text-[34px] leading-tight">new league</h1>
+        <h1 className="mt-8 text-center font-serif text-[34px] leading-tight">new club</h1>
 
         <form onSubmit={handleSubmit} className="mt-10 space-y-8">
           <TextField
             id="league-name"
             label="name"
             name="name"
-            placeholder="what's this league called?"
+            placeholder="what's this club called?"
             value={name}
             onChange={(e) => setName(e.target.value)}
             disabled={submitting}
@@ -130,7 +130,7 @@ export function CreateLeagueScreen({
           <div>
             <TextField
               id="league-total-rounds"
-              label="number of rounds"
+              label="number of mystery mixes"
               name="total_rounds"
               type="number"
               min={1}

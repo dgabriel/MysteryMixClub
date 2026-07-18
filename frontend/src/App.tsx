@@ -1,4 +1,4 @@
-import { Navigate, RouterProvider, createBrowserRouter } from "react-router-dom";
+import { Navigate, RouterProvider, createBrowserRouter, useParams } from "react-router-dom";
 import { AuthProvider } from "./hooks/useAuth";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { LoginRoute } from "./pages/LoginRoute";
@@ -30,15 +30,19 @@ import { AuthedLayout } from "./components/AuthedLayout";
  *                    TopNav, and the onboarding/consent gate
  *
  *   Authed shell (ProtectedRoute + AuthedLayout, which renders the shared TopNav):
- *     /home        → My Leagues landing
- *     /leagues/:id → league home (rounds, members, invite, organizer edit)
- *     /rounds/:id  → round detail (submit / playlist / reveal); shows the
- *                    nav's "← league" back link
- *     /profile     → edit display name + archived (completed) leagues
+ *     /home        → My Clubs landing
+ *     /clubs/:id   → club home (mystery mixes, members, invite, organizer edit)
+ *     /mixes/:id   → mystery-mix detail (submit / playlist / reveal); shows the
+ *                    nav's back link
+ *     /profile     → edit display name + archived (completed) clubs
  *     /admin       → platform-admin only (self-guards non-admins → /home)
  *
- *   /leagues/new   → protected but OUTSIDE the nav shell — a focused create form
+ *   /clubs/new     → protected but OUTSIDE the nav shell — a focused create form
  *                    with its own cancel affordance (not in the nav's screen set).
+ *
+ *   /leagues/:id, /rounds/:id, /leagues/new → PERMANENT redirects to the club/mix
+ *                    equivalents (MYS-192). Notification emails sent before the
+ *                    rename embed /leagues/{id} links forever — never remove these.
  *   /invite/:token → public; invite preview + join. The shareable link an
  *                    organizer hands out ({app_base_url}/invite/{token}).
  *   /join/:token   → public; legacy alias for /invite/:token (in-flight links).
@@ -48,6 +52,15 @@ import { AuthedLayout } from "./components/AuthedLayout";
  *
  * createBrowserRouter (data router) is required for useBlocker support.
  */
+
+/** Param-preserving redirect for the pre-rename URL shapes (league→club,
+ *  round→mix). Old notification emails link these paths forever, so the
+ *  redirects are permanent — never remove (MYS-192). */
+function LegacyPathRedirect({ prefix }: { prefix: "clubs" | "mixes" }) {
+  const { id } = useParams();
+  return <Navigate to={`/${prefix}/${id}`} replace />;
+}
+
 const router = createBrowserRouter([
   { path: "/", element: <Navigate to="/login" replace /> },
   { path: "/login", element: <LoginRoute /> },
@@ -66,8 +79,11 @@ const router = createBrowserRouter([
     ),
     children: [
       { path: "/home", element: <HomeRoute /> },
-      { path: "/leagues/:id", element: <LeagueHomeRoute /> },
-      { path: "/rounds/:id", element: <RoundDetailRoute /> },
+      { path: "/clubs/:id", element: <LeagueHomeRoute /> },
+      { path: "/mixes/:id", element: <RoundDetailRoute /> },
+      // Permanent legacy redirects — old emails link these shapes forever.
+      { path: "/leagues/:id", element: <LegacyPathRedirect prefix="clubs" /> },
+      { path: "/rounds/:id", element: <LegacyPathRedirect prefix="mixes" /> },
       { path: "/profile", element: <ProfileRoute /> },
       { path: "/admin", element: <AdminRoute /> },
     ],
@@ -75,13 +91,14 @@ const router = createBrowserRouter([
 
   // Authed but outside the nav shell — a focused create form.
   {
-    path: "/leagues/new",
+    path: "/clubs/new",
     element: (
       <ProtectedRoute>
         <CreateLeagueRoute />
       </ProtectedRoute>
     ),
   },
+  { path: "/leagues/new", element: <Navigate to="/clubs/new" replace /> },
 
   { path: "/invite/:token", element: <JoinLeagueRoute /> },
   { path: "/join/:token", element: <JoinLeagueRoute /> },

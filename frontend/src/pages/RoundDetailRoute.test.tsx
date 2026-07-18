@@ -239,10 +239,10 @@ function setAuth(userId: string) {
 function renderRound() {
   const router = createMemoryRouter(
     [
-      { path: "/rounds/:id", element: <RoundDetailRoute /> },
-      { path: "/leagues/:id", element: <div>LEAGUE PAGE</div> },
+      { path: "/mixes/:id", element: <RoundDetailRoute /> },
+      { path: "/clubs/:id", element: <div>LEAGUE PAGE</div> },
     ],
-    { initialEntries: ["/rounds/r1"] },
+    { initialEntries: ["/mixes/r1"] },
   );
   return render(<RouterProvider router={router} />);
 }
@@ -701,7 +701,7 @@ describe("RoundDetailRoute", () => {
     setAuth(OTHER);
     renderRound();
     await screen.findByText("late summer feels");
-    expect(screen.queryByRole("button", { name: /open round/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /open mix/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^edit round$/i })).not.toBeInTheDocument();
   });
 
@@ -709,11 +709,11 @@ describe("RoundDetailRoute", () => {
     mockGetRound.mockResolvedValue(round({ state: "pending" }));
     const user = userEvent.setup();
     renderRound();
-    const btn = await screen.findByRole("button", { name: "open round" });
+    const btn = await screen.findByRole("button", { name: "open mix" });
     await user.click(btn);
     expect(mockUpdateRound).toHaveBeenCalledWith("r1", { state: "open_submission" });
     // No confirm affordance should ever appear for this transition.
-    expect(screen.queryByRole("button", { name: /yes, close round/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /yes, close mix/i })).not.toBeInTheDocument();
   });
 
   describe("closing a round — confirm step (MYS-170)", () => {
@@ -721,31 +721,31 @@ describe("RoundDetailRoute", () => {
       mockGetRound.mockResolvedValue(round({ state: "open_voting" }));
     });
 
-    it("clicking 'close round' shows a confirm panel instead of calling updateRound immediately", async () => {
+    it("clicking 'close mix' shows a confirm panel instead of calling updateRound immediately", async () => {
       const user = userEvent.setup();
       renderRound();
-      const closeBtn = await screen.findByRole("button", { name: "close round" });
+      const closeBtn = await screen.findByRole("button", { name: "close mix" });
       await user.click(closeBtn);
 
       expect(mockUpdateRound).not.toHaveBeenCalled();
-      expect(await screen.findByRole("button", { name: "yes, close round" })).toBeInTheDocument();
+      expect(await screen.findByRole("button", { name: "yes, close mix" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "cancel" })).toBeInTheDocument();
       // The plain one-click button is gone while confirming.
-      expect(screen.queryByRole("button", { name: "close round" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "close mix" })).not.toBeInTheDocument();
     });
 
     it("confirm panel shows the non-final-round copy when more rounds remain", async () => {
       // default league() has total_rounds: 6; round() defaults round_number: 1.
       const user = userEvent.setup();
       renderRound();
-      await user.click(await screen.findByRole("button", { name: "close round" }));
+      await user.click(await screen.findByRole("button", { name: "close mix" }));
 
       expect(
         await screen.findByText(
-          /this closes the round and opens the next one, starting its submission deadline\. it can't be undone\./i,
+          /this closes the mystery mix and opens the next one, starting its submission deadline\. it can't be undone\./i,
         ),
       ).toBeInTheDocument();
-      expect(screen.queryByText(/completes the league/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/completes the club/i)).not.toBeInTheDocument();
     });
 
     it("confirm panel shows the final-round copy when round_number >= league.total_rounds", async () => {
@@ -753,21 +753,21 @@ describe("RoundDetailRoute", () => {
       mockGetLeague.mockResolvedValue({ ...league(), total_rounds: 6 });
       const user = userEvent.setup();
       renderRound();
-      await user.click(await screen.findByRole("button", { name: "close round" }));
+      await user.click(await screen.findByRole("button", { name: "close mix" }));
 
       expect(
         await screen.findByText(
-          /this closes the round and completes the league\. it can't be undone\./i,
+          /this closes the mystery mix and completes the club\. it can't be undone\./i,
         ),
       ).toBeInTheDocument();
       expect(screen.queryByText(/opens the next one/i)).not.toBeInTheDocument();
     });
 
-    it("clicking 'yes, close round' in the confirm panel calls updateRound with state: closed", async () => {
+    it("clicking 'yes, close mix' in the confirm panel calls updateRound with state: closed", async () => {
       const user = userEvent.setup();
       renderRound();
-      await user.click(await screen.findByRole("button", { name: "close round" }));
-      await user.click(await screen.findByRole("button", { name: "yes, close round" }));
+      await user.click(await screen.findByRole("button", { name: "close mix" }));
+      await user.click(await screen.findByRole("button", { name: "yes, close mix" }));
 
       expect(mockUpdateRound).toHaveBeenCalledWith("r1", { state: "closed" });
     });
@@ -775,13 +775,13 @@ describe("RoundDetailRoute", () => {
     it("clicking 'cancel' dismisses the confirm panel without calling updateRound", async () => {
       const user = userEvent.setup();
       renderRound();
-      await user.click(await screen.findByRole("button", { name: "close round" }));
+      await user.click(await screen.findByRole("button", { name: "close mix" }));
       await user.click(await screen.findByRole("button", { name: "cancel" }));
 
       expect(mockUpdateRound).not.toHaveBeenCalled();
       // Back to the plain button; the confirm panel's controls are gone.
-      expect(await screen.findByRole("button", { name: "close round" })).toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: "yes, close round" })).not.toBeInTheDocument();
+      expect(await screen.findByRole("button", { name: "close mix" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "yes, close mix" })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "cancel" })).not.toBeInTheDocument();
     });
   });
@@ -791,9 +791,9 @@ describe("RoundDetailRoute", () => {
       mockGetRound.mockResolvedValue(round({ state: "open_voting" }));
     });
 
-    it("shows both 'close round' and 'reopen submissions' buttons while open_voting", async () => {
+    it("shows both 'close mix' and 'reopen submissions' buttons while open_voting", async () => {
       renderRound();
-      expect(await screen.findByRole("button", { name: "close round" })).toBeInTheDocument();
+      expect(await screen.findByRole("button", { name: "close mix" })).toBeInTheDocument();
       expect(await screen.findByRole("button", { name: "reopen submissions" })).toBeInTheDocument();
     });
 
@@ -810,7 +810,7 @@ describe("RoundDetailRoute", () => {
       expect(screen.getByRole("button", { name: "cancel" })).toBeInTheDocument();
       // The plain two-button row is gone while confirming.
       expect(screen.queryByRole("button", { name: "reopen submissions" })).not.toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: "close round" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "close mix" })).not.toBeInTheDocument();
     });
 
     it("confirm copy mentions the vote count (pluralized) when votes have been cast", async () => {
@@ -871,7 +871,7 @@ describe("RoundDetailRoute", () => {
       expect(mockUpdateRound).not.toHaveBeenCalled();
       // Back to the plain two-button row; the confirm panel's controls are gone.
       expect(await screen.findByRole("button", { name: "reopen submissions" })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "close round" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "close mix" })).toBeInTheDocument();
       expect(
         screen.queryByRole("button", { name: "yes, reopen submissions" }),
       ).not.toBeInTheDocument();
@@ -892,26 +892,26 @@ describe("RoundDetailRoute", () => {
       await user.click(await screen.findByRole("button", { name: "reopen submissions" }));
       await user.click(await screen.findByRole("button", { name: "cancel" }));
 
-      // Plain two-button row is restored; "close round" still opens ITS OWN
+      // Plain two-button row is restored; "close mix" still opens ITS OWN
       // confirm panel correctly (not a leftover/broken intermediate state).
-      await user.click(await screen.findByRole("button", { name: "close round" }));
-      expect(await screen.findByRole("button", { name: "yes, close round" })).toBeInTheDocument();
+      await user.click(await screen.findByRole("button", { name: "close mix" }));
+      expect(await screen.findByRole("button", { name: "yes, close mix" })).toBeInTheDocument();
       expect(
         screen.queryByRole("button", { name: "yes, reopen submissions" }),
       ).not.toBeInTheDocument();
     });
 
-    it("the two confirm flows don't interfere: canceling 'close round' returns to the plain row, not a broken reopen state", async () => {
+    it("the two confirm flows don't interfere: canceling 'close mix' returns to the plain row, not a broken reopen state", async () => {
       const user = userEvent.setup();
       renderRound();
-      await user.click(await screen.findByRole("button", { name: "close round" }));
+      await user.click(await screen.findByRole("button", { name: "close mix" }));
       await user.click(await screen.findByRole("button", { name: "cancel" }));
 
       await user.click(await screen.findByRole("button", { name: "reopen submissions" }));
       expect(
         await screen.findByRole("button", { name: "yes, reopen submissions" }),
       ).toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: "yes, close round" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "yes, close mix" })).not.toBeInTheDocument();
     });
   });
 
@@ -986,7 +986,7 @@ describe("RoundDetailRoute", () => {
   it("'reopen submissions' is never rendered while the round is pending", async () => {
     mockGetRound.mockResolvedValue(round({ state: "pending" }));
     renderRound();
-    await screen.findByRole("button", { name: "open round" });
+    await screen.findByRole("button", { name: "open mix" });
     expect(screen.queryByRole("button", { name: "reopen submissions" })).not.toBeInTheDocument();
   });
 
@@ -1027,7 +1027,7 @@ describe("RoundDetailRoute", () => {
     renderRound();
     expect(await screen.findByText("Debaser")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /on Spotify/i })).toHaveAttribute("href", "https://s");
-    expect(screen.getByRole("button", { name: /close round/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /close mix/i })).toBeInTheDocument();
   });
 
   it("closed: reveals submissions with submitter names", async () => {
@@ -2215,7 +2215,7 @@ describe("RoundDetailRoute", () => {
 
       await screen.findByRole("heading", { name: /^winner$/i });
       const section = sectionFor(/^winner$/i);
-      expect(within(section).getByText("the most votes this round")).toBeInTheDocument();
+      expect(within(section).getByText("the most votes this mystery mix")).toBeInTheDocument();
       expect(within(section).getByText("Bad Guy")).toBeInTheDocument();
       expect(within(section).getByText("3 votes")).toBeInTheDocument();
       // the lower-voted song is not in the winner section
@@ -2254,7 +2254,7 @@ describe("RoundDetailRoute", () => {
 
       await screen.findByRole("heading", { name: /^winners$/i });
       const section = sectionFor(/^winners$/i);
-      expect(within(section).getByText("tied for the most votes this round")).toBeInTheDocument();
+      expect(within(section).getByText("tied for the most votes this mystery mix")).toBeInTheDocument();
       expect(within(section).getByText("Bad Guy")).toBeInTheDocument();
       expect(within(section).getByText("Vienna")).toBeInTheDocument();
       // the lower-voted song is not co-recognized

@@ -170,7 +170,7 @@ export function LeagueHomeScreen({
           <p className="mt-2 font-mono text-[13px] font-light text-muted">{league.description}</p>
         ) : null}
         <p className="mt-3 font-mono text-[11px] font-light text-muted">
-          round {league.current_round} of {league.total_rounds}
+          mix {league.current_round} of {league.total_rounds}
         </p>
         {isComplete ? (
           <p className="mt-4 font-serif italic text-[18px] text-muted">
@@ -355,7 +355,7 @@ function DeleteLeagueSection({
 
   return (
     <section className="mt-12 border-t border-border pt-6">
-      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">delete league</h2>
+      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">delete club</h2>
 
       {confirming ? (
         <div className="mt-4 space-y-4">
@@ -370,7 +370,7 @@ function DeleteLeagueSection({
               onClick={onDeleteLeague}
               disabled={deletingLeague}
             >
-              {deletingLeague ? "deleting…" : "delete this league"}
+              {deletingLeague ? "deleting…" : "delete this club"}
             </Button>
             <Button
               variant="ghost"
@@ -385,7 +385,7 @@ function DeleteLeagueSection({
       ) : (
         <div className="mt-4">
           <Button variant="ghost" type="button" onClick={() => setConfirming(true)}>
-            delete league
+            delete club
           </Button>
         </div>
       )}
@@ -421,7 +421,7 @@ function LeaveLeagueSection({
 
   return (
     <section className="mt-12 border-t border-border pt-6">
-      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">leave league</h2>
+      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">leave club</h2>
 
       {confirming ? (
         <div className="mt-4 space-y-4">
@@ -435,7 +435,7 @@ function LeaveLeagueSection({
               onClick={onLeaveLeague}
               disabled={leavingLeague}
             >
-              {leavingLeague ? "leaving…" : "leave this league"}
+              {leavingLeague ? "leaving…" : "leave this club"}
             </Button>
             <Button
               variant="ghost"
@@ -450,7 +450,7 @@ function LeaveLeagueSection({
       ) : (
         <div className="mt-4">
           <Button variant="ghost" type="button" onClick={() => setConfirming(true)}>
-            leave league
+            leave club
           </Button>
         </div>
       )}
@@ -493,7 +493,7 @@ function RoundsSection({
       </h2>
 
       {rounds.length === 0 ? (
-        <p className="mt-4 font-mono text-[13px] font-light text-muted">no rounds yet</p>
+        <p className="mt-4 font-mono text-[13px] font-light text-muted">no mystery mixes yet</p>
       ) : (
         <ul className="mt-4 space-y-3">
           {rounds.map((round) => (
@@ -584,7 +584,7 @@ function RoundRow({
         <div className="flex items-start justify-between gap-4">
           <span className="min-w-0">
             <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
-              round {round.round_number}
+              mystery mix {round.round_number}
             </span>
             {named ? (
               <span className="mt-0.5 block truncate font-serif text-[16px] text-ink">
@@ -760,7 +760,7 @@ function RoundEditForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
-        round {round.round_number}
+        mystery mix {round.round_number}
       </span>
 
       <TextField
@@ -781,7 +781,7 @@ function RoundEditForm({
         <textarea
           id={`round-description-${round.id}`}
           rows={2}
-          placeholder="a line or two of color for this round"
+          placeholder="a line or two of color for this mystery mix"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           disabled={saving}
@@ -928,7 +928,7 @@ function OrganizerEdit({
       />
       <TextField
         id="edit-league-total-rounds"
-        label="rounds"
+        label="mystery mixes"
         name="total_rounds"
         type="number"
         min={1}

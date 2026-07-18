@@ -41,10 +41,10 @@ export function MyLeaguesScreen({
               <div className="flex flex-col items-center pt-4 text-center">
                 {/* Empty state — the screen's one Rust use is the off-center ring dot. */}
                 <ConcentricRings size={88} accent className="mx-auto" />
-                <p className="mt-8 font-mono text-[13px] font-light text-muted">no leagues yet</p>
+                <p className="mt-8 font-mono text-[13px] font-light text-muted">no clubs yet</p>
                 <div className="mt-6">
                   <Button type="button" onClick={onCreateLeague}>
-                    create a league
+                    create a club
                   </Button>
                 </div>
                 {error ? (
@@ -66,7 +66,7 @@ export function MyLeaguesScreen({
 
                 <div className="mt-4">
                   <Button type="button" onClick={onCreateLeague}>
-                    create a league
+                    create a club
                   </Button>
                 </div>
 
@@ -106,7 +106,7 @@ export function MyLeaguesScreen({
             {/* Permanent home-screen fixture, below the league list (MYS-45). */}
             <section className="mt-12 border-t border-border pt-10">
                 <h2 className="mt-1 font-serif lowercase text-[18px] leading-tight text-ink">
-                  practice your song search skills here — no league required
+                  practice your song search skills here — no club required
                 </h2> 
                 <br/>             
               <SongSearchCard preferredService={preferredService} />
@@ -139,12 +139,12 @@ function LeagueCard({
       <button type="button" onClick={() => onOpen(league.id)} className="block w-full text-left">
         <span className="flex items-center gap-1.5 font-mono uppercase tracking-label text-[9px] text-muted">
           {complete ? <CrownIcon className="text-gold" /> : null}
-          league
+          club
         </span>
         <h2 className="mt-1 font-serif text-[20px] leading-tight text-ink">{league.name}</h2>
         <div className="mt-3 flex items-center justify-between">
           <span className="font-mono text-[11px] font-light text-muted">
-            round {league.current_round} of {league.total_rounds}
+            mix {league.current_round} of {league.total_rounds}
           </span>
           <Badge>{league.state}</Badge>
         </div>

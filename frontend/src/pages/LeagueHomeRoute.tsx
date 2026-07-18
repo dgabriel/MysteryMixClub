@@ -87,7 +87,7 @@ export function LeagueHomeRoute() {
         setRounds(loadedRounds);
         setLeaderboard(loadedLeaderboard);
       } catch (err) {
-        setError(err instanceof ApiError ? err.message : "couldn't load this league.");
+        setError(err instanceof ApiError ? err.message : "couldn't load this club.");
       } finally {
         setLoading(false);
       }
@@ -166,7 +166,7 @@ export function LeagueHomeRoute() {
       // The backend's 409 detail ("cannot delete a league that is in progress")
       // is calm enough to show verbatim.
       setDeleteLeagueError(
-        err instanceof ApiError ? err.message : "couldn't delete the league. try again.",
+        err instanceof ApiError ? err.message : "couldn't delete the club. try again.",
       );
       setDeletingLeague(false);
     }
@@ -206,7 +206,7 @@ export function LeagueHomeRoute() {
       return true;
     } catch (err) {
       setUpdateRoundError(
-        err instanceof ApiError ? err.message : "couldn't save the round. try again.",
+        err instanceof ApiError ? err.message : "couldn't save the mystery mix. try again.",
       );
       return false;
     } finally {
@@ -252,7 +252,7 @@ export function LeagueHomeRoute() {
       navigate("/home");
     } catch (err) {
       setLeaveLeagueError(
-        err instanceof ApiError ? err.message : "couldn't leave the league. try again.",
+        err instanceof ApiError ? err.message : "couldn't leave the club. try again.",
       );
       setLeavingLeague(false);
     }
@@ -323,7 +323,7 @@ export function LeagueHomeRoute() {
       loading={loading || (!league && !error)}
       error={error}
       onBack={() => navigate("/home")}
-      onOpenRound={(roundId) => navigate(`/rounds/${roundId}`)}
+      onOpenRound={(roundId) => navigate(`/mixes/${roundId}`)}
       onUpdateRound={handleUpdateRound}
       savingRoundId={savingRoundId}
       updateRoundError={updateRoundError}

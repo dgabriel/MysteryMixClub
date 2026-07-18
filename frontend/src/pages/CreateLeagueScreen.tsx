@@ -209,7 +209,8 @@ export function CreateLeagueScreen({
               </span>
             </label>
             <p className="mt-2 font-mono text-[11px] font-light text-muted">
-              members start out just vibing — anyone can switch to playing anytime.
+              vibing means no voting or ranking — just songs and response notes. members
+              start out vibing and can switch to playing anytime.
             </p>
           </div>
 

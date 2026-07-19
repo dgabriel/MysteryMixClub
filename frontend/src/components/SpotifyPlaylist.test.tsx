@@ -23,7 +23,10 @@ afterEach(() => {
 
 describe("SpotifyPlaylist", () => {
   it("shows the link once an admin has generated a playlist", async () => {
-    mockGetLink.mockResolvedValue({ playlist_url: "https://open.spotify.com/playlist/pl1" });
+    mockGetLink.mockResolvedValue({
+      playlist_url: "https://open.spotify.com/playlist/pl1",
+      unmatched: [],
+    });
 
     render(<SpotifyPlaylist roundId="r1" />);
 
@@ -32,7 +35,7 @@ describe("SpotifyPlaylist", () => {
   });
 
   it("shows a quiet note when no playlist has been generated yet", async () => {
-    mockGetLink.mockResolvedValue({ playlist_url: null });
+    mockGetLink.mockResolvedValue({ playlist_url: null, unmatched: [] });
 
     render(<SpotifyPlaylist roundId="r1" />);
 

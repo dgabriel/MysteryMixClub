@@ -548,6 +548,16 @@ export type ResolvedSong = {
   album: string | null;
   thumbnail_url: string | null;
   isrc: string | null;
+  /** Set only for a source-only track (a Bandcamp/YouTube pick with no catalog
+   *  ISRC, MYS-201); null for a normal catalog track. `source_key` is the exact
+   *  identity (`youtube:<id>` / `bandcamp:<artist>/<slug>`) submitted in place of
+   *  an isrc; `source_url` is the reconstructed page link. */
+  source: "youtube" | "bandcamp" | null;
+  source_key: string | null;
+  source_url: string | null;
+  /** Bandcamp's numeric track id, echoed back on submit for the embedded player
+   *  (MYS-204); null for everything else. */
+  bandcamp_track_id: string | null;
   platforms: Partial<Record<PlatformKey, string>>;
 };
 
@@ -571,15 +581,22 @@ export type SongSearchResults = {
 };
 
 /** Resolve input: either a pasted platform URL, or a known song identity from a
- *  search result (skips the URL-identification step on the server). */
+ *  search result (skips the URL-identification step on the server).
+ *
+ *  `allow_source_only` opts into source-only matches (MYS-201): off (default), a
+ *  Bandcamp/YouTube link with no catalog ISRC still 404s exactly as before; on,
+ *  it resolves to a source-only ResolvedSong (null isrc, `source`/`source_key`
+ *  set). Only the paste flow ever sets it, and only as a retry after the default
+ *  resolve misses. */
 export type ResolveInput =
-  | { url: string }
+  | { url: string; allow_source_only?: boolean }
   | {
       title: string;
       artist?: string | null;
       isrc?: string | null;
       album?: string | null;
       thumbnail_url?: string | null;
+      allow_source_only?: boolean;
     };
 
 /** Resolve a song to its cross-service platform links. Pass a pasted link
@@ -649,7 +666,11 @@ export type SubmissionResult = {
   id: string;
   mix_id: string;
   user_id: string;
-  isrc: string;
+  /** Null for a source-only track (MYS-201) — `source`/`source_url` identify it
+   *  instead. */
+  isrc: string | null;
+  source: "youtube" | "bandcamp" | null;
+  source_url: string | null;
   title: string;
   artist: string;
   album: string | null;
@@ -665,7 +686,12 @@ export type SubmissionResult = {
  *  vote for), and never reveals any other submitter. */
 export type PlaylistEntry = {
   submission_id: string;
-  isrc: string;
+  isrc: string | null;
+  /** Set for a source-only track (Bandcamp/YouTube, no catalog ISRC — MYS-201):
+   *  `source` drives the "BANDCAMP ONLY"/"YOUTUBE ONLY" badge, `source_url` is
+   *  the exact page link. Null for a normal catalog track. */
+  source: "youtube" | "bandcamp" | null;
+  source_url: string | null;
   title: string;
   artist: string;
   album: string | null;
@@ -785,7 +811,14 @@ export async function extendVotingDeadline(
 export type SubmissionInput = {
   title: string;
   artist: string;
-  isrc: string;
+  /** Exactly one of `isrc` / `source_key` identifies the track (MYS-201): isrc
+   *  for a catalog track, source_key (`youtube:<id>` / `bandcamp:<artist>/<slug>`)
+   *  for a source-only Bandcamp/YouTube pick. The backend rejects both/neither. */
+  isrc?: string | null;
+  source_key?: string | null;
+  /** Bandcamp's numeric track id from the resolve step, echoed back for the
+   *  embedded player (MYS-204); omitted for everything else. */
+  bandcamp_track_id?: string | null;
   album?: string | null;
   album_art_url?: string | null;
   note?: string | null;
@@ -920,13 +953,26 @@ export async function connectSpotify(returnTo?: string): Promise<{ authorize_url
  *  never triggers it itself. */
 export async function getSpotifyPlaylistLink(
   roundId: string,
-): Promise<{ playlist_url: string | null }> {
+): Promise<{ playlist_url: string | null; unmatched: UnmatchedTrack[] }> {
   const res = await authenticatedRequest(`/api/v1/mixes/${roundId}/spotify-playlist`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
-  return (await res.json()) as { playlist_url: string | null };
+  return (await res.json()) as { playlist_url: string | null; unmatched: UnmatchedTrack[] };
 }
+
+/** Why a round submission didn't make an auto-generated playlist (MYS-201):
+ *  `source_only` — a Bandcamp/YouTube track with no ISRC that can never match the
+ *  service's catalog; `no_catalog_match` — a catalog track the service couldn't
+ *  find. Drives the calm, informational gap summary near the playlist links. */
+export type UnmatchedReason = "source_only" | "no_catalog_match";
+
+export type UnmatchedTrack = {
+  submission_id: string;
+  title: string;
+  artist: string;
+  reason: UnmatchedReason;
+};
 
 export type ApplePlaylistResult = {
   /** Apple Music's Library, not the playlist itself — iOS can't deep-link to a
@@ -935,7 +981,7 @@ export type ApplePlaylistResult = {
   playlist_name: string;
   track_count: number;
   total_count: number;
-  unmatched: { submission_id: string; title: string; artist: string }[];
+  unmatched: UnmatchedTrack[];
 };
 
 /** The developer token MusicKit JS needs to run Apple's sign-in popup (MYS-108).

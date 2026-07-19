@@ -34,6 +34,7 @@ import {
   type RoundResults,
   type RevealPick,
   type RoundState,
+  type SubmissionInput,
   type SubmissionResult,
   type VoteCountEntry,
   type WinnerReveal,
@@ -46,6 +47,7 @@ import { Card } from "../components/Card";
 import { TextField } from "../components/TextField";
 import { ConcentricRings } from "../components/ConcentricRings";
 import { SongSearchCard } from "../components/songs/SongSearchCard";
+import { SourceBadge } from "../components/SourceBadge";
 import { AppleMusicPlaylist } from "../components/AppleMusicPlaylist";
 import { SpotifyPlaylist } from "../components/SpotifyPlaylist";
 import { CheckmarkIcon } from "../components/CheckmarkIcon";
@@ -264,20 +266,24 @@ export function RoundDetailRoute() {
     }
   }, [id]);
 
-  function trackPayload(song: ResolvedSong) {
+  function trackPayload(song: ResolvedSong): SubmissionInput {
     return {
       title: song.title,
       artist: song.artist ?? "",
-      isrc: song.isrc!,
+      // Exactly one identity: a catalog isrc, or a source-only key (+ Bandcamp
+      // track id when present) for a Bandcamp/YouTube pick (MYS-201).
+      ...(song.source_key
+        ? { source_key: song.source_key, bandcamp_track_id: song.bandcamp_track_id }
+        : { isrc: song.isrc }),
       album: song.album,
       album_art_url: song.thumbnail_url,
       // The stance is uniform across all your songs; the backend propagates it.
-      participation_mode: (roundVibe ? "vibing" : "playing") as "vibing" | "playing",
+      participation_mode: roundVibe ? "vibing" : "playing",
     };
   }
 
   async function handleAddSong(song: ResolvedSong, note: string | null): Promise<boolean> {
-    if (!id || !song.isrc) {
+    if (!id || (!song.isrc && !song.source_key)) {
       setActionError("this song is missing an ID and can't be submitted.");
       return false;
     }
@@ -309,7 +315,7 @@ export function RoundDetailRoute() {
     song: ResolvedSong,
     note: string | null,
   ): Promise<boolean> {
-    if (!id || !song.isrc) {
+    if (!id || (!song.isrc && !song.source_key)) {
       setActionError("this song is missing an ID and can't be submitted.");
       return false;
     }
@@ -1492,6 +1498,11 @@ function VotingSection({
                 {entry.artist ? (
                   <p className="mt-1 font-mono text-[11px] font-light text-muted">{entry.artist}</p>
                 ) : null}
+                {entry.source ? (
+                  <div className="mt-2">
+                    <SourceBadge source={entry.source} />
+                  </div>
+                ) : null}
                 {entry.submitter_note ? (
                   <p className="mt-3 border-l-2 border-sage pl-3 font-mono text-[12px] font-light text-ink">
                     &ldquo;{entry.submitter_note}&rdquo;
@@ -1553,6 +1564,11 @@ function VotingSection({
                       {entry.artist}
                     </p>
                   ) : null}
+                  {entry.source ? (
+                    <div className="mt-2">
+                      <SourceBadge source={entry.source} />
+                    </div>
+                  ) : null}
                   {entry.submitter_note ? (
                     <p className="mt-3 border-l-2 border-sage pl-3 font-mono text-[12px] font-light text-ink">
                       &ldquo;{entry.submitter_note}&rdquo;
@@ -1601,6 +1617,11 @@ function VotingSection({
                     <p className="mt-1 font-mono text-[11px] font-light text-muted">
                       {entry.artist}
                     </p>
+                  ) : null}
+                  {entry.source ? (
+                    <div className="mt-2">
+                      <SourceBadge source={entry.source} />
+                    </div>
                   ) : null}
                   {entry.submitter_note ? (
                     <p className="mt-3 border-l-2 border-sage pl-3 font-mono text-[12px] font-light text-ink">

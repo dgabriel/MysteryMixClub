@@ -20,6 +20,10 @@ const SONG: ResolvedSong = {
   album: "When We All Fall Asleep",
   thumbnail_url: "https://img/x.jpg",
   isrc: "USUM71900764",
+  source: null,
+  source_key: null,
+  source_url: null,
+  bandcamp_track_id: null,
   platforms: {
     spotify: "https://open.spotify.com/track/2",
     youtube: "https://youtube.com/watch?v=z",

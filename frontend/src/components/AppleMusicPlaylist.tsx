@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { MusicNoteIcon } from "./MusicNoteIcon";
+import { PlaylistGap } from "./PlaylistGap";
 import {
   ApiError,
   createApplePlaylist,
   getAppleDeveloperToken,
   getApplePlaylistLink,
+  type UnmatchedTrack,
 } from "../services/api";
 import { authorizeAppleMusic } from "../services/musickit";
 
@@ -37,7 +39,9 @@ export function AppleMusicPlaylist({ roundId }: { roundId: string }) {
   const [playlistName, setPlaylistName] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [unmatched, setUnmatched] = useState<number>(0);
+  // The round's tracks that didn't make this library playlist (MYS-201). Only
+  // known right after a generate — the link-fetch on reload doesn't return it.
+  const [unmatched, setUnmatched] = useState<UnmatchedTrack[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -80,7 +84,7 @@ export function AppleMusicPlaylist({ roundId }: { roundId: string }) {
       const result = await createApplePlaylist(roundId, musicUserToken);
       setPlaylistUrl(result.playlist_url);
       setPlaylistName(result.playlist_name);
-      setUnmatched(result.total_count - result.track_count);
+      setUnmatched(result.unmatched);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         setError("apple music connection expired. try again.");
@@ -121,8 +125,8 @@ export function AppleMusicPlaylist({ roundId }: { roundId: string }) {
             ) : (
               "go to your Apple Music playlists to find it"
             )}
-            {unmatched > 0 ? ` · ${unmatched} not on apple music` : ""}
           </p>
+          <PlaylistGap unmatched={unmatched} />
         </>
       ) : (
         <>

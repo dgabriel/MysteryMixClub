@@ -109,8 +109,8 @@ describe("AppleMusicPlaylist", () => {
       track_count: 14,
       total_count: 16,
       unmatched: [
-        { submission_id: "s1", title: "A", artist: "X" },
-        { submission_id: "s2", title: "B", artist: "Y" },
+        { submission_id: "s1", title: "A", artist: "X", reason: "no_catalog_match" },
+        { submission_id: "s2", title: "B", artist: "Y", reason: "source_only" },
       ],
     });
 
@@ -119,7 +119,7 @@ describe("AppleMusicPlaylist", () => {
       await screen.findByRole("button", { name: /build this mystery mix in apple music/i }),
     );
 
-    expect(await screen.findByText(/2 not on apple music/i)).toBeInTheDocument();
+    expect(await screen.findByText(/2 tracks aren't on this playlist/i)).toBeInTheDocument();
   });
 
   it("asks the user to retry when the apple connection expired", async () => {

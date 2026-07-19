@@ -25,6 +25,9 @@ import { ConcentricRings } from "../ConcentricRings";
 
 type Mode = "link" | "search";
 type ServiceKey = "spotify" | "youtube" | "appleMusic";
+/** Sources a user can paste a link from. A superset of the preferred services:
+ *  Bandcamp is a paste/link-out source only, never a preferred service. */
+type PasteSourceKey = ServiceKey | "bandcamp";
 
 const LINK_ERROR = "We couldn't find that song. Check the link and try again.";
 const SEARCH_ERROR = "Something went wrong with that search. Try again.";
@@ -37,12 +40,14 @@ const PLATFORMS: { key: PlatformKey; label: string }[] = [
   { key: "deezer", label: "Deezer" },
   { key: "youtube", label: "YouTube" },
   { key: "youtubeMusic", label: "YouTube Music" },
+  { key: "bandcamp", label: "Bandcamp" },
 ];
 
-const SERVICES: { key: ServiceKey; label: string; placeholder: string }[] = [
+const SERVICES: { key: PasteSourceKey; label: string; placeholder: string }[] = [
   { key: "spotify", label: "Spotify", placeholder: "https://open.spotify.com/track/…" },
   { key: "youtube", label: "YouTube", placeholder: "https://www.youtube.com/watch?v=…" },
   { key: "appleMusic", label: "Apple Music", placeholder: "https://music.apple.com/…?i=…" },
+  { key: "bandcamp", label: "Bandcamp", placeholder: "https://artist.bandcamp.com/track/…" },
 ];
 
 function serviceFromPref(pref: string | null | undefined): ServiceKey {
@@ -51,13 +56,14 @@ function serviceFromPref(pref: string | null | undefined): ServiceKey {
   return "spotify";
 }
 
-function detectService(url: string): ServiceKey | null {
+function detectService(url: string): PasteSourceKey | null {
   try {
     const host = new URL(url).hostname.replace(/^www\./, "");
     if (host === "open.spotify.com") return "spotify";
     if (host === "music.apple.com") return "appleMusic";
     if (["youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"].includes(host))
       return "youtube";
+    if (host === "bandcamp.com" || host.endsWith(".bandcamp.com")) return "bandcamp";
   } catch {
     // not a valid URL yet — ignore
   }
@@ -131,7 +137,7 @@ export function SongSearchCard({
   const [mode, setMode] = useState<Mode>("search");
 
   // link mode
-  const [service, setService] = useState<ServiceKey>(() => serviceFromPref(preferredService));
+  const [service, setService] = useState<PasteSourceKey>(() => serviceFromPref(preferredService));
   const [url, setUrl] = useState("");
   // search mode
   const [title, setTitle] = useState("");
@@ -272,7 +278,7 @@ export function SongSearchCard({
                 <select
                   id={`${idPrefix}-service`}
                   value={service}
-                  onChange={(e) => setService(e.target.value as ServiceKey)}
+                  onChange={(e) => setService(e.target.value as PasteSourceKey)}
                   disabled={loading}
                   className="mt-1 w-full border-b border-border bg-transparent font-mono text-[13px] text-ink focus:border-sage focus:outline-none disabled:opacity-50"
                 >

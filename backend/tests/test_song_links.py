@@ -93,7 +93,7 @@ class _FakeYouTubeResolver:
         return self._video_id
 
 
-async def test_assemble_returns_all_five_platforms():
+async def test_assemble_returns_all_six_platforms():
     a = _assembler(
         _Dispatch(
             isrc=httpx.Response(200, json=_DEEZER_ISRC_OK),
@@ -101,7 +101,7 @@ async def test_assemble_returns_all_five_platforms():
         )
     )
     links = await a.assemble("Blinding Lights", "The Weeknd", "USUG11904206")
-    assert set(links) == {"spotify", "appleMusic", "deezer", "youtube", "youtubeMusic"}
+    assert set(links) == {"spotify", "appleMusic", "deezer", "youtube", "youtubeMusic", "bandcamp"}
 
 
 async def test_spotify_and_youtube_are_deep_links():
@@ -158,6 +158,44 @@ async def test_apple_exact_via_itunes():
 async def test_apple_falls_back_to_deeplink():
     links = await _assembler(_Dispatch()).assemble("x", "y")
     assert links["appleMusic"] == "https://music.apple.com/search?term=x%20y"
+
+
+# --------------------------------------------------------------------------- #
+# Bandcamp (MYS-200) — search deep link only, no keyless lookup exists.
+# --------------------------------------------------------------------------- #
+
+
+async def test_bandcamp_is_a_search_deep_link():
+    d = _Dispatch()
+    links = await _assembler(d).assemble("bad guy", "Billie Eilish")
+    assert (
+        links["bandcamp"] == "https://bandcamp.com/search?q=bad%20guy%20Billie%20Eilish&item_type=t"
+    )
+    # Deep-link-only: no HTTP request to Bandcamp is ever made.
+    assert not any(c.url.host.endswith("bandcamp.com") for c in d.calls)
+
+
+async def test_bandcamp_deep_link_url_encodes_special_characters():
+    links = await _assembler(_Dispatch()).assemble("Rock & Roll?", "AC/DC")
+    # "&" and "?" must be percent-encoded so they don't corrupt the query string.
+    assert (
+        links["bandcamp"]
+        == "https://bandcamp.com/search?q=Rock%20%26%20Roll%3F%20AC/DC&item_type=t"
+    )
+
+
+async def test_bandcamp_deep_link_without_artist():
+    links = await _assembler(_Dispatch()).assemble("Untitled")
+    assert links["bandcamp"] == "https://bandcamp.com/search?q=Untitled&item_type=t"
+
+
+async def test_bandcamp_deep_link_survives_upstream_network_errors():
+    # Bandcamp is built locally, so upstream failures can't take it out.
+    def boom(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("down", request=request)
+
+    links = await _assembler(boom).assemble("x", "y", "I1")
+    assert links["bandcamp"] == "https://bandcamp.com/search?q=x%20y&item_type=t"
 
 
 async def test_network_error_falls_back_to_deeplinks():

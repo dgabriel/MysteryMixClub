@@ -21,6 +21,8 @@ Per platform:
                 instead of youtube.com, for players who prefer the Music app
                 (MYS-175). Falls back to a YouTube Music search deep link under
                 the same conditions as the YouTube entry.
+- Bandcamp    — search deep link only (MYS-200). Bandcamp's API is partner-only,
+                so there is nothing keyless to resolve an exact link against.
 
 Every platform always gets at least a deep link; exact links replace them when a
 keyless lookup succeeds. Lookups are best-effort: a failure falls back to the
@@ -61,7 +63,7 @@ _DEEZER_RESULT_LIMIT = 5
 _APPLE_RESULT_LIMIT = 5
 
 # Platform display order matches the rest of the app's normalized schema.
-PLATFORM_KEYS = ("spotify", "appleMusic", "deezer", "youtube", "youtubeMusic")
+PLATFORM_KEYS = ("spotify", "appleMusic", "deezer", "youtube", "youtubeMusic", "bandcamp")
 
 
 class _Unresolved:
@@ -94,6 +96,11 @@ def _deezer_deeplink(q: str) -> str:
 
 def _apple_deeplink(q: str) -> str:
     return f"https://music.apple.com/search?term={quote(q)}"
+
+
+def _bandcamp_deeplink(q: str) -> str:
+    # item_type=t scopes the search to tracks.
+    return f"https://bandcamp.com/search?q={quote(q)}&item_type=t"
 
 
 class SongLinkAssembler:
@@ -212,8 +219,8 @@ class SongLinkAssembler:
         youtube_video_id: str | None | _Unresolved = _UNRESOLVED,
     ) -> dict[str, str]:
         """Return a ``{platform: url}`` map covering spotify/appleMusic/deezer/
-        youtube/youtubeMusic. Exact links where a keyless lookup succeeds, else
-        deep links.
+        youtube/youtubeMusic/bandcamp. Exact links where a keyless lookup
+        succeeds, else deep links.
 
         ``youtube_video_id``, when passed, is used as-is instead of resolving it
         again — callers that also need the bare video id (e.g. to persist it
@@ -241,6 +248,9 @@ class SongLinkAssembler:
                 if video_id
                 else _youtube_music_deeplink(q)
             ),
+            # Deep-link-only: Bandcamp has no public API to look an exact link
+            # up against (MYS-200).
+            "bandcamp": _bandcamp_deeplink(q),
         }
 
 

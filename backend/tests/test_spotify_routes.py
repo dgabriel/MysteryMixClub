@@ -91,19 +91,19 @@ async def _seed_member(db_session, round_: Round, email: str) -> User:
 async def _add_submission(
     db_session, round_id, user_id, *, isrc, title, spotify_track_uri=None, source_key=None
 ):
-    db_session.add(
-        Submission(
-            round_id=round_id,
-            user_id=user_id,
-            isrc=isrc,
-            source_key=source_key,
-            title=title,
-            artist="A",
-            platform_links={},
-            spotify_track_uri=spotify_track_uri,
-        )
+    submission = Submission(
+        round_id=round_id,
+        user_id=user_id,
+        isrc=isrc,
+        source_key=source_key,
+        title=title,
+        artist="A",
+        platform_links={},
+        spotify_track_uri=spotify_track_uri,
     )
+    db_session.add(submission)
     await db_session.commit()
+    return submission
 
 
 async def _connect(db_session, user_id) -> None:
@@ -640,7 +640,7 @@ async def test_link_null_before_generation(spotify_client, db_session):
     await _seed_shared_account(db_session)
     resp = await spotify_client.get(_link_url(round_.id), headers=_auth(organizer.id))
     assert resp.status_code == 200
-    assert resp.json() == {"playlist_url": None}
+    assert resp.json() == {"playlist_url": None, "unmatched": []}
 
 
 async def test_link_null_when_shared_account_not_configured(client, db_session):
@@ -648,7 +648,7 @@ async def test_link_null_when_shared_account_not_configured(client, db_session):
     round_ = await _seed_round(db_session, organizer)
     resp = await client.get(_link_url(round_.id), headers=_auth(organizer.id))
     assert resp.status_code == 200
-    assert resp.json() == {"playlist_url": None}
+    assert resp.json() == {"playlist_url": None, "unmatched": []}
 
 
 async def test_link_visible_to_any_member_after_generation(
@@ -666,7 +666,45 @@ async def test_link_visible_to_any_member_after_generation(
 
     link_resp = await spotify_client.get(_link_url(round_.id), headers=_auth(member.id))
     assert link_resp.status_code == 200
-    assert link_resp.json() == {"playlist_url": "https://open.spotify.com/playlist/pl1"}
+    assert link_resp.json() == {
+        "playlist_url": "https://open.spotify.com/playlist/pl1",
+        "unmatched": [],
+    }
+
+
+async def test_link_reports_unmatched_gap_after_generation(
+    spotify_client, db_session, fake_spotify
+):
+    # The read route surfaces the same gap summary the generator computed (MYS-201):
+    # a source-only track (no ISRC) and an ISRC-backed track Spotify doesn't carry
+    # both show up as unmatched, each with its reason — recomputed from the cached
+    # spotify_track_uri, no Spotify call.
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    await _seed_shared_account(db_session)
+    hit = await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
+    miss = await _add_submission(db_session, round_.id, organizer.id, isrc="I-MISS", title="miss")
+    src = await _add_submission(
+        db_session,
+        round_.id,
+        organizer.id,
+        isrc=None,
+        source_key="bandcamp:coolband/demo",
+        title="demo",
+    )
+
+    await _generate(db_session, round_, fake_spotify)
+
+    resp = await spotify_client.get(_link_url(round_.id), headers=_auth(organizer.id))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["playlist_url"] == "https://open.spotify.com/playlist/pl1"
+    reasons = {u["submission_id"]: u["reason"] for u in body["unmatched"]}
+    assert reasons == {
+        str(miss.id): "no_catalog_match",
+        str(src.id): "source_only",
+    }
+    assert str(hit.id) not in reasons
 
 
 # --------------------------------------------------------------------------- #

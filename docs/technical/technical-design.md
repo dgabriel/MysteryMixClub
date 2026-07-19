@@ -414,10 +414,15 @@ tracks and explain playlist gaps (MYS-201):
   skipped track in `unmatched` with `title`, `artist`, and a `reason` of
   `"source_only"` (no ISRC — a Bandcamp/YouTube track that can never match a
   catalog) or `"no_catalog_match"` (an ISRC-backed track this storefront doesn't
-  carry), so the gap summary can say *why* rather than only *how many*. The
-  Spotify generator's engine result carries the same `reason`, but the shared
-  Spotify playlist is auto-generated on voting-open and only its link is read
-  back — that gap list is not currently surfaced over HTTP.
+  carry), so the gap summary can say *why* rather than only *how many*.
+- The shared Spotify playlist is auto-generated on voting-open (no HTTP
+  generation call), so its read route `GET /mixes/{id}/spotify-playlist` carries
+  the same gap summary: alongside `playlist_url` it returns `unmatched` (a list
+  of `{submission_id, title, artist, reason}` with the identical `reason`
+  values). The list is recomputed at read time from persisted state — generation
+  caches each matched track's `spotify_track_uri` on its submission, so a
+  submission with no cached URI is exactly one the playlist skipped — and is
+  empty when no playlist exists yet (nothing generated, or nothing matched).
 
 ---
 

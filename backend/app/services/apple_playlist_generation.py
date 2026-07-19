@@ -17,6 +17,7 @@ import random
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,11 +30,18 @@ from app.services.apple_music_client import LIBRARY_URL, AppleMusicClient
 from app.services.spotify_playlist import playlist_description, playlist_name
 
 
+# Why a submission didn't make the generated playlist (MYS-201): a source-only
+# track (no ISRC — Bandcamp/YouTube) can never match a catalog, versus an
+# ISRC-backed track this catalog simply doesn't carry.
+UnmatchedReason = Literal["source_only", "no_catalog_match"]
+
+
 @dataclass
 class UnmatchedSubmission:
     submission_id: uuid.UUID
     title: str
     artist: str
+    reason: UnmatchedReason
 
 
 @dataclass
@@ -128,7 +136,12 @@ async def generate_round_playlist(
             track_ids.append(song_id)
         else:
             unmatched.append(
-                UnmatchedSubmission(submission_id=s.id, title=s.title, artist=s.artist)
+                UnmatchedSubmission(
+                    submission_id=s.id,
+                    title=s.title,
+                    artist=s.artist,
+                    reason="source_only" if not s.isrc else "no_catalog_match",
+                )
             )
 
     name = playlist_name(league.name, round_.round_number, round_.theme)

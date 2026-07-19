@@ -24,6 +24,7 @@ import logging
 import random
 import uuid
 from dataclasses import dataclass, field
+from typing import Literal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,11 +51,18 @@ from app.services.spotify_token_crypto import (
 logger = logging.getLogger("app.services.spotify_playlist_generation")
 
 
+# Why a submission didn't make the generated playlist (MYS-201): a source-only
+# track (no ISRC — Bandcamp/YouTube) can never match a catalog, versus an
+# ISRC-backed track this catalog simply doesn't carry.
+UnmatchedReason = Literal["source_only", "no_catalog_match"]
+
+
 @dataclass
 class UnmatchedSubmission:
     submission_id: uuid.UUID
     title: str
     artist: str
+    reason: UnmatchedReason
 
 
 @dataclass
@@ -141,7 +149,12 @@ async def generate_round_playlist(
             matched_uris.append(uri)
         else:
             unmatched.append(
-                UnmatchedSubmission(submission_id=s.id, title=s.title, artist=s.artist)
+                UnmatchedSubmission(
+                    submission_id=s.id,
+                    title=s.title,
+                    artist=s.artist,
+                    reason="source_only" if not s.isrc else "no_catalog_match",
+                )
             )
 
     # Best-effort: persist newly resolved URIs, but never fail on the cache write

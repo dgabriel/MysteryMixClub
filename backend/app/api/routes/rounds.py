@@ -768,6 +768,11 @@ class PlaylistEntry(WireModel):
     submission_id: str
     # None for a source-only track (Bandcamp/YouTube, no catalog ISRC — MYS-201).
     isrc: str | None
+    # source/source_url identify a source-only track and let the voting playlist
+    # badge it "YouTube only"/"Bandcamp only" (MYS-201); both None for a normal
+    # ISRC-backed catalog submission. Mirrors ResultSubmission/RevealPick.
+    source: Literal["youtube", "bandcamp"] | None = None
+    source_url: str | None = None
     title: str
     artist: str
     album: str | None
@@ -866,6 +871,8 @@ async def get_round_playlist(
             PlaylistEntry(
                 submission_id=str(s.id),
                 isrc=s.isrc,
+                source=source_fields(s.source_key)[0],
+                source_url=source_fields(s.source_key)[1],
                 title=s.title,
                 artist=s.artist,
                 album=s.album,

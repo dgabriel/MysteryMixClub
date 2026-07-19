@@ -136,6 +136,9 @@ async def test_playlist_entries_are_anonymous(client, db_session):
     assert len(body["entries"]) == 1
     entry = body["entries"][0]
     assert entry["title"] == "bad guy"
+    # A normal catalog track has no source-only identity (MYS-201 Phase 2).
+    assert entry["source"] is None
+    assert entry["source_url"] is None
     # No submitter identity is leaked during voting.
     assert "user_id" not in entry
     assert "submitter" not in entry
@@ -662,9 +665,13 @@ async def test_bandcamp_source_only_skips_youtube_backfill(session_factory, db_s
     assert youtube.calls == []  # never fuzzy-resolved
     assert body["youtube_playlist_url"] is None
     assert body["youtube_track_count"] == 0
-    # The entry is still present, with a null ISRC.
+    # The entry is still present, with a null ISRC, and carries its source so the
+    # client can badge it "Bandcamp only" and link out (MYS-201 Phase 2).
     assert [e["title"] for e in body["entries"]] == ["bandcamp track"]
-    assert body["entries"][0]["isrc"] is None
+    entry = body["entries"][0]
+    assert entry["isrc"] is None
+    assert entry["source"] == "bandcamp"
+    assert entry["source_url"] == "https://coolband.bandcamp.com/track/bandcamp-track"
 
 
 async def test_youtube_source_only_uses_stored_id_without_backfill(session_factory, db_session):
@@ -690,4 +697,7 @@ async def test_youtube_source_only_uses_stored_id_without_backfill(session_facto
     assert youtube.calls == []  # exact stored id, no backfill
     assert body["youtube_track_count"] == 1
     assert _ids_in_url(body) == ["PRpiBpDy7MQ"]
-    assert body["entries"][0]["isrc"] is None
+    entry = body["entries"][0]
+    assert entry["isrc"] is None
+    assert entry["source"] == "youtube"
+    assert entry["source_url"] == "https://www.youtube.com/watch?v=PRpiBpDy7MQ"

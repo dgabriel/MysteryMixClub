@@ -418,6 +418,8 @@ async def test_generate_builds_playlist_and_reports_unmatched(db_session, fake_s
     assert result.total_count == 2
     assert len(result.unmatched) == 1
     assert result.unmatched[0].title == "miss"
+    # An ISRC-backed track Spotify's catalog doesn't carry (MYS-201 Phase 2).
+    assert result.unmatched[0].reason == "no_catalog_match"
     # The matched uri was added and a playlist with the right name was created.
     assert fake_spotify.added == ["spotify:track:matched"]
     assert fake_spotify.created["name"] == "MysteryMixClub: L, Late Summer"
@@ -446,6 +448,8 @@ async def test_generate_skips_source_only_track_without_isrc_lookup(db_session, 
     assert result.track_count == 1
     assert result.total_count == 2
     assert [u.title for u in result.unmatched] == ["bandcamp only"]
+    # Reported as source-only, distinct from a catalog miss (MYS-201 Phase 2).
+    assert result.unmatched[0].reason == "source_only"
     # Only the catalog track's ISRC was ever looked up; None was never searched.
     assert fake_spotify.searched_isrcs == ["I-MATCH"]
 

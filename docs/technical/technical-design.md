@@ -402,6 +402,23 @@ clients are unaffected: a source-only link still resolves to a 404 exactly as
 before. The submitted `source_key` is stored on `submissions.source_key` (see
 §6) and is the track's identity for duplicate detection and playlist building.
 
+The read surfaces carry that identity through so clients can badge source-only
+tracks and explain playlist gaps (MYS-201):
+
+- The voting-playlist entry (`GET /mixes/{id}/playlist`) and the results/reveal
+  track shapes (`GET /mixes/{id}/results`) expose `isrc` (null for source-only)
+  plus `source` (`"youtube"`/`"bandcamp"`) and `source_url` — null on a normal
+  catalog track — so a source-only pick renders a "YouTube only"/"Bandcamp only"
+  badge with a working link.
+- The Apple generation response (`POST /mixes/{id}/apple-playlist`) reports each
+  skipped track in `unmatched` with `title`, `artist`, and a `reason` of
+  `"source_only"` (no ISRC — a Bandcamp/YouTube track that can never match a
+  catalog) or `"no_catalog_match"` (an ISRC-backed track this storefront doesn't
+  carry), so the gap summary can say *why* rather than only *how many*. The
+  Spotify generator's engine result carries the same `reason`, but the shared
+  Spotify playlist is auto-generated on voting-open and only its link is read
+  back — that gap list is not currently surfaced over HTTP.
+
 ---
 
 ## 9. Security Checklist

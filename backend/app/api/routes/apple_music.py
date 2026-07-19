@@ -18,6 +18,7 @@ cannot be made public, so these links open only for their owner.
 from __future__ import annotations
 
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import Field
@@ -62,6 +63,11 @@ class UnmatchedTrack(WireModel):
     submission_id: uuid.UUID
     title: str
     artist: str
+    # Why it was skipped (MYS-201): "source_only" — a Bandcamp/YouTube track with
+    # no ISRC that can never match Apple's catalog — vs "no_catalog_match", an
+    # ISRC-backed track Apple's storefront just doesn't carry. Lets the gap
+    # summary say why rather than only how many.
+    reason: Literal["source_only", "no_catalog_match"]
 
 
 class GeneratePlaylistRequest(WireModel):
@@ -166,7 +172,12 @@ async def create_round_apple_playlist(
         track_count=result.track_count,
         total_count=result.total_count,
         unmatched=[
-            UnmatchedTrack(submission_id=u.submission_id, title=u.title, artist=u.artist)
+            UnmatchedTrack(
+                submission_id=u.submission_id,
+                title=u.title,
+                artist=u.artist,
+                reason=u.reason,
+            )
             for u in result.unmatched
         ],
     )

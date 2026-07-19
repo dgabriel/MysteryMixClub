@@ -222,12 +222,13 @@ async def _seed_round(db_session, organizer: User) -> Round:
     return round_
 
 
-async def _add_submission(db_session, round_id, user_id, *, isrc, title):
+async def _add_submission(db_session, round_id, user_id, *, isrc, title, source_key=None):
     db_session.add(
         Submission(
             round_id=round_id,
             user_id=user_id,
             isrc=isrc,
+            source_key=source_key,
             title=title,
             artist="A",
             platform_links={},
@@ -389,6 +390,32 @@ async def test_generate_reports_unmatched_tracks(apple_app, db_session):
     assert body["track_count"] == 0
     assert body["total_count"] == 1
     assert [u["title"] for u in body["unmatched"]] == ["Obscure"]
+
+
+async def test_generate_skips_source_only_track_without_catalog_lookup(apple_app, db_session):
+    # A source-only submission has no ISRC to resolve against Apple's catalog, so
+    # it goes unmatched and Apple's catalog is never queried for it (MYS-201).
+    organizer = await _seed_user(db_session, "src@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    await _add_submission(
+        db_session,
+        round_.id,
+        organizer.id,
+        isrc=None,
+        source_key="bandcamp:coolband/demo",
+        title="bandcamp only",
+    )
+
+    r = await apple_app.post(
+        _url(round_.id), json={"music_user_token": "mut"}, headers=_auth(organizer.id)
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["track_count"] == 0
+    assert body["total_count"] == 1
+    assert [u["title"] for u in body["unmatched"]] == ["bandcamp only"]
+    # No catalog /songs lookup was attempted for the source-only track.
+    assert not any("/catalog/" in p and p.endswith("/songs") for p in apple_app.dispatch.paths())
 
 
 async def test_generate_401_when_apple_rejects_user_token(apple_app, db_session):

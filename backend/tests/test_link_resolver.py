@@ -18,6 +18,7 @@ from app.services.link_resolver import (
     ResolverTimeoutError,
     ResolverUnavailableError,
     SongNotFoundError,
+    _bandcamp_track_id,
 )
 
 # Canonical Deezer search hit used by the Apple/Spotify/YouTube funnel.
@@ -631,6 +632,110 @@ async def test_bandcamp_rate_limit_maps_to_resolver_rate_limit():
 
 
 # --------------------------------------------------------------------------- #
+# Bandcamp numeric track id (MYS-201, for the MYS-204 embedded player)
+# --------------------------------------------------------------------------- #
+
+# A representative EmbeddedPlayer URL Bandcamp puts in og:video / twitter:player.
+_EMBED = "https://bandcamp.com/EmbeddedPlayer/v=2/track={id}/size=large/tracklist=false/"
+
+
+def _tralbum(blob: str) -> str:
+    """A data-tralbum element whose JSON is entity-escaped inside the (double-
+    quoted) attribute, exactly as Bandcamp server-renders it."""
+    escaped = blob.replace('"', "&quot;")
+    return f'<div data-tralbum="{escaped}"></div>'
+
+
+def test_bandcamp_track_id_from_og_video_embed_meta():
+    page = _bandcamp_page(f'<meta property="og:video" content="{_EMBED.format(id="123456789")}">')
+    assert _bandcamp_track_id(page) == "123456789"
+
+
+def test_bandcamp_track_id_from_twitter_player_meta():
+    page = _bandcamp_page(f'<meta name="twitter:player" content="{_EMBED.format(id="987654321")}">')
+    assert _bandcamp_track_id(page) == "987654321"
+
+
+def test_bandcamp_track_id_falls_back_to_tralbum_trackinfo_over_album_id():
+    # No embed meta: read the FIRST trackinfo id, not the album_id that precedes it.
+    page = _bandcamp_page(_tralbum('{"album_id":999,"trackinfo":[{"id":555444,"title":"x"}]}'))
+    assert _bandcamp_track_id(page) == "555444"
+
+
+def test_bandcamp_track_id_prefers_embed_over_tralbum():
+    page = _bandcamp_page(
+        f'<meta property="og:video" content="{_EMBED.format(id="111")}">'
+        + _tralbum('{"trackinfo":[{"id":222}]}')
+    )
+    assert _bandcamp_track_id(page) == "111"
+
+
+def test_bandcamp_track_id_none_when_neither_source_present():
+    page = _bandcamp_page('<meta property="og:title" content="Song, by Artist">')
+    assert _bandcamp_track_id(page) is None
+
+
+def test_bandcamp_track_id_non_digit_embed_not_captured():
+    # track=<non-digits>: the id regex requires digits, so nothing is captured.
+    page = _bandcamp_page('<meta property="og:video" content="https://bandcamp.com/E/track=abc/">')
+    assert _bandcamp_track_id(page) is None
+
+
+def test_bandcamp_track_id_overlong_is_rejected():
+    # A run longer than 20 digits fails the defensive length bound -> None.
+    embed = _EMBED.format(id="1" * 21)
+    page = _bandcamp_page(f'<meta property="og:video" content="{embed}">')
+    assert _bandcamp_track_id(page) is None
+
+
+async def test_bandcamp_catalog_hit_carries_track_id():
+    # A catalog match keeps the canonical Deezer identity AND the Bandcamp id.
+    handler = _router(
+        bandcamp=_bandcamp_ok(
+            '<meta property="og:title" content="Song Title, by Artist Name">'
+            f'<meta property="og:video" content="{_EMBED.format(id="424242")}">'
+        )
+    )
+    song = await _resolver(handler).resolve("https://coolband.bandcamp.com/track/song")
+    assert song.isrc == "USEM38600088"  # canonical identity from Deezer
+    assert song.bandcamp_track_id == "424242"
+
+
+async def test_bandcamp_source_only_carries_track_id():
+    handler = _router(
+        search=_EMPTY_SEARCH,
+        bandcamp=_bandcamp_ok(
+            '<meta property="og:title" content="Bedroom Demo, by Cool Band">'
+            f'<meta property="og:video" content="{_EMBED.format(id="7777")}">'
+        ),
+    )
+    song = await _resolver(handler).resolve("https://coolband.bandcamp.com/track/bedroom-demo")
+    assert song.source == "bandcamp"
+    assert song.isrc is None
+    assert song.bandcamp_track_id == "7777"
+
+
+async def test_bandcamp_resolve_unaffected_when_no_track_id():
+    # A page without an embed/tralbum id still resolves; the id is just None.
+    handler = _router(
+        bandcamp=_bandcamp_ok('<meta property="og:title" content="Song Title, by Artist Name">')
+    )
+    song = await _resolver(handler).resolve("https://coolband.bandcamp.com/track/song")
+    assert song.isrc == "USEM38600088"
+    assert song.bandcamp_track_id is None
+
+
+async def test_non_bandcamp_resolves_have_no_track_id():
+    # YouTube and direct Deezer paths never set a Bandcamp id.
+    yt = await _resolver(
+        _router(youtube=lambda r: httpx.Response(200, json={"title": "American Pie"}))
+    ).resolve("https://youtu.be/PRpiBpDy7MQ")
+    assert yt.bandcamp_track_id is None
+    dz = await _resolver(_router()).resolve("https://www.deezer.com/track/3156285")
+    assert dz.bandcamp_track_id is None
+
+
+# --------------------------------------------------------------------------- #
 # Dispatch + error mapping
 # --------------------------------------------------------------------------- #
 
@@ -686,3 +791,133 @@ async def test_transport_error_maps_to_unavailable():
     handler = _router(track=track)
     with pytest.raises(ResolverUnavailableError):
         await _resolver(handler).resolve("https://www.deezer.com/track/1")
+
+
+# --------------------------------------------------------------------------- #
+# Source-only fallback (MYS-201) — a genuine catalog miss returns a source
+# identity keyed on the exact page; an upstream *error* still raises.
+# --------------------------------------------------------------------------- #
+
+_EMPTY_SEARCH = lambda r: httpx.Response(200, json={"data": [], "total": 0})  # noqa: E731
+
+
+async def test_youtube_no_catalog_match_returns_source_identity():
+    handler = _router(
+        search=_EMPTY_SEARCH,
+        youtube=lambda r: httpx.Response(
+            200, json={"title": "Bedroom Demo", "author_name": "Nobody"}
+        ),
+    )
+    song = await _resolver(handler).resolve("https://www.youtube.com/watch?v=PRpiBpDy7MQ")
+    # No ISRC: identified by the exact video id instead, no fuzzy substitution.
+    assert song.isrc is None
+    assert song.source == "youtube"
+    assert song.source_key == "youtube:PRpiBpDy7MQ"
+    assert song.source_url == "https://www.youtube.com/watch?v=PRpiBpDy7MQ"
+
+
+async def test_bandcamp_no_catalog_match_returns_source_identity():
+    handler = _router(
+        search=_EMPTY_SEARCH,
+        bandcamp=_bandcamp_ok('<meta property="og:title" content="Bedroom Demo, by Cool Band">'),
+    )
+    song = await _resolver(handler).resolve("https://coolband.bandcamp.com/track/bedroom-demo")
+    assert song.isrc is None
+    assert song.source == "bandcamp"
+    assert song.source_key == "bandcamp:coolband/bedroom-demo"
+    assert song.source_url == "https://coolband.bandcamp.com/track/bedroom-demo"
+    # The og:title still supplies display metadata, even without a catalog match.
+    assert song.title == "Bedroom Demo"
+    assert song.artist == "Cool Band"
+
+
+async def test_bandcamp_apex_host_no_match_cannot_form_key_is_not_found():
+    # bandcamp.com (no artist subdomain) can't reconstruct an {artist}/{track}
+    # key, so a genuine miss there is simply not-found, never a bad guess.
+    handler = _router(
+        search=_EMPTY_SEARCH,
+        bandcamp=_bandcamp_ok('<meta property="og:title" content="Bedroom Demo, by Cool Band">'),
+    )
+    with pytest.raises(SongNotFoundError):
+        await _resolver(handler).resolve("https://bandcamp.com/track/bedroom-demo")
+
+
+@pytest.mark.parametrize(
+    ("search_response", "expected"),
+    [
+        # Deezer signals a quota/rate limit as HTTP 200 + error code 4.
+        (
+            lambda r: httpx.Response(200, json={"error": {"code": 4, "message": "quota"}}),
+            ResolverRateLimitError,
+        ),
+        (lambda r: httpx.Response(503), ResolverUnavailableError),
+    ],
+)
+async def test_youtube_source_fallback_not_triggered_on_upstream_error(search_response, expected):
+    # A broken Deezer lookup must raise (mapped to 429/502), NOT be mistaken for a
+    # catalog miss and silently downgraded to a source-only track.
+    handler = _router(
+        search=search_response,
+        youtube=lambda r: httpx.Response(200, json={"title": "Bedroom Demo"}),
+    )
+    with pytest.raises(expected):
+        await _resolver(handler).resolve("https://www.youtube.com/watch?v=PRpiBpDy7MQ")
+
+
+async def test_youtube_source_fallback_not_triggered_on_search_timeout():
+    def search(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectTimeout("slow", request=request)
+
+    handler = _router(
+        search=search, youtube=lambda r: httpx.Response(200, json={"title": "Bedroom Demo"})
+    )
+    with pytest.raises(ResolverTimeoutError):
+        await _resolver(handler).resolve("https://www.youtube.com/watch?v=PRpiBpDy7MQ")
+
+
+# --------------------------------------------------------------------------- #
+# _get_text pins follow_redirects=False per hop (SSRF guard, MYS-201 intent)
+# --------------------------------------------------------------------------- #
+
+
+def _redirect_recording_resolver(handler):
+    """A resolver whose client records the ``follow_redirects`` value handed to
+    every ``stream`` call, so a test can assert the manual redirect loop never
+    delegates redirect-following to httpx."""
+    seen: list[object] = []
+
+    def factory() -> httpx.AsyncClient:
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler), timeout=5.0)
+        original_stream = client.stream
+
+        def stream(method, url, **kwargs):
+            seen.append(kwargs.get("follow_redirects"))
+            return original_stream(method, url, **kwargs)
+
+        client.stream = stream  # type: ignore[method-assign]
+        return client
+
+    return LinkResolver(client_factory=factory), seen
+
+
+async def test_get_text_never_delegates_redirects_to_httpx():
+    # A Bandcamp fetch that 301s to a valid on-family page must go through the
+    # manual validated loop — every stream() call pins follow_redirects=False.
+    def route(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "api.deezer.com":
+            return httpx.Response(200, json=_DEEZER_SEARCH_HIT)
+        if request.url.path == "/track/old-slug":
+            return httpx.Response(
+                301, headers={"Location": "https://coolband.bandcamp.com/track/new-slug"}
+            )
+        return httpx.Response(
+            200,
+            text=_bandcamp_page('<meta property="og:title" content="Song Title, by Artist Name">'),
+        )
+
+    resolver, seen = _redirect_recording_resolver(route)
+    song = await resolver.resolve("https://coolband.bandcamp.com/track/old-slug")
+    assert song.isrc == "USEM38600088"
+    # Two Bandcamp hops (the 301 and the final page); Deezer search uses _get_json,
+    # not stream, so only the page fetches are recorded here.
+    assert seen == [False, False]

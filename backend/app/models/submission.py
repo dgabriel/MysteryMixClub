@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import DateTime, ForeignKey, String, func, text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, synonym
 
@@ -17,6 +17,17 @@ class Submission(Base):
     # A player may submit up to the league's songs_per_submission cap per round
     # (MYS-116), so (round_id, user_id) is no longer unique. The per-column
     # indexes below cover the lookups; the cap is enforced in the endpoint.
+    #
+    # A submission is identified by EITHER an ISRC (catalog track) OR a
+    # source_key (source-only track, Bandcamp/YouTube — MYS-201). Exactly one is
+    # always present; the CHECK guarantees at least one, and the endpoint's
+    # model validator enforces exactly one.
+    __table_args__ = (
+        CheckConstraint(
+            "isrc IS NOT NULL OR source_key IS NOT NULL",
+            name="ck_submissions_isrc_or_source",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     # DB column is mix_id (MYS-196); attr name stays until R3/R4 cleanup.
@@ -26,7 +37,12 @@ class Submission(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
     )
-    isrc: Mapped[str] = mapped_column(String, nullable=False)
+    # Nullable since MYS-201: a source-only track has no ISRC and is identified
+    # by source_key instead (exactly one of the two is set — see __table_args__).
+    isrc: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    # Exact source-only identity for a Bandcamp/YouTube track with no catalog
+    # ISRC: ``youtube:<video id>`` or ``bandcamp:<artist>/<track>`` (MYS-201).
+    source_key: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     title: Mapped[str] = mapped_column(String, nullable=False)
     artist: Mapped[str] = mapped_column(String, nullable=False)
     album: Mapped[Optional[str]] = mapped_column(String, nullable=True)

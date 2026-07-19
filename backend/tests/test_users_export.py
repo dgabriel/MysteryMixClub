@@ -57,11 +57,14 @@ async def _seed_round(db_session, league_id, *, number=1) -> Round:
     return round_
 
 
-async def _seed_submission(db_session, round_id, user_id, *, isrc="USABC1234567") -> Submission:
+async def _seed_submission(
+    db_session, round_id, user_id, *, isrc="USABC1234567", source_key=None
+) -> Submission:
     sub = Submission(
         round_id=round_id,
         user_id=user_id,
         isrc=isrc,
+        source_key=source_key,
         title="song",
         artist="Artist",
         note="context",
@@ -142,6 +145,28 @@ async def test_export_includes_own_submission(client, db_session):
     assert submissions[0]["id"] == str(submission.id)
     assert submissions[0]["title"] == "song"
     assert submissions[0]["note"] == "context"
+    # A catalog track carries its ISRC and no source_key (MYS-201).
+    assert submissions[0]["isrc"] == "USABC1234567"
+    assert submissions[0]["source_key"] is None
+
+
+async def test_export_includes_source_only_submission(client, db_session):
+    # A source-only submission (Bandcamp/YouTube, no ISRC) exports its source_key
+    # and a null isrc, rather than being dropped or erroring (MYS-201).
+    organizer = await _seed_user(db_session, "src@example.com", name="Src")
+    league = await _seed_league(db_session, organizer.id)
+    round_ = await _seed_round(db_session, league.id)
+    await _seed_submission(
+        db_session, round_.id, organizer.id, isrc=None, source_key="youtube:PRpiBpDy7MQ"
+    )
+
+    resp = await client.get(EXPORT_URL, headers=_auth_header(organizer.id))
+
+    assert resp.status_code == 200, resp.text
+    submissions = resp.json()["submissions"]
+    assert len(submissions) == 1
+    assert submissions[0]["isrc"] is None
+    assert submissions[0]["source_key"] == "youtube:PRpiBpDy7MQ"
 
 
 async def test_export_includes_own_vote_and_note(client, db_session):

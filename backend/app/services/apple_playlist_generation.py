@@ -119,7 +119,11 @@ async def generate_round_playlist(
     track_ids: list[str] = []
     unmatched: list[UnmatchedSubmission] = []
     for s in submissions:
-        song_id = await resolver.catalog_song_id_for_isrc(s.isrc, s.title, s.artist)
+        # Source-only tracks (MYS-201) have no ISRC to match against Apple's
+        # catalog — they go unmatched, an expected partial-playlist outcome.
+        song_id = (
+            await resolver.catalog_song_id_for_isrc(s.isrc, s.title, s.artist) if s.isrc else None
+        )
         if song_id:
             track_ids.append(song_id)
         else:

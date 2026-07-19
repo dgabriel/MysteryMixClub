@@ -130,7 +130,9 @@ async def generate_round_playlist(
 
     for s in submissions:
         uri = s.spotify_track_uri
-        if not uri and app_token:
+        # Source-only tracks (MYS-201) have no ISRC to search by — they simply go
+        # unmatched, like any other track Spotify's catalog doesn't carry.
+        if not uri and app_token and s.isrc:
             uri = await client.search_track_uri_by_isrc(s.isrc, app_token)
             if uri:
                 s.spotify_track_uri = uri

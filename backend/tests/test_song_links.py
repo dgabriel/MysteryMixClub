@@ -9,7 +9,7 @@ best-effort behaviour when an upstream errors.
 import httpx
 
 from app.services.apple_music_token import AppleMusicTokenError
-from app.services.song_links import SongLinkAssembler
+from app.services.song_links import SongLinkAssembler, assemble_source_links
 
 _DEEZER_ISRC_OK = {"id": 1, "link": "https://www.deezer.com/track/111", "isrc": "USXYZ"}
 _DEEZER_SEARCH_OK = {"data": [{"id": 2, "link": "https://www.deezer.com/track/222"}], "total": 1}
@@ -413,3 +413,70 @@ async def test_apple_skips_catalog_without_isrc():
     links = await _assembler(d, apple_token_service=_FakeAppleTokenService()).assemble("x", "y")
     assert links["appleMusic"] == "https://music.apple.com/track/333"
     assert "api.music.apple.com" not in d.hosts()
+
+
+# --------------------------------------------------------------------------- #
+# Source-only tracks (MYS-201) — exact links only, never a fuzzy guess.
+# --------------------------------------------------------------------------- #
+
+
+async def test_assemble_fuzzy_false_drops_deezer_and_apple_to_deep_links():
+    # Even when the upstreams WOULD return exact hits, fuzzy=False must not call
+    # them: a source-only track has no catalog identity to match, so guessing one
+    # would risk linking a wrong song. Deezer/Apple degrade to search deep links.
+    d = _Dispatch(
+        isrc=httpx.Response(200, json=_DEEZER_ISRC_OK),
+        search=httpx.Response(200, json=_DEEZER_SEARCH_OK),
+        itunes=httpx.Response(200, json=_ITUNES_OK),
+    )
+    links = await _assembler(d).assemble("bad guy", "Billie Eilish", "USXYZ", fuzzy=False)
+    assert links["deezer"] == "https://www.deezer.com/search/bad%20guy%20Billie%20Eilish"
+    assert links["appleMusic"] == "https://music.apple.com/search?term=bad%20guy%20Billie%20Eilish"
+    # No search/lookup HTTP was performed at all.
+    assert d.calls == []
+
+
+async def test_assemble_fuzzy_false_uses_only_passed_youtube_id():
+    # With fuzzy off, the resolver is never consulted; only an explicitly passed
+    # id yields an exact watch link, otherwise YouTube degrades to a deep link.
+    d = _Dispatch()
+    passed = await _assembler(d, youtube_resolver=_FakeYouTubeResolver("SHOULD_NOT_USE")).assemble(
+        "x", "y", youtube_video_id="EXACTVID123", fuzzy=False
+    )
+    assert passed["youtube"] == "https://www.youtube.com/watch?v=EXACTVID123"
+    assert passed["youtubeMusic"] == "https://music.youtube.com/watch?v=EXACTVID123"
+
+    none_passed = await _assembler(
+        d, youtube_resolver=_FakeYouTubeResolver("SHOULD_NOT_USE")
+    ).assemble("x", "y", youtube_video_id=None, fuzzy=False)
+    assert none_passed["youtube"] == "https://www.youtube.com/results?search_query=x%20y"
+
+
+async def test_assemble_source_links_youtube_uses_exact_video_id():
+    d = _Dispatch()
+    links, video_id = await assemble_source_links(
+        _assembler(d), "Obscure Track", "Some Artist", "youtube:PRpiBpDy7MQ"
+    )
+    # The exact submitted video id drives the watch links, and is returned so the
+    # caller can cache it — no YouTube Data search, no HTTP at all.
+    assert video_id == "PRpiBpDy7MQ"
+    assert links["youtube"] == "https://www.youtube.com/watch?v=PRpiBpDy7MQ"
+    assert links["youtubeMusic"] == "https://music.youtube.com/watch?v=PRpiBpDy7MQ"
+    # Every other platform is a deep link; nothing was fuzzy-resolved.
+    assert links["deezer"].startswith("https://www.deezer.com/search/")
+    assert links["appleMusic"].startswith("https://music.apple.com/search?term=")
+    assert d.calls == []
+
+
+async def test_assemble_source_links_bandcamp_uses_exact_page_and_no_video():
+    d = _Dispatch()
+    links, video_id = await assemble_source_links(
+        _assembler(d), "Obscure Track", "Some Artist", "bandcamp:coolband/song-title"
+    )
+    # A bandcamp source key returns no video id (never a guessed video) and the
+    # Bandcamp link is the exact reconstructed track page, not a search deep link.
+    assert video_id is None
+    assert links["bandcamp"] == "https://coolband.bandcamp.com/track/song-title"
+    assert links["youtube"].startswith("https://www.youtube.com/results?")
+    assert links["youtubeMusic"].startswith("https://music.youtube.com/search?")
+    assert d.calls == []

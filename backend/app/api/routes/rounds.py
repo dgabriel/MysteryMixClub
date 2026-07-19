@@ -41,6 +41,7 @@ from app.models.note import Note
 from app.models.round import Round
 from app.models.submission import Submission
 from app.models.user import User
+from app.services.source_tracks import source_fields
 from app.services.spotify_client import SpotifyClient, get_spotify_client
 from app.services.spotify_playlist_generation import try_auto_generate_playlist
 from app.models.vote import Vote
@@ -765,7 +766,8 @@ async def extend_voting_deadline(
 
 class PlaylistEntry(WireModel):
     submission_id: str
-    isrc: str
+    # None for a source-only track (Bandcamp/YouTube, no catalog ISRC — MYS-201).
+    isrc: str | None
     title: str
     artist: str
     album: str | None
@@ -877,8 +879,11 @@ async def get_round_playlist(
         # YouTube ids are resolved at submit time. Lazily backfill any submission
         # that predates that (or whose submit-time resolve failed) so existing
         # rounds light up; cache it back so it's a one-time cost per submission.
+        # Source-only tracks (MYS-201) are never fuzzy-resolved: a youtube: row
+        # already carries its exact id from submit time, and a bandcamp: row must
+        # never be linked to a *guessed* video, so it simply sits out the playlist.
         video_id = s.youtube_video_id
-        if not video_id:
+        if not video_id and not s.source_key:
             video_id = await youtube.video_id_for(s.title, s.artist)
             if video_id:
                 s.youtube_video_id = video_id
@@ -932,7 +937,11 @@ class ResultSubmission(WireModel):
     submission_id: str
     user_id: str
     submitter_display_name: str
-    isrc: str
+    # None for a source-only track; source/source_url identify it instead, and
+    # let the reveal render a "Bandcamp"/"YouTube only" badge (MYS-201).
+    isrc: str | None
+    source: Literal["youtube", "bandcamp"] | None = None
+    source_url: str | None = None
     title: str
     artist: str
     album: str | None
@@ -993,6 +1002,11 @@ class RevealPick(WireModel):
     submitter_display_name: str
     title: str
     artist: str
+    # Track identity, mirroring ResultSubmission — None isrc + source/source_url
+    # for a source-only track (MYS-201). No vote data, so it stays vibe-safe.
+    isrc: str | None = None
+    source: Literal["youtube", "bandcamp"] | None = None
+    source_url: str | None = None
     # Playback links so the tiles are playable, same as the player reveal.
     platforms: dict[str, str]
     submitter_note: str | None
@@ -1098,6 +1112,8 @@ async def get_round_results(
             user_id=str(s.user_id),
             submitter_display_name=display_name,
             isrc=s.isrc,
+            source=source_fields(s.source_key)[0],
+            source_url=source_fields(s.source_key)[1],
             title=s.title,
             artist=s.artist,
             album=s.album,
@@ -1201,6 +1217,9 @@ async def get_round_results(
             submitter_display_name=s.submitter_display_name,
             title=s.title,
             artist=s.artist,
+            isrc=s.isrc,
+            source=s.source,
+            source_url=s.source_url,
             platforms=s.platforms,
             submitter_note=s.submitter_note,
             notes=s.notes,

@@ -40,7 +40,11 @@ from app.services.link_resolver import (
     SongNotFoundError,
     get_link_resolver,
 )
-from app.services.song_links import SongLinkAssembler, get_link_assembler
+from app.services.song_links import (
+    SongLinkAssembler,
+    assemble_source_links,
+    get_link_assembler,
+)
 
 router = APIRouter(prefix="/songs", tags=["songs"])
 
@@ -61,6 +65,10 @@ class ResolveRequest(WireModel):
     isrc: Isrc | None = None
     album: ShortText | None = None
     thumbnail_url: Url | None = None
+    # Opt-in to source-only results (MYS-201). Off by default, so existing clients
+    # get byte-identical behavior: a Bandcamp/YouTube link with no catalog ISRC
+    # still resolves to a 404. When on, that link resolves to a source-only song.
+    allow_source_only: bool = False
 
     @model_validator(mode="after")
     def _need_url_or_title(self) -> "ResolveRequest":
@@ -76,6 +84,9 @@ async def resolve_song(
     resolver: LinkResolver = Depends(get_link_resolver),
     assembler: SongLinkAssembler = Depends(get_link_assembler),
 ) -> ResolvedSong:
+    # Only ever set on a Bandcamp paste (both catalog-hit and source-only); the
+    # frontend passes it back on submit so it persists for the embedded player.
+    bandcamp_track_id: str | None = None
     if payload.title:
         title, artist, isrc = payload.title, payload.artist, payload.isrc
         album, thumbnail_url = payload.album, payload.thumbnail_url
@@ -102,8 +113,30 @@ async def resolve_song(
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY, detail="song lookup is unavailable"
             ) from exc
+        if song.source is not None:
+            # Source-only: no catalog ISRC (MYS-201). Off by default the link is
+            # a miss, exactly as before; opt-in returns the source-only song.
+            if not payload.allow_source_only:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="song not found")
+            assert song.source_key is not None  # guaranteed alongside song.source
+            platforms, _ = await assemble_source_links(
+                assembler, song.title, song.artist, song.source_key
+            )
+            return ResolvedSong(
+                title=song.title,
+                artist=song.artist,
+                album=song.album,
+                thumbnail_url=song.thumbnail_url,
+                isrc=None,
+                source=song.source,
+                source_key=song.source_key,
+                source_url=song.source_url,
+                bandcamp_track_id=song.bandcamp_track_id,
+                platforms=platforms,
+            )
         title, artist, isrc = song.title, song.artist, song.isrc
         album, thumbnail_url = song.album, song.thumbnail_url
+        bandcamp_track_id = song.bandcamp_track_id
 
     platforms = await assembler.assemble(title, artist, isrc)
     return ResolvedSong(
@@ -112,6 +145,7 @@ async def resolve_song(
         album=album,
         thumbnail_url=thumbnail_url,
         isrc=isrc,
+        bandcamp_track_id=bandcamp_track_id,
         platforms=platforms,
     )
 

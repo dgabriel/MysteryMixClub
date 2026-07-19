@@ -13,6 +13,8 @@ import asyncio
 import uuid
 from collections.abc import AsyncGenerator
 
+import httpx
+import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,7 +27,7 @@ from app.models.league_member import LeagueMember
 from app.models.round import Round
 from app.models.submission import Submission
 from app.models.user import User
-from app.services.song_links import get_link_assembler
+from app.services.song_links import SongLinkAssembler, get_link_assembler
 from app.services.youtube_resolver import get_youtube_resolver
 
 _LINKS = {
@@ -604,6 +606,282 @@ async def test_list_visible_after_close(session_factory, db_session):
 # --------------------------------------------------------------------------- #
 # MYS-144: concurrent submissions must not exceed the per-league cap
 # --------------------------------------------------------------------------- #
+
+
+# --------------------------------------------------------------------------- #
+# MYS-201: source-only submissions (no ISRC — Bandcamp/YouTube-only tracks)
+# --------------------------------------------------------------------------- #
+
+
+def _no_http_assembler() -> SongLinkAssembler:
+    """The real link assembler wired to a transport that fails on any request.
+
+    A source-only track must be linked with NO fuzzy lookup, so a correct
+    ``assemble(..., fuzzy=False)`` makes zero HTTP calls — this asserts that by
+    blowing up if any is attempted, while still returning the real exact links."""
+
+    def factory() -> httpx.AsyncClient:
+        def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover
+            raise AssertionError(f"no HTTP expected for a source-only track, got {request.url}")
+
+        return httpx.AsyncClient(transport=httpx.MockTransport(handler), timeout=5.0)
+
+    return SongLinkAssembler(client_factory=factory)
+
+
+class _BoomYouTube:
+    """A YouTube resolver that fails if consulted — a source-only submission must
+    never fuzzy-resolve a video id (that is the isrc/catalog path only)."""
+
+    async def video_id_for(self, title, artist=None) -> str | None:  # pragma: no cover
+        raise AssertionError("YouTube resolver must not be called for a source-only track")
+
+
+def _source_body(source_key: str, **over) -> dict:
+    body = {"source_key": source_key, "title": "obscure", "artist": "Some Artist"}
+    body.update(over)
+    return body
+
+
+async def _seed_second_round(db_session, league_id: uuid.UUID, *, number: int = 2) -> Round:
+    round_ = Round(league_id=league_id, round_number=number, theme="t2", state="open_submission")
+    db_session.add(round_)
+    await db_session.commit()
+    await db_session.refresh(round_)
+    return round_
+
+
+async def test_submit_neither_isrc_nor_source_key_422(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    body = {"title": "no identity", "artist": "A"}
+    async with _build_client(session_factory) as client:
+        resp = await client.post(_sub_url(round_.id), json=body, headers=_auth(organizer.id))
+    assert resp.status_code == 422
+
+
+async def test_submit_both_isrc_and_source_key_422(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    body = _body(source_key="youtube:PRpiBpDy7MQ")
+    async with _build_client(session_factory) as client:
+        resp = await client.post(_sub_url(round_.id), json=body, headers=_auth(organizer.id))
+    assert resp.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "bad_key",
+    [
+        "not a key",
+        "spotify:3PfIrDoz19",  # wrong source prefix
+        "youtube:short",  # wrong length id
+        "youtube:toolongvideoid",  # too long
+        "bandcamp:CoolBand/song",  # uppercase artist slug
+        "bandcamp:../etc/passwd",  # path traversal
+        "bandcamp:artist",  # missing track segment
+    ],
+)
+async def test_submit_malformed_source_key_422(session_factory, db_session, bad_key):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    async with _build_client(session_factory) as client:
+        resp = await client.post(
+            _sub_url(round_.id), json=_source_body(bad_key), headers=_auth(organizer.id)
+        )
+    assert resp.status_code == 422, resp.text
+
+
+async def test_submit_bandcamp_source_only_happy_path(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    round_id = round_.id
+    async with _build_client(
+        session_factory, assembler=_no_http_assembler(), youtube=_BoomYouTube()
+    ) as client:
+        resp = await client.post(
+            _sub_url(round_id),
+            json=_source_body("bandcamp:coolband/song-title", note="only on bandcamp"),
+            headers=_auth(organizer.id),
+        )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    # Response carries the source identity, never an ISRC.
+    assert body["isrc"] is None
+    assert body["source"] == "bandcamp"
+    assert body["source_url"] == "https://coolband.bandcamp.com/track/song-title"
+    db_session.expire_all()
+    stored = await db_session.scalar(select(Submission).where(Submission.round_id == round_id))
+    assert stored.source_key == "bandcamp:coolband/song-title"
+    assert stored.isrc is None
+    # The stored Bandcamp link is the exact reconstructed track page, and YouTube
+    # is only a search deep link (a bandcamp track never gets a guessed video).
+    assert stored.platform_links["bandcamp"] == "https://coolband.bandcamp.com/track/song-title"
+    assert stored.platform_links["youtube"].startswith("https://www.youtube.com/results?")
+    assert stored.youtube_video_id is None
+
+
+async def test_submit_youtube_source_only_uses_exact_video_id(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    round_id = round_.id
+    async with _build_client(
+        session_factory, assembler=_no_http_assembler(), youtube=_BoomYouTube()
+    ) as client:
+        resp = await client.post(
+            _sub_url(round_id),
+            json=_source_body("youtube:PRpiBpDy7MQ"),
+            headers=_auth(organizer.id),
+        )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["isrc"] is None
+    assert body["source"] == "youtube"
+    assert body["source_url"] == "https://www.youtube.com/watch?v=PRpiBpDy7MQ"
+    db_session.expire_all()
+    stored = await db_session.scalar(select(Submission).where(Submission.round_id == round_id))
+    assert stored.source_key == "youtube:PRpiBpDy7MQ"
+    # The exact submitted video id drives the watch links and is cached — no search.
+    assert stored.youtube_video_id == "PRpiBpDy7MQ"
+    assert stored.platform_links["youtube"] == "https://www.youtube.com/watch?v=PRpiBpDy7MQ"
+    assert stored.platform_links["youtubeMusic"] == "https://music.youtube.com/watch?v=PRpiBpDy7MQ"
+
+
+async def test_duplicate_source_key_within_mix_409(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    member = await _seed_user(db_session, "m@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    await _add_member(db_session, round_.league_id, member)
+    key = "bandcamp:coolband/song-title"
+    async with _build_client(
+        session_factory, assembler=_no_http_assembler(), youtube=_BoomYouTube()
+    ) as client:
+        first = await client.post(
+            _sub_url(round_.id), json=_source_body(key), headers=_auth(organizer.id)
+        )
+        assert first.status_code == 201, first.text
+        second = await client.post(
+            _sub_url(round_.id), json=_source_body(key), headers=_auth(member.id)
+        )
+    assert second.status_code == 409, second.text
+    assert "already in this mystery mix" in second.json()["detail"]
+
+
+async def test_distinct_source_keys_do_not_collide(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    member = await _seed_user(db_session, "m@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    await _add_member(db_session, round_.league_id, member)
+    async with _build_client(
+        session_factory, assembler=_no_http_assembler(), youtube=_BoomYouTube()
+    ) as client:
+        a = await client.post(
+            _sub_url(round_.id),
+            json=_source_body("bandcamp:coolband/song-title"),
+            headers=_auth(organizer.id),
+        )
+        b = await client.post(
+            _sub_url(round_.id),
+            json=_source_body("bandcamp:coolband/other-song"),
+            headers=_auth(member.id),
+        )
+    assert a.status_code == 201, a.text
+    assert b.status_code == 201, b.text
+
+
+async def test_source_key_repeat_across_prior_mix_flags_but_allows(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round1 = await _seed_league_with_round(db_session, organizer)
+    round2 = await _seed_second_round(db_session, round1.league_id)
+    key = "youtube:PRpiBpDy7MQ"
+    async with _build_client(
+        session_factory, assembler=_no_http_assembler(), youtube=_BoomYouTube()
+    ) as client:
+        first = await client.post(
+            _sub_url(round1.id), json=_source_body(key), headers=_auth(organizer.id)
+        )
+        assert first.status_code == 201, first.text
+        assert first.json()["league_previously_submitted"] is False
+        repeat = await client.post(
+            _sub_url(round2.id), json=_source_body(key), headers=_auth(organizer.id)
+        )
+    # A repeat in a later mix of the same club is allowed, but flagged.
+    assert repeat.status_code == 201, repeat.text
+    assert repeat.json()["league_previously_submitted"] is True
+
+
+# --------------------------------------------------------------------------- #
+# MYS-201: Bandcamp numeric track id rides along in platform_links (MYS-204)
+# --------------------------------------------------------------------------- #
+
+
+async def test_submit_persists_bandcamp_track_id_under_reserved_key(session_factory, db_session):
+    # A catalog track (isrc) that came from a Bandcamp paste carries the id back;
+    # it persists under the reserved non-URL key alongside the real platform links.
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    round_id = round_.id
+    async with _build_client(session_factory) as client:
+        resp = await client.post(
+            _sub_url(round_id), json=_body(bandcamp_track_id="12345"), headers=_auth(organizer.id)
+        )
+    assert resp.status_code == 201, resp.text
+    db_session.expire_all()
+    stored = await db_session.scalar(select(Submission).where(Submission.round_id == round_id))
+    assert stored.platform_links == {**_LINKS, "bandcampTrackId": "12345"}
+
+
+async def test_submit_source_only_bandcamp_track_id_rides_along(session_factory, db_session):
+    # Source-only Bandcamp track: the id persists next to the exact source links.
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    round_id = round_.id
+    async with _build_client(
+        session_factory, assembler=_no_http_assembler(), youtube=_BoomYouTube()
+    ) as client:
+        resp = await client.post(
+            _sub_url(round_id),
+            json=_source_body("bandcamp:coolband/song-title", bandcamp_track_id="98765"),
+            headers=_auth(organizer.id),
+        )
+    assert resp.status_code == 201, resp.text
+    db_session.expire_all()
+    stored = await db_session.scalar(select(Submission).where(Submission.round_id == round_id))
+    assert stored.platform_links["bandcampTrackId"] == "98765"
+    # The real exact links are untouched by the extra key.
+    assert stored.platform_links["bandcamp"] == "https://coolband.bandcamp.com/track/song-title"
+
+
+async def test_submit_without_bandcamp_track_id_adds_no_key(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    round_id = round_.id
+    async with _build_client(session_factory) as client:
+        resp = await client.post(_sub_url(round_id), json=_body(), headers=_auth(organizer.id))
+    assert resp.status_code == 201, resp.text
+    db_session.expire_all()
+    stored = await db_session.scalar(select(Submission).where(Submission.round_id == round_id))
+    assert "bandcampTrackId" not in stored.platform_links
+    assert stored.platform_links == _LINKS
+
+
+@pytest.mark.parametrize(
+    "bad_id",
+    [
+        "abc",  # non-digit
+        "12 34",  # embedded whitespace
+        "12.5",  # non-digit separator
+        "1" * 21,  # over the 20-digit bound
+        "",  # empty
+    ],
+)
+async def test_submit_malformed_bandcamp_track_id_422(session_factory, db_session, bad_id):
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    async with _build_client(session_factory) as client:
+        resp = await client.post(
+            _sub_url(round_.id), json=_body(bandcamp_track_id=bad_id), headers=_auth(organizer.id)
+        )
+    assert resp.status_code == 422, resp.text
 
 
 async def test_concurrent_submit_at_cap_1_produces_exactly_one_submission(

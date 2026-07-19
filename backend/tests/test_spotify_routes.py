@@ -88,12 +88,15 @@ async def _seed_member(db_session, round_: Round, email: str) -> User:
     return user
 
 
-async def _add_submission(db_session, round_id, user_id, *, isrc, title, spotify_track_uri=None):
+async def _add_submission(
+    db_session, round_id, user_id, *, isrc, title, spotify_track_uri=None, source_key=None
+):
     db_session.add(
         Submission(
             round_id=round_id,
             user_id=user_id,
             isrc=isrc,
+            source_key=source_key,
             title=title,
             artist="A",
             platform_links={},
@@ -153,6 +156,9 @@ class FakeSpotifyClient:
         self.created: dict | None = None
         self.added: list[str] = []
         self.replaced: dict | None = None
+        # Every ISRC handed to the search — lets tests assert a source-only track
+        # (no ISRC) never triggers a Spotify catalog lookup (MYS-201).
+        self.searched_isrcs: list[str] = []
 
     @property
     def is_configured(self) -> bool:
@@ -165,6 +171,7 @@ class FakeSpotifyClient:
         return "app-tok" if self._configured else None
 
     async def search_track_uri_by_isrc(self, isrc, access_token) -> str | None:
+        self.searched_isrcs.append(isrc)
         return self._isrc_map.get(isrc)
 
     async def exchange_code(self, code) -> SpotifyTokens:
@@ -416,6 +423,31 @@ async def test_generate_builds_playlist_and_reports_unmatched(db_session, fake_s
     assert fake_spotify.created["name"] == "MysteryMixClub: L, Late Summer"
     # Playlist is public — no API access needed for members to open the link.
     assert fake_spotify.created["public"] is True
+
+
+async def test_generate_skips_source_only_track_without_isrc_lookup(db_session, fake_spotify):
+    # A source-only submission has no ISRC to search by, so it goes unmatched and
+    # its (null) ISRC is never handed to the Spotify search (MYS-201).
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    await _seed_shared_account(db_session)
+    other = await _seed_member(db_session, round_, "m2@example.com")
+    await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
+    await _add_submission(
+        db_session,
+        round_.id,
+        other.id,
+        isrc=None,
+        source_key="bandcamp:coolband/demo",
+        title="bandcamp only",
+    )
+
+    result = await _generate(db_session, round_, fake_spotify)
+    assert result.track_count == 1
+    assert result.total_count == 2
+    assert [u.title for u in result.unmatched] == ["bandcamp only"]
+    # Only the catalog track's ISRC was ever looked up; None was never searched.
+    assert fake_spotify.searched_isrcs == ["I-MATCH"]
 
 
 async def test_generate_caches_resolved_uri_on_submission(db_session, fake_spotify):

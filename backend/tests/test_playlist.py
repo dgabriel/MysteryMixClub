@@ -60,12 +60,14 @@ async def _add_submission(
     platform_links,
     mode="playing",
     youtube_video_id=None,
+    source_key=None,
 ):
     db_session.add(
         Submission(
             round_id=round_id,
             user_id=user_id,
             isrc=isrc,
+            source_key=source_key,
             title=title,
             artist="A",
             platform_links=platform_links,
@@ -211,6 +213,53 @@ async def test_preferred_url_none_when_no_platforms(client, db_session):
     entry = resp.json()["entries"][0]
     assert entry["platforms"] == {}
     assert entry["preferred_url"] is None
+
+
+async def test_playlist_carries_bandcamp_track_id_key_without_leaking_as_url(client, db_session):
+    # The reserved non-URL bandcampTrackId key (MYS-201/204) rides along in the
+    # exposed platforms dict, but must never be chosen as a playable URL: with a
+    # preferred service and youtube both present, the real link still wins.
+    organizer = await _seed_user(db_session, "o@example.com", preferred="deezer")
+    round_ = await _seed_round(db_session, organizer)
+    await _add_submission(
+        db_session,
+        round_.id,
+        organizer.id,
+        title="bc",
+        isrc="I1",
+        platform_links={
+            "deezer": "https://deezer/x",
+            "youtube": "https://youtube/x",
+            "bandcampTrackId": "12345",
+        },
+    )
+    resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+    assert resp.status_code == 200, resp.text
+    entry = resp.json()["entries"][0]
+    assert entry["platforms"]["bandcampTrackId"] == "12345"
+    assert entry["preferred_url"] == "https://deezer/x"
+
+
+async def test_playlist_bandcamp_track_id_not_chosen_as_fallback_url(client, db_session):
+    # No preference and no youtube: the fallback takes the FIRST real link, never
+    # the trailing non-URL id (it is always merged last into platform_links).
+    organizer = await _seed_user(db_session, "o@example.com", preferred=None)
+    round_ = await _seed_round(db_session, organizer)
+    await _add_submission(
+        db_session,
+        round_.id,
+        organizer.id,
+        title="bc",
+        isrc="I1",
+        platform_links={
+            "bandcamp": "https://x.bandcamp.com/track/y",
+            "bandcampTrackId": "12345",
+        },
+    )
+    resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+    entry = resp.json()["entries"][0]
+    assert entry["preferred_url"] == "https://x.bandcamp.com/track/y"
+    assert entry["platforms"]["bandcampTrackId"] == "12345"
 
 
 async def test_playlist_shuffle_is_deterministic(client, db_session):
@@ -581,3 +630,64 @@ async def test_playlist_vibing_noter_not_counted_as_acted(client, db_session):
     assert body["voting_eligible"] == 1  # only the organizer is playing
     assert body["voting_acted"] == 0  # organizer didn't act; vibing noter excluded
     assert body["vibing_count"] == 1
+
+
+# --------------------------------------------------------------------------- #
+# MYS-201: source-only tracks in the round playlist
+# --------------------------------------------------------------------------- #
+
+
+async def test_bandcamp_source_only_skips_youtube_backfill(session_factory, db_session):
+    # A bandcamp source_key row must never be fuzzy-resolved to a *guessed* video:
+    # it carries no youtube_video_id and sits out the YouTube playlist entirely.
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    await _add_submission(
+        db_session,
+        round_.id,
+        organizer.id,
+        title="bandcamp track",
+        isrc=None,
+        source_key="bandcamp:coolband/bandcamp-track",
+        platform_links=_links("bandcamp"),
+        youtube_video_id=None,
+    )
+    # The resolver WOULD return an id if consulted — asserting it never is.
+    youtube = _FakeYouTube(by_title={"bandcamp track": "GUESSVID1234"})
+
+    async with _client_with_youtube(session_factory, youtube) as client:
+        resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert youtube.calls == []  # never fuzzy-resolved
+    assert body["youtube_playlist_url"] is None
+    assert body["youtube_track_count"] == 0
+    # The entry is still present, with a null ISRC.
+    assert [e["title"] for e in body["entries"]] == ["bandcamp track"]
+    assert body["entries"][0]["isrc"] is None
+
+
+async def test_youtube_source_only_uses_stored_id_without_backfill(session_factory, db_session):
+    # A youtube source_key row already carries its exact id from submit time; the
+    # playlist uses it directly, never re-resolving.
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_round(db_session, organizer)
+    await _add_submission(
+        db_session,
+        round_.id,
+        organizer.id,
+        title="yt only",
+        isrc=None,
+        source_key="youtube:PRpiBpDy7MQ",
+        platform_links=_links("youtube"),
+        youtube_video_id="PRpiBpDy7MQ",
+    )
+    youtube = _FakeYouTube(by_title={"yt only": "SHOULD_NOT_USE"})
+
+    async with _client_with_youtube(session_factory, youtube) as client:
+        resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+    body = resp.json()
+    assert youtube.calls == []  # exact stored id, no backfill
+    assert body["youtube_track_count"] == 1
+    assert _ids_in_url(body) == ["PRpiBpDy7MQ"]
+    assert body["entries"][0]["isrc"] is None

@@ -32,6 +32,7 @@ from __future__ import annotations
 import html
 import re
 from collections.abc import Callable
+from typing import Literal
 from urllib.parse import parse_qs, quote, urljoin, urlparse
 
 import httpx
@@ -45,6 +46,7 @@ from app.services.deezer_search import (
     DeezerUnavailableError,
     build_deezer_client,
 )
+from app.services.source_tracks import source_url_for
 from app.services.spotify_client import SpotifyClient, get_spotify_client
 
 _DEEZER_TRACK = "https://api.deezer.com/track/{id}"
@@ -66,6 +68,14 @@ class ResolvedSong(BaseModel):
     album: str | None = None
     thumbnail_url: str | None = None
     isrc: str | None = None
+    # Set only for a source-only result (MYS-201): a Bandcamp/YouTube track with
+    # no catalog ISRC, identified by the exact source_key the client submits back.
+    source: Literal["youtube", "bandcamp"] | None = None
+    source_key: str | None = None
+    source_url: str | None = None
+    # Bandcamp's numeric track id when the resolved link was a Bandcamp page, for
+    # the future embedded player (MYS-204); None otherwise. Best-effort.
+    bandcamp_track_id: str | None = None
     # Only platforms that actually have a link for this song are present.
     # Keys are a subset of {"spotify", "appleMusic", "deezer", "youtube",
     # "youtubeMusic", "bandcamp"}.
@@ -73,13 +83,27 @@ class ResolvedSong(BaseModel):
 
 
 class SongIdentity(BaseModel):
-    """Bare song identity produced by the resolver (no platform links)."""
+    """Bare song identity produced by the resolver (no platform links).
+
+    Normally ISRC-backed. When the Deezer funnel finds no catalog match for a
+    YouTube/Bandcamp link, the resolver instead returns a *source-only* identity
+    (MYS-201): ``isrc`` stays ``None`` and ``source``/``source_key``/``source_url``
+    carry the exact source reference so the caller can link it without guessing.
+    """
 
     title: str
     artist: str | None = None
     album: str | None = None
     thumbnail_url: str | None = None
     isrc: str | None = None
+    # Set only for a source-only identity; None for a normal catalog track.
+    source: Literal["youtube", "bandcamp"] | None = None
+    source_key: str | None = None
+    source_url: str | None = None
+    # Bandcamp's numeric track id, when the link was a Bandcamp page — set for
+    # both catalog-hit and source-only Bandcamp resolves, for the embedded player
+    # (MYS-204). None for every non-Bandcamp resolve. Best-effort.
+    bandcamp_track_id: str | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -200,6 +224,53 @@ def _og_title(page: str) -> str | None:
     return content or None
 
 
+# Bandcamp numeric track id (MYS-201, for the future MYS-204 embedded player).
+# Preferred source: the EmbeddedPlayer URL Bandcamp puts in its og:video /
+# twitter:player meta tag — ``.../EmbeddedPlayer/v=2/track=<digits>/...``. The
+# tag is isolated first, then ``content`` pulled from that tag alone, the same
+# tag-first / content-second hygiene and lookbehinds as _OG_TITLE_META so a
+# neighbouring meta's content can't bleed in.
+_EMBED_PLAYER_META = re.compile(
+    r"""<meta\b[^>]*(?<![\w-])(?:property=(["'])og:video\1|name=(["'])twitter:player\2)[^>]*>""",
+    re.IGNORECASE,
+)
+_EMBED_TRACK_ID = re.compile(r"/track=(\d+)")
+# Fallback: the data-tralbum JSON blob. Isolate the attribute value (its JSON is
+# entity-escaped inside the double-quoted attribute, so ``.*?\1`` captures the
+# whole blob), unescape it, then read the id off the FIRST trackinfo entry — the
+# track's own id on a /track/ page — anchored so a stray ``"id"`` can't match.
+_DATA_TRALBUM_ATTR = re.compile(
+    r"""data-tralbum=(["'])(?P<blob>.*?)\1""",
+    re.IGNORECASE | re.DOTALL,
+)
+_TRALBUM_TRACK_ID = re.compile(r'"trackinfo"\s*:\s*\[\s*\{\s*"id"\s*:\s*(\d+)')
+# A well-formed Bandcamp track id is bare digits; bound the length defensively.
+_BANDCAMP_TRACK_ID = re.compile(r"^\d{1,20}$")
+
+
+def _bandcamp_track_id(page: str) -> str | None:
+    """Best-effort numeric Bandcamp track id from a fetched track page, or None.
+
+    Tries the EmbeddedPlayer meta tag first (exact), then the data-tralbum blob.
+    Returns None when neither yields a clean id — a resolve never fails over it,
+    and a wrong id is never guessed (both sources are exact references)."""
+    tag = _EMBED_PLAYER_META.search(page)
+    if tag:
+        content = _META_CONTENT.search(tag.group(0))
+        if content:
+            embed = html.unescape(content.group("content"))
+            match = _EMBED_TRACK_ID.search(embed)
+            if match and _BANDCAMP_TRACK_ID.match(match.group(1)):
+                return match.group(1)
+    attr = _DATA_TRALBUM_ATTR.search(page)
+    if attr:
+        blob = html.unescape(attr.group("blob"))
+        match = _TRALBUM_TRACK_ID.search(blob)
+        if match and _BANDCAMP_TRACK_ID.match(match.group(1)):
+            return match.group(1)
+    return None
+
+
 def _topic_artist(author: str | None) -> str | None:
     """Artist behind a YouTube Music auto-generated "Artist - Topic" channel,
     else None. Other channel names (e.g. "DonMcLeanVEVO") are unreliable artist
@@ -283,7 +354,10 @@ class LinkResolver:
         for _ in range(_MAX_REDIRECT_HOPS + 1):
             try:
                 async with self._client_factory() as client:
-                    async with client.stream("GET", current) as response:
+                    # follow_redirects MUST stay False: the SSRF guard hinges on
+                    # this loop vetting each Location against the Bandcamp host
+                    # family, which httpx's own redirect-following would bypass.
+                    async with client.stream("GET", current, follow_redirects=False) as response:
                         if response.status_code in _REDIRECT_STATUSES:
                             current = _bandcamp_redirect_target(
                                 current, response.headers.get("location")
@@ -316,7 +390,12 @@ class LinkResolver:
     # ----------------------------------------------------------------- #
     # Deezer search funnel — title (+ optional artist) -> canonical identity.
     # ----------------------------------------------------------------- #
-    async def _identify_via_deezer_search(self, title: str, artist: str | None) -> SongIdentity:
+    async def _search_deezer_identity(self, title: str, artist: str | None) -> SongIdentity | None:
+        """Deezer search funnel → canonical identity, or ``None`` on a genuine
+        miss (Deezer returned no results). Upstream failures (rate limit, timeout,
+        unavailable) still raise; only an empty result set is a miss, so the
+        source-only callers can distinguish "not in the catalog" from "lookup
+        broke" and fall back only in the former case (MYS-201)."""
         try:
             result = await self._deezer.search(title, artist)
         except DeezerRateLimitError as exc:
@@ -329,7 +408,7 @@ class LinkResolver:
             raise SongNotFoundError("could not resolve that link") from exc
 
         if not result.results:
-            raise SongNotFoundError("no matching track found")
+            return None
         top = result.results[0]
         return SongIdentity(
             title=top.title,
@@ -338,6 +417,12 @@ class LinkResolver:
             thumbnail_url=top.thumbnail_url,
             isrc=top.isrc,
         )
+
+    async def _identify_via_deezer_search(self, title: str, artist: str | None) -> SongIdentity:
+        identity = await self._search_deezer_identity(title, artist)
+        if identity is None:
+            raise SongNotFoundError("no matching track found")
+        return identity
 
     # ----------------------------------------------------------------- #
     # Per-platform identification.
@@ -410,9 +495,18 @@ class LinkResolver:
         # instead carry the artist in the channel name (and a bare song title).
         if " - " in cleaned:
             artist_part, title_part = (p.strip() for p in cleaned.split(" - ", 1))
-            return await self._identify_via_deezer_search(title_part, artist_part or None)
-        return await self._identify_via_deezer_search(
-            cleaned, _topic_artist(data.get("author_name"))
+            search_title = title_part
+            search_artist: str | None = artist_part or None
+        else:
+            search_title = cleaned
+            search_artist = _topic_artist(data.get("author_name"))
+        identity = await self._search_deezer_identity(search_title, search_artist)
+        if identity is not None:
+            return identity
+        # No catalog match: fall back to a source-only identity keyed on the exact
+        # video id — the link is exact, so no fuzzy guess is ever substituted.
+        return self._youtube_source_identity(
+            url, search_title, search_artist, data.get("thumbnail_url")
         )
 
     async def _resolve_bandcamp(self, url: str) -> SongIdentity:
@@ -427,7 +521,54 @@ class LinkResolver:
         title, separator, artist = og_title.rpartition(", by ")
         if not separator:
             title, artist = og_title, ""
-        return await self._identify_via_deezer_search(_clean_title(title), artist.strip() or None)
+        clean_title = _clean_title(title)
+        artist_name = artist.strip() or None
+        # Grab the numeric track id off the page we already fetched — carried on
+        # every Bandcamp resolve (catalog-hit and source-only) since a Bandcamp
+        # paste is embeddable either way (MYS-204). Best-effort: may be None.
+        bandcamp_track_id = _bandcamp_track_id(page)
+        identity = await self._search_deezer_identity(clean_title, artist_name)
+        if identity is not None:
+            # Catalog hit keeps the canonical identity, plus the Bandcamp id.
+            return identity.model_copy(update={"bandcamp_track_id": bandcamp_track_id})
+        # No catalog match: fall back to a source-only identity keyed on the exact
+        # Bandcamp track page (Bandcamp-only releases are the whole point here).
+        return self._bandcamp_source_identity(url, clean_title, artist_name, bandcamp_track_id)
+
+    def _youtube_source_identity(
+        self, url: str, title: str, artist: str | None, thumbnail_url: str | None
+    ) -> SongIdentity:
+        video_id = _youtube_video_id_from_url(url)
+        if not video_id:
+            raise SongNotFoundError("YouTube video not found")
+        source_key = f"youtube:{video_id}"
+        source, source_url = source_url_for(source_key)
+        return SongIdentity(
+            title=title,
+            artist=artist,
+            thumbnail_url=thumbnail_url,
+            source=source,
+            source_key=source_key,
+            source_url=source_url,
+        )
+
+    def _bandcamp_source_identity(
+        self, url: str, title: str, artist: str | None, bandcamp_track_id: str | None
+    ) -> SongIdentity:
+        parts = _bandcamp_source_parts(url)
+        if parts is None:
+            raise SongNotFoundError("Bandcamp track not found")
+        artist_slug, track_slug = parts
+        source_key = f"bandcamp:{artist_slug}/{track_slug}"
+        source, source_url = source_url_for(source_key)
+        return SongIdentity(
+            title=title,
+            artist=artist,
+            source=source,
+            source_key=source_key,
+            source_url=source_url,
+            bandcamp_track_id=bandcamp_track_id,
+        )
 
     # ----------------------------------------------------------------- #
     # Dispatch.
@@ -483,6 +624,46 @@ def _spotify_track_id(path: str) -> str | None:
     """Extract a Spotify base-62 track id from a ``/track/{id}`` path, or None."""
     match = re.search(r"/track/([A-Za-z0-9]+)", path)
     return match.group(1) if match else None
+
+
+# YouTube ids are exactly 11 URL-safe-base64 chars; anything else is not a video
+# id we can build a stable source_key from.
+_YOUTUBE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
+# Bandcamp source-only slugs: lowercase alphanumerics + hyphens, no leading
+# hyphen — matching the subdomain and track-path forms and the source_key regex.
+_BANDCAMP_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+
+
+def _youtube_video_id_from_url(url: str) -> str | None:
+    """Extract the 11-char video id from a YouTube URL, or None.
+
+    Handles ``youtu.be/<id>`` (id in the path) and the ``watch?v=<id>`` form on
+    youtube.com / music.youtube.com / m.youtube.com."""
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower().removeprefix("www.")
+    if host == "youtu.be":
+        candidate = parsed.path.lstrip("/").split("/", 1)[0]
+    else:
+        candidate = (parse_qs(parsed.query).get("v") or [""])[0]
+    return candidate if _YOUTUBE_ID_RE.match(candidate) else None
+
+
+def _bandcamp_source_parts(url: str) -> tuple[str, str] | None:
+    """Extract ``(artist_slug, track_slug)`` from a ``{artist}.bandcamp.com/
+    track/{slug}`` URL, or None. Custom artist domains are out of scope
+    (MYS-200), so only the ``*.bandcamp.com`` subdomain form yields a key."""
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    if not host.endswith(".bandcamp.com"):
+        return None
+    artist_slug = host[: -len(".bandcamp.com")]
+    match = re.search(r"/track/([^/?#]+)", parsed.path)
+    if not match:
+        return None
+    track_slug = match.group(1)
+    if not _BANDCAMP_SLUG_RE.match(artist_slug) or not _BANDCAMP_SLUG_RE.match(track_slug):
+        return None
+    return artist_slug, track_slug
 
 
 def build_link_resolver() -> LinkResolver:

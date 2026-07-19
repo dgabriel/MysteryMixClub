@@ -67,7 +67,9 @@ class UserProfileUpdate(WireModel):
 class ExportSubmission(WireModel):
     id: str
     round_id: str
-    isrc: str
+    # None for a source-only track, identified by source_key instead (MYS-201).
+    isrc: str | None
+    source_key: str | None
     title: str
     artist: str
     album: str | None
@@ -157,6 +159,7 @@ async def export_me(
                 id=str(s.id),
                 round_id=str(s.round_id),
                 isrc=s.isrc,
+                source_key=s.source_key,
                 title=s.title,
                 artist=s.artist,
                 album=s.album,

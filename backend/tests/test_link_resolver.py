@@ -51,7 +51,7 @@ _DEEZER_TRACK = {
 }
 
 
-def _router(*, search=None, track=None, itunes=None, spotify=None, youtube=None):
+def _router(*, search=None, track=None, itunes=None, spotify=None, youtube=None, bandcamp=None):
     """Build a MockTransport handler routing by host/path, with per-host overrides
     (a callable taking the request and returning an httpx.Response)."""
 
@@ -68,6 +68,8 @@ def _router(*, search=None, track=None, itunes=None, spotify=None, youtube=None)
             return (spotify or (lambda r: httpx.Response(200, json={})))(request)
         if host == "www.youtube.com" and path.startswith("/oembed"):
             return (youtube or (lambda r: httpx.Response(200, json={})))(request)
+        if host == "bandcamp.com" or host.endswith(".bandcamp.com"):
+            return (bandcamp or (lambda r: httpx.Response(404)))(request)
         raise AssertionError(f"unexpected request to {host}{path}")
 
     return handler
@@ -338,6 +340,294 @@ async def test_youtu_be_short_url_resolves():
     handler = _router(youtube=lambda r: httpx.Response(200, json={"title": "American Pie"}))
     song = await _resolver(handler).resolve("https://youtu.be/PRpiBpDy7MQ")
     assert song.isrc == "USEM38600088"
+
+
+# --------------------------------------------------------------------------- #
+# Bandcamp (MYS-200) — track page og:title ("Title, by Artist") -> Deezer search
+# --------------------------------------------------------------------------- #
+
+
+def _bandcamp_page(meta: str) -> str:
+    """A minimal Bandcamp-style track page embedding the given <meta> tag."""
+    return (
+        "<!DOCTYPE html><html><head>"
+        '<meta property="og:site_name" content="Cool Band">'
+        f"{meta}"
+        '<meta property="og:type" content="song">'
+        "<title>ignored | Cool Band</title>"
+        "</head><body></body></html>"
+    )
+
+
+def _bandcamp_ok(meta: str):
+    return lambda r: httpx.Response(200, text=_bandcamp_page(meta))
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://coolband.bandcamp.com/track/song-title",
+        "https://bandcamp.com/track/song-title",
+    ],
+)
+async def test_bandcamp_track_funnels_through_deezer_search(url):
+    seen: dict[str, str] = {}
+    handler = _router(
+        search=_search_spy(seen),
+        bandcamp=_bandcamp_ok('<meta property="og:title" content="Song Title, by Artist Name">'),
+    )
+    song = await _resolver(handler).resolve(url)
+    assert 'track:"Song Title"' in seen["q"]
+    assert 'artist:"Artist Name"' in seen["q"]
+    # Canonical identity comes from the Deezer hit, ISRC included.
+    assert song.title == "American Pie"
+    assert song.artist == "Don McLean"
+    assert song.isrc == "USEM38600088"
+
+
+async def test_bandcamp_content_first_attribute_order_and_entities():
+    # Attribute order flipped (content before property) plus HTML entities in the
+    # title — both must still parse and unescape before the split.
+    seen: dict[str, str] = {}
+    handler = _router(
+        search=_search_spy(seen),
+        bandcamp=_bandcamp_ok(
+            '<meta content="Don&#39;t Stop, by Rock &amp; Roll Band" property="og:title">'
+        ),
+    )
+    song = await _resolver(handler).resolve("https://x.bandcamp.com/track/dont-stop")
+    assert 'track:"Don\'t Stop"' in seen["q"]
+    assert 'artist:"Rock & Roll Band"' in seen["q"]
+    assert song.isrc == "USEM38600088"
+
+
+async def test_bandcamp_title_containing_by_splits_on_last():
+    # A title can itself contain ", by " — the split must take the LAST one.
+    seen: dict[str, str] = {}
+    handler = _router(
+        search=_search_spy(seen),
+        bandcamp=_bandcamp_ok(
+            '<meta property="og:title" content="Standing, by the Sea, by Cool Band">'
+        ),
+    )
+    await _resolver(handler).resolve("https://coolband.bandcamp.com/track/standing-by-the-sea")
+    assert 'track:"Standing, by the Sea"' in seen["q"]
+    assert 'artist:"Cool Band"' in seen["q"]
+
+
+async def test_bandcamp_title_without_by_searches_title_only():
+    # No ", by " separator: the whole og:title is the title, artist None — so the
+    # Deezer query is the bare title with no artist:""/track:"" filter grammar.
+    seen: dict[str, str] = {}
+    handler = _router(
+        search=_search_spy(seen),
+        bandcamp=_bandcamp_ok('<meta property="og:title" content="Untitled Track">'),
+    )
+    song = await _resolver(handler).resolve("https://x.bandcamp.com/track/untitled")
+    assert seen["q"] == "Untitled Track"
+    assert song.isrc == "USEM38600088"
+
+
+async def test_bandcamp_follows_redirects_to_track_page():
+    # Bandcamp artist pages occasionally 301; the fetch must follow through.
+    def bandcamp(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/track/old-slug":
+            return httpx.Response(
+                301, headers={"Location": "https://coolband.bandcamp.com/track/new-slug"}
+            )
+        return httpx.Response(
+            200,
+            text=_bandcamp_page('<meta property="og:title" content="Song Title, by Artist Name">'),
+        )
+
+    handler = _router(bandcamp=bandcamp)
+    song = await _resolver(handler).resolve("https://coolband.bandcamp.com/track/old-slug")
+    assert song.isrc == "USEM38600088"
+
+
+# --- Redirect hardening (SSRF) + body cap + attribute spoofing ---------------
+
+
+def _recording_handler(route):
+    """Wrap a request->Response callable, recording every request it serves."""
+    calls: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return route(request)
+
+    return handler, calls
+
+
+@pytest.mark.parametrize(
+    "location",
+    [
+        "https://evil.example.com/",
+        "http://169.254.169.254/latest/meta-data/",
+        "https://bandcamp.com.evil.com/track/x",  # suffix-spoofed host
+        "ftp://coolband.bandcamp.com/track/x",  # right host, non-http scheme
+    ],
+)
+async def test_bandcamp_hostile_redirect_is_rejected_and_never_fetched(location):
+    # A redirect off the Bandcamp host family (or off http/https) must be
+    # refused as not-found — and the hostile target must never be requested.
+    def route(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(302, headers={"Location": location})
+
+    handler, calls = _recording_handler(route)
+    with pytest.raises(SongNotFoundError):
+        await _resolver(handler).resolve("https://coolband.bandcamp.com/track/x")
+    # Only the original Bandcamp fetch happened; the redirect target was not.
+    assert [c.url.host for c in calls] == ["coolband.bandcamp.com"]
+
+
+async def test_bandcamp_redirect_without_location_is_not_found():
+    handler, calls = _recording_handler(lambda r: httpx.Response(301))
+    with pytest.raises(SongNotFoundError):
+        await _resolver(handler).resolve("https://coolband.bandcamp.com/track/x")
+    assert len(calls) == 1
+
+
+async def test_bandcamp_redirect_chain_within_hop_budget_resolves():
+    # 3 hops (the max) then a 200 page: resolves, in exactly 4 Bandcamp fetches.
+    chain = {
+        "/track/a": "https://coolband.bandcamp.com/track/b",
+        "/track/b": "https://bandcamp.com/track/c",
+        "/track/c": "https://other.bandcamp.com/track/d",
+    }
+
+    def route(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "api.deezer.com":
+            return httpx.Response(200, json=_DEEZER_SEARCH_HIT)
+        target = chain.get(request.url.path)
+        if target:
+            return httpx.Response(302, headers={"Location": target})
+        return httpx.Response(
+            200,
+            text=_bandcamp_page('<meta property="og:title" content="Song Title, by Artist Name">'),
+        )
+
+    handler, calls = _recording_handler(route)
+    song = await _resolver(handler).resolve("https://coolband.bandcamp.com/track/a")
+    assert song.isrc == "USEM38600088"
+    bandcamp_calls = [c for c in calls if c.url.host.endswith("bandcamp.com")]
+    assert len(bandcamp_calls) == 4  # _MAX_REDIRECT_HOPS (3) + the final page
+
+
+async def test_bandcamp_redirect_loop_exhausts_hops_and_is_not_found():
+    # Same-family redirects forever: give up after the hop budget, not-found.
+    def route(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(301, headers={"Location": "https://coolband.bandcamp.com/track/x"})
+
+    handler, calls = _recording_handler(route)
+    with pytest.raises(SongNotFoundError):
+        await _resolver(handler).resolve("https://coolband.bandcamp.com/track/x")
+    assert len(calls) == 4  # _MAX_REDIRECT_HOPS (3) + 1 initial fetch, then stop
+
+
+async def test_bandcamp_relative_redirect_location_resolves():
+    # A relative Location resolves against the current URL and stays on-host.
+    def route(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "api.deezer.com":
+            return httpx.Response(200, json=_DEEZER_SEARCH_HIT)
+        if request.url.path == "/track/old-slug":
+            return httpx.Response(302, headers={"Location": "/track/new-slug"})
+        return httpx.Response(
+            200,
+            text=_bandcamp_page('<meta property="og:title" content="Song Title, by Artist Name">'),
+        )
+
+    handler, calls = _recording_handler(route)
+    song = await _resolver(handler).resolve("https://coolband.bandcamp.com/track/old-slug")
+    assert song.isrc == "USEM38600088"
+    assert calls[1].url.path == "/track/new-slug"
+    assert calls[1].url.host == "coolband.bandcamp.com"
+
+
+async def test_bandcamp_oversized_body_is_truncated_but_still_resolves():
+    # og:title sits in <head>; a body padded past the 1 MiB cap must not break
+    # resolution (the read is truncated, not buffered or failed).
+    page = _bandcamp_page('<meta property="og:title" content="Song Title, by Artist Name">') + (
+        "x" * (1 << 20)
+    )
+    handler = _router(bandcamp=lambda r: httpx.Response(200, text=page))
+    song = await _resolver(handler).resolve("https://coolband.bandcamp.com/track/big")
+    assert song.isrc == "USEM38600088"
+
+
+async def test_bandcamp_data_property_meta_cannot_spoof_og_title():
+    # data-property="og:title" is NOT property="og:title" — a decoy tag before
+    # the real one must not win the extraction.
+    seen: dict[str, str] = {}
+    handler = _router(
+        search=_search_spy(seen),
+        bandcamp=_bandcamp_ok(
+            '<meta data-property="og:title" content="Wrong Title, by Wrong Artist">'
+            '<meta property="og:title" content="Song Title, by Artist Name">'
+        ),
+    )
+    await _resolver(handler).resolve("https://coolband.bandcamp.com/track/x")
+    assert 'track:"Song Title"' in seen["q"]
+    assert 'artist:"Artist Name"' in seen["q"]
+
+
+async def test_bandcamp_data_content_attribute_cannot_spoof_content():
+    # Inside the real og:title tag, data-content= must not shadow content=.
+    seen: dict[str, str] = {}
+    handler = _router(
+        search=_search_spy(seen),
+        bandcamp=_bandcamp_ok(
+            '<meta data-content="Wrong Title, by Wrong Artist"'
+            ' property="og:title" content="Song Title, by Artist Name">'
+        ),
+    )
+    await _resolver(handler).resolve("https://coolband.bandcamp.com/track/x")
+    assert 'track:"Song Title"' in seen["q"]
+    assert 'artist:"Artist Name"' in seen["q"]
+
+
+async def test_bandcamp_page_without_og_title_is_not_found():
+    handler = _router(bandcamp=lambda r: httpx.Response(200, text="<html><head></head></html>"))
+    with pytest.raises(SongNotFoundError):
+        await _resolver(handler).resolve("https://x.bandcamp.com/track/mystery")
+
+
+async def test_bandcamp_empty_og_title_is_not_found():
+    handler = _router(bandcamp=_bandcamp_ok('<meta property="og:title" content="">'))
+    with pytest.raises(SongNotFoundError):
+        await _resolver(handler).resolve("https://x.bandcamp.com/track/mystery")
+
+
+async def test_bandcamp_non_track_url_is_invalid():
+    with pytest.raises(InvalidSongURLError):
+        await _resolver(_router()).resolve("https://artist.bandcamp.com/album/whatever")
+
+
+async def test_bandcamp_page_404_is_not_found():
+    handler = _router(bandcamp=lambda r: httpx.Response(404))
+    with pytest.raises(SongNotFoundError):
+        await _resolver(handler).resolve("https://x.bandcamp.com/track/gone")
+
+
+async def test_bandcamp_timeout_maps_to_resolver_timeout():
+    def bandcamp(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectTimeout("slow", request=request)
+
+    handler = _router(bandcamp=bandcamp)
+    with pytest.raises(ResolverTimeoutError):
+        await _resolver(handler).resolve("https://x.bandcamp.com/track/slow")
+
+
+async def test_bandcamp_server_error_maps_to_unavailable():
+    handler = _router(bandcamp=lambda r: httpx.Response(503))
+    with pytest.raises(ResolverUnavailableError):
+        await _resolver(handler).resolve("https://x.bandcamp.com/track/down")
+
+
+async def test_bandcamp_rate_limit_maps_to_resolver_rate_limit():
+    handler = _router(bandcamp=lambda r: httpx.Response(429))
+    with pytest.raises(ResolverRateLimitError):
+        await _resolver(handler).resolve("https://x.bandcamp.com/track/busy")
 
 
 # --------------------------------------------------------------------------- #

@@ -18,6 +18,9 @@ keyless. So every path funnels through Deezer:
 * YouTube (``youtube.com/watch``, ``youtu.be``, ``music.youtube.com``) — oEmbed
   gives a noisy "Artist - Title (Official Video)" string + author → cleaned →
   Deezer-search.
+* Bandcamp (``{artist}.bandcamp.com/track/{slug}``) — no oEmbed and no public
+  API, but track pages carry OpenGraph meta: ``og:title`` is reliably
+  "Track Title, by Artist Name" → split → Deezer-search.
 
 ``ResolvedSong`` (the endpoint's response model, including assembled platform
 links) also lives here now that Odesli is gone; the resolver itself returns the
@@ -26,9 +29,10 @@ leaner :class:`SongIdentity`.
 
 from __future__ import annotations
 
+import html
 import re
 from collections.abc import Callable
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, quote, urljoin, urlparse
 
 import httpx
 from pydantic import BaseModel
@@ -63,7 +67,8 @@ class ResolvedSong(BaseModel):
     thumbnail_url: str | None = None
     isrc: str | None = None
     # Only platforms that actually have a link for this song are present.
-    # Keys are a subset of {"spotify", "youtube", "deezer", "appleMusic"}.
+    # Keys are a subset of {"spotify", "appleMusic", "deezer", "youtube",
+    # "youtubeMusic", "bandcamp"}.
     platforms: dict[str, str]
 
 
@@ -110,6 +115,35 @@ def _looks_like_url(value: str) -> bool:
     return candidate.startswith("http://") or candidate.startswith("https://")
 
 
+# Bandcamp page fetch hardening (server-side fetch of a user-supplied URL):
+# redirects are followed manually, only within the Bandcamp host family, and
+# capped; the body read is capped because og:title always sits in <head>.
+_REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
+_MAX_REDIRECT_HOPS = 3
+_MAX_PAGE_BYTES = 1 << 20  # 1 MiB
+
+
+def _is_bandcamp_host(host: str) -> bool:
+    return host == "bandcamp.com" or host.endswith(".bandcamp.com")
+
+
+def _bandcamp_redirect_target(current: str, location: str | None) -> str:
+    """Absolute redirect target, validated to stay on the Bandcamp host family.
+
+    Custom artist domains are out of scope (MYS-200), so an off-family (or
+    missing/non-http) target is treated as an unsupported link — the same
+    :class:`SongNotFoundError` the user would get pasting it directly. Blindly
+    following would let a hostile redirect aim this server-side fetch at
+    internal targets (SSRF)."""
+    if not location:
+        raise SongNotFoundError("could not resolve that link")
+    target = urljoin(current, location)
+    host = (urlparse(target).hostname or "").lower()
+    if not _looks_like_url(target) or not _is_bandcamp_host(host):
+        raise SongNotFoundError("could not resolve that link")
+    return target
+
+
 # Trailing decorations to strip from a title before a Deezer search: a bracketed
 # group ("(Official Video)", "(Full Length Version)", "(Remastered 2022)", "[HD]")
 # that YouTube uploaders and the iTunes catalog append, or a trailing "| ..."
@@ -128,6 +162,42 @@ def _clean_title(title: str) -> str:
             break
         cleaned = stripped
     return cleaned or title.strip()
+
+
+# OpenGraph title extraction, in two steps so the content capture can never
+# cross a tag boundary: first isolate the og:title ``<meta>`` tag as a unit
+# (``[^>]*`` keeps the match inside one tag, in either attribute order), then
+# pull ``content`` out of that tag alone. A one-shot regex with the property
+# check *after* a free content capture would instead latch onto an earlier
+# meta's ``content=`` (og:site_name, og:type — every real Bandcamp page) and
+# swallow across tags. Tradeoff of ``[^>]*``: a literal unescaped ``>`` inside
+# a quoted attribute value would break the tag match — acceptable, since
+# server-rendered og tags entity-escape those.
+# The (?<![\w-]) lookbehinds keep hyphenated attributes like data-property= or
+# data-content= from matching (a plain \b would let them through).
+_OG_TITLE_META = re.compile(
+    r"""<meta\b[^>]*(?<![\w-])property=(["'])og:title\1[^>]*>""",
+    re.IGNORECASE,
+)
+# The quote around ``content`` is captured and backreferenced so a title
+# containing the *other* quote character (e.g. an apostrophe inside double
+# quotes) doesn't truncate the match.
+_META_CONTENT = re.compile(
+    r"""(?<![\w-])content=(["'])(?P<content>.*?)\1""",
+    re.IGNORECASE,
+)
+
+
+def _og_title(page: str) -> str | None:
+    """Extract a page's ``og:title`` meta content, unescaped, or None."""
+    tag = _OG_TITLE_META.search(page)
+    if not tag:
+        return None
+    match = _META_CONTENT.search(tag.group(0))
+    if not match:
+        return None
+    content = html.unescape(match.group("content")).strip()
+    return content or None
 
 
 def _topic_artist(author: str | None) -> str | None:
@@ -197,6 +267,51 @@ class LinkResolver:
         if not isinstance(payload, dict):
             raise SongNotFoundError("unexpected upstream response shape")
         return payload
+
+    async def _get_text(self, url: str) -> str:
+        """Like :meth:`_get_json`, for HTML pages, hardened for a server-side
+        fetch of a user-supplied URL:
+
+        * Redirects (Bandcamp artist pages occasionally 301) are followed
+          manually — only within the Bandcamp host family, capped at
+          ``_MAX_REDIRECT_HOPS`` — instead of ``follow_redirects=True``, which
+          would follow a hostile redirect anywhere (SSRF).
+        * The body read is capped at ``_MAX_PAGE_BYTES``; og:title sits in
+          ``<head>``, so anything bigger is truncated, not buffered.
+        """
+        current = url
+        for _ in range(_MAX_REDIRECT_HOPS + 1):
+            try:
+                async with self._client_factory() as client:
+                    async with client.stream("GET", current) as response:
+                        if response.status_code in _REDIRECT_STATUSES:
+                            current = _bandcamp_redirect_target(
+                                current, response.headers.get("location")
+                            )
+                            continue
+                        if response.status_code == 429:
+                            raise ResolverRateLimitError("upstream rate limit exceeded")
+                        if response.status_code in (400, 404):
+                            raise SongNotFoundError("could not resolve that link")
+                        if response.status_code >= 500:
+                            raise ResolverUnavailableError(
+                                f"upstream returned {response.status_code}"
+                            )
+                        if response.status_code != 200:
+                            raise ResolverUnavailableError(
+                                f"unexpected upstream status {response.status_code}"
+                            )
+                        body = bytearray()
+                        async for chunk in response.aiter_bytes():
+                            body.extend(chunk)
+                            if len(body) >= _MAX_PAGE_BYTES:
+                                break
+                        return bytes(body[:_MAX_PAGE_BYTES]).decode("utf-8", errors="replace")
+            except httpx.TimeoutException as exc:
+                raise ResolverTimeoutError("song lookup timed out") from exc
+            except httpx.HTTPError as exc:
+                raise ResolverUnavailableError("could not reach upstream") from exc
+        raise SongNotFoundError("could not resolve that link")
 
     # ----------------------------------------------------------------- #
     # Deezer search funnel — title (+ optional artist) -> canonical identity.
@@ -300,6 +415,20 @@ class LinkResolver:
             cleaned, _topic_artist(data.get("author_name"))
         )
 
+    async def _resolve_bandcamp(self, url: str) -> SongIdentity:
+        # No oEmbed and no public API — the track page's OpenGraph og:title
+        # ("Track Title, by Artist Name") is the only keyless identity source.
+        page = await self._get_text(url)
+        og_title = _og_title(page)
+        if not og_title:
+            raise SongNotFoundError("Bandcamp track not found")
+        # Split on the LAST ", by " — a title can itself contain ", by ", but
+        # an artist name essentially never does.
+        title, separator, artist = og_title.rpartition(", by ")
+        if not separator:
+            title, artist = og_title, ""
+        return await self._identify_via_deezer_search(_clean_title(title), artist.strip() or None)
+
     # ----------------------------------------------------------------- #
     # Dispatch.
     # ----------------------------------------------------------------- #
@@ -333,6 +462,11 @@ class LinkResolver:
 
         if host in ("youtube.com", "music.youtube.com", "m.youtube.com", "youtu.be"):
             return await self._resolve_youtube(url)
+
+        if _is_bandcamp_host(host):
+            if "/track/" not in path:
+                raise InvalidSongURLError("not a Bandcamp track URL")
+            return await self._resolve_bandcamp(url)
 
         raise SongNotFoundError("unsupported or unrecognized music link")
 

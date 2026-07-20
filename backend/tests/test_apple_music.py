@@ -36,6 +36,7 @@ from app.services.apple_music_client import (
     AppleMusicAuthError,
     AppleMusicClient,
     get_apple_music_client,
+    library_playlist_url,
 )
 
 CATALOG_HOST = "api.music.apple.com"
@@ -197,6 +198,11 @@ def test_library_url_points_at_the_library_not_the_playlist():
     assert LIBRARY_URL == "https://music.apple.com/library"
 
 
+def test_library_playlist_url_addresses_the_exact_playlist():
+    """Desktop-only direct link (MYS-214) — the web player resolves this path."""
+    assert library_playlist_url("p.ABC123") == "https://music.apple.com/library/playlist/p.ABC123"
+
+
 # --------------------------------------------------------------------------- #
 # Route fixtures
 # --------------------------------------------------------------------------- #
@@ -307,6 +313,7 @@ async def test_get_playlist_null_when_none_generated(apple_app, db_session):
     r = await apple_app.get(_url(mix_.id), headers=_auth(organizer.id))
     assert r.status_code == 200
     assert r.json()["playlist_url"] is None
+    assert r.json()["direct_playlist_url"] is None
 
 
 async def test_get_playlist_returns_own_link(apple_app, db_session):
@@ -323,6 +330,7 @@ async def test_get_playlist_returns_own_link(apple_app, db_session):
     await db_session.commit()
     r = await apple_app.get(_url(mix_.id), headers=_auth(organizer.id))
     assert r.json()["playlist_url"] == "https://music.apple.com/library"
+    assert r.json()["direct_playlist_url"] == "https://music.apple.com/library/playlist/p.MINE"
     assert r.json()["playlist_name"] == "Mix: Mix 1"
 
 
@@ -336,6 +344,7 @@ async def test_get_playlist_is_per_user_not_shared(apple_app, db_session):
     await db_session.commit()
     r = await apple_app.get(_url(mix_.id), headers=_auth(other.id))
     assert r.json()["playlist_url"] is None
+    assert r.json()["direct_playlist_url"] is None
 
 
 async def test_get_playlist_forbidden_for_non_member(apple_app, db_session):
@@ -363,6 +372,7 @@ async def test_generate_creates_playlist_and_persists_it(apple_app, db_session):
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["playlist_url"] == "https://music.apple.com/library"
+    assert body["direct_playlist_url"].startswith("https://music.apple.com/library/playlist/")
     assert body["playlist_name"]
     assert body["track_count"] == 1
     assert body["total_count"] == 1
@@ -371,6 +381,7 @@ async def test_generate_creates_playlist_and_persists_it(apple_app, db_session):
     # Persisted, so the link survives a reload.
     follow_up = await apple_app.get(_url(mix_.id), headers=_auth(organizer.id))
     assert follow_up.json()["playlist_url"] == body["playlist_url"]
+    assert follow_up.json()["direct_playlist_url"] == body["direct_playlist_url"]
 
 
 async def test_generate_reports_unmatched_tracks(apple_app, db_session):
@@ -585,6 +596,7 @@ async def test_get_playlist_name_null_for_pre_mys190_rows(apple_app, db_session)
 
     r = await apple_app.get(_url(mix_.id), headers=_auth(organizer.id))
     assert r.json()["playlist_url"] == "https://music.apple.com/library"
+    assert r.json()["direct_playlist_url"] == "https://music.apple.com/library/playlist/p.OLD"
     assert r.json()["playlist_name"] is None
 
 

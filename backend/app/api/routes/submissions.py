@@ -207,7 +207,7 @@ async def _duplicate_in_mix(
 
 async def _duplicate_in_prior_club_mixes(
     payload: SubmissionCreate,
-    league_id: uuid.UUID,
+    club_id: uuid.UUID,
     round_id: uuid.UUID,
     db: AsyncSession,
 ) -> bool:
@@ -217,7 +217,7 @@ async def _duplicate_in_prior_club_mixes(
                 exists().where(
                     _identity_clause(payload),
                     Submission.mix_id == Mix.id,
-                    Mix.club_id == league_id,
+                    Mix.club_id == club_id,
                     Mix.id != round_id,
                 )
             )
@@ -299,7 +299,7 @@ async def submit_song(
             status_code=status.HTTP_409_CONFLICT,
             detail="oops, someone else has great taste too — this track is already in this mystery mix",
         )
-    league_repeat = await _duplicate_in_prior_club_mixes(payload, mix_.club_id, round_id, db)
+    club_repeat = await _duplicate_in_prior_club_mixes(payload, mix_.club_id, round_id, db)
 
     platform_links, youtube_video_id = await _assemble_track(payload, assembler, youtube)
     mode = await _resolve_mode(
@@ -315,7 +315,7 @@ async def submit_song(
     await db.flush()
     await db.commit()
     await db.refresh(submission)
-    return _to_response(submission, league_previously_submitted=league_repeat)
+    return _to_response(submission, league_previously_submitted=club_repeat)
 
 
 @router.patch("/mixes/{round_id}/submissions/{submission_id}", response_model=SubmissionResponse)
@@ -353,7 +353,7 @@ async def edit_song(
             status_code=status.HTTP_409_CONFLICT,
             detail="oops, someone else has great taste too — this track is already in this mystery mix",
         )
-    league_repeat = await _duplicate_in_prior_club_mixes(payload, mix_.club_id, round_id, db)
+    club_repeat = await _duplicate_in_prior_club_mixes(payload, mix_.club_id, round_id, db)
 
     platform_links, youtube_video_id = await _assemble_track(payload, assembler, youtube)
     _apply_track(submission, payload, platform_links, youtube_video_id)
@@ -364,7 +364,7 @@ async def edit_song(
 
     await db.commit()
     await db.refresh(submission)
-    return _to_response(submission, league_previously_submitted=league_repeat)
+    return _to_response(submission, league_previously_submitted=club_repeat)
 
 
 @router.delete(

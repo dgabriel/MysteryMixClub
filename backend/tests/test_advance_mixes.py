@@ -589,7 +589,7 @@ async def test_branch5_close_partial_votes_autoopens_next(run_job, db_session, e
     assert _approx(nxt.submission_deadline, now + timedelta(hours=72), tol_seconds=120)
 
     subjects = [subj for (_to, subj, _h) in email_spy.sends]
-    assert sum("results are in" in s for s in subjects) == 2  # round_closed × 2 members
+    assert sum("results are in" in s for s in subjects) == 2  # mix_closed × 2 members
     assert sum("open for submissions" in s for s in subjects) == 2  # submission_open × 2
 
 
@@ -646,8 +646,8 @@ async def test_branch5_final_round_completes_league(run_job, db_session, email_s
     assert league_after.state == "complete"
 
     subjects = [subj for (_to, subj, _h) in email_spy.sends]
-    assert sum("results are in" in s for s in subjects) == 2  # round_closed × 2
-    assert sum("that's a wrap" in s for s in subjects) == 2  # league_complete × 2
+    assert sum("results are in" in s for s in subjects) == 2  # mix_closed × 2
+    assert sum("that's a wrap" in s for s in subjects) == 2  # club_complete × 2
 
 
 # ========================================================================== #

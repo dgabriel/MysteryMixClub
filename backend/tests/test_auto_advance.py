@@ -365,7 +365,7 @@ async def _seed_voting_round(
 
 async def test_last_vote_closes_and_opens_next_round(session_factory, db_session, email_spy):
     # Scenario 6: all playing submitters vote -> round closes, next pending round
-    # auto-opens, current_round advances, round_closed + submission_open fire.
+    # auto-opens, current_round advances, mix_closed + submission_open fire.
     seed = await _seed_voting_round(db_session, n_players=3, total_mixes=2, with_next_pending=True)
     round_id, league_id = seed["mix_id"], seed["club_id"]
     p = seed["player_ids"]
@@ -511,7 +511,7 @@ async def test_all_vibing_round_chains_to_closed(session_factory, db_session, em
     assert (await _league(db_session, league_id)).current_mix == 2
     subjects = _subjects(email_spy)
     # voting_open is suppressed — the round closed in the same breath as it opened
-    # for voting, so nobody could have voted. Only round_closed + next submission_open.
+    # for voting, so nobody could have voted. Only mix_closed + next submission_open.
     assert not any("voting is open" in s for s in subjects)
     assert any("results are in" in s for s in subjects)
     assert any("open for submissions" in s for s in subjects)

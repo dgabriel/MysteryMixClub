@@ -113,10 +113,10 @@ class SubmissionResponse(WireModel):
     note: str | None
     participation_mode: str
     created_at: datetime
-    league_previously_submitted: bool = False
+    club_previously_submitted: bool = False
 
 
-def _to_response(s: Submission, *, league_previously_submitted: bool = False) -> SubmissionResponse:
+def _to_response(s: Submission, *, club_previously_submitted: bool = False) -> SubmissionResponse:
     source, source_url = source_fields(s.source_key)
     return SubmissionResponse(
         id=str(s.id),
@@ -132,7 +132,7 @@ def _to_response(s: Submission, *, league_previously_submitted: bool = False) ->
         note=s.note,
         participation_mode=s.participation_mode,
         created_at=s.created_at,
-        league_previously_submitted=league_previously_submitted,
+        club_previously_submitted=club_previously_submitted,
     )
 
 
@@ -315,7 +315,7 @@ async def submit_song(
     await db.flush()
     await db.commit()
     await db.refresh(submission)
-    return _to_response(submission, league_previously_submitted=club_repeat)
+    return _to_response(submission, club_previously_submitted=club_repeat)
 
 
 @router.patch("/mixes/{round_id}/submissions/{submission_id}", response_model=SubmissionResponse)
@@ -364,7 +364,7 @@ async def edit_song(
 
     await db.commit()
     await db.refresh(submission)
-    return _to_response(submission, league_previously_submitted=club_repeat)
+    return _to_response(submission, club_previously_submitted=club_repeat)
 
 
 @router.delete(

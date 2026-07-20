@@ -198,7 +198,7 @@ function mine(overrides: Partial<SubmissionResult> = {}): SubmissionResult {
     note: null,
     participation_mode: "playing",
     created_at: "2026-01-01T00:00:00Z",
-    league_previously_submitted: false,
+    club_previously_submitted: false,
     ...overrides,
   };
 }
@@ -415,7 +415,7 @@ describe("MixDetailRoute", () => {
       note: null,
       participation_mode: "playing",
       created_at: "2026-01-01T00:00:00Z",
-      league_previously_submitted: false,
+      club_previously_submitted: false,
     });
 
     renderMix();

@@ -800,13 +800,13 @@ async def test_source_key_repeat_across_prior_mix_flags_but_allows(session_facto
             _sub_url(mix1.id), json=_source_body(key), headers=_auth(organizer.id)
         )
         assert first.status_code == 201, first.text
-        assert first.json()["league_previously_submitted"] is False
+        assert first.json()["club_previously_submitted"] is False
         repeat = await client.post(
             _sub_url(mix2.id), json=_source_body(key), headers=_auth(organizer.id)
         )
     # A repeat in a later mix of the same club is allowed, but flagged.
     assert repeat.status_code == 201, repeat.text
-    assert repeat.json()["league_previously_submitted"] is True
+    assert repeat.json()["club_previously_submitted"] is True
 
 
 # --------------------------------------------------------------------------- #

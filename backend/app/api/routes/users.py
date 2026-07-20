@@ -93,7 +93,7 @@ class ExportNote(WireModel):
     created_at: datetime
 
 
-class ExportLeagueMembership(WireModel):
+class ExportClubMembership(WireModel):
     league_id: str
     league_name: str
     role: str
@@ -106,7 +106,7 @@ class UserDataExportResponse(WireModel):
     submissions: list[ExportSubmission]
     votes: list[ExportVote]
     notes: list[ExportNote]
-    league_memberships: list[ExportLeagueMembership]
+    club_memberships: list[ExportClubMembership]
 
 
 def _to_profile(user: User, settings: Settings) -> UserProfileResponse:
@@ -188,8 +188,8 @@ async def export_me(
             )
             for n in notes
         ],
-        league_memberships=[
-            ExportLeagueMembership(
+        club_memberships=[
+            ExportClubMembership(
                 league_id=str(member.club_id),
                 league_name=club_name,
                 role=member.role,

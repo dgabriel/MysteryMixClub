@@ -678,7 +678,7 @@ export type SubmissionResult = {
   note: string | null;
   participation_mode: string;
   created_at: string;
-  league_previously_submitted: boolean;
+  club_previously_submitted: boolean;
 };
 
 /** One entry in a mix's voting playlist. Anonymous for everyone but the

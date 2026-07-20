@@ -128,7 +128,7 @@ async def test_export_empty_for_a_user_with_no_activity(client, db_session):
     assert body["submissions"] == []
     assert body["votes"] == []
     assert body["notes"] == []
-    assert body["league_memberships"] == []
+    assert body["club_memberships"] == []
 
 
 async def test_export_includes_own_submission(client, db_session):
@@ -198,7 +198,7 @@ async def test_export_includes_club_membership(client, db_session):
     resp = await client.get(EXPORT_URL, headers=_auth_header(organizer.id))
 
     assert resp.status_code == 200, resp.text
-    memberships = resp.json()["league_memberships"]
+    memberships = resp.json()["club_memberships"]
     assert len(memberships) == 1
     assert memberships[0]["club_id"] == str(club.id)
     assert memberships[0]["club_name"] == "Fall Mix"
@@ -217,5 +217,5 @@ async def test_export_never_includes_another_users_data(client, db_session):
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["submissions"] == []
-    assert body["league_memberships"] == []
+    assert body["club_memberships"] == []
     assert body["profile"]["email"] == "stranger@example.com"

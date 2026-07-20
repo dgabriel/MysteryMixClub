@@ -51,7 +51,7 @@ ones. As new ideas land, add a flag here.
 | **Introduced** | MYS-109 (email notifications) |
 | **Use in** | staging (testing). **Leave off in production.** |
 
-**What it does.** When `true`, **every outbound email** — round-lifecycle
+**What it does.** When `true`, **every outbound email** — mystery-mix-lifecycle
 notifications *and* magic links — is redirected to `EMAIL_TEST_RECIPIENT` instead
 of the real recipient. The intended recipient is preserved in the subject as
 `[→ real@addr] <subject>` so the test inbox shows who each message was for.
@@ -67,7 +67,7 @@ without it the app logs emails (`ConsoleEmailSender`) regardless of this flag.
 1. Set in the staging env: `RESEND_API_KEY=…`, `EMAIL_TEST_RECIPIENT=you+mmc-test@gmail.com`,
    `EMAIL_REDIRECT_TO_TEST=true`, `API_BASE_URL=https://<staging-api-host>`.
 2. Restart the API service to pick up the env.
-3. Drive a round: open submission → open voting → close. Each transition emails;
+3. Drive a mystery mix: open submission → open voting → close. Each transition emails;
    all land in the test inbox, subject-tagged with the real recipient.
 4. Verify deliverability via Gmail "Show original" (SPF/DKIM/DMARC pass) and the
    native Unsubscribe button (from the `List-Unsubscribe` header). See MYS-123.

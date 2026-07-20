@@ -223,14 +223,14 @@ Then push to `develop` (or re-run the workflow) to trigger a deploy.
 
 ## 7. The deadline force-advance job (MYS-145/162)
 
-Rounds close on quorum **or** a deadline, whichever comes first. Quorum is handled
-live by the API; the deadline is handled by `app.jobs.advance_mixes`, run on a
-15-minute systemd timer. Each run, per live round, it: stamps a missing deadline
-from the league window; sends the "about 12 hours left" submit/vote warning once
-when the deadline is 1–12h away (only for windows longer than 12h); force-advances
-a submission round to voting (or nudges the organizer once if nobody submitted —
-that round then waits for a manual advance); and closes a voting round whose
-deadline has passed.
+Mystery mixes close on quorum **or** a deadline, whichever comes first. Quorum is
+handled live by the API; the deadline is handled by `app.jobs.advance_mixes`, run
+on a 15-minute systemd timer. Each run, per live mix, it: stamps a missing
+deadline from the club window; sends the "about 12 hours left" submit/vote
+warning once when the deadline is 1–12h away (only for windows longer than 12h);
+force-advances a submission mix to voting (or nudges the organizer once if
+nobody submitted — that mix then waits for a manual advance); and closes a
+voting mix whose deadline has passed.
 
 **Units** (installed from `scripts/`): `mysterymixclub-advance-mixes.service`
 (`Type=oneshot`, same user/env/venv as the API) and
@@ -270,7 +270,7 @@ Re-enable with `sudo systemctl enable --now mysterymixclub-advance-mixes.timer`.
 ## Enabling Apple Music (MYS-104)
 
 Apple Music is **off** until three credentials are present, and the app treats
-that as a normal state: the round page renders no Apple UI at all, and Apple
+that as a normal state: the mystery mix page renders no Apple UI at all, and Apple
 per-track links fall back to the keyless iTunes lookup. So this can be done long
 after the code ships, and skipping it breaks nothing.
 

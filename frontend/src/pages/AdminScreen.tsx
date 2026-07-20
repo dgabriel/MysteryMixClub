@@ -17,7 +17,7 @@ type AdminScreenProps = {
   onDeleteUser: (userId: string) => void;
   deletingUserId: string | null;
   deleteError?: string | null;
-  /** Platform invite (MYS-182): grants signup only, no league attachment. */
+  /** Platform invite (MYS-182): grants signup only, no club attachment. */
   platformInviteUrl: string | null;
   generatingInvite: boolean;
   inviteError?: string | null;
@@ -26,7 +26,7 @@ type AdminScreenProps = {
 
 /**
  * Thin platform-admin page: search users by email, then hard-delete a match
- * behind a typed confirm; and generate a league-less signup invite (MYS-182).
+ * behind a typed confirm; and generate a club-less signup invite (MYS-182).
  * Content-only — the shared TopNav is rendered by AuthedLayout. The single
  * Rust signal on this screen is the destructive confirm action; everything
  * else, including the invite section, stays in the Sage/Ink family.

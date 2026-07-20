@@ -5,17 +5,17 @@ import {
   ApiError,
   deleteAccount,
   exportMyData,
-  getLeagues,
+  getClubs,
   getMe,
   updateDisplayName,
   updatePreferredService,
-  type League,
+  type Club,
 } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 
 /**
  * Protected profile route. Edits display name + preferred streaming service,
- * surfaces archived (completed) leagues, handles account deletion, and exposes
+ * surfaces archived (completed) clubs, handles account deletion, and exposes
  * the log-out-of-all-devices action (MYS-36, MYS-61).
  */
 export function ProfileRoute() {
@@ -25,7 +25,7 @@ export function ProfileRoute() {
   const [preferredService, setPreferredService] = useState<
     "spotify" | "youtube" | "deezer" | null
   >(null);
-  const [archived, setArchived] = useState<League[]>([]);
+  const [archived, setArchived] = useState<Club[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,9 +49,9 @@ export function ProfileRoute() {
     let cancelled = false;
     void (async () => {
       try {
-        const [leagues, profile] = await Promise.all([getLeagues(), getMe()]);
+        const [clubs, profile] = await Promise.all([getClubs(), getMe()]);
         if (cancelled) return;
-        const completed = leagues
+        const completed = clubs
           .filter((l) => l.state === "complete")
           .sort((a, b) => (b.completed_at ?? "").localeCompare(a.completed_at ?? ""));
         setArchived(completed);
@@ -174,10 +174,10 @@ export function ProfileRoute() {
       displayName={displayName}
       email={email}
       preferredService={preferredService}
-      archivedLeagues={archived}
+      archivedClubs={archived}
       loading={loading}
       error={error}
-      onOpenLeague={(id) => navigate(`/clubs/${id}`)}
+      onOpenClub={(id) => navigate(`/clubs/${id}`)}
       onSaveName={handleSaveName}
       saving={saving}
       saveError={saveError}

@@ -1,15 +1,15 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CreateLeagueScreen } from "./CreateLeagueScreen";
-import { ApiError, createLeague } from "../services/api";
+import { CreateClubScreen } from "./CreateClubScreen";
+import { ApiError, createClub } from "../services/api";
 
 /**
- * Protected create-league route. Submits the form to the backend and, on
- * success, drops the user straight into the new league's home (replace so the
+ * Protected create-club route. Submits the form to the backend and, on
+ * success, drops the user straight into the new club's home (replace so the
  * empty form isn't in the back stack). An ApiError keeps the user on the screen
  * with a calm message.
  */
-export function CreateLeagueRoute() {
+export function CreateClubRoute() {
   const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,8 +27,8 @@ export function CreateLeagueRoute() {
     setSubmitting(true);
     setError(null);
     try {
-      const league = await createLeague(input);
-      navigate(`/clubs/${league.id}`, { replace: true });
+      const club = await createClub(input);
+      navigate(`/clubs/${club.id}`, { replace: true });
     } catch (err) {
       setError(
         err instanceof ApiError ? err.message : "couldn't create the club. try again.",
@@ -38,7 +38,7 @@ export function CreateLeagueRoute() {
   }
 
   return (
-    <CreateLeagueScreen
+    <CreateClubScreen
       onSubmit={handleSubmit}
       submitting={submitting}
       error={error}

@@ -2,22 +2,22 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { LeagueHomeRoute } from "./LeagueHomeRoute";
+import { ClubHomeRoute } from "./ClubHomeRoute";
 import { AuthedLayout } from "../components/AuthedLayout";
 import {
   ApiError,
   createInvite,
-  deleteLeague,
-  getLeague,
-  getLeagueLeaderboard,
-  getLeagueMembers,
+  deleteClub,
+  getClub,
+  getClubLeaderboard,
+  getClubMembers,
   getResults,
-  getRounds,
+  getMixes,
   removeMember,
-  updateLeague,
+  updateClub,
   updateMemberRole,
 } from "../services/api";
-import type { Invite, League, LeaderboardEntry, LeagueMember, Round, RoundResults } from "../services/api";
+import type { Invite, Club, LeaderboardEntry, ClubMember, Mix, MixResults } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 
 // Mock the API module (no network). Keep ApiError real.
@@ -25,16 +25,16 @@ vi.mock("../services/api", async () => {
   const actual = await vi.importActual<typeof import("../services/api")>("../services/api");
   return {
     ...actual,
-    getLeague: vi.fn(),
-    getLeagueLeaderboard: vi.fn(),
-    getLeagueMembers: vi.fn(),
-    getRounds: vi.fn(),
+    getClub: vi.fn(),
+    getClubLeaderboard: vi.fn(),
+    getClubMembers: vi.fn(),
+    getMixes: vi.fn(),
     getResults: vi.fn(),
-    createRound: vi.fn(),
-    updateLeague: vi.fn(),
+    createMix: vi.fn(),
+    updateClub: vi.fn(),
     removeMember: vi.fn(),
     createInvite: vi.fn(),
-    deleteLeague: vi.fn(),
+    deleteClub: vi.fn(),
     updateMemberRole: vi.fn(),
   };
 });
@@ -44,15 +44,15 @@ vi.mock("../hooks/useAuth", () => ({
   useAuth: vi.fn(),
 }));
 
-const mockGetLeague = vi.mocked(getLeague);
-const mockGetLeagueLeaderboard = vi.mocked(getLeagueLeaderboard);
-const mockGetLeagueMembers = vi.mocked(getLeagueMembers);
-const mockGetRounds = vi.mocked(getRounds);
+const mockGetClub = vi.mocked(getClub);
+const mockGetClubLeaderboard = vi.mocked(getClubLeaderboard);
+const mockGetClubMembers = vi.mocked(getClubMembers);
+const mockGetMixes = vi.mocked(getMixes);
 const mockGetResults = vi.mocked(getResults);
-const mockUpdateLeague = vi.mocked(updateLeague);
+const mockUpdateClub = vi.mocked(updateClub);
 const mockRemoveMember = vi.mocked(removeMember);
 const mockCreateInvite = vi.mocked(createInvite);
-const mockDeleteLeague = vi.mocked(deleteLeague);
+const mockDeleteClub = vi.mocked(deleteClub);
 const mockUpdateMemberRole = vi.mocked(updateMemberRole);
 const mockUseAuth = vi.mocked(useAuth);
 
@@ -60,9 +60,9 @@ const ORGANIZER_ID = "org-1111";
 const MEMBER_ID = "mem-2222";
 const CO_ORGANIZER_ID = "co-3333";
 
-function leagueWith(overrides: Partial<League> = {}): League {
+function clubWith(overrides: Partial<Club> = {}): Club {
   return {
-    id: "league-1",
+    id: "club-1",
     name: "Friday Mixtape",
     description: "the vibe",
     organizer_id: ORGANIZER_ID,
@@ -80,7 +80,7 @@ function leagueWith(overrides: Partial<League> = {}): League {
   };
 }
 
-function members(): LeagueMember[] {
+function members(): ClubMember[] {
   return [
     {
       user_id: ORGANIZER_ID,
@@ -102,7 +102,7 @@ function members(): LeagueMember[] {
 // A three-member roster including a promoted co-organizer (MYS-99): the fixed
 // organizer, a co-organizer (is_admin true, is_organizer false), and a plain
 // member.
-function membersWithCoOrganizer(): LeagueMember[] {
+function membersWithCoOrganizer(): ClubMember[] {
   return [
     ...members(),
     {
@@ -115,7 +115,7 @@ function membersWithCoOrganizer(): LeagueMember[] {
   ];
 }
 
-function leaderboardFor(memberList: LeagueMember[]): LeaderboardEntry[] {
+function leaderboardFor(memberList: ClubMember[]): LeaderboardEntry[] {
   return memberList.map((m, i) => ({
     user_id: m.user_id,
     display_name: m.display_name,
@@ -127,7 +127,7 @@ function leaderboardFor(memberList: LeagueMember[]): LeaderboardEntry[] {
 function inviteWith(token: string): Invite {
   return {
     id: "invite-1",
-    club_id: "league-1",
+    club_id: "club-1",
     token,
     created_by: ORGANIZER_ID,
     created_at: "2026-01-03T00:00:00Z",
@@ -135,10 +135,10 @@ function inviteWith(token: string): Invite {
   };
 }
 
-function closedRound(overrides: Partial<Round> = {}): Round {
+function closedMix(overrides: Partial<Mix> = {}): Mix {
   return {
-    id: "round-1",
-    club_id: "league-1",
+    id: "mix-1",
+    club_id: "club-1",
     mix_number: 1,
     theme: "late summer feels",
     state: "closed",
@@ -158,9 +158,9 @@ function closedRound(overrides: Partial<Round> = {}): Round {
   };
 }
 
-function resultsWith(overrides: Partial<RoundResults> = {}): RoundResults {
+function resultsWith(overrides: Partial<MixResults> = {}): MixResults {
   return {
-    mix_id: "round-1",
+    mix_id: "mix-1",
     mix_number: 1,
     theme: "late summer feels",
     state: "closed",
@@ -209,14 +209,14 @@ function setAuth(userId: string | null) {
   });
 }
 
-function renderLeague(id = "league-1") {
+function renderClub(id = "club-1") {
   return render(
     <MemoryRouter initialEntries={[`/clubs/${id}`]}>
       <Routes>
         {/* Mirror production: the route lives under AuthedLayout, which renders
             the shared TopNav once above the routed content. */}
         <Route element={<AuthedLayout />}>
-          <Route path="/clubs/:id" element={<LeagueHomeRoute />} />
+          <Route path="/clubs/:id" element={<ClubHomeRoute />} />
         </Route>
         <Route path="/home" element={<div>HOME CONTENT</div>} />
       </Routes>
@@ -224,33 +224,33 @@ function renderLeague(id = "league-1") {
   );
 }
 
-describe("LeagueHomeRoute", () => {
+describe("ClubHomeRoute", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetLeague.mockResolvedValue(leagueWith());
-    mockGetLeagueLeaderboard.mockResolvedValue([
+    mockGetClub.mockResolvedValue(clubWith());
+    mockGetClubLeaderboard.mockResolvedValue([
       { user_id: ORGANIZER_ID, display_name: "Ada", vote_count: 0, rank: 1 },
       { user_id: MEMBER_ID, display_name: "Bo", vote_count: 0, rank: 2 },
     ] satisfies LeaderboardEntry[]);
-    mockGetLeagueMembers.mockResolvedValue(members());
-    mockGetRounds.mockResolvedValue([]);
+    mockGetClubMembers.mockResolvedValue(members());
+    mockGetMixes.mockResolvedValue([]);
     mockGetResults.mockResolvedValue(resultsWith());
     setAuth(ORGANIZER_ID);
   });
 
-  it("happy path: reads the id param, fetches league + members, renders name and members", async () => {
-    renderLeague("league-1");
+  it("happy path: reads the id param, fetches club + members, renders name and members", async () => {
+    renderClub("club-1");
 
     expect(await screen.findByText("Friday Mixtape")).toBeInTheDocument();
     expect(screen.getByText("Ada")).toBeInTheDocument();
     expect(screen.getByText("Bo")).toBeInTheDocument();
-    expect(mockGetLeague).toHaveBeenCalledWith("league-1");
-    expect(mockGetLeagueMembers).toHaveBeenCalledWith("league-1");
+    expect(mockGetClub).toHaveBeenCalledWith("club-1");
+    expect(mockGetClubMembers).toHaveBeenCalledWith("club-1");
   });
 
   it("isOrganizer: organizer controls present when userId === organizer_id", async () => {
     setAuth(ORGANIZER_ID);
-    renderLeague();
+    renderClub();
 
     await screen.findByText("Friday Mixtape");
     // The edit toggle is organizer-only.
@@ -261,25 +261,25 @@ describe("LeagueHomeRoute", () => {
 
   it("not organizer: organizer controls absent when userId !== organizer_id", async () => {
     setAuth(MEMBER_ID);
-    renderLeague();
+    renderClub();
 
     await screen.findByText("Friday Mixtape");
     expect(screen.queryByRole("button", { name: /^edit$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^remove$/i })).not.toBeInTheDocument();
   });
 
-  it("error: getLeague rejecting with 403 shows a calm error and does not crash", async () => {
-    mockGetLeague.mockRejectedValue(new ApiError(403, "forbidden"));
-    renderLeague();
+  it("error: getClub rejecting with 403 shows a calm error and does not crash", async () => {
+    mockGetClub.mockRejectedValue(new ApiError(403, "forbidden"));
+    renderClub();
 
     // The error state renders a back affordance; the screen does not throw.
     expect(await screen.findByRole("button", { name: /^back$/i })).toBeInTheDocument();
     expect(screen.queryByText("Friday Mixtape")).not.toBeInTheDocument();
   });
 
-  it("error: getLeague rejecting with 404 shows a calm error and does not crash", async () => {
-    mockGetLeague.mockRejectedValue(new ApiError(404, "not found"));
-    renderLeague();
+  it("error: getClub rejecting with 404 shows a calm error and does not crash", async () => {
+    mockGetClub.mockRejectedValue(new ApiError(404, "not found"));
+    renderClub();
 
     expect(await screen.findByRole("button", { name: /^back$/i })).toBeInTheDocument();
   });
@@ -288,34 +288,34 @@ describe("LeagueHomeRoute", () => {
     mockCreateInvite.mockResolvedValue(inviteWith("tok-xyz"));
     const user = userEvent.setup();
 
-    renderLeague();
+    renderClub();
     await screen.findByText("Friday Mixtape");
 
     await user.click(screen.getByRole("button", { name: /^invite$/i }));
 
-    expect(mockCreateInvite).toHaveBeenCalledWith("league-1");
+    expect(mockCreateInvite).toHaveBeenCalledWith("club-1");
     const field = (await screen.findByLabelText(/share link/i)) as HTMLInputElement;
     expect(field.value).toContain("/invite/tok-xyz");
     expect(screen.getByText(/expires in 48 hours/i)).toBeInTheDocument();
   });
 
-  it("organizer update: submitting the edit form calls updateLeague; a 409 shows updateError", async () => {
-    mockUpdateLeague.mockRejectedValue(new ApiError(409, "name taken"));
+  it("organizer update: submitting the edit form calls updateClub; a 409 shows updateError", async () => {
+    mockUpdateClub.mockRejectedValue(new ApiError(409, "name taken"));
     const user = userEvent.setup();
 
-    renderLeague();
+    renderClub();
     await screen.findByText("Friday Mixtape");
 
     await user.click(screen.getByRole("button", { name: /^edit$/i }));
     const nameInput = screen.getByLabelText(/^name$/i);
     await user.clear(nameInput);
-    await user.type(nameInput, "Renamed League");
+    await user.type(nameInput, "Renamed Club");
     await user.click(screen.getByRole("button", { name: /^save$/i }));
 
-    expect(mockUpdateLeague).toHaveBeenCalledTimes(1);
-    expect(mockUpdateLeague).toHaveBeenCalledWith(
-      "league-1",
-      expect.objectContaining({ name: "Renamed League" }),
+    expect(mockUpdateClub).toHaveBeenCalledTimes(1);
+    expect(mockUpdateClub).toHaveBeenCalledWith(
+      "club-1",
+      expect.objectContaining({ name: "Renamed Club" }),
     );
     expect(await screen.findByText(/name taken/i)).toBeInTheDocument();
   });
@@ -324,13 +324,13 @@ describe("LeagueHomeRoute", () => {
   // the "days"/"hours" labels between the two DeadlineWindowFields, so we look
   // them up by id rather than label text. ---
 
-  it("deadline windows: opening the edit form pre-fills submission/voting windows from the league's current hours", async () => {
-    mockGetLeague.mockResolvedValue(
-      leagueWith({ submission_window_hours: 102, voting_window_hours: 72 }),
+  it("deadline windows: opening the edit form pre-fills submission/voting windows from the club's current hours", async () => {
+    mockGetClub.mockResolvedValue(
+      clubWith({ submission_window_hours: 102, voting_window_hours: 72 }),
     );
     const user = userEvent.setup();
 
-    const { container } = renderLeague();
+    const { container } = renderClub();
     await screen.findByText("Friday Mixtape");
 
     await user.click(screen.getByRole("button", { name: /^edit$/i }));
@@ -350,15 +350,15 @@ describe("LeagueHomeRoute", () => {
   });
 
   it("deadline windows: changing one window and saving includes only the changed window's hours (diff-based)", async () => {
-    mockGetLeague.mockResolvedValue(
-      leagueWith({ submission_window_hours: 72, voting_window_hours: 72 }),
+    mockGetClub.mockResolvedValue(
+      clubWith({ submission_window_hours: 72, voting_window_hours: 72 }),
     );
-    mockUpdateLeague.mockResolvedValue(
-      leagueWith({ submission_window_hours: 96, voting_window_hours: 72 }),
+    mockUpdateClub.mockResolvedValue(
+      clubWith({ submission_window_hours: 96, voting_window_hours: 72 }),
     );
     const user = userEvent.setup();
 
-    const { container } = renderLeague();
+    const { container } = renderClub();
     await screen.findByText("Friday Mixtape");
 
     await user.click(screen.getByRole("button", { name: /^edit$/i }));
@@ -367,25 +367,25 @@ describe("LeagueHomeRoute", () => {
     });
     await user.click(screen.getByRole("button", { name: /^save$/i }));
 
-    expect(mockUpdateLeague).toHaveBeenCalledTimes(1);
-    const [, input] = mockUpdateLeague.mock.calls[0];
+    expect(mockUpdateClub).toHaveBeenCalledTimes(1);
+    const [, input] = mockUpdateClub.mock.calls[0];
     expect(input).toMatchObject({ submission_window_hours: 96 });
     expect(input).not.toHaveProperty("voting_window_hours");
   });
 
   it("deadline windows: an out-of-range window blocks the entire save (name change withheld too) and shows windowError", async () => {
-    mockGetLeague.mockResolvedValue(
-      leagueWith({ submission_window_hours: 72, voting_window_hours: 72 }),
+    mockGetClub.mockResolvedValue(
+      clubWith({ submission_window_hours: 72, voting_window_hours: 72 }),
     );
     const user = userEvent.setup();
 
-    const { container } = renderLeague();
+    const { container } = renderClub();
     await screen.findByText("Friday Mixtape");
 
     await user.click(screen.getByRole("button", { name: /^edit$/i }));
     const nameInput = screen.getByLabelText(/^name$/i);
     await user.clear(nameInput);
-    await user.type(nameInput, "Renamed League");
+    await user.type(nameInput, "Renamed Club");
     fireEvent.change(container.querySelector("#edit-submission-window-days") as HTMLInputElement, {
       target: { value: "0" },
     });
@@ -395,30 +395,30 @@ describe("LeagueHomeRoute", () => {
     await user.click(screen.getByRole("button", { name: /^save$/i }));
 
     expect(await screen.findByText(/submission windows need at least 4 hours\./i)).toBeInTheDocument();
-    expect(mockUpdateLeague).not.toHaveBeenCalled();
+    expect(mockUpdateClub).not.toHaveBeenCalled();
   });
 
   it("organizer remove: clicking remove on a non-organizer calls removeMember", async () => {
     mockRemoveMember.mockResolvedValue(undefined);
     const user = userEvent.setup();
 
-    renderLeague();
+    renderClub();
     await screen.findByText("Friday Mixtape");
 
     await user.click(screen.getByRole("button", { name: /^remove$/i }));
 
     await waitFor(() => expect(mockRemoveMember).toHaveBeenCalledTimes(1));
-    expect(mockRemoveMember).toHaveBeenCalledWith("league-1", MEMBER_ID);
+    expect(mockRemoveMember).toHaveBeenCalledWith("club-1", MEMBER_ID);
   });
 
   // --- Co-organizer promote/demote (MYS-99) ---
 
   it("co-organizer badge: renders for a member with is_admin && !is_organizer, not for the fixed organizer or a plain member", async () => {
     const roster = membersWithCoOrganizer();
-    mockGetLeagueMembers.mockResolvedValue(roster);
-    mockGetLeagueLeaderboard.mockResolvedValue(leaderboardFor(roster));
+    mockGetClubMembers.mockResolvedValue(roster);
+    mockGetClubLeaderboard.mockResolvedValue(leaderboardFor(roster));
 
-    renderLeague();
+    renderClub();
     await screen.findByText("Friday Mixtape");
 
     expect(await screen.findByText("co-organizer")).toBeInTheDocument();
@@ -432,20 +432,20 @@ describe("LeagueHomeRoute", () => {
     mockUpdateMemberRole.mockRejectedValue(new ApiError(500, "couldn't update that member's role"));
     const user = userEvent.setup();
 
-    renderLeague();
+    renderClub();
     await screen.findByText("Friday Mixtape");
 
     const makeAdminBtn = screen.getByRole("button", { name: /^make admin$/i });
     await user.click(makeAdminBtn);
 
-    expect(mockUpdateMemberRole).toHaveBeenCalledWith("league-1", MEMBER_ID, "admin");
+    expect(mockUpdateMemberRole).toHaveBeenCalledWith("club-1", MEMBER_ID, "admin");
     expect(
       await screen.findByText(/couldn't update that member's role/i),
     ).toBeInTheDocument();
   });
 
   it("make admin: shows a busy 'saving…' state while the request is in flight", async () => {
-    let resolvePromise!: (value: LeagueMember) => void;
+    let resolvePromise!: (value: ClubMember) => void;
     mockUpdateMemberRole.mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -454,7 +454,7 @@ describe("LeagueHomeRoute", () => {
     );
     const user = userEvent.setup();
 
-    renderLeague();
+    renderClub();
     await screen.findByText("Friday Mixtape");
 
     await user.click(screen.getByRole("button", { name: /^make admin$/i }));
@@ -476,8 +476,8 @@ describe("LeagueHomeRoute", () => {
 
   it("remove admin: appears for an admin viewer on a co-organizer (not the fixed organizer), calls updateMemberRole with role member", async () => {
     const roster = membersWithCoOrganizer();
-    mockGetLeagueMembers.mockResolvedValue(roster);
-    mockGetLeagueLeaderboard.mockResolvedValue(leaderboardFor(roster));
+    mockGetClubMembers.mockResolvedValue(roster);
+    mockGetClubLeaderboard.mockResolvedValue(leaderboardFor(roster));
     mockUpdateMemberRole.mockResolvedValue({
       user_id: CO_ORGANIZER_ID,
       display_name: "Cy",
@@ -487,7 +487,7 @@ describe("LeagueHomeRoute", () => {
     });
     const user = userEvent.setup();
 
-    renderLeague();
+    renderClub();
     await screen.findByText("Friday Mixtape");
 
     // The fixed organizer's row never shows a role toggle; only the
@@ -495,19 +495,19 @@ describe("LeagueHomeRoute", () => {
     const removeAdminBtn = screen.getByRole("button", { name: /^remove admin$/i });
     await user.click(removeAdminBtn);
 
-    expect(mockUpdateMemberRole).toHaveBeenCalledWith("league-1", CO_ORGANIZER_ID, "member");
+    expect(mockUpdateMemberRole).toHaveBeenCalledWith("club-1", CO_ORGANIZER_ID, "member");
   });
 
   describe("co-organizer viewer parity", () => {
     beforeEach(() => {
       const roster = membersWithCoOrganizer();
-      mockGetLeagueMembers.mockResolvedValue(roster);
-      mockGetLeagueLeaderboard.mockResolvedValue(leaderboardFor(roster));
+      mockGetClubMembers.mockResolvedValue(roster);
+      mockGetClubLeaderboard.mockResolvedValue(leaderboardFor(roster));
       setAuth(CO_ORGANIZER_ID);
     });
 
-    it("a co-organizer viewer (isAdmin, not isOrganizer) sees league-edit and member-removal controls a plain member does not", async () => {
-      renderLeague();
+    it("a co-organizer viewer (isAdmin, not isOrganizer) sees club-edit and member-removal controls a plain member does not", async () => {
+      renderClub();
       await screen.findByText("Friday Mixtape");
 
       expect(screen.getByRole("button", { name: /^edit$/i })).toBeInTheDocument();
@@ -516,8 +516,8 @@ describe("LeagueHomeRoute", () => {
       expect(screen.getAllByRole("button", { name: /^remove$/i })).toHaveLength(2);
     });
 
-    it("a co-organizer viewer sees BOTH the delete-league and leave-league sections", async () => {
-      renderLeague();
+    it("a co-organizer viewer sees BOTH the delete-club and leave-club sections", async () => {
+      renderClub();
       await screen.findByText("Friday Mixtape");
 
       expect(screen.getByRole("button", { name: /^delete club$/i })).toBeInTheDocument();
@@ -525,17 +525,17 @@ describe("LeagueHomeRoute", () => {
     });
   });
 
-  it("the fixed organizer sees only the delete-league section, not leave-league", async () => {
-    renderLeague();
+  it("the fixed organizer sees only the delete-club section, not leave-club", async () => {
+    renderClub();
     await screen.findByText("Friday Mixtape");
 
     expect(screen.getByRole("button", { name: /^delete club$/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^leave club$/i })).not.toBeInTheDocument();
   });
 
-  it("a plain member sees only the leave-league section, not delete-league", async () => {
+  it("a plain member sees only the leave-club section, not delete-club", async () => {
     setAuth(MEMBER_ID);
-    renderLeague();
+    renderClub();
     await screen.findByText("Friday Mixtape");
 
     expect(screen.queryByRole("button", { name: /^delete club$/i })).not.toBeInTheDocument();
@@ -545,7 +545,7 @@ describe("LeagueHomeRoute", () => {
   it("nav: the TopNav home link navigates to /home", async () => {
     const user = userEvent.setup();
 
-    renderLeague();
+    renderClub();
     await screen.findByText("Friday Mixtape");
 
     // Two "home" controls in the TopNav (ring mark + text link); either routes home.
@@ -554,10 +554,10 @@ describe("LeagueHomeRoute", () => {
     expect(await screen.findByText("HOME CONTENT")).toBeInTheDocument();
   });
 
-  it("open_submission round: shows submission progress (X of Y submitted) on the card — MYS-101", async () => {
-    mockGetRounds.mockResolvedValue([
-      closedRound({
-        id: "round-open",
+  it("open_submission mix: shows submission progress (X of Y submitted) on the card — MYS-101", async () => {
+    mockGetMixes.mockResolvedValue([
+      closedMix({
+        id: "mix-open",
         state: "open_submission",
         closed_at: null,
         submission_count: 3,
@@ -565,16 +565,16 @@ describe("LeagueHomeRoute", () => {
       }),
     ]);
 
-    renderLeague();
+    renderClub();
     await screen.findByText("Friday Mixtape");
     expect(await screen.findByText("3 of 6 submitted")).toBeInTheDocument();
   });
 
-  it("active round: shows the static deadline line on the card — MYS-161", async () => {
+  it("active mix: shows the static deadline line on the card — MYS-161", async () => {
     // An open mix with a deadline shows "closes …" (lowercase DOM; uppercase CSS).
-    mockGetRounds.mockResolvedValue([
-      closedRound({
-        id: "round-open",
+    mockGetMixes.mockResolvedValue([
+      closedMix({
+        id: "mix-open",
         state: "open_submission",
         closed_at: null,
         submission_count: 1,
@@ -583,27 +583,27 @@ describe("LeagueHomeRoute", () => {
       }),
     ]);
 
-    renderLeague();
+    renderClub();
     await screen.findByText("Friday Mixtape");
     expect(await screen.findByText(/^closes /i)).toBeInTheDocument();
   });
 
-  it("closed round: shows the single winner and most-noted pick on the card", async () => {
-    mockGetRounds.mockResolvedValue([closedRound()]);
+  it("closed mix: shows the single winner and most-noted pick on the card", async () => {
+    mockGetMixes.mockResolvedValue([closedMix()]);
     mockGetResults.mockResolvedValue(resultsWith());
 
-    renderLeague();
+    renderClub();
     await screen.findByText("Friday Mixtape");
 
     expect(await screen.findByText("winner")).toBeInTheDocument();
     expect(screen.getByText("Wren")).toBeInTheDocument();
     expect(screen.getByText("most noted")).toBeInTheDocument();
     expect(screen.getByText("Strange Currencies")).toBeInTheDocument();
-    expect(mockGetResults).toHaveBeenCalledWith("round-1");
+    expect(mockGetResults).toHaveBeenCalledWith("mix-1");
   });
 
-  it("closed round tie: shows every co-winner and every most-noted pick", async () => {
-    mockGetRounds.mockResolvedValue([closedRound()]);
+  it("closed mix tie: shows every co-winner and every most-noted pick", async () => {
+    mockGetMixes.mockResolvedValue([closedMix()]);
     mockGetResults.mockResolvedValue(
       resultsWith({
         leaderboard: [
@@ -633,7 +633,7 @@ describe("LeagueHomeRoute", () => {
       }),
     );
 
-    renderLeague();
+    renderClub();
     await screen.findByText("Friday Mixtape");
 
     expect(await screen.findByText("winners")).toBeInTheDocument();
@@ -643,8 +643,8 @@ describe("LeagueHomeRoute", () => {
     expect(screen.getByText("Strange Currencies · Nightswimming")).toBeInTheDocument();
   });
 
-  it("closed round with no votes or notes: omits the summary entirely", async () => {
-    mockGetRounds.mockResolvedValue([closedRound()]);
+  it("closed mix with no votes or notes: omits the summary entirely", async () => {
+    mockGetMixes.mockResolvedValue([closedMix()]);
     mockGetResults.mockResolvedValue(
       resultsWith({
         leaderboard: [{ user_id: "u-ada", display_name: "Ada", vote_count: 0, rank: 1 }],
@@ -652,8 +652,8 @@ describe("LeagueHomeRoute", () => {
       }),
     );
 
-    renderLeague();
-    // The round card still renders…
+    renderClub();
+    // The mix card still renders…
     expect(await screen.findByText("late summer feels")).toBeInTheDocument();
     // …but with no winner / most-noted summary.
     await waitFor(() => expect(mockGetResults).toHaveBeenCalled());
@@ -663,41 +663,41 @@ describe("LeagueHomeRoute", () => {
 
   // --- Organizer admin: delete club (MYS-124) ---
 
-  it("delete club: confirm step calls deleteLeague and navigates to /home", async () => {
-    mockDeleteLeague.mockResolvedValue(undefined);
+  it("delete club: confirm step calls deleteClub and navigates to /home", async () => {
+    mockDeleteClub.mockResolvedValue(undefined);
     const user = userEvent.setup();
 
-    renderLeague();
+    renderClub();
     await screen.findByText("Friday Mixtape");
 
     // First click arms the confirm; the destructive action only fires on the second.
     await user.click(screen.getByRole("button", { name: /^delete club$/i }));
     await user.click(screen.getByRole("button", { name: /^delete this club$/i }));
 
-    await waitFor(() => expect(mockDeleteLeague).toHaveBeenCalledWith("league-1"));
+    await waitFor(() => expect(mockDeleteClub).toHaveBeenCalledWith("club-1"));
     expect(await screen.findByText("HOME CONTENT")).toBeInTheDocument();
   });
 
   it("delete club: a failure shows a calm error and does not navigate", async () => {
     // Delete is allowed in any state now (MYS-137); this covers the generic
     // error path (e.g. a server error), which still keeps the user in place.
-    mockDeleteLeague.mockRejectedValue(new ApiError(500, "couldn't delete the league"));
+    mockDeleteClub.mockRejectedValue(new ApiError(500, "couldn't delete the club"));
     const user = userEvent.setup();
 
-    renderLeague();
+    renderClub();
     await screen.findByText("Friday Mixtape");
 
     await user.click(screen.getByRole("button", { name: /^delete club$/i }));
     await user.click(screen.getByRole("button", { name: /^delete this club$/i }));
 
-    expect(await screen.findByText(/couldn't delete the league/i)).toBeInTheDocument();
+    expect(await screen.findByText(/couldn't delete the club/i)).toBeInTheDocument();
     expect(screen.queryByText("HOME CONTENT")).not.toBeInTheDocument();
   });
 
-  it("open_voting round: shows voting progress (X of Y voted) on the card — MYS-110", async () => {
-    mockGetRounds.mockResolvedValue([
-      closedRound({
-        id: "round-voting",
+  it("open_voting mix: shows voting progress (X of Y voted) on the card — MYS-110", async () => {
+    mockGetMixes.mockResolvedValue([
+      closedMix({
+        id: "mix-voting",
         state: "open_voting",
         closed_at: null,
         voted_count: 2,
@@ -705,15 +705,15 @@ describe("LeagueHomeRoute", () => {
       }),
     ]);
 
-    renderLeague();
+    renderClub();
     await screen.findByText("Friday Mixtape");
     expect(await screen.findByText("2 of 5 voted")).toBeInTheDocument();
   });
 
-  it("open_voting round: hides voting progress when eligible count is zero — MYS-110", async () => {
-    mockGetRounds.mockResolvedValue([
-      closedRound({
-        id: "round-voting-empty",
+  it("open_voting mix: hides voting progress when eligible count is zero — MYS-110", async () => {
+    mockGetMixes.mockResolvedValue([
+      closedMix({
+        id: "mix-voting-empty",
         state: "open_voting",
         closed_at: null,
         voted_count: 0,
@@ -721,7 +721,7 @@ describe("LeagueHomeRoute", () => {
       }),
     ]);
 
-    renderLeague();
+    renderClub();
     await screen.findByText("Friday Mixtape");
     expect(screen.queryByText(/of 0 voted/i)).not.toBeInTheDocument();
   });

@@ -5,7 +5,7 @@ import { ConcentricRings } from "../components/ConcentricRings";
 import { DeadlineWindowField } from "../components/DeadlineWindowField";
 import { daysAndHoursToTotal, validateWindowHours } from "../utils/deadlineWindow";
 
-type CreateLeagueInput = {
+type CreateClubInput = {
   name: string;
   description?: string;
   total_mixes: number;
@@ -20,22 +20,22 @@ type CreateLeagueInput = {
 const DEFAULT_WINDOW_DAYS = "3";
 const DEFAULT_WINDOW_HOURS = "0";
 
-type CreateLeagueScreenProps = {
-  onSubmit: (input: CreateLeagueInput) => void;
+type CreateClubScreenProps = {
+  onSubmit: (input: CreateClubInput) => void;
   submitting: boolean;
   error?: string | null;
   onCancel: () => void;
 };
 
-export function CreateLeagueScreen({
+export function CreateClubScreen({
   onSubmit,
   submitting,
   error,
   onCancel,
-}: CreateLeagueScreenProps) {
+}: CreateClubScreenProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [totalRounds, setTotalRounds] = useState("6");
+  const [totalMixes, setTotalMixes] = useState("6");
   const [votesPerPlayer, setVotesPerPlayer] = useState("3");
   const [songsPerSubmission, setSongsPerSubmission] = useState("1");
   const [defaultVibeMode, setDefaultVibeMode] = useState(false);
@@ -48,7 +48,7 @@ export function CreateLeagueScreen({
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     const trimmedName = name.trim();
-    const rounds = Number(totalRounds);
+    const mixes = Number(totalMixes);
     const votes = Number(votesPerPlayer);
     const songs = Number(songsPerSubmission);
     const submissionHours = daysAndHoursToTotal(
@@ -61,7 +61,7 @@ export function CreateLeagueScreen({
       setGuard("a club needs a name.");
       return;
     }
-    if (!Number.isFinite(rounds) || rounds < 1) {
+    if (!Number.isFinite(mixes) || mixes < 1) {
       setGuard("a club needs at least one mystery mix.");
       return;
     }
@@ -89,7 +89,7 @@ export function CreateLeagueScreen({
     onSubmit({
       name: trimmedName,
       ...(trimmedDescription ? { description: trimmedDescription } : {}),
-      total_mixes: rounds,
+      total_mixes: mixes,
       votes_per_player: votes,
       songs_per_submission: songs,
       default_vibe_mode: defaultVibeMode,
@@ -108,7 +108,7 @@ export function CreateLeagueScreen({
 
         <form onSubmit={handleSubmit} className="mt-10 space-y-8">
           <TextField
-            id="league-name"
+            id="club-name"
             label="name"
             name="name"
             placeholder="what's this club called?"
@@ -118,7 +118,7 @@ export function CreateLeagueScreen({
           />
 
           <TextField
-            id="league-description"
+            id="club-description"
             label="description (optional)"
             name="description"
             placeholder="a line about the vibe"
@@ -129,13 +129,13 @@ export function CreateLeagueScreen({
 
           <div>
             <TextField
-              id="league-total-rounds"
+              id="club-total-mixes"
               label="number of mystery mixes"
               name="total_mixes"
               type="number"
               min={1}
-              value={totalRounds}
-              onChange={(e) => setTotalRounds(e.target.value)}
+              value={totalMixes}
+              onChange={(e) => setTotalMixes(e.target.value)}
               disabled={submitting}
             />
             <p className="mt-2 font-mono text-[11px] font-light text-muted">
@@ -144,7 +144,7 @@ export function CreateLeagueScreen({
           </div>
 
           <TextField
-            id="league-votes-per-player"
+            id="club-votes-per-player"
             label="votes per player"
             name="votes_per_player"
             type="number"
@@ -156,7 +156,7 @@ export function CreateLeagueScreen({
 
           <div>
             <TextField
-              id="league-songs-per-submission"
+              id="club-songs-per-submission"
               label="songs per submission"
               name="songs_per_submission"
               type="number"

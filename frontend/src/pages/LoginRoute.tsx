@@ -36,7 +36,7 @@ export function LoginRoute() {
     setDevLink(null);
     try {
       // When arriving from an invite link, carry its token so the backend can
-      // gate signup on it and auto-join the league on verify.
+      // gate signup on it and auto-join the club on verify.
       const inviteToken = readPendingInviteToken();
       const { devToken } = await requestMagicLink(email, inviteToken);
       if (devToken) {

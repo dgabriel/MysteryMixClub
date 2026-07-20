@@ -8,10 +8,10 @@ import { PrivacyRoute } from "./pages/PrivacyRoute";
 import { VerifyRoute } from "./pages/VerifyRoute";
 import { HomeRoute } from "./pages/HomeRoute";
 import { OnboardingRoute } from "./pages/OnboardingRoute";
-import { CreateLeagueRoute } from "./pages/CreateLeagueRoute";
-import { LeagueHomeRoute } from "./pages/LeagueHomeRoute";
-import { RoundDetailRoute } from "./pages/RoundDetailRoute";
-import { JoinLeagueRoute } from "./pages/JoinLeagueRoute";
+import { CreateClubRoute } from "./pages/CreateClubRoute";
+import { ClubHomeRoute } from "./pages/ClubHomeRoute";
+import { MixDetailRoute } from "./pages/MixDetailRoute";
+import { JoinClubRoute } from "./pages/JoinClubRoute";
 import { AdminRoute } from "./pages/AdminRoute";
 import { ProfileRoute } from "./pages/ProfileRoute";
 import { AuthedLayout } from "./components/AuthedLayout";
@@ -79,8 +79,8 @@ const router = createBrowserRouter([
     ),
     children: [
       { path: "/home", element: <HomeRoute /> },
-      { path: "/clubs/:id", element: <LeagueHomeRoute /> },
-      { path: "/mixes/:id", element: <RoundDetailRoute /> },
+      { path: "/clubs/:id", element: <ClubHomeRoute /> },
+      { path: "/mixes/:id", element: <MixDetailRoute /> },
       // Permanent legacy redirects — old emails link these shapes forever.
       { path: "/leagues/:id", element: <LegacyPathRedirect prefix="clubs" /> },
       { path: "/rounds/:id", element: <LegacyPathRedirect prefix="mixes" /> },
@@ -94,14 +94,14 @@ const router = createBrowserRouter([
     path: "/clubs/new",
     element: (
       <ProtectedRoute>
-        <CreateLeagueRoute />
+        <CreateClubRoute />
       </ProtectedRoute>
     ),
   },
   { path: "/leagues/new", element: <Navigate to="/clubs/new" replace /> },
 
-  { path: "/invite/:token", element: <JoinLeagueRoute /> },
-  { path: "/join/:token", element: <JoinLeagueRoute /> },
+  { path: "/invite/:token", element: <JoinClubRoute /> },
+  { path: "/join/:token", element: <JoinClubRoute /> },
   { path: "*", element: <Navigate to="/login" replace /> },
 ]);
 

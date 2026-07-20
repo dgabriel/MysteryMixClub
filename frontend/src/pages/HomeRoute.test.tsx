@@ -4,8 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { HomeRoute } from "./HomeRoute";
 import { AuthedLayout } from "../components/AuthedLayout";
-import { ApiError, getLeagues } from "../services/api";
-import type { League } from "../services/api";
+import { ApiError, getClubs } from "../services/api";
+import type { Club } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 
 // Mock the API module (no network). Keep ApiError real so instanceof / status work.
@@ -15,7 +15,7 @@ vi.mock("../services/api", async () => {
   );
   return {
     ...actual,
-    getLeagues: vi.fn(),
+    getClubs: vi.fn(),
   };
 });
 
@@ -24,13 +24,13 @@ vi.mock("../hooks/useAuth", () => ({
   useAuth: vi.fn(),
 }));
 
-const mockGetLeagues = vi.mocked(getLeagues);
+const mockGetClubs = vi.mocked(getClubs);
 const mockUseAuth = vi.mocked(useAuth);
 const logout = vi.fn();
 
-function leagueWith(overrides: Partial<League> = {}): League {
+function clubWith(overrides: Partial<Club> = {}): Club {
   return {
-    id: "league-1",
+    id: "club-1",
     name: "Friday Mixtape",
     description: null,
     organizer_id: "22222222-2222-2222-2222-222222222222",
@@ -58,8 +58,8 @@ function renderHome() {
           <Route path="/home" element={<HomeRoute />} />
         </Route>
         <Route path="/login" element={<div>LOGIN CONTENT</div>} />
-        <Route path="/clubs/new" element={<div>NEW LEAGUE CONTENT</div>} />
-        <Route path="/clubs/:id" element={<div>LEAGUE DETAIL CONTENT</div>} />
+        <Route path="/clubs/new" element={<div>NEW CLUB CONTENT</div>} />
+        <Route path="/clubs/:id" element={<div>CLUB DETAIL CONTENT</div>} />
         <Route path="/join/:token" element={<div>JOIN CONTENT</div>} />
         <Route path="/admin" element={<div>ADMIN CONTENT</div>} />
       </Routes>
@@ -67,12 +67,12 @@ function renderHome() {
   );
 }
 
-describe("HomeRoute (My Leagues)", () => {
+describe("HomeRoute (My Clubs)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
     logout.mockResolvedValue(undefined);
-    mockGetLeagues.mockResolvedValue([leagueWith()]);
+    mockGetClubs.mockResolvedValue([clubWith()]);
     mockUseAuth.mockReturnValue({
       status: "authenticated",
       isAuthenticated: true,
@@ -97,17 +97,17 @@ describe("HomeRoute (My Leagues)", () => {
     localStorage.clear();
   });
 
-  it("happy path: calls getLeagues on mount and renders the league name", async () => {
+  it("happy path: calls getClubs on mount and renders the club name", async () => {
     renderHome();
 
     expect(await screen.findByText("Friday Mixtape")).toBeInTheDocument();
-    expect(mockGetLeagues).toHaveBeenCalledTimes(1);
+    expect(mockGetClubs).toHaveBeenCalledTimes(1);
   });
 
-  it("groups completed leagues below active ones under a 'completed' heading with gold accent", async () => {
-    mockGetLeagues.mockResolvedValue([
-      leagueWith({ id: "a1", name: "Active One", state: "active" }),
-      leagueWith({ id: "c1", name: "Finished One", state: "complete", current_mix: 6 }),
+  it("groups completed clubs below active ones under a 'completed' heading with gold accent", async () => {
+    mockGetClubs.mockResolvedValue([
+      clubWith({ id: "a1", name: "Active One", state: "active" }),
+      clubWith({ id: "c1", name: "Finished One", state: "complete", current_mix: 6 }),
     ]);
     renderHome();
 
@@ -115,7 +115,7 @@ describe("HomeRoute (My Leagues)", () => {
     const active = screen.getByText("Active One");
     const done = screen.getByText("Finished One");
 
-    // Active league precedes the "completed" heading, which precedes the completed league.
+    // Active club precedes the "completed" heading, which precedes the completed club.
     expect(
       active.compareDocumentPosition(completedHeading) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
@@ -129,36 +129,36 @@ describe("HomeRoute (My Leagues)", () => {
   });
 
   it("empty list: renders the empty-state copy", async () => {
-    mockGetLeagues.mockResolvedValue([]);
+    mockGetClubs.mockResolvedValue([]);
     renderHome();
 
     expect(await screen.findByText("no clubs yet")).toBeInTheDocument();
   });
 
-  it("error: getLeagues rejecting surfaces a calm error via the error prop", async () => {
-    mockGetLeagues.mockRejectedValue(new ApiError(500, "boom"));
+  it("error: getClubs rejecting surfaces a calm error via the error prop", async () => {
+    mockGetClubs.mockRejectedValue(new ApiError(500, "boom"));
     renderHome();
 
     expect(await screen.findByRole("alert")).toBeInTheDocument();
   });
 
-  it("create: the create-a-league action navigates to /clubs/new", async () => {
-    mockGetLeagues.mockResolvedValue([]);
+  it("create: the create-a-club action navigates to /clubs/new", async () => {
+    mockGetClubs.mockResolvedValue([]);
     const user = userEvent.setup();
     renderHome();
 
     await user.click(await screen.findByRole("button", { name: /create a club/i }));
 
-    expect(await screen.findByText("NEW LEAGUE CONTENT")).toBeInTheDocument();
+    expect(await screen.findByText("NEW CLUB CONTENT")).toBeInTheDocument();
   });
 
-  it("open: clicking a league navigates to /clubs/{id}", async () => {
+  it("open: clicking a club navigates to /clubs/{id}", async () => {
     const user = userEvent.setup();
     renderHome();
 
     await user.click(await screen.findByText("Friday Mixtape"));
 
-    expect(await screen.findByText("LEAGUE DETAIL CONTENT")).toBeInTheDocument();
+    expect(await screen.findByText("CLUB DETAIL CONTENT")).toBeInTheDocument();
   });
 
   it("logout: invokes useAuth().logout and navigates to /login", async () => {

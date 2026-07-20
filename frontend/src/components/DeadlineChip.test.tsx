@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen } from "@testing-library/react";
 import { DeadlineChip } from "./DeadlineChip";
-import type { Round } from "../services/api";
+import type { Mix } from "../services/api";
 
-// A full Round with only the fields DeadlineChip / its helpers read
+// A full Mix with only the fields DeadlineChip / its helpers read
 // meaningfully; overrides set state and the two deadline strings per case.
-// Mirrors the roundWith fixture in utils/deadline.test.ts.
-function roundWith(overrides: Partial<Round> = {}): Round {
+// Mirrors the mixWith fixture in utils/deadline.test.ts.
+function mixWith(overrides: Partial<Mix> = {}): Mix {
   return {
     id: "r1",
     club_id: "lg1",
@@ -40,11 +40,11 @@ describe("DeadlineChip", () => {
   });
 
   it("renders label-only when showCountdown is omitted (no regression)", () => {
-    const round = roundWith({
+    const mix = mixWith({
       state: "open_submission",
       submission_deadline: "2026-07-05T12:00:00Z",
     });
-    const { container } = render(<DeadlineChip round={round} />);
+    const { container } = render(<DeadlineChip mix={mix} />);
 
     expect(container.textContent).toMatch(/^closes /);
     expect(container.textContent).not.toContain("·");
@@ -52,22 +52,22 @@ describe("DeadlineChip", () => {
   });
 
   it("renders label-only when showCountdown is explicitly false (no regression)", () => {
-    const round = roundWith({
+    const mix = mixWith({
       state: "open_submission",
       submission_deadline: "2026-07-05T12:00:00Z",
     });
-    const { container } = render(<DeadlineChip round={round} showCountdown={false} />);
+    const { container } = render(<DeadlineChip mix={mix} showCountdown={false} />);
 
     expect(container.textContent).not.toContain("·");
     expect(container.textContent).not.toContain("remaining");
   });
 
   it("renders \"{label} · {countdown}\" when showCountdown is true", () => {
-    const round = roundWith({
+    const mix = mixWith({
       state: "open_submission",
       submission_deadline: "2026-07-05T12:00:00Z", // 4 days out from system time
     });
-    const { container } = render(<DeadlineChip round={round} showCountdown /> );
+    const { container } = render(<DeadlineChip mix={mix} showCountdown /> );
 
     expect(container.textContent).toMatch(/^closes .* · 4d 0h remaining$/);
   });
@@ -76,11 +76,11 @@ describe("DeadlineChip", () => {
     // Deadline is 59 minutes and 30 seconds out — under a day, so it renders
     // "0h 59m remaining" at mount. Advancing the fake clock by a full minute
     // should tick the interval and cross the minute boundary to "0h 58m".
-    const round = roundWith({
+    const mix = mixWith({
       state: "open_submission",
       submission_deadline: "2026-07-01T12:59:30Z",
     });
-    render(<DeadlineChip round={round} showCountdown />);
+    render(<DeadlineChip mix={mix} showCountdown />);
 
     expect(screen.getByText(/0h 59m remaining/)).toBeInTheDocument();
 
@@ -94,11 +94,11 @@ describe("DeadlineChip", () => {
 
   it("clears the interval on unmount", () => {
     const clearIntervalSpy = vi.spyOn(globalThis, "clearInterval");
-    const round = roundWith({
+    const mix = mixWith({
       state: "open_submission",
       submission_deadline: "2026-07-05T12:00:00Z",
     });
-    const { unmount } = render(<DeadlineChip round={round} showCountdown />);
+    const { unmount } = render(<DeadlineChip mix={mix} showCountdown />);
 
     unmount();
 
@@ -107,25 +107,25 @@ describe("DeadlineChip", () => {
 
   it("does not set up an interval at all when showCountdown is false", () => {
     const setIntervalSpy = vi.spyOn(globalThis, "setInterval");
-    const round = roundWith({
+    const mix = mixWith({
       state: "open_submission",
       submission_deadline: "2026-07-05T12:00:00Z",
     });
-    render(<DeadlineChip round={round} />);
+    render(<DeadlineChip mix={mix} />);
 
     expect(setIntervalSpy).not.toHaveBeenCalled();
   });
 
-  it("renders nothing when the round has no active-phase deadline, without showCountdown", () => {
-    const round = roundWith({ state: "pending" });
-    const { container } = render(<DeadlineChip round={round} />);
+  it("renders nothing when the mix has no active-phase deadline, without showCountdown", () => {
+    const mix = mixWith({ state: "pending" });
+    const { container } = render(<DeadlineChip mix={mix} />);
 
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("renders nothing when the round has no active-phase deadline, with showCountdown", () => {
-    const round = roundWith({ state: "pending" });
-    const { container } = render(<DeadlineChip round={round} showCountdown />);
+  it("renders nothing when the mix has no active-phase deadline, with showCountdown", () => {
+    const mix = mixWith({ state: "pending" });
+    const { container } = render(<DeadlineChip mix={mix} showCountdown />);
 
     expect(container).toBeEmptyDOMElement();
   });

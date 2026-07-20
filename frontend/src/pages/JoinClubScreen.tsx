@@ -3,7 +3,7 @@ import { Button } from "../components/Button";
 import { ConcentricRings } from "../components/ConcentricRings";
 import { TopNav } from "../components/TopNav";
 
-type JoinLeagueScreenProps = {
+type JoinClubScreenProps = {
   preview: InvitePreview | null;
   loading: boolean;
   notFound: boolean;
@@ -20,7 +20,7 @@ type JoinLeagueScreenProps = {
   onExpiredGoHome: () => void;
 };
 
-export function JoinLeagueScreen({
+export function JoinClubScreen({
   preview,
   loading,
   notFound,
@@ -32,7 +32,7 @@ export function JoinLeagueScreen({
   onSignIn,
   onExpiredLogin,
   onExpiredGoHome,
-}: JoinLeagueScreenProps) {
+}: JoinClubScreenProps) {
   return (
     <div className="flex min-h-screen flex-col">
       {/* Authenticated visitors get the shared nav (MYS-136). Logged-out
@@ -83,7 +83,7 @@ export function JoinLeagueScreen({
               </>
             ) : (
               // Platform invite (MYS-182): a signup grant, not a specific
-              // league — no name/member count to show. An authenticated
+              // club — no name/member count to show. An authenticated
               // visitor never reaches this screen (the route sends them home
               // instead), so only the signed-out copy below applies in practice.
               <h1 className="mt-8 font-serif text-[34px] leading-tight text-ink">

@@ -12,7 +12,7 @@ type DeadlineWindowFieldProps = {
 
 /**
  * Days + hours pair for a submission/voting window (MYS-160), shared between
- * league creation and the post-creation league settings edit. The API stores
+ * club creation and the post-creation club settings edit. The API stores
  * a single total-hours value; splitting it into two small inputs reads better
  * than one raw hours field for a duration players think of in days.
  */

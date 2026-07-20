@@ -1,16 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { CreateLeagueScreen } from "./CreateLeagueScreen";
+import { CreateClubScreen } from "./CreateClubScreen";
 
 // Two DeadlineWindowFields ("submission window" / "voting window") share the
 // same "days"/"hours" labels, so we look up their inputs by id instead of
 // label text.
-function renderScreen(overrides: Partial<Parameters<typeof CreateLeagueScreen>[0]> = {}) {
+function renderScreen(overrides: Partial<Parameters<typeof CreateClubScreen>[0]> = {}) {
   const onSubmit = vi.fn();
   const onCancel = vi.fn();
   const utils = render(
-    <CreateLeagueScreen
+    <CreateClubScreen
       onSubmit={onSubmit}
       submitting={false}
       error={null}
@@ -22,7 +22,7 @@ function renderScreen(overrides: Partial<Parameters<typeof CreateLeagueScreen>[0
   return { onSubmit, onCancel, ...utils, getInput };
 }
 
-describe("CreateLeagueScreen — deadline windows (MYS-160)", () => {
+describe("CreateClubScreen — deadline windows (MYS-160)", () => {
   it("defaults render as 3 days / 0 hours for both submission and voting windows", () => {
     const { getInput } = renderScreen();
 

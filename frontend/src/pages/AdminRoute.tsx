@@ -76,7 +76,7 @@ export function AdminRoute() {
     setInviteError(null);
     try {
       const invite = await adminCreateInvite();
-      // Canonical invite path is /invite/:token (matches the per-league flow).
+      // Canonical invite path is /invite/:token (matches the per-club flow).
       setPlatformInviteUrl(`${window.location.origin}/invite/${invite.token}`);
     } catch (err) {
       setInviteError(

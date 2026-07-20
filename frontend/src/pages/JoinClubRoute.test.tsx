@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { JoinLeagueRoute } from "./JoinLeagueRoute";
+import { JoinClubRoute } from "./JoinClubRoute";
 import { ApiError, acceptInvite, getInvitePreview } from "../services/api";
-import type { InvitePreview, League } from "../services/api";
+import type { InvitePreview, Club } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 
 // Mock the API module (no network). Keep ApiError real.
@@ -30,7 +30,7 @@ const mockUseAuth = vi.mocked(useAuth);
 
 function preview(overrides: Partial<InvitePreview> = {}): InvitePreview {
   return {
-    club_id: "league-preview-1",
+    club_id: "club-preview-1",
     club_name: "Friday Mixtape",
     member_count: 4,
     already_member: false,
@@ -48,7 +48,7 @@ function platformPreview(overrides: Partial<InvitePreview> = {}): InvitePreview 
   };
 }
 
-function leagueWith(id: string): League {
+function clubWith(id: string): Club {
   return {
     id,
     name: "Friday Mixtape",
@@ -92,10 +92,10 @@ function joinTree(token: string) {
   return (
     <MemoryRouter initialEntries={[`/join/${token}`]}>
       <Routes>
-        <Route path="/join/:token" element={<JoinLeagueRoute />} />
+        <Route path="/join/:token" element={<JoinClubRoute />} />
         <Route path="/login" element={<div>LOGIN CONTENT</div>} />
         <Route path="/home" element={<div>HOME CONTENT</div>} />
-        <Route path="/clubs/:id" element={<div>LEAGUE DETAIL CONTENT</div>} />
+        <Route path="/clubs/:id" element={<div>CLUB DETAIL CONTENT</div>} />
       </Routes>
     </MemoryRouter>
   );
@@ -126,7 +126,7 @@ function loadingAuth() {
   });
 }
 
-describe("JoinLeagueRoute", () => {
+describe("JoinClubRoute", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
@@ -164,9 +164,9 @@ describe("JoinLeagueRoute", () => {
     expect(screen.queryByText("Friday Mixtape")).not.toBeInTheDocument();
   });
 
-  it("authenticated: clicking join calls acceptInvite and navigates to /clubs/{league.id}", async () => {
+  it("authenticated: clicking join calls acceptInvite and navigates to /clubs/{club.id}", async () => {
     setAuth(true);
-    mockAcceptInvite.mockResolvedValue(leagueWith("joined-league-7"));
+    mockAcceptInvite.mockResolvedValue(clubWith("joined-club-7"));
     const user = userEvent.setup();
 
     renderJoin("tok-abc");
@@ -175,14 +175,14 @@ describe("JoinLeagueRoute", () => {
     await user.click(screen.getByRole("button", { name: /join club/i }));
 
     expect(mockAcceptInvite).toHaveBeenCalledWith("tok-abc");
-    expect(await screen.findByText("LEAGUE DETAIL CONTENT")).toBeInTheDocument();
+    expect(await screen.findByText("CLUB DETAIL CONTENT")).toBeInTheDocument();
   });
 
   it("authenticated: a join failure shows joinError and does not navigate", async () => {
     // Note: an already-member no longer 409s — accept is idempotent (MYS-135).
     // This covers the generic error path (e.g. a server error mid-join).
     setAuth(true);
-    mockAcceptInvite.mockRejectedValue(new ApiError(500, "couldn't join the league"));
+    mockAcceptInvite.mockRejectedValue(new ApiError(500, "couldn't join the club"));
     const user = userEvent.setup();
 
     renderJoin();
@@ -191,7 +191,7 @@ describe("JoinLeagueRoute", () => {
     await user.click(screen.getByRole("button", { name: /join club/i }));
 
     expect(await screen.findByRole("alert")).toBeInTheDocument();
-    expect(screen.queryByText("LEAGUE DETAIL CONTENT")).not.toBeInTheDocument();
+    expect(screen.queryByText("CLUB DETAIL CONTENT")).not.toBeInTheDocument();
   });
 
   it("authenticated: the join page shows the top nav (MYS-136)", async () => {
@@ -240,14 +240,14 @@ describe("JoinLeagueRoute", () => {
   });
 
   describe("already a member (MYS-181)", () => {
-    it("preview with already_member true redirects straight into the league, skipping the join screen", async () => {
+    it("preview with already_member true redirects straight into the club, skipping the join screen", async () => {
       mockGetInvitePreview.mockResolvedValue(
-        preview({ club_id: "league-99", already_member: true }),
+        preview({ club_id: "club-99", already_member: true }),
       );
 
       renderJoin("tok-abc");
 
-      expect(await screen.findByText("LEAGUE DETAIL CONTENT")).toBeInTheDocument();
+      expect(await screen.findByText("CLUB DETAIL CONTENT")).toBeInTheDocument();
       expect(screen.queryByText("Friday Mixtape")).not.toBeInTheDocument();
       expect(mockAcceptInvite).not.toHaveBeenCalled();
     });
@@ -264,7 +264,7 @@ describe("JoinLeagueRoute", () => {
       expect(mockAcceptInvite).not.toHaveBeenCalled();
     });
 
-    it("unauthenticated: shows generic copy and a sign-in button, no league name or member count", async () => {
+    it("unauthenticated: shows generic copy and a sign-in button, no club name or member count", async () => {
       setAuth(false);
       mockGetInvitePreview.mockResolvedValue(platformPreview());
 
@@ -276,7 +276,7 @@ describe("JoinLeagueRoute", () => {
       expect(screen.queryByRole("button", { name: /join club/i })).not.toBeInTheDocument();
     });
 
-    it("unauthenticated: sign-in stores pendingInvitePath and navigates to /login, same as a league invite", async () => {
+    it("unauthenticated: sign-in stores pendingInvitePath and navigates to /login, same as a club invite", async () => {
       setAuth(false);
       mockGetInvitePreview.mockResolvedValue(platformPreview());
       const user = userEvent.setup();

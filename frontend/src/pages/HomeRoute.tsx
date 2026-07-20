@@ -1,21 +1,21 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { MyLeaguesScreen } from "./MyLeaguesScreen";
-import { ApiError, getLeagues, type League } from "../services/api";
+import { MyClubsScreen } from "./MyClubsScreen";
+import { ApiError, getClubs, type Club } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 
 /**
- * Protected home route — the My Leagues landing. On mount it first honours a
+ * Protected home route — the My Clubs landing. On mount it first honours a
  * pending invite path stored before sign-in (the join flow stashes it when an
  * unauthenticated user follows an invite link), redirecting there instead of
- * loading leagues. Otherwise it fetches the current user's leagues and wires
- * MyLeaguesScreen's actions to navigation. Profile / admin / logout now live in
+ * loading clubs. Otherwise it fetches the current user's clubs and wires
+ * MyClubsScreen's actions to navigation. Profile / admin / logout now live in
  * the shared TopNav, so this route no longer owns them.
  */
 export function HomeRoute() {
   const navigate = useNavigate();
   const { displayName, preferredService } = useAuth();
-  const [leagues, setLeagues] = useState<League[]>([]);
+  const [clubs, setClubs] = useState<Club[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,8 +29,8 @@ export function HomeRoute() {
 
     void (async () => {
       try {
-        const result = await getLeagues();
-        setLeagues(result);
+        const result = await getClubs();
+        setClubs(result);
       } catch (err) {
         setError(
           err instanceof ApiError ? err.message : "couldn't load your clubs. try again.",
@@ -42,14 +42,14 @@ export function HomeRoute() {
   }, [navigate]);
 
   return (
-    <MyLeaguesScreen
+    <MyClubsScreen
       displayName={displayName}
-      leagues={leagues}
+      clubs={clubs}
       loading={loading}
       error={error}
       preferredService={preferredService}
-      onCreateLeague={() => navigate("/clubs/new")}
-      onOpenLeague={(id) => navigate(`/clubs/${id}`)}
+      onCreateClub={() => navigate("/clubs/new")}
+      onOpenClub={(id) => navigate(`/clubs/${id}`)}
     />
   );
 }

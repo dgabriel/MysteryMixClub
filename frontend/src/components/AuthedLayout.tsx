@@ -2,12 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 import { Outlet, useOutletContext } from "react-router-dom";
 import { TopNav } from "./TopNav";
 
-/** A contextual back target for the shared nav (e.g. round → its league). */
+/** A contextual back target for the shared nav (e.g. mix → its club). */
 type NavBack = { label: string; to: string };
 
 type AuthedOutletContext = {
   /** Set (or clear with null) the nav's contextual back affordance. Screens that
-   *  need it — currently only the round screen — call this once they know the
+   *  need it — currently only the mix screen — call this once they know the
    *  target; everyone else leaves it null and no back link shows. */
   setNavBack: (back: NavBack | null) => void;
 };
@@ -18,8 +18,8 @@ type AuthedOutletContext = {
  * it appears on all authed routes and never on the pre-auth ones (login / verify
  * / onboarding / invite), which live outside this layout.
  *
- * The only per-route nav variation is the contextual "← league" link on the
- * round screen. Since a layout can't read a child route's loaded data, the child
+ * The only per-route nav variation is the contextual "← club" link on the
+ * mix screen. Since a layout can't read a child route's loaded data, the child
  * pushes its back target up through the outlet context (useNavBack).
  */
 export function AuthedLayout() {

@@ -1,54 +1,54 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { LeagueHomeScreen } from "./LeagueHomeScreen";
+import { ClubHomeScreen } from "./ClubHomeScreen";
 import {
   ApiError,
   createInvite,
-  deleteLeague,
-  getLeague,
-  getLeagueLeaderboard,
-  getLeagueMembers,
+  deleteClub,
+  getClub,
+  getClubLeaderboard,
+  getClubMembers,
   getResults,
-  getRounds,
+  getMixes,
   removeMember,
-  updateLeague,
+  updateClub,
   updateMemberRole,
-  updateRound,
-  type League,
+  updateMix,
+  type Club,
   type LeaderboardEntry,
-  type LeagueMember,
-  type Round,
-  type RoundResults,
+  type ClubMember,
+  type Mix,
+  type MixResults,
 } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 import { usePolling } from "../hooks/usePolling";
 
 /**
- * Protected league-home route. Loads the league and its members in parallel,
+ * Protected club-home route. Loads the club and its members in parallel,
  * gates the fixed-organizer-only affordance on userId === organizer_id
- * (isOrganizer) and the broader operational powers — round management, league
+ * (isOrganizer) and the broader operational powers — mix management, club
  * settings, member removal/role changes — on isOrganizer OR the caller's own
  * member row having is_admin (isAdmin, co-organizer parity, MYS-99). Wires the
  * invite, edit, member-removal, and role-change actions back to the API. A
  * 403/404 (or any load failure) becomes a calm error the screen renders
- * alongside a back affordance, so the route never crashes on a league the
+ * alongside a back affordance, so the route never crashes on a club the
  * user can't see.
  */
-export function LeagueHomeRoute() {
+export function ClubHomeRoute() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { userId } = useAuth();
 
-  const [league, setLeague] = useState<League | null>(null);
-  const [members, setMembers] = useState<LeagueMember[]>([]);
-  const [rounds, setRounds] = useState<Round[]>([]);
+  const [club, setClub] = useState<Club | null>(null);
+  const [members, setMembers] = useState<ClubMember[]>([]);
+  const [mixes, setMixes] = useState<Mix[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
-  const [roundResults, setRoundResults] = useState<Record<string, RoundResults>>({});
+  const [mixResults, setMixResults] = useState<Record<string, MixResults>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [savingRoundId, setSavingRoundId] = useState<string | null>(null);
-  const [updateRoundError, setUpdateRoundError] = useState<string | null>(null);
+  const [savingMixId, setSavingMixId] = useState<string | null>(null);
+  const [updateMixError, setUpdateMixError] = useState<string | null>(null);
 
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [generatingInvite, setGeneratingInvite] = useState(false);
@@ -64,27 +64,27 @@ export function LeagueHomeRoute() {
   const [changingRoleUserId, setChangingRoleUserId] = useState<string | null>(null);
   const [roleChangeError, setRoleChangeError] = useState<string | null>(null);
 
-  // Organizer admin: delete league (MYS-124).
-  const [deletingLeague, setDeletingLeague] = useState(false);
-  const [deleteLeagueError, setDeleteLeagueError] = useState<string | null>(null);
+  // Organizer admin: delete club (MYS-124).
+  const [deletingClub, setDeletingClub] = useState(false);
+  const [deleteClubError, setDeleteClubError] = useState<string | null>(null);
 
   // Member self-leave (MYS-97).
-  const [leavingLeague, setLeavingLeague] = useState(false);
-  const [leaveLeagueError, setLeaveLeagueError] = useState<string | null>(null);
+  const [leavingClub, setLeavingClub] = useState(false);
+  const [leaveClubError, setLeaveClubError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
     void (async () => {
       try {
-        const [loadedLeague, loadedMembers, loadedRounds, loadedLeaderboard] = await Promise.all([
-          getLeague(id),
-          getLeagueMembers(id),
-          getRounds(id),
-          getLeagueLeaderboard(id),
+        const [loadedClub, loadedMembers, loadedMixes, loadedLeaderboard] = await Promise.all([
+          getClub(id),
+          getClubMembers(id),
+          getMixes(id),
+          getClubLeaderboard(id),
         ]);
-        setLeague(loadedLeague);
+        setClub(loadedClub);
         setMembers(loadedMembers);
-        setRounds(loadedRounds);
+        setMixes(loadedMixes);
         setLeaderboard(loadedLeaderboard);
       } catch (err) {
         setError(err instanceof ApiError ? err.message : "couldn't load this club.");
@@ -94,19 +94,19 @@ export function LeagueHomeRoute() {
     })();
   }, [id]);
 
-  // Silently refresh league + round state every 60s so round transitions
+  // Silently refresh club + mix state every 60s so mix transitions
   // (e.g. organizer opens voting) surface without a manual page reload.
   usePolling(() => {
     if (!id) return;
     void (async () => {
       try {
-        const [updatedLeague, updatedRounds, updatedLeaderboard] = await Promise.all([
-          getLeague(id),
-          getRounds(id),
-          getLeagueLeaderboard(id),
+        const [updatedClub, updatedMixes, updatedLeaderboard] = await Promise.all([
+          getClub(id),
+          getMixes(id),
+          getClubLeaderboard(id),
         ]);
-        setLeague(updatedLeague);
-        setRounds(updatedRounds);
+        setClub(updatedClub);
+        setMixes(updatedMixes);
         setLeaderboard(updatedLeaderboard);
       } catch {
         // Non-fatal — stale data beats an error flash on a background refresh.
@@ -114,26 +114,26 @@ export function LeagueHomeRoute() {
     })();
   });
 
-  // Closed rounds get a winner + most-noted summary on their card. Results live
-  // behind a separate endpoint, so fetch them for every closed round in parallel
+  // Closed mixes get a winner + most-noted summary on their card. Results live
+  // behind a separate endpoint, so fetch them for every closed mix in parallel
   // once the slate is known. Failures are non-fatal — a card simply shows no
   // summary rather than breaking the list.
   useEffect(() => {
-    const closed = rounds.filter((r) => r.state === "closed");
+    const closed = mixes.filter((r) => r.state === "closed");
     if (closed.length === 0) return;
     let cancelled = false;
     void (async () => {
       const entries = await Promise.all(
-        closed.map(async (round) => {
+        closed.map(async (mix) => {
           try {
-            return [round.id, await getResults(round.id)] as const;
+            return [mix.id, await getResults(mix.id)] as const;
           } catch {
             return null;
           }
         }),
       );
       if (cancelled) return;
-      setRoundResults((current) => {
+      setMixResults((current) => {
         const next = { ...current };
         for (const entry of entries) {
           if (entry) next[entry[0]] = entry[1];
@@ -144,31 +144,31 @@ export function LeagueHomeRoute() {
     return () => {
       cancelled = true;
     };
-  }, [rounds]);
+  }, [mixes]);
 
-  const isOrganizer = !!userId && league?.organizer_id === userId;
+  const isOrganizer = !!userId && club?.organizer_id === userId;
   // Co-organizers (role === "admin") get parity with the fixed organizer on
-  // operational powers (round management, league settings, member removal) —
+  // operational powers (mix management, club settings, member removal) —
   // MYS-99. isOrganizer stays narrower, for the one case that still cares
   // about the fixed organizer specifically (see the destructive-actions
-  // section in LeagueHomeScreen).
+  // section in ClubHomeScreen).
   const ownMember = members.find((m) => m.user_id === userId);
   const isAdmin = isOrganizer || ownMember?.is_admin === true;
 
-  async function handleDeleteLeague() {
+  async function handleDeleteClub() {
     if (!id) return;
-    setDeletingLeague(true);
-    setDeleteLeagueError(null);
+    setDeletingClub(true);
+    setDeleteClubError(null);
     try {
-      await deleteLeague(id);
+      await deleteClub(id);
       navigate("/home");
     } catch (err) {
-      // The backend's 409 detail ("cannot delete a league that is in progress")
+      // The backend's 409 detail ("cannot delete a club that is in progress")
       // is calm enough to show verbatim.
-      setDeleteLeagueError(
+      setDeleteClubError(
         err instanceof ApiError ? err.message : "couldn't delete the club. try again.",
       );
-      setDeletingLeague(false);
+      setDeletingClub(false);
     }
   }
 
@@ -190,31 +190,31 @@ export function LeagueHomeRoute() {
     }
   }
 
-  // Edit a single round's theme/description in place. Returns true on success so
-  // the inline editor can close itself. On success we patch the round into local
+  // Edit a single mix's theme/description in place. Returns true on success so
+  // the inline editor can close itself. On success we patch the mix into local
   // state rather than refetch — the rest of the slate is unchanged.
-  async function handleUpdateRound(
-    roundId: string,
+  async function handleUpdateMix(
+    mixId: string,
     input: { theme?: string | null; description?: string | null },
   ): Promise<boolean> {
     if (!id) return false;
-    setSavingRoundId(roundId);
-    setUpdateRoundError(null);
+    setSavingMixId(mixId);
+    setUpdateMixError(null);
     try {
-      const updated = await updateRound(roundId, input);
-      setRounds((current) => current.map((r) => (r.id === roundId ? updated : r)));
+      const updated = await updateMix(mixId, input);
+      setMixes((current) => current.map((r) => (r.id === mixId ? updated : r)));
       return true;
     } catch (err) {
-      setUpdateRoundError(
+      setUpdateMixError(
         err instanceof ApiError ? err.message : "couldn't save the mystery mix. try again.",
       );
       return false;
     } finally {
-      setSavingRoundId(null);
+      setSavingMixId(null);
     }
   }
 
-  async function handleUpdateLeague(input: {
+  async function handleUpdateClub(input: {
     name?: string;
     description?: string | null;
     total_mixes?: number;
@@ -225,15 +225,15 @@ export function LeagueHomeRoute() {
     setUpdating(true);
     setUpdateError(null);
     try {
-      const updated = await updateLeague(id, input);
-      setLeague(updated);
-      // Changing total_mixes reconciles the round slate server-side (adds or
-      // removes trailing pending rounds); refetch so the list matches. Non-fatal.
+      const updated = await updateClub(id, input);
+      setClub(updated);
+      // Changing total_mixes reconciles the mix slate server-side (adds or
+      // removes trailing pending mixes); refetch so the list matches. Non-fatal.
       if (input.total_mixes !== undefined) {
         try {
-          setRounds(await getRounds(id));
+          setMixes(await getMixes(id));
         } catch {
-          // The league header is already current; leave the list as-is.
+          // The club header is already current; leave the list as-is.
         }
       }
     } catch (err) {
@@ -243,18 +243,18 @@ export function LeagueHomeRoute() {
     }
   }
 
-  async function handleLeaveLeague() {
+  async function handleLeaveClub() {
     if (!id || !userId) return;
-    setLeavingLeague(true);
-    setLeaveLeagueError(null);
+    setLeavingClub(true);
+    setLeaveClubError(null);
     try {
       await removeMember(id, userId);
       navigate("/home");
     } catch (err) {
-      setLeaveLeagueError(
+      setLeaveClubError(
         err instanceof ApiError ? err.message : "couldn't leave the club. try again.",
       );
-      setLeavingLeague(false);
+      setLeavingClub(false);
     }
   }
 
@@ -290,10 +290,10 @@ export function LeagueHomeRoute() {
     }
   }
 
-  // While loading (or if the league never resolved without an error), keep the
-  // screen in its loading state. The screen reads `league` only after the
+  // While loading (or if the club never resolved without an error), keep the
+  // screen in its loading state. The screen reads `club` only after the
   // loading/error guards, so the empty placeholder is never rendered.
-  const placeholderLeague: League = {
+  const placeholderClub: Club = {
     id: id ?? "",
     name: "",
     description: null,
@@ -311,27 +311,27 @@ export function LeagueHomeRoute() {
   };
 
   return (
-    <LeagueHomeScreen
-      league={league ?? placeholderLeague}
+    <ClubHomeScreen
+      club={club ?? placeholderClub}
       members={members}
-      rounds={rounds}
+      mixes={mixes}
       leaderboard={leaderboard}
       userId={userId}
-      roundResults={roundResults}
+      mixResults={mixResults}
       isOrganizer={isOrganizer}
       isAdmin={isAdmin}
-      loading={loading || (!league && !error)}
+      loading={loading || (!club && !error)}
       error={error}
       onBack={() => navigate("/home")}
-      onOpenRound={(roundId) => navigate(`/mixes/${roundId}`)}
-      onUpdateRound={handleUpdateRound}
-      savingRoundId={savingRoundId}
-      updateRoundError={updateRoundError}
+      onOpenMix={(mixId) => navigate(`/mixes/${mixId}`)}
+      onUpdateMix={handleUpdateMix}
+      savingMixId={savingMixId}
+      updateMixError={updateMixError}
       inviteUrl={inviteUrl}
       onGenerateInvite={handleGenerateInvite}
       generatingInvite={generatingInvite}
       inviteError={inviteError}
-      onUpdateLeague={handleUpdateLeague}
+      onUpdateClub={handleUpdateClub}
       updating={updating}
       updateError={updateError}
       onRemoveMember={handleRemoveMember}
@@ -340,12 +340,12 @@ export function LeagueHomeRoute() {
       onChangeMemberRole={handleChangeMemberRole}
       changingRoleUserId={changingRoleUserId}
       roleChangeError={roleChangeError}
-      onDeleteLeague={handleDeleteLeague}
-      deletingLeague={deletingLeague}
-      deleteLeagueError={deleteLeagueError}
-      onLeaveLeague={handleLeaveLeague}
-      leavingLeague={leavingLeague}
-      leaveLeagueError={leaveLeagueError}
+      onDeleteClub={handleDeleteClub}
+      deletingClub={deletingClub}
+      deleteClubError={deleteClubError}
+      onLeaveClub={handleLeaveClub}
+      leavingClub={leavingClub}
+      leaveClubError={leaveClubError}
     />
   );
 }

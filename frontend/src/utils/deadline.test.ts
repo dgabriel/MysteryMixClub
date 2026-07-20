@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { formatCountdown, formatDeadline, toDatetimeLocalValue } from "./deadline";
-import type { Round } from "../services/api";
+import type { Mix } from "../services/api";
 
-// A full Round with only the fields formatDeadline reads meaningfully; overrides
+// A full Mix with only the fields formatDeadline reads meaningfully; overrides
 // set state and the two deadline strings per case.
-function roundWith(overrides: Partial<Round> = {}): Round {
+function mixWith(overrides: Partial<Mix> = {}): Mix {
   return {
     id: "r1",
     club_id: "lg1",
@@ -36,7 +36,7 @@ const DECEMBER = "2026-12-20T12:00:00Z";
 describe("formatDeadline", () => {
   it("open_submission → uses the submission deadline", () => {
     const out = formatDeadline(
-      roundWith({ state: "open_submission", submission_deadline: JULY, voting_deadline: DECEMBER }),
+      mixWith({ state: "open_submission", submission_deadline: JULY, voting_deadline: DECEMBER }),
     );
     expect(out).toMatch(/^closes /);
     expect(out).toContain("jul"); // submission (July), not voting (December)
@@ -47,7 +47,7 @@ describe("formatDeadline", () => {
 
   it("open_voting → uses the voting deadline", () => {
     const out = formatDeadline(
-      roundWith({ state: "open_voting", submission_deadline: JULY, voting_deadline: DECEMBER }),
+      mixWith({ state: "open_voting", submission_deadline: JULY, voting_deadline: DECEMBER }),
     );
     expect(out).toMatch(/^closes /);
     expect(out).toContain("dec"); // voting (December), not submission (July)
@@ -57,7 +57,7 @@ describe("formatDeadline", () => {
   it("pending → null even when deadlines are set", () => {
     expect(
       formatDeadline(
-        roundWith({ state: "pending", submission_deadline: JULY, voting_deadline: DECEMBER }),
+        mixWith({ state: "pending", submission_deadline: JULY, voting_deadline: DECEMBER }),
       ),
     ).toBeNull();
   });
@@ -65,24 +65,24 @@ describe("formatDeadline", () => {
   it("closed → null even when deadlines are set", () => {
     expect(
       formatDeadline(
-        roundWith({ state: "closed", submission_deadline: JULY, voting_deadline: DECEMBER }),
+        mixWith({ state: "closed", submission_deadline: JULY, voting_deadline: DECEMBER }),
       ),
     ).toBeNull();
   });
 
-  it("open_submission with a null submission deadline → null (legacy round)", () => {
+  it("open_submission with a null submission deadline → null (legacy mix)", () => {
     expect(
-      formatDeadline(roundWith({ state: "open_submission", submission_deadline: null })),
+      formatDeadline(mixWith({ state: "open_submission", submission_deadline: null })),
     ).toBeNull();
   });
 
-  it("open_voting with a null voting deadline → null (legacy round)", () => {
-    expect(formatDeadline(roundWith({ state: "open_voting", voting_deadline: null }))).toBeNull();
+  it("open_voting with a null voting deadline → null (legacy mix)", () => {
+    expect(formatDeadline(mixWith({ state: "open_voting", voting_deadline: null }))).toBeNull();
   });
 
   it("invalid date string → null", () => {
     expect(
-      formatDeadline(roundWith({ state: "open_submission", submission_deadline: "not-a-date" })),
+      formatDeadline(mixWith({ state: "open_submission", submission_deadline: "not-a-date" })),
     ).toBeNull();
   });
 });
@@ -101,7 +101,7 @@ describe("formatCountdown", () => {
   it('multi-day remaining → "Xd Yh remaining"', () => {
     const deadline = offsetFrom(NOW, (2 * 24 + 14) * 60 * 60 * 1000); // 2d 14h out
     const out = formatCountdown(
-      roundWith({ state: "open_submission", submission_deadline: deadline }),
+      mixWith({ state: "open_submission", submission_deadline: deadline }),
       NOW,
     );
     expect(out).toBe("2d 14h remaining");
@@ -110,7 +110,7 @@ describe("formatCountdown", () => {
   it('under-a-day remaining → "Xh Ym remaining", not "0d Xh"', () => {
     const deadline = offsetFrom(NOW, (3 * 60 + 12) * 60 * 1000); // 3h 12m out
     const out = formatCountdown(
-      roundWith({ state: "open_submission", submission_deadline: deadline }),
+      mixWith({ state: "open_submission", submission_deadline: deadline }),
       NOW,
     );
     expect(out).toBe("3h 12m remaining");
@@ -119,7 +119,7 @@ describe("formatCountdown", () => {
 
   it('deadline exactly now → "closing soon…"', () => {
     const out = formatCountdown(
-      roundWith({ state: "open_submission", submission_deadline: NOW.toISOString() }),
+      mixWith({ state: "open_submission", submission_deadline: NOW.toISOString() }),
       NOW,
     );
     expect(out).toBe("closing soon…");
@@ -128,7 +128,7 @@ describe("formatCountdown", () => {
   it('deadline already passed → "closing soon…"', () => {
     const deadline = offsetFrom(NOW, -60_000); // 1 minute in the past
     const out = formatCountdown(
-      roundWith({ state: "open_submission", submission_deadline: deadline }),
+      mixWith({ state: "open_submission", submission_deadline: deadline }),
       NOW,
     );
     expect(out).toBe("closing soon…");
@@ -137,7 +137,7 @@ describe("formatCountdown", () => {
   it("pending → null even when deadlines are set", () => {
     expect(
       formatCountdown(
-        roundWith({ state: "pending", submission_deadline: JULY, voting_deadline: DECEMBER }),
+        mixWith({ state: "pending", submission_deadline: JULY, voting_deadline: DECEMBER }),
         NOW,
       ),
     ).toBeNull();
@@ -146,28 +146,28 @@ describe("formatCountdown", () => {
   it("closed → null even when deadlines are set", () => {
     expect(
       formatCountdown(
-        roundWith({ state: "closed", submission_deadline: JULY, voting_deadline: DECEMBER }),
+        mixWith({ state: "closed", submission_deadline: JULY, voting_deadline: DECEMBER }),
         NOW,
       ),
     ).toBeNull();
   });
 
-  it("open_submission with a null submission deadline → null (legacy round)", () => {
+  it("open_submission with a null submission deadline → null (legacy mix)", () => {
     expect(
-      formatCountdown(roundWith({ state: "open_submission", submission_deadline: null }), NOW),
+      formatCountdown(mixWith({ state: "open_submission", submission_deadline: null }), NOW),
     ).toBeNull();
   });
 
-  it("open_voting with a null voting deadline → null (legacy round)", () => {
+  it("open_voting with a null voting deadline → null (legacy mix)", () => {
     expect(
-      formatCountdown(roundWith({ state: "open_voting", voting_deadline: null }), NOW),
+      formatCountdown(mixWith({ state: "open_voting", voting_deadline: null }), NOW),
     ).toBeNull();
   });
 
   it("invalid date string → null", () => {
     expect(
       formatCountdown(
-        roundWith({ state: "open_submission", submission_deadline: "not-a-date" }),
+        mixWith({ state: "open_submission", submission_deadline: "not-a-date" }),
         NOW,
       ),
     ).toBeNull();
@@ -177,11 +177,11 @@ describe("formatCountdown", () => {
     // JULY is ~ a day+ after NOW; DECEMBER is far in the future — proves the
     // submission field (JULY) drives the countdown, not voting (DECEMBER).
     const out = formatCountdown(
-      roundWith({ state: "open_submission", submission_deadline: JULY, voting_deadline: DECEMBER }),
+      mixWith({ state: "open_submission", submission_deadline: JULY, voting_deadline: DECEMBER }),
       NOW,
     );
     const outIfVoting = formatCountdown(
-      roundWith({ state: "open_voting", submission_deadline: JULY, voting_deadline: DECEMBER }),
+      mixWith({ state: "open_voting", submission_deadline: JULY, voting_deadline: DECEMBER }),
       NOW,
     );
     expect(out).not.toBe(outIfVoting);
@@ -190,7 +190,7 @@ describe("formatCountdown", () => {
   it("open_voting → uses the voting deadline, not submission", () => {
     const deadline = offsetFrom(NOW, 5 * 60 * 60 * 1000); // 5h out
     const out = formatCountdown(
-      roundWith({
+      mixWith({
         state: "open_voting",
         submission_deadline: offsetFrom(NOW, 60 * 60 * 1000), // 1h out — should be ignored
         voting_deadline: deadline,

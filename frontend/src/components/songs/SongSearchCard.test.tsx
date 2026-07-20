@@ -168,8 +168,8 @@ describe("SongSearchCard", () => {
     await user.click(screen.getByRole("button", { name: /^resolve$/i }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "This Bandcamp link redirects to a custom domain, which we don't support yet. " +
-        "Try a link that stays on bandcamp.com.",
+      "Some Bandcamp Pro accounts with a custom domain aren't supported yet, but will be " +
+        "in the future. Try a link that stays on bandcamp.com.",
     );
     // The pointless source-only retry never fires for this failure.
     expect(mockResolve).toHaveBeenCalledTimes(1);

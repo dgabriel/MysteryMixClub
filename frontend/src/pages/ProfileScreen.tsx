@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from "react";
-import type { League } from "../services/api";
+import type { Club } from "../services/api";
 import { Button } from "../components/Button";
 import { TextField } from "../components/TextField";
 import { Badge } from "../components/Badge";
@@ -12,10 +12,10 @@ type ProfileScreenProps = {
   displayName: string | null;
   email: string | null;
   preferredService: "spotify" | "youtube" | "deezer" | null;
-  archivedLeagues: League[];
+  archivedClubs: Club[];
   loading: boolean;
   error?: string | null;
-  onOpenLeague: (id: string) => void;
+  onOpenClub: (id: string) => void;
   onSaveName: (name: string) => void;
   saving: boolean;
   saveError?: string | null;
@@ -35,21 +35,21 @@ type ProfileScreenProps = {
 };
 
 /**
- * Profile screen: edit display name, preferred service, browse archived leagues,
+ * Profile screen: edit display name, preferred service, browse archived clubs,
  * and manage account (log out all devices, delete account).
  *
  * Rust budget: the single Rust use is the accent bar on the most-recently-completed
- * archived league card. The delete-account confirm uses ghost/ink styling only.
+ * archived club card. The delete-account confirm uses ghost/ink styling only.
  */
 export function ProfileScreen({
   userId,
   displayName,
   email,
   preferredService,
-  archivedLeagues,
+  archivedClubs,
   loading,
   error,
-  onOpenLeague,
+  onOpenClub,
   onSaveName,
   saving,
   saveError,
@@ -111,7 +111,7 @@ export function ProfileScreen({
             saved={savedService}
           />
 
-          <ArchivedLeagues leagues={archivedLeagues} onOpenLeague={onOpenLeague} />
+          <ArchivedClubs clubs={archivedClubs} onOpenClub={onOpenClub} />
 
           <section className="mt-12 border-t border-border pt-10">
             <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">security</h2>
@@ -258,46 +258,46 @@ function PreferredServicePicker({
   );
 }
 
-function ArchivedLeagues({
-  leagues,
-  onOpenLeague,
+function ArchivedClubs({
+  clubs,
+  onOpenClub,
 }: {
-  leagues: League[];
-  onOpenLeague: (id: string) => void;
+  clubs: Club[];
+  onOpenClub: (id: string) => void;
 }) {
   return (
     <section className="mt-12">
       <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
-        archived ({leagues.length})
+        archived ({clubs.length})
       </h2>
-      {leagues.length === 0 ? (
+      {clubs.length === 0 ? (
         <p className="mt-4 font-mono text-[13px] font-light text-muted">no completed clubs yet</p>
       ) : (
         <ul className="mt-4 space-y-4">
-          {leagues.map((league, index) => (
-            <li key={league.id}>
+          {clubs.map((club, index) => (
+            <li key={club.id}>
               {/* The screen's single Rust use: accent bar on the most-recently
-                  completed league only (index 0). */}
+                  completed club only (index 0). */}
               <Card
                 accent={index === 0}
                 className="transition-colors duration-150 hover:bg-sage-pale"
               >
                 <button
                   type="button"
-                  onClick={() => onOpenLeague(league.id)}
+                  onClick={() => onOpenClub(club.id)}
                   className="block w-full text-left"
                 >
                   <span className="font-mono uppercase tracking-label text-[9px] text-muted">
                     club
                   </span>
                   <h3 className="mt-1 font-serif text-[20px] leading-tight text-ink">
-                    {league.name}
+                    {club.name}
                   </h3>
                   <div className="mt-3 flex items-center justify-between">
                     <span className="font-mono text-[11px] font-light text-muted">
-                      {league.total_mixes} mixes
+                      {club.total_mixes} mixes
                     </span>
-                    <Badge>{league.state}</Badge>
+                    <Badge>{club.state}</Badge>
                   </div>
                 </button>
               </Card>

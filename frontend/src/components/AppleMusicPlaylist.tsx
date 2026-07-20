@@ -9,7 +9,7 @@ import {
 import { authorizeAppleMusic } from "../services/musickit";
 
 /**
- * Per-player Apple Music playlist for a round (MYS-108).
+ * Per-player Apple Music playlist for a mix (MYS-108).
  *
  * Unlike the Spotify link — one shared, public playlist any member can open —
  * Apple library playlists cannot be made public (MYS-107), so each member
@@ -30,7 +30,7 @@ const BUTTON_CLASS =
   "inline-flex items-center gap-1.5 font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink disabled:cursor-default disabled:text-muted disabled:no-underline";
 const NOTE_CLASS = "font-mono text-[11px] font-light text-muted";
 
-export function AppleMusicPlaylist({ roundId }: { roundId: string }) {
+export function AppleMusicPlaylist({ mixId }: { mixId: string }) {
   // undefined = still loading, null = not configured / unavailable
   const [developerToken, setDeveloperToken] = useState<string | null | undefined>(undefined);
   const [playlistUrl, setPlaylistUrl] = useState<string | null | undefined>(undefined);
@@ -54,7 +54,7 @@ export function AppleMusicPlaylist({ roundId }: { roundId: string }) {
 
   useEffect(() => {
     let active = true;
-    getApplePlaylistLink(roundId)
+    getApplePlaylistLink(mixId)
       .then((r) => {
         if (!active) return;
         setPlaylistUrl(r.playlist_url);
@@ -66,7 +66,7 @@ export function AppleMusicPlaylist({ roundId }: { roundId: string }) {
     return () => {
       active = false;
     };
-  }, [roundId]);
+  }, [mixId]);
 
   async function handleGenerate() {
     if (!developerToken) return;
@@ -76,7 +76,7 @@ export function AppleMusicPlaylist({ roundId }: { roundId: string }) {
       // Apple's popup must open from the click, so authorize before any await
       // on our own API.
       const musicUserToken = await authorizeAppleMusic(developerToken);
-      const result = await createApplePlaylist(roundId, musicUserToken);
+      const result = await createApplePlaylist(mixId, musicUserToken);
       setPlaylistUrl(result.playlist_url);
       setPlaylistName(result.playlist_name);
     } catch (err) {

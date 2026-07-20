@@ -3,7 +3,7 @@ import { MusicNoteIcon } from "./MusicNoteIcon";
 import { getSpotifyPlaylistLink } from "../services/api";
 
 /**
- * Read-only Spotify playlist link for a round (MYS-83, MYS-169).
+ * Read-only Spotify playlist link for a mix (MYS-83, MYS-169).
  *
  * Generation is platform-admin only (a dedicated admin-screen action) — this
  * component never triggers it, only reads whatever link the admin already
@@ -20,12 +20,12 @@ const LINK_CLASS =
   "inline-flex items-center gap-1.5 font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink";
 const NOTE_CLASS = "font-mono text-[11px] font-light text-muted";
 
-export function SpotifyPlaylist({ roundId }: { roundId: string }) {
+export function SpotifyPlaylist({ mixId }: { mixId: string }) {
   const [playlistUrl, setPlaylistUrl] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
     let active = true;
-    getSpotifyPlaylistLink(roundId)
+    getSpotifyPlaylistLink(mixId)
       .then((r) => {
         if (!active) return;
         setPlaylistUrl(r.playlist_url);
@@ -36,7 +36,7 @@ export function SpotifyPlaylist({ roundId }: { roundId: string }) {
     return () => {
       active = false;
     };
-  }, [roundId]);
+  }, [mixId]);
 
   // undefined = still loading; render nothing rather than a flash of the note.
   if (playlistUrl === undefined) return null;

@@ -5,7 +5,7 @@ import { ConcentricRings } from "./ConcentricRings";
 
 type TopNavProps = {
   /** Optional back affordance shown on the far left after the ring mark — used by
-   *  the round screen to return to its league ("← league"). When omitted no back
+   *  the mix screen to return to its club ("← club"). When omitted no back
    *  link renders. */
   back?: { label: string; to: string };
 };
@@ -52,7 +52,7 @@ function LogoutIcon() {
 /**
  * Shared top navigation. On authenticated screens the ring mark returns home;
  * HOME / PROFILE / ABOUT / LOGOUT are always present, ADMIN only for platform
- * admins. An optional back affordance (e.g. "← league") sits beside the mark on
+ * admins. An optional back affordance (e.g. "← club") sits beside the mark on
  * deeper screens. The mark carries its single Rust dot as persistent brand
  * identity — a style-guide exception that does NOT count against a screen's
  * one-Rust budget (see docs/design/style-guide.md). Every nav *link* still stays

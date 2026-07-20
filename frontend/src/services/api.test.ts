@@ -7,12 +7,12 @@ import {
   authenticatedRequest,
   castVotes,
   createInvite,
-  createLeague,
+  createClub,
   getAccessToken,
   getInvitePreview,
-  getLeague,
-  getLeagueMembers,
-  getLeagues,
+  getClub,
+  getClubMembers,
+  getClubs,
   getMe,
   getMyVotes,
   getNotes,
@@ -24,17 +24,17 @@ import {
   requestMagicLink,
   setStoredAccessToken,
   updateDisplayName,
-  updateLeague,
+  updateClub,
   updateMemberRole,
   verifyToken,
 } from "./api";
 import type {
   Invite,
   InvitePreview,
-  League,
-  LeagueMember,
+  Club,
+  ClubMember,
   Note,
-  RoundResults,
+  MixResults,
   UserProfile,
   Votes,
 } from "./api";
@@ -43,9 +43,9 @@ const API_BASE = "http://127.0.0.1:8000";
 const AUTH_BASE = `${API_BASE}/api/v1/auth`;
 const V1_BASE = `${API_BASE}/api/v1`;
 
-/** A representative League object as the backend would return it. */
-const sampleLeague: League = {
-  id: "league-1",
+/** A representative Club object as the backend would return it. */
+const sampleClub: Club = {
+  id: "club-1",
   name: "Friday Mixers",
   description: "weekly picks",
   organizer_id: "user-1",
@@ -453,7 +453,7 @@ describe("api.ts", () => {
     });
   });
 
-  describe("createLeague", () => {
+  describe("createClub", () => {
     const input = {
       name: "Friday Mixers",
       total_mixes: 6,
@@ -461,13 +461,13 @@ describe("api.ts", () => {
       description: "weekly picks",
     };
 
-    it("POSTs /api/v1/clubs with a JSON body (Bearer + credentials) and resolves the League on 201", async () => {
+    it("POSTs /api/v1/clubs with a JSON body (Bearer + credentials) and resolves the Club on 201", async () => {
       setStoredAccessToken("my-token");
       const fetchMock = vi
         .spyOn(globalThis, "fetch")
-        .mockResolvedValue(jsonResponse(201, sampleLeague));
+        .mockResolvedValue(jsonResponse(201, sampleClub));
 
-      await expect(createLeague(input)).resolves.toEqual(sampleLeague);
+      await expect(createClub(input)).resolves.toEqual(sampleClub);
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0];
@@ -484,10 +484,10 @@ describe("api.ts", () => {
       setStoredAccessToken("my-token");
       const fetchMock = vi
         .spyOn(globalThis, "fetch")
-        .mockResolvedValue(jsonResponse(201, sampleLeague));
+        .mockResolvedValue(jsonResponse(201, sampleClub));
 
       const minimal = { name: "Solo", total_mixes: 1 };
-      await createLeague(minimal);
+      await createClub(minimal);
 
       const [, init] = fetchMock.mock.calls[0];
       expect(init?.body).toBe(JSON.stringify(minimal));
@@ -499,7 +499,7 @@ describe("api.ts", () => {
         jsonResponse(422, { detail: "total_mixes must be at least 1" }),
       );
 
-      const err = await createLeague(input).catch((e: unknown) => e);
+      const err = await createClub(input).catch((e: unknown) => e);
       expect(err).toBeInstanceOf(ApiError);
       expect(err).toMatchObject({
         status: 422,
@@ -511,21 +511,21 @@ describe("api.ts", () => {
       setStoredAccessToken("my-token");
       vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("nope", { status: 500 }));
 
-      await expect(createLeague(input)).rejects.toMatchObject({
+      await expect(createClub(input)).rejects.toMatchObject({
         status: 500,
         message: "request failed (500)",
       });
     });
   });
 
-  describe("getLeagues", () => {
+  describe("getClubs", () => {
     it("GETs /api/v1/clubs (Bearer + credentials) and resolves the array on 200", async () => {
       setStoredAccessToken("my-token");
       const fetchMock = vi
         .spyOn(globalThis, "fetch")
-        .mockResolvedValue(jsonResponse(200, [sampleLeague]));
+        .mockResolvedValue(jsonResponse(200, [sampleClub]));
 
-      await expect(getLeagues()).resolves.toEqual([sampleLeague]);
+      await expect(getClubs()).resolves.toEqual([sampleClub]);
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0];
@@ -536,69 +536,69 @@ describe("api.ts", () => {
       expect(headers.get("Authorization")).toBe("Bearer my-token");
     });
 
-    it("resolves an empty array when the user has no leagues", async () => {
+    it("resolves an empty array when the user has no clubs", async () => {
       setStoredAccessToken("my-token");
       vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, []));
 
-      await expect(getLeagues()).resolves.toEqual([]);
+      await expect(getClubs()).resolves.toEqual([]);
     });
 
     it("throws ApiError with the backend detail on a non-2xx response", async () => {
       setStoredAccessToken("my-token");
       vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(500, { detail: "boom" }));
 
-      const err = await getLeagues().catch((e: unknown) => e);
+      const err = await getClubs().catch((e: unknown) => e);
       expect(err).toBeInstanceOf(ApiError);
       expect(err).toMatchObject({ status: 500, message: "boom" });
     });
   });
 
-  describe("getLeague", () => {
-    it("GETs /api/v1/clubs/{id} (Bearer + credentials) and resolves the League on 200", async () => {
+  describe("getClub", () => {
+    it("GETs /api/v1/clubs/{id} (Bearer + credentials) and resolves the Club on 200", async () => {
       setStoredAccessToken("my-token");
       const fetchMock = vi
         .spyOn(globalThis, "fetch")
-        .mockResolvedValue(jsonResponse(200, sampleLeague));
+        .mockResolvedValue(jsonResponse(200, sampleClub));
 
-      await expect(getLeague("league-1")).resolves.toEqual(sampleLeague);
+      await expect(getClub("club-1")).resolves.toEqual(sampleClub);
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0];
-      expect(url).toBe(`${V1_BASE}/clubs/league-1`);
+      expect(url).toBe(`${V1_BASE}/clubs/club-1`);
       expect(init?.method ?? "GET").toBe("GET");
       expect(init?.credentials).toBe("include");
       const headers = new Headers(init?.headers);
       expect(headers.get("Authorization")).toBe("Bearer my-token");
     });
 
-    it("throws ApiError(404) with the backend detail when the league is not found", async () => {
+    it("throws ApiError(404) with the backend detail when the club is not found", async () => {
       setStoredAccessToken("my-token");
       vi.spyOn(globalThis, "fetch").mockResolvedValue(
-        jsonResponse(404, { detail: "league not found" }),
+        jsonResponse(404, { detail: "club not found" }),
       );
 
-      const err = await getLeague("missing").catch((e: unknown) => e);
+      const err = await getClub("missing").catch((e: unknown) => e);
       expect(err).toBeInstanceOf(ApiError);
-      expect(err).toMatchObject({ status: 404, message: "league not found" });
+      expect(err).toMatchObject({ status: 404, message: "club not found" });
     });
 
     it("throws ApiError(403) when the user is not a member", async () => {
       setStoredAccessToken("my-token");
       vi.spyOn(globalThis, "fetch").mockResolvedValue(
-        jsonResponse(403, { detail: "not a member of this league" }),
+        jsonResponse(403, { detail: "not a member of this club" }),
       );
 
-      const err = await getLeague("league-1").catch((e: unknown) => e);
+      const err = await getClub("club-1").catch((e: unknown) => e);
       expect(err).toBeInstanceOf(ApiError);
       expect(err).toMatchObject({
         status: 403,
-        message: "not a member of this league",
+        message: "not a member of this club",
       });
     });
   });
 
-  describe("getLeagueMembers", () => {
-    const members: LeagueMember[] = [
+  describe("getClubMembers", () => {
+    const members: ClubMember[] = [
       {
         user_id: "user-1",
         display_name: "Ada",
@@ -619,11 +619,11 @@ describe("api.ts", () => {
       setStoredAccessToken("my-token");
       const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, members));
 
-      await expect(getLeagueMembers("league-1")).resolves.toEqual(members);
+      await expect(getClubMembers("club-1")).resolves.toEqual(members);
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0];
-      expect(url).toBe(`${V1_BASE}/clubs/league-1/members`);
+      expect(url).toBe(`${V1_BASE}/clubs/club-1/members`);
       expect(init?.method ?? "GET").toBe("GET");
       expect(init?.credentials).toBe("include");
       const headers = new Headers(init?.headers);
@@ -633,30 +633,30 @@ describe("api.ts", () => {
     it("throws ApiError with the backend detail on a non-2xx response", async () => {
       setStoredAccessToken("my-token");
       vi.spyOn(globalThis, "fetch").mockResolvedValue(
-        jsonResponse(403, { detail: "not a member of this league" }),
+        jsonResponse(403, { detail: "not a member of this club" }),
       );
 
-      const err = await getLeagueMembers("league-1").catch((e: unknown) => e);
+      const err = await getClubMembers("club-1").catch((e: unknown) => e);
       expect(err).toBeInstanceOf(ApiError);
       expect(err).toMatchObject({
         status: 403,
-        message: "not a member of this league",
+        message: "not a member of this club",
       });
     });
   });
 
-  describe("updateLeague", () => {
-    it("PATCHes /api/v1/clubs/{id} with a JSON body (Bearer + credentials) and resolves the League on 200", async () => {
+  describe("updateClub", () => {
+    it("PATCHes /api/v1/clubs/{id} with a JSON body (Bearer + credentials) and resolves the Club on 200", async () => {
       setStoredAccessToken("my-token");
-      const updated: League = { ...sampleLeague, name: "Saturday Mixers" };
+      const updated: Club = { ...sampleClub, name: "Saturday Mixers" };
       const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, updated));
 
       const input = { name: "Saturday Mixers" };
-      await expect(updateLeague("league-1", input)).resolves.toEqual(updated);
+      await expect(updateClub("club-1", input)).resolves.toEqual(updated);
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0];
-      expect(url).toBe(`${V1_BASE}/clubs/league-1`);
+      expect(url).toBe(`${V1_BASE}/clubs/club-1`);
       expect(init?.method).toBe("PATCH");
       expect(init?.credentials).toBe("include");
       expect(init?.body).toBe(JSON.stringify(input));
@@ -669,10 +669,10 @@ describe("api.ts", () => {
       setStoredAccessToken("my-token");
       const fetchMock = vi
         .spyOn(globalThis, "fetch")
-        .mockResolvedValue(jsonResponse(200, { ...sampleLeague, description: null }));
+        .mockResolvedValue(jsonResponse(200, { ...sampleClub, description: null }));
 
       const input = { description: null };
-      await updateLeague("league-1", input);
+      await updateClub("club-1", input);
 
       const [, init] = fetchMock.mock.calls[0];
       expect(init?.body).toBe(JSON.stringify(input));
@@ -684,7 +684,7 @@ describe("api.ts", () => {
         jsonResponse(409, { detail: "total_mixes cannot be below current_mix" }),
       );
 
-      const err = await updateLeague("league-1", { total_mixes: 1 }).catch((e: unknown) => e);
+      const err = await updateClub("club-1", { total_mixes: 1 }).catch((e: unknown) => e);
       expect(err).toBeInstanceOf(ApiError);
       expect(err).toMatchObject({
         status: 409,
@@ -694,15 +694,15 @@ describe("api.ts", () => {
   });
 
   describe("removeMember", () => {
-    it("DELETEs /api/v1/clubs/{leagueId}/members/{userId} (Bearer + credentials) and resolves undefined on 204", async () => {
+    it("DELETEs /api/v1/clubs/{clubId}/members/{userId} (Bearer + credentials) and resolves undefined on 204", async () => {
       setStoredAccessToken("my-token");
       const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(emptyResponse(204));
 
-      await expect(removeMember("league-1", "user-2")).resolves.toBeUndefined();
+      await expect(removeMember("club-1", "user-2")).resolves.toBeUndefined();
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0];
-      expect(url).toBe(`${V1_BASE}/clubs/league-1/members/user-2`);
+      expect(url).toBe(`${V1_BASE}/clubs/club-1/members/user-2`);
       expect(init?.method).toBe("DELETE");
       expect(init?.credentials).toBe("include");
       const headers = new Headers(init?.headers);
@@ -715,7 +715,7 @@ describe("api.ts", () => {
         jsonResponse(409, { detail: "cannot remove the organizer" }),
       );
 
-      const err = await removeMember("league-1", "user-1").catch((e: unknown) => e);
+      const err = await removeMember("club-1", "user-1").catch((e: unknown) => e);
       expect(err).toBeInstanceOf(ApiError);
       expect(err).toMatchObject({
         status: 409,
@@ -729,16 +729,16 @@ describe("api.ts", () => {
         jsonResponse(403, { detail: "organizer only" }),
       );
 
-      const err = await removeMember("league-1", "user-2").catch((e: unknown) => e);
+      const err = await removeMember("club-1", "user-2").catch((e: unknown) => e);
       expect(err).toBeInstanceOf(ApiError);
       expect(err).toMatchObject({ status: 403, message: "organizer only" });
     });
   });
 
   describe("updateMemberRole", () => {
-    it("PATCHes /api/v1/clubs/{leagueId}/members/{userId}/role with a JSON body (Bearer + credentials) and resolves the updated LeagueMember on 200", async () => {
+    it("PATCHes /api/v1/clubs/{clubId}/members/{userId}/role with a JSON body (Bearer + credentials) and resolves the updated ClubMember on 200", async () => {
       setStoredAccessToken("my-token");
-      const updated: LeagueMember = {
+      const updated: ClubMember = {
         user_id: "user-2",
         display_name: "Bo",
         joined_at: "2026-06-02T00:00:00Z",
@@ -747,11 +747,11 @@ describe("api.ts", () => {
       };
       const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, updated));
 
-      await expect(updateMemberRole("league-1", "user-2", "admin")).resolves.toEqual(updated);
+      await expect(updateMemberRole("club-1", "user-2", "admin")).resolves.toEqual(updated);
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0];
-      expect(url).toBe(`${V1_BASE}/clubs/league-1/members/user-2/role`);
+      expect(url).toBe(`${V1_BASE}/clubs/club-1/members/user-2/role`);
       expect(init?.method).toBe("PATCH");
       expect(init?.credentials).toBe("include");
       expect(init?.body).toBe(JSON.stringify({ role: "admin" }));
@@ -762,7 +762,7 @@ describe("api.ts", () => {
 
     it("sends role: member to demote a co-organizer", async () => {
       setStoredAccessToken("my-token");
-      const updated: LeagueMember = {
+      const updated: ClubMember = {
         user_id: "user-2",
         display_name: "Bo",
         joined_at: "2026-06-02T00:00:00Z",
@@ -771,7 +771,7 @@ describe("api.ts", () => {
       };
       const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, updated));
 
-      await expect(updateMemberRole("league-1", "user-2", "member")).resolves.toEqual(updated);
+      await expect(updateMemberRole("club-1", "user-2", "member")).resolves.toEqual(updated);
 
       const [, init] = fetchMock.mock.calls[0];
       expect(init?.body).toBe(JSON.stringify({ role: "member" }));
@@ -785,7 +785,7 @@ describe("api.ts", () => {
         }),
       );
 
-      const err = await updateMemberRole("league-1", "user-1", "admin").catch((e: unknown) => e);
+      const err = await updateMemberRole("club-1", "user-1", "admin").catch((e: unknown) => e);
       expect(err).toBeInstanceOf(ApiError);
       expect(err).toMatchObject({
         status: 409,
@@ -801,7 +801,7 @@ describe("api.ts", () => {
         }),
       );
 
-      const err = await updateMemberRole("league-1", "user-2", "admin").catch((e: unknown) => e);
+      const err = await updateMemberRole("club-1", "user-2", "admin").catch((e: unknown) => e);
       expect(err).toBeInstanceOf(ApiError);
       expect(err).toMatchObject({
         status: 403,
@@ -815,7 +815,7 @@ describe("api.ts", () => {
         jsonResponse(404, { detail: "member not found" }),
       );
 
-      const err = await updateMemberRole("league-1", "user-9", "admin").catch((e: unknown) => e);
+      const err = await updateMemberRole("club-1", "user-9", "admin").catch((e: unknown) => e);
       expect(err).toBeInstanceOf(ApiError);
       expect(err).toMatchObject({ status: 404, message: "member not found" });
     });
@@ -824,22 +824,22 @@ describe("api.ts", () => {
   describe("createInvite", () => {
     const invite: Invite = {
       id: "invite-1",
-      club_id: "league-1",
+      club_id: "club-1",
       token: "abc123",
       created_by: "user-1",
       created_at: "2026-06-03T00:00:00Z",
       expires_at: null,
     };
 
-    it("POSTs /api/v1/clubs/{leagueId}/invites (Bearer + credentials) and resolves the Invite on 201", async () => {
+    it("POSTs /api/v1/clubs/{clubId}/invites (Bearer + credentials) and resolves the Invite on 201", async () => {
       setStoredAccessToken("my-token");
       const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(201, invite));
 
-      await expect(createInvite("league-1")).resolves.toEqual(invite);
+      await expect(createInvite("club-1")).resolves.toEqual(invite);
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0];
-      expect(url).toBe(`${V1_BASE}/clubs/league-1/invites`);
+      expect(url).toBe(`${V1_BASE}/clubs/club-1/invites`);
       expect(init?.method).toBe("POST");
       expect(init?.credentials).toBe("include");
       const headers = new Headers(init?.headers);
@@ -849,14 +849,14 @@ describe("api.ts", () => {
     it("throws ApiError with the backend detail on a non-2xx response", async () => {
       setStoredAccessToken("my-token");
       vi.spyOn(globalThis, "fetch").mockResolvedValue(
-        jsonResponse(403, { detail: "not a member of this league" }),
+        jsonResponse(403, { detail: "not a member of this club" }),
       );
 
-      const err = await createInvite("league-1").catch((e: unknown) => e);
+      const err = await createInvite("club-1").catch((e: unknown) => e);
       expect(err).toBeInstanceOf(ApiError);
       expect(err).toMatchObject({
         status: 403,
-        message: "not a member of this league",
+        message: "not a member of this club",
       });
     });
   });
@@ -901,7 +901,7 @@ describe("api.ts", () => {
 
   describe("getInvitePreview", () => {
     const preview: InvitePreview = {
-      club_id: "league-1",
+      club_id: "club-1",
       club_name: "Friday Mixers",
       member_count: 4,
       already_member: false,
@@ -954,13 +954,13 @@ describe("api.ts", () => {
   });
 
   describe("acceptInvite", () => {
-    it("POSTs /api/v1/invites/{token}/accept (Bearer + credentials) and resolves the League on 200", async () => {
+    it("POSTs /api/v1/invites/{token}/accept (Bearer + credentials) and resolves the Club on 200", async () => {
       setStoredAccessToken("my-token");
       const fetchMock = vi
         .spyOn(globalThis, "fetch")
-        .mockResolvedValue(jsonResponse(200, sampleLeague));
+        .mockResolvedValue(jsonResponse(200, sampleClub));
 
-      await expect(acceptInvite("plain-token")).resolves.toEqual(sampleLeague);
+      await expect(acceptInvite("plain-token")).resolves.toEqual(sampleClub);
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0];
@@ -975,7 +975,7 @@ describe("api.ts", () => {
       setStoredAccessToken("my-token");
       const fetchMock = vi
         .spyOn(globalThis, "fetch")
-        .mockResolvedValue(jsonResponse(200, sampleLeague));
+        .mockResolvedValue(jsonResponse(200, sampleClub));
 
       const token = "weird/ token";
       await acceptInvite(token);
@@ -1111,14 +1111,14 @@ describe("api.ts", () => {
     it("throws ApiError with the backend detail on a non-2xx response", async () => {
       setStoredAccessToken("my-token");
       vi.spyOn(globalThis, "fetch").mockResolvedValue(
-        jsonResponse(403, { detail: "not a member of this league" }),
+        jsonResponse(403, { detail: "not a member of this club" }),
       );
 
       const err = await getMyVotes("r1").catch((e: unknown) => e);
       expect(err).toBeInstanceOf(ApiError);
       expect(err).toMatchObject({
         status: 403,
-        message: "not a member of this league",
+        message: "not a member of this club",
       });
     });
   });
@@ -1151,7 +1151,7 @@ describe("api.ts", () => {
       expect(headers.get("Authorization")).toBe("Bearer my-token");
     });
 
-    it("throws ApiError(409) when the round is not open for voting", async () => {
+    it("throws ApiError(409) when the mix is not open for voting", async () => {
       setStoredAccessToken("my-token");
       vi.spyOn(globalThis, "fetch").mockResolvedValue(
         jsonResponse(409, { detail: "notes are only allowed while voting is open" }),
@@ -1223,20 +1223,20 @@ describe("api.ts", () => {
     it("throws ApiError with the backend detail on a non-2xx response", async () => {
       setStoredAccessToken("my-token");
       vi.spyOn(globalThis, "fetch").mockResolvedValue(
-        jsonResponse(403, { detail: "not a member of this league" }),
+        jsonResponse(403, { detail: "not a member of this club" }),
       );
 
       const err = await getNotes("sub-1").catch((e: unknown) => e);
       expect(err).toBeInstanceOf(ApiError);
       expect(err).toMatchObject({
         status: 403,
-        message: "not a member of this league",
+        message: "not a member of this club",
       });
     });
   });
 
   describe("getResults", () => {
-    const sampleResults: RoundResults = {
+    const sampleResults: MixResults = {
       mix_id: "r1",
       mix_number: 1,
       theme: "late summer feels",
@@ -1295,17 +1295,17 @@ describe("api.ts", () => {
       expect(headers.get("Authorization")).toBe("Bearer my-token");
     });
 
-    it("throws ApiError(409) when the round is not yet closed", async () => {
+    it("throws ApiError(409) when the mix is not yet closed", async () => {
       setStoredAccessToken("my-token");
       vi.spyOn(globalThis, "fetch").mockResolvedValue(
-        jsonResponse(409, { detail: "results are available once the round closes" }),
+        jsonResponse(409, { detail: "results are available once the mix closes" }),
       );
 
       const err = await getResults("r1").catch((e: unknown) => e);
       expect(err).toBeInstanceOf(ApiError);
       expect(err).toMatchObject({
         status: 409,
-        message: "results are available once the round closes",
+        message: "results are available once the mix closes",
       });
     });
 

@@ -4,7 +4,7 @@ import { Button } from "./Button";
 /**
  * A shareable invite link: read-only field (select-on-focus), copy button
  * (clipboard, with a 2s "copied" confirmation), and a native share-sheet
- * button when the browser supports it. Shared by the per-league invite flow
+ * button when the browser supports it. Shared by the per-club invite flow
  * and the admin screen's platform invite (MYS-182).
  */
 export function InviteShare({ inviteUrl }: { inviteUrl: string }) {

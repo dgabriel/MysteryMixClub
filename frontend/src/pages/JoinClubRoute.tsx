@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { JoinLeagueScreen } from "./JoinLeagueScreen";
+import { JoinClubScreen } from "./JoinClubScreen";
 import {
   ApiError,
   acceptInvite,
@@ -18,10 +18,10 @@ import { useAuth } from "../hooks/useAuth";
  *    /login, which carries the token through request+verify; the backend
  *    auto-joins on verify, so there is no explicit accept step for this path.
  *    After verify the user lands here authenticated and is dropped straight into
- *    the league (the auto-join already happened; accept is idempotent).
+ *    the club (the auto-join already happened; accept is idempotent).
  *  - Logged-IN: preview → accept (POST /invites/:token/accept) → join.
  */
-export function JoinLeagueRoute() {
+export function JoinClubRoute() {
   const { token } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -50,13 +50,13 @@ export function JoinLeagueRoute() {
       try {
         const result = await getInvitePreview(token);
         // Already a member (most relevant on an otherwise-expired link, MYS-181)
-        // — skip the join screen entirely and land them in the league.
+        // — skip the join screen entirely and land them in the club.
         if (result.already_member) {
           navigate(`/clubs/${result.club_id}`, { replace: true });
           return;
         }
         // Platform invite (MYS-182): club_id is null — it's a signup grant,
-        // not a league to join. An already-authenticated visitor has nothing
+        // not a club to join. An already-authenticated visitor has nothing
         // to do here (a new account auto-completed signup via /auth/verify
         // before ever reaching this page), so just send them home.
         if (result.club_id === null && isAuthenticated) {
@@ -83,8 +83,8 @@ export function JoinLeagueRoute() {
     setJoining(true);
     setJoinError(null);
     try {
-      const league = await acceptInvite(token);
-      navigate(`/clubs/${league.id}`, { replace: true });
+      const club = await acceptInvite(token);
+      navigate(`/clubs/${club.id}`, { replace: true });
     } catch (err) {
       // A link that expired between preview and accept flips to the expired state.
       if (err instanceof ApiError && err.status === 410) {
@@ -117,7 +117,7 @@ export function JoinLeagueRoute() {
   }
 
   return (
-    <JoinLeagueScreen
+    <JoinClubScreen
       preview={preview}
       loading={loading}
       notFound={notFound}

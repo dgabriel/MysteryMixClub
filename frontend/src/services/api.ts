@@ -74,7 +74,7 @@ async function readErrorMessage(res: Response): Promise<string> {
  *
  * When the request comes from a shareable invite link, pass `inviteToken` so the
  * backend can both gate signup on it (a new account requires a valid invite) and
- * carry it into the verify link to auto-join the league. The dev verify link the
+ * carry it into the verify link to auto-join the club. The dev verify link the
  * UI builds must append `&invite=<inviteToken>` to match.
  *
  * Outside production the backend also returns `dev_token` so the UI can show a
@@ -109,7 +109,7 @@ export async function verifyToken(
 ): Promise<{ access_token: string }> {
   const params = new URLSearchParams({ token });
   // A new account requires a valid invite; an existing user with an invite is
-  // auto-joined to that league. Absent invite → plain verify (existing users).
+  // auto-joined to that club. Absent invite → plain verify (existing users).
   if (invite) params.set("invite", invite);
   const res = await fetch(`${AUTH_BASE}/verify?${params.toString()}`, {
     method: "GET",
@@ -267,7 +267,7 @@ export async function updatePreferredService(
 }
 
 /** Delete the current user's account (right to be forgotten). Throws 409 if
- *  the user organizes an active league. */
+ *  the user organizes an active club. */
 export async function deleteAccount(): Promise<void> {
   const res = await authenticatedRequest("/api/v1/users/me", { method: "DELETE" });
   if (!res.ok) {
@@ -276,7 +276,7 @@ export async function deleteAccount(): Promise<void> {
 }
 
 /** Fetch a JSON dump of the caller's own data (right of access / portability,
- *  MYS-185): profile, submissions, votes, notes, league memberships. Returns
+ *  MYS-185): profile, submissions, votes, notes, club memberships. Returns
  *  the raw parsed object — the caller decides what to do with it (e.g. trigger
  *  a file download), so this isn't typed beyond "some JSON object". */
 export async function exportMyData(): Promise<Record<string, unknown>> {
@@ -287,23 +287,23 @@ export async function exportMyData(): Promise<Record<string, unknown>> {
   return (await res.json()) as Record<string, unknown>;
 }
 
-/** A league as returned by the backend (GET/POST /api/v1/clubs). */
-export type League = {
+/** A club as returned by the backend (GET/POST /api/v1/clubs). */
+export type Club = {
   id: string;
   name: string;
   description: string | null;
   organizer_id: string;
   total_mixes: number;
   votes_per_player: number;
-  /** How many songs a player may submit per round (MYS-116). Fixed at league
+  /** How many songs a player may submit per mix (MYS-116). Fixed at club
    *  setup; 1 = classic one-song behaviour, max 5. */
   songs_per_submission: number;
   current_mix: number;
   state: string;
-  /** Admin-set default participation mode for the league (MYS-112). A member's
+  /** Admin-set default participation mode for the club (MYS-112). A member's
    *  own setting lives on their membership (getMyMembership), not here. */
   default_vibe_mode: boolean;
-  /** Hour-granular deadline windows stamped onto each round when it opens
+  /** Hour-granular deadline windows stamped onto each mix when it opens
    *  (MYS-158/160). Bounds: 4–168 hours (1 week). */
   submission_window_hours: number;
   voting_window_hours: number;
@@ -311,8 +311,8 @@ export type League = {
   completed_at: string | null;
 };
 
-/** The caller's own per-league participation setting (GET/PATCH
- *  /leagues/:id/membership). Vibing is private — this is only ever the caller's
+/** The caller's own per-club participation setting (GET/PATCH
+ *  /clubs/:id/membership). Vibing is private — this is only ever the caller's
  *  own setting, never another member's. */
 export type Membership = {
   club_id: string;
@@ -320,10 +320,10 @@ export type Membership = {
   vibe_mode: boolean;
 };
 
-/** A member of a league (GET /api/v1/clubs/:id/members). `is_admin` is true
+/** A member of a club (GET /api/v1/clubs/:id/members). `is_admin` is true
  *  for the fixed organizer or anyone holding the co-organizer `"admin"` role
  *  (MYS-99). */
-export type LeagueMember = {
+export type ClubMember = {
   user_id: string;
   display_name: string;
   joined_at: string;
@@ -333,7 +333,7 @@ export type LeagueMember = {
 
 /** An invite (POST /api/v1/clubs/:id/invites, or POST /api/v1/admin/invites
  *  for a platform invite). ``club_id`` is null for a platform invite
- *  (MYS-182): grants signup only, no league attachment. */
+ *  (MYS-182): grants signup only, no club attachment. */
 export type Invite = {
   id: string;
   club_id: string | null;
@@ -345,21 +345,21 @@ export type Invite = {
 
 /** Public preview of an invite shown before joining (GET /api/v1/invites/:token).
  *  ``club_id``/``club_name``/``member_count`` are null for a platform
- *  invite (MYS-182) — there's no league to preview, just a signup grant. */
+ *  invite (MYS-182) — there's no club to preview, just a signup grant. */
 export type InvitePreview = {
   club_id: string | null;
   club_name: string | null;
   member_count: number | null;
-  /** True when the viewer is already an active member of this league — the
+  /** True when the viewer is already an active member of this club — the
    *  caller should redirect straight in rather than showing the join screen,
    *  most relevant on an otherwise-expired link (MYS-181). Always false for
    *  a platform invite. */
   already_member: boolean;
 };
 
-/** Create a new league. Returns the created League on 201. Only the provided
+/** Create a new club. Returns the created Club on 201. Only the provided
  *  fields are serialized; JSON.stringify drops undefined optional keys. */
-export async function createLeague(input: {
+export async function createClub(input: {
   name: string;
   total_mixes: number;
   votes_per_player?: number;
@@ -368,7 +368,7 @@ export async function createLeague(input: {
   default_vibe_mode?: boolean;
   submission_window_hours?: number;
   voting_window_hours?: number;
-}): Promise<League> {
+}): Promise<Club> {
   const res = await authenticatedRequest("/api/v1/clubs", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -377,39 +377,39 @@ export async function createLeague(input: {
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
-  return (await res.json()) as League;
+  return (await res.json()) as Club;
 }
 
-/** Get all leagues for the current user. */
-export async function getLeagues(): Promise<League[]> {
+/** Get all clubs for the current user. */
+export async function getClubs(): Promise<Club[]> {
   const res = await authenticatedRequest("/api/v1/clubs");
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
-  return (await res.json()) as League[];
+  return (await res.json()) as Club[];
 }
 
-/** Get a single league by id. */
-export async function getLeague(id: string): Promise<League> {
+/** Get a single club by id. */
+export async function getClub(id: string): Promise<Club> {
   const res = await authenticatedRequest(`/api/v1/clubs/${id}`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
-  return (await res.json()) as League;
+  return (await res.json()) as Club;
 }
 
-/** Get the members of a league. */
-export async function getLeagueMembers(id: string): Promise<LeagueMember[]> {
+/** Get the members of a club. */
+export async function getClubMembers(id: string): Promise<ClubMember[]> {
   const res = await authenticatedRequest(`/api/v1/clubs/${id}/members`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
-  return (await res.json()) as LeagueMember[];
+  return (await res.json()) as ClubMember[];
 }
 
-/** All-time vote leaderboard for a league (MYS-157): ranked members by total
- *  votes received across all closed rounds, with 0-vote members included. */
-export async function getLeagueLeaderboard(id: string): Promise<LeaderboardEntry[]> {
+/** All-time vote leaderboard for a club (MYS-157): ranked members by total
+ *  votes received across all closed mixes, with 0-vote members included. */
+export async function getClubLeaderboard(id: string): Promise<LeaderboardEntry[]> {
   const res = await authenticatedRequest(`/api/v1/clubs/${id}/leaderboard`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
@@ -417,9 +417,9 @@ export async function getLeagueLeaderboard(id: string): Promise<LeaderboardEntry
   return (await res.json()) as LeaderboardEntry[];
 }
 
-/** Update a league (organizer only). An explicit null description is sent as-is;
- *  only undefined keys are dropped by JSON.stringify. Returns the updated League. */
-export async function updateLeague(
+/** Update a club (organizer only). An explicit null description is sent as-is;
+ *  only undefined keys are dropped by JSON.stringify. Returns the updated Club. */
+export async function updateClub(
   id: string,
   input: {
     name?: string;
@@ -429,7 +429,7 @@ export async function updateLeague(
     submission_window_hours?: number;
     voting_window_hours?: number;
   },
-): Promise<League> {
+): Promise<Club> {
   const res = await authenticatedRequest(`/api/v1/clubs/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -438,21 +438,21 @@ export async function updateLeague(
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
-  return (await res.json()) as League;
+  return (await res.json()) as Club;
 }
 
-/** Get the caller's own per-league participation (vibe) setting. */
-export async function getMyMembership(leagueId: string): Promise<Membership> {
-  const res = await authenticatedRequest(`/api/v1/clubs/${leagueId}/membership`);
+/** Get the caller's own per-club participation (vibe) setting. */
+export async function getMyMembership(clubId: string): Promise<Membership> {
+  const res = await authenticatedRequest(`/api/v1/clubs/${clubId}/membership`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
   return (await res.json()) as Membership;
 }
 
-/** Remove a member from a league (organizer only). Resolves on 204. */
-export async function removeMember(leagueId: string, userId: string): Promise<void> {
-  const res = await authenticatedRequest(`/api/v1/clubs/${leagueId}/members/${userId}`, {
+/** Remove a member from a club (organizer only). Resolves on 204. */
+export async function removeMember(clubId: string, userId: string): Promise<void> {
+  const res = await authenticatedRequest(`/api/v1/clubs/${clubId}/members/${userId}`, {
     method: "DELETE",
   });
   if (!res.ok) {
@@ -463,13 +463,13 @@ export async function removeMember(leagueId: string, userId: string): Promise<vo
 /** Promote or demote a member to/from co-organizer (MYS-99). Callable by any
  *  current admin (the fixed organizer or another co-organizer) on another
  *  active member. The backend 409s if targeting the fixed `organizer_id` user
- *  (that role isn't toggleable). Returns the updated LeagueMember. */
+ *  (that role isn't toggleable). Returns the updated ClubMember. */
 export async function updateMemberRole(
-  leagueId: string,
+  clubId: string,
   userId: string,
   role: "admin" | "member",
-): Promise<LeagueMember> {
-  const res = await authenticatedRequest(`/api/v1/clubs/${leagueId}/members/${userId}/role`, {
+): Promise<ClubMember> {
+  const res = await authenticatedRequest(`/api/v1/clubs/${clubId}/members/${userId}/role`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ role }),
@@ -477,12 +477,12 @@ export async function updateMemberRole(
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
-  return (await res.json()) as LeagueMember;
+  return (await res.json()) as ClubMember;
 }
 
-/** Generate an invite link for a league (organizer or member). Returns the Invite. */
-export async function createInvite(leagueId: string): Promise<Invite> {
-  const res = await authenticatedRequest(`/api/v1/clubs/${leagueId}/invites`, {
+/** Generate an invite link for a club (organizer or member). Returns the Invite. */
+export async function createInvite(clubId: string): Promise<Invite> {
+  const res = await authenticatedRequest(`/api/v1/clubs/${clubId}/invites`, {
     method: "POST",
   });
   if (!res.ok) {
@@ -491,11 +491,11 @@ export async function createInvite(leagueId: string): Promise<Invite> {
   return (await res.json()) as Invite;
 }
 
-/** Delete a league (organizer only). Resolves on 204. The backend returns 409
- *  when the league is in progress; the calm detail message ("cannot delete a
- *  league that is in progress") is surfaced on the thrown ApiError. */
-export async function deleteLeague(leagueId: string): Promise<void> {
-  const res = await authenticatedRequest(`/api/v1/clubs/${leagueId}`, {
+/** Delete a club (organizer only). Resolves on 204. The backend returns 409
+ *  when the club is in progress; the calm detail message ("cannot delete a
+ *  club that is in progress") is surfaced on the thrown ApiError. */
+export async function deleteClub(clubId: string): Promise<void> {
+  const res = await authenticatedRequest(`/api/v1/clubs/${clubId}`, {
     method: "DELETE",
   });
   if (!res.ok) {
@@ -503,7 +503,7 @@ export async function deleteLeague(leagueId: string): Promise<void> {
   }
 }
 
-/** Validate an invite token and return a public league preview. Works for
+/** Validate an invite token and return a public club preview. Works for
  *  anyone with the link — authenticatedRequest attaches a bearer token when
  *  one is present (so the backend can compute `already_member`) but never
  *  requires one; the endpoint accepts anonymous callers too (MYS-181). */
@@ -515,15 +515,15 @@ export async function getInvitePreview(token: string): Promise<InvitePreview> {
   return (await res.json()) as InvitePreview;
 }
 
-/** Join a league via invite token. Returns the joined League on 200. */
-export async function acceptInvite(token: string): Promise<League> {
+/** Join a club via invite token. Returns the joined Club on 200. */
+export async function acceptInvite(token: string): Promise<Club> {
   const res = await authenticatedRequest(`/api/v1/invites/${encodeURIComponent(token)}/accept`, {
     method: "POST",
   });
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
-  return (await res.json()) as League;
+  return (await res.json()) as Club;
 }
 
 // --------------------------------------------------------------------------- //
@@ -627,32 +627,32 @@ export async function searchSongs(q: string, artist?: string): Promise<SongSearc
 }
 
 // --------------------------------------------------------------------------- //
-// Rounds, submissions & playlist (MYS-18 / MYS-51 / MYS-53).
+// Mixes, submissions & playlist (MYS-18 / MYS-51 / MYS-53).
 // --------------------------------------------------------------------------- //
 
-/** A round's lifecycle state. `pending` rounds are pre-created and not yet open. */
-export type RoundState = "pending" | "open_submission" | "open_voting" | "closed";
+/** A mix's lifecycle state. `pending` mixes are pre-created and not yet open. */
+export type MixState = "pending" | "open_submission" | "open_voting" | "closed";
 
-/** A round within a league. `theme` is null until the organizer names the round
- *  (rounds are auto-created as `pending` with no theme at league creation). */
-export type Round = {
+/** A mix within a club. `theme` is null until the organizer names the mix
+ *  (mixes are auto-created as `pending` with no theme at club creation). */
+export type Mix = {
   id: string;
   club_id: string;
   mix_number: number;
   theme: string | null;
-  state: RoundState;
+  state: MixState;
   description: string | null;
   submission_deadline: string | null;
   voting_deadline: string | null;
   votes_per_player: number;
   created_at: string;
   closed_at: string | null;
-  /** Submission progress (MYS-101): songs in so far, out of the league's active
+  /** Submission progress (MYS-101): songs in so far, out of the club's active
    *  members. Shown as "X of Y submitted" while submissions are open. */
   submission_count: number;
   member_count: number;
-  /** Whether the current viewer has submitted / voted in this round. Used for
-   *  confirmation indicators on the league-home round tile. */
+  /** Whether the current viewer has submitted / voted in this mix. Used for
+   *  confirmation indicators on the club-home mix tile. */
   viewer_submitted: boolean;
   viewer_voted: boolean;
   /** Voting progress (MYS-110): distinct voters and eligible voters (playing
@@ -661,7 +661,7 @@ export type Round = {
   voting_eligible_count: number;
 };
 
-/** A song submitted to a round (GET .../submissions, .../submissions/mine). */
+/** A song submitted to a mix (GET .../submissions, .../submissions/mine). */
 export type SubmissionResult = {
   id: string;
   mix_id: string;
@@ -681,7 +681,7 @@ export type SubmissionResult = {
   league_previously_submitted: boolean;
 };
 
-/** One entry in a round's voting playlist. Anonymous for everyone but the
+/** One entry in a mix's voting playlist. Anonymous for everyone but the
  *  caller: `is_own` is true for the viewer's own submission (which they can't
  *  vote for), and never reveals any other submitter. */
 export type PlaylistEntry = {
@@ -705,7 +705,7 @@ export type PlaylistEntry = {
   submitter_note: string | null;
 };
 
-/** A round's voting playlist (GET /rounds/:id/playlist). `youtube_playlist_url`
+/** A mix's voting playlist (GET /mixes/:id/playlist). `youtube_playlist_url`
  *  is a ready-to-open `watch_videos?video_ids=...` link for the whole mix, or
  *  null when no track resolved to YouTube; `youtube_track_count` is how many
  *  tracks made it into that link (0 when null). */
@@ -713,7 +713,7 @@ export type Playlist = {
   mix_id: string;
   mix_number: number;
   theme: string | null;
-  state: RoundState;
+  state: MixState;
   entries: PlaylistEntry[];
   youtube_playlist_url: string | null;
   youtube_track_count: number;
@@ -725,9 +725,9 @@ export type Playlist = {
   vibing_count: number;
 };
 
-/** Create a round in a league (organizer only). */
-export async function createRound(
-  leagueId: string,
+/** Create a mix in a club (organizer only). */
+export async function createMix(
+  clubId: string,
   input: {
     theme: string;
     description?: string | null;
@@ -735,8 +735,8 @@ export async function createRound(
     submission_deadline?: string | null;
     voting_deadline?: string | null;
   },
-): Promise<Round> {
-  const res = await authenticatedRequest(`/api/v1/clubs/${leagueId}/mixes`, {
+): Promise<Mix> {
+  const res = await authenticatedRequest(`/api/v1/clubs/${clubId}/mixes`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -744,39 +744,39 @@ export async function createRound(
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
-  return (await res.json()) as Round;
+  return (await res.json()) as Mix;
 }
 
-/** Get all rounds for a league (members). */
-export async function getRounds(leagueId: string): Promise<Round[]> {
-  const res = await authenticatedRequest(`/api/v1/clubs/${leagueId}/mixes`);
+/** Get all mixes for a club (members). */
+export async function getMixes(clubId: string): Promise<Mix[]> {
+  const res = await authenticatedRequest(`/api/v1/clubs/${clubId}/mixes`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
-  return (await res.json()) as Round[];
+  return (await res.json()) as Mix[];
 }
 
-/** Get a single round (members). */
-export async function getRound(roundId: string): Promise<Round> {
-  const res = await authenticatedRequest(`/api/v1/mixes/${roundId}`);
+/** Get a single mix (members). */
+export async function getMix(mixId: string): Promise<Mix> {
+  const res = await authenticatedRequest(`/api/v1/mixes/${mixId}`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
-  return (await res.json()) as Round;
+  return (await res.json()) as Mix;
 }
 
-/** Update a round — edit fields or advance its state (organizer only). */
-export async function updateRound(
-  roundId: string,
+/** Update a mix — edit fields or advance its state (organizer only). */
+export async function updateMix(
+  mixId: string,
   input: {
     theme?: string | null;
     description?: string | null;
-    state?: RoundState;
+    state?: MixState;
     submission_deadline?: string | null;
     voting_deadline?: string | null;
   },
-): Promise<Round> {
-  const res = await authenticatedRequest(`/api/v1/mixes/${roundId}`, {
+): Promise<Mix> {
+  const res = await authenticatedRequest(`/api/v1/mixes/${mixId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -784,17 +784,17 @@ export async function updateRound(
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
-  return (await res.json()) as Round;
+  return (await res.json()) as Mix;
 }
 
-/** Push a round's voting deadline to an organizer-chosen time, up to 48h past
+/** Push a mix's voting deadline to an organizer-chosen time, up to 48h past
  *  the current deadline (organizer only, MYS-180). `votingDeadline` is an ISO
- *  datetime string. Only valid while the round is still open_voting. */
+ *  datetime string. Only valid while the mix is still open_voting. */
 export async function extendVotingDeadline(
-  roundId: string,
+  mixId: string,
   votingDeadline: string,
-): Promise<Round> {
-  const res = await authenticatedRequest(`/api/v1/mixes/${roundId}/extend-voting`, {
+): Promise<Mix> {
+  const res = await authenticatedRequest(`/api/v1/mixes/${mixId}/extend-voting`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ voting_deadline: votingDeadline }),
@@ -802,12 +802,12 @@ export async function extendVotingDeadline(
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
-  return (await res.json()) as Round;
+  return (await res.json()) as Mix;
 }
 
 /** The fields needed to add or replace a submitted song. Shared by submitSong
  *  (add) and editSubmission (replace one). `participation_mode` is a per-player
- *  round stance the backend keeps uniform across all your songs (MYS-116). */
+ *  mix stance the backend keeps uniform across all your songs (MYS-116). */
 export type SubmissionInput = {
   title: string;
   artist: string;
@@ -825,13 +825,13 @@ export type SubmissionInput = {
   participation_mode?: "playing" | "vibing";
 };
 
-/** Add a song to a round (MYS-116). Round must be open_submission; the backend
- *  returns 409 once you've reached the league's songs-per-submission cap. */
+/** Add a song to a mix (MYS-116). Mix must be open_submission; the backend
+ *  returns 409 once you've reached the club's songs-per-submission cap. */
 export async function submitSong(
-  roundId: string,
+  mixId: string,
   input: SubmissionInput,
 ): Promise<SubmissionResult> {
-  const res = await authenticatedRequest(`/api/v1/mixes/${roundId}/submissions`, {
+  const res = await authenticatedRequest(`/api/v1/mixes/${mixId}/submissions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -842,14 +842,14 @@ export async function submitSong(
   return (await res.json()) as SubmissionResult;
 }
 
-/** Replace one of your songs in a round wholesale (MYS-116). Setting
+/** Replace one of your songs in a mix wholesale (MYS-116). Setting
  *  `participation_mode` updates the stance across all your songs (uniform). */
 export async function editSubmission(
-  roundId: string,
+  mixId: string,
   submissionId: string,
   input: SubmissionInput,
 ): Promise<SubmissionResult> {
-  const res = await authenticatedRequest(`/api/v1/mixes/${roundId}/submissions/${submissionId}`, {
+  const res = await authenticatedRequest(`/api/v1/mixes/${mixId}/submissions/${submissionId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -861,14 +861,14 @@ export async function editSubmission(
 }
 
 /** Update only the submitter note on an existing submission without replacing the
- *  track (MYS-150). The round must still be open_submission. Pass null to clear. */
+ *  track (MYS-150). The mix must still be open_submission. Pass null to clear. */
 export async function updateSubmissionNote(
-  roundId: string,
+  mixId: string,
   submissionId: string,
   note: string | null,
 ): Promise<SubmissionResult> {
   const res = await authenticatedRequest(
-    `/api/v1/mixes/${roundId}/submissions/${submissionId}/note`,
+    `/api/v1/mixes/${mixId}/submissions/${submissionId}/note`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -881,9 +881,9 @@ export async function updateSubmissionNote(
   return (await res.json()) as SubmissionResult;
 }
 
-/** Remove one of your songs from a round (MYS-116). Resolves on 204. */
-export async function deleteSubmission(roundId: string, submissionId: string): Promise<void> {
-  const res = await authenticatedRequest(`/api/v1/mixes/${roundId}/submissions/${submissionId}`, {
+/** Remove one of your songs from a mix (MYS-116). Resolves on 204. */
+export async function deleteSubmission(mixId: string, submissionId: string): Promise<void> {
+  const res = await authenticatedRequest(`/api/v1/mixes/${mixId}/submissions/${submissionId}`, {
     method: "DELETE",
   });
   if (!res.ok) {
@@ -891,19 +891,19 @@ export async function deleteSubmission(roundId: string, submissionId: string): P
   }
 }
 
-/** Get your songs for a round (MYS-116) — a list of up to the league's cap,
+/** Get your songs for a mix (MYS-116) — a list of up to the club's cap,
  *  oldest first. Empty when you haven't submitted yet. */
-export async function getMySubmissions(roundId: string): Promise<SubmissionResult[]> {
-  const res = await authenticatedRequest(`/api/v1/mixes/${roundId}/submissions/mine`);
+export async function getMySubmissions(mixId: string): Promise<SubmissionResult[]> {
+  const res = await authenticatedRequest(`/api/v1/mixes/${mixId}/submissions/mine`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
   return (await res.json()) as SubmissionResult[];
 }
 
-/** Get a round's anonymous voting playlist (available once voting opens). */
-export async function getPlaylist(roundId: string): Promise<Playlist> {
-  const res = await authenticatedRequest(`/api/v1/mixes/${roundId}/playlist`);
+/** Get a mix's anonymous voting playlist (available once voting opens). */
+export async function getPlaylist(mixId: string): Promise<Playlist> {
+  const res = await authenticatedRequest(`/api/v1/mixes/${mixId}/playlist`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
@@ -930,10 +930,10 @@ export async function getSpotifyStatus(): Promise<SpotifyStatus> {
 }
 
 /** Begin the connect flow: returns the Spotify consent URL to redirect to.
- *  `returnTo` is an in-app path (e.g. the current round) the callback lands on
+ *  `returnTo` is an in-app path (e.g. the current mix) the callback lands on
  *  after consent, so the user comes back where they started.
  *
- *  Dormant (MYS-169): no round-page UI calls this anymore now that playlist
+ *  Dormant (MYS-169): no mix-page UI calls this anymore now that playlist
  *  generation runs off one shared account. Kept for ops to (re)connect that
  *  shared account, and in case per-user OAuth is ever revived. */
 export async function connectSpotify(returnTo?: string): Promise<{ authorize_url: string }> {
@@ -947,21 +947,21 @@ export async function connectSpotify(returnTo?: string): Promise<{ authorize_url
   return (await res.json()) as { authorize_url: string };
 }
 
-/** Read-only: the round's existing Spotify playlist link, or null if
+/** Read-only: the mix's existing Spotify playlist link, or null if
  *  generation hasn't run (or hasn't matched anything) yet (MYS-169, MYS-176).
  *  Generation is automatic, triggered on the voting_open transition — this
  *  never triggers it itself. */
 export async function getSpotifyPlaylistLink(
-  roundId: string,
+  mixId: string,
 ): Promise<{ playlist_url: string | null; unmatched: UnmatchedTrack[] }> {
-  const res = await authenticatedRequest(`/api/v1/mixes/${roundId}/spotify-playlist`);
+  const res = await authenticatedRequest(`/api/v1/mixes/${mixId}/spotify-playlist`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
   return (await res.json()) as { playlist_url: string | null; unmatched: UnmatchedTrack[] };
 }
 
-/** Why a round submission didn't make an auto-generated playlist (MYS-201):
+/** Why a mix submission didn't make an auto-generated playlist (MYS-201):
  *  `source_only` — a Bandcamp/YouTube track with no ISRC that can never match the
  *  service's catalog; `no_catalog_match` — a catalog track the service couldn't
  *  find. Drives the calm, informational gap summary near the playlist links. */
@@ -1000,31 +1000,31 @@ export async function getAppleDeveloperToken(): Promise<{ token: string | null }
   return (await res.json()) as { token: string | null };
 }
 
-/** The caller's OWN Apple playlist link for a round, or null (MYS-108).
+/** The caller's OWN Apple playlist link for a mix, or null (MYS-108).
  *  Apple library playlists can't be made public (MYS-107), so this is personal:
  *  it opens only for the user who generated it. */
 export async function getApplePlaylistLink(
-  roundId: string,
+  mixId: string,
 ): Promise<{ playlist_url: string | null; playlist_name: string | null }> {
-  const res = await authenticatedRequest(`/api/v1/mixes/${roundId}/apple-playlist`);
+  const res = await authenticatedRequest(`/api/v1/mixes/${mixId}/apple-playlist`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
   return (await res.json()) as { playlist_url: string | null; playlist_name: string | null };
 }
 
-/** Generate the round's playlist in the caller's Apple Music library (MYS-108).
+/** Generate the mix's playlist in the caller's Apple Music library (MYS-108).
  *  Throws ApiError(401) when the Music User Token is expired/revoked — the
  *  caller should re-run the MusicKit popup rather than show a dead end. */
 export async function createApplePlaylist(
-  roundId: string,
+  mixId: string,
   musicUserToken: string,
 ): Promise<ApplePlaylistResult> {
   // getTimezoneOffset() is minutes to add to LOCAL to get UTC — the server wants
   // the opposite, so negate it. Lets a rebuilt playlist's "[revised on HH:MM]"
   // read in the member's own clock rather than UTC.
   const tzOffsetMinutes = -new Date().getTimezoneOffset();
-  const res = await authenticatedRequest(`/api/v1/mixes/${roundId}/apple-playlist`, {
+  const res = await authenticatedRequest(`/api/v1/mixes/${mixId}/apple-playlist`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -1038,9 +1038,9 @@ export async function createApplePlaylist(
   return (await res.json()) as ApplePlaylistResult;
 }
 
-/** Get all submissions for a round (revealed only after it closes). */
-export async function getRoundSubmissions(roundId: string): Promise<SubmissionResult[]> {
-  const res = await authenticatedRequest(`/api/v1/mixes/${roundId}/submissions`);
+/** Get all submissions for a mix (revealed only after it closes). */
+export async function getMixSubmissions(mixId: string): Promise<SubmissionResult[]> {
+  const res = await authenticatedRequest(`/api/v1/mixes/${mixId}/submissions`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
@@ -1048,8 +1048,8 @@ export async function getRoundSubmissions(roundId: string): Promise<SubmissionRe
 }
 
 // --------------------------------------------------------------------------- //
-// Round results / reveal (MYS-23 / MYS-24). Available only once a round is
-// closed (GET /rounds/:id/results → 409 while still open).
+// Mix results / reveal (MYS-23 / MYS-24). Available only once a mix is
+// closed (GET /mixes/:id/results → 409 while still open).
 // --------------------------------------------------------------------------- //
 
 /** A note shown in the reveal — body + author, no edit affordances. */
@@ -1059,8 +1059,8 @@ export type ResultNote = {
   created_at: string;
 };
 
-/** A voter identified on the closed-round reveal (MYS-173). Voting stays
- *  anonymous through open_voting; this only ever appears once a round is
+/** A voter identified on the closed-mix reveal (MYS-173). Voting stays
+ *  anonymous through open_voting; this only ever appears once a mix is
  *  closed. */
 export type ResultVoter = {
   user_id: string;
@@ -1106,7 +1106,7 @@ export type LeaderboardEntry = {
   rank: number;
 };
 
-/** A submission that drew the most notes this round (ties yield several). */
+/** A submission that drew the most notes this mix (ties yield several). */
 export type MostNotedWinner = {
   submission_id: string;
   title: string;
@@ -1142,17 +1142,17 @@ export type RevealPick = {
   notes: ResultNote[];
 };
 
-/** A closed round's reveal (GET /rounds/:id/results). The reveal is gated by the
+/** A closed mix's reveal (GET /mixes/:id/results). The reveal is gated by the
  *  viewer's participation mode (MYS-112): a player gets the full reveal
  *  (`submissions` + `leaderboard`); a viber (`viewer_is_vibing`) gets only
  *  `winners` + `picks` + `most_noted`, with `submissions`/`leaderboard` empty so
  *  no vote counts or rankings leak. `picks` is the unscored tracklist a viber
- *  sees (MYS-134). `most_noted.winners` is empty when the round drew no notes. */
-export type RoundResults = {
+ *  sees (MYS-134). `most_noted.winners` is empty when the mix drew no notes. */
+export type MixResults = {
   mix_id: string;
   mix_number: number;
   theme: string | null;
-  state: RoundState;
+  state: MixState;
   viewer_is_vibing: boolean;
   submissions: ResultSubmission[];
   leaderboard: LeaderboardEntry[];
@@ -1161,21 +1161,21 @@ export type RoundResults = {
   picks: RevealPick[];
 };
 
-/** Get a closed round's reveal results. Backend returns 409 while the round is
+/** Get a closed mix's reveal results. Backend returns 409 while the mix is
  *  still open, surfaced here as an ApiError. */
-export async function getResults(roundId: string): Promise<RoundResults> {
-  const res = await authenticatedRequest(`/api/v1/mixes/${roundId}/results`);
+export async function getResults(mixId: string): Promise<MixResults> {
+  const res = await authenticatedRequest(`/api/v1/mixes/${mixId}/results`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
-  return (await res.json()) as RoundResults;
+  return (await res.json()) as MixResults;
 }
 
 // --------------------------------------------------------------------------- //
 // Votes (MYS-20).
 // --------------------------------------------------------------------------- //
 
-/** The caller's votes for a round (POST/GET .../votes). `submission_ids` is the
+/** The caller's votes for a mix (POST/GET .../votes). `submission_ids` is the
  *  full set the caller has cast; `count` mirrors its length. */
 export type Votes = {
   mix_id: string;
@@ -1185,7 +1185,7 @@ export type Votes = {
 };
 
 /** One entry in the vote counts tally — shows the song and how many votes it has,
- *  but NOT who voted or any notes (notes revealed only at round close). */
+ *  but NOT who voted or any notes (notes revealed only at mix close). */
 export type VoteCountEntry = {
   submission_id: string;
   title: string;
@@ -1193,18 +1193,18 @@ export type VoteCountEntry = {
   vote_count: number;
 };
 
-/** Vote counts for all songs in a round (GET .../vote-counts). Shows the running
+/** Vote counts for all songs in a mix (GET .../vote-counts). Shows the running
  *  tally during voting. The caller can see how many votes each song has, but
- *  notes remain hidden until the round closes. */
+ *  notes remain hidden until the mix closes. */
 export type VoteCounts = {
   mix_id: string;
   entries: VoteCountEntry[];
 };
 
-/** Replace the caller's votes for a round with `submissionIds` (idempotent).
- *  Round must be open_voting. Backend rejects an empty set (409). */
-export async function castVotes(roundId: string, submissionIds: string[]): Promise<Votes> {
-  const res = await authenticatedRequest(`/api/v1/mixes/${roundId}/votes`, {
+/** Replace the caller's votes for a mix with `submissionIds` (idempotent).
+ *  Mix must be open_voting. Backend rejects an empty set (409). */
+export async function castVotes(mixId: string, submissionIds: string[]): Promise<Votes> {
+  const res = await authenticatedRequest(`/api/v1/mixes/${mixId}/votes`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ submission_ids: submissionIds }),
@@ -1215,19 +1215,19 @@ export async function castVotes(roundId: string, submissionIds: string[]): Promi
   return (await res.json()) as Votes;
 }
 
-/** Get the caller's current votes for a round (empty when nothing is cast). */
-export async function getMyVotes(roundId: string): Promise<Votes> {
-  const res = await authenticatedRequest(`/api/v1/mixes/${roundId}/votes/mine`);
+/** Get the caller's current votes for a mix (empty when nothing is cast). */
+export async function getMyVotes(mixId: string): Promise<Votes> {
+  const res = await authenticatedRequest(`/api/v1/mixes/${mixId}/votes/mine`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
   return (await res.json()) as Votes;
 }
 
-/** Get vote counts for all songs in a round. Shows running tally during voting
- *  without revealing notes (notes appear only after round closes). */
-export async function getVoteCounts(roundId: string): Promise<VoteCounts> {
-  const res = await authenticatedRequest(`/api/v1/mixes/${roundId}/vote-counts`);
+/** Get vote counts for all songs in a mix. Shows running tally during voting
+ *  without revealing notes (notes appear only after mix closes). */
+export async function getVoteCounts(mixId: string): Promise<VoteCounts> {
+  const res = await authenticatedRequest(`/api/v1/mixes/${mixId}/vote-counts`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
@@ -1239,7 +1239,7 @@ export async function getVoteCounts(roundId: string): Promise<VoteCounts> {
 // --------------------------------------------------------------------------- //
 
 /** A note left on a submission during voting (POST/GET .../notes). Allowed only
- *  while the round is open_voting; eligible on any song (playing or vibing). */
+ *  while the mix is open_voting; eligible on any song (playing or vibing). */
 export type Note = {
   id: string;
   submission_id: string;
@@ -1250,7 +1250,7 @@ export type Note = {
   created_at: string;
 };
 
-/** Leave a note on a submission (body 1–280 chars). Round must be open_voting
+/** Leave a note on a submission (body 1–280 chars). Mix must be open_voting
  *  (backend returns 409 otherwise). Returns the created Note. */
 export async function addNote(submissionId: string, body: string): Promise<Note> {
   const res = await authenticatedRequest(`/api/v1/submissions/${submissionId}/notes`, {
@@ -1308,7 +1308,7 @@ export async function adminDeleteUser(userId: string): Promise<void> {
 }
 
 /** Generate a platform invite (MYS-182, platform-admin only): grants signup
- *  only, no league attachment. Same shareable-link shape as a league invite. */
+ *  only, no club attachment. Same shareable-link shape as a club invite. */
 export async function adminCreateInvite(): Promise<Invite> {
   const res = await authenticatedRequest("/api/v1/admin/invites", {
     method: "POST",

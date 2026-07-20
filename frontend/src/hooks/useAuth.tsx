@@ -46,8 +46,8 @@ type AuthContextValue = {
   /** Current user's email once the profile loads; null while unloaded. Shown on
    *  the profile screen as read-only account identity. */
   email: string | null;
-  /** Current user's id once the profile loads; null while unloaded. League
-   *  routes compare it against league.organizer_id to gate organizer controls. */
+  /** Current user's id once the profile loads; null while unloaded. Club
+   *  routes compare it against club.organizer_id to gate organizer controls. */
   userId: string | null;
   /** True once the profile loads and the user is a platform admin. Gates the
    *  /admin route and its nav entry; false while the profile is unloaded. */

@@ -22,7 +22,7 @@ import { SourceBadge } from "../SourceBadge";
  * Style guide: DM Serif Display heading, DM Mono everywhere else, underline-only
  * inputs (via TextField), the concentric-ring motif as the loader. This card is
  * intentionally Rust-free — the home screen spends its single Rust accent on the
- * My Leagues empty-state ring, so nothing here may compete for it.
+ * My Clubs empty-state ring, so nothing here may compete for it.
  */
 
 type Mode = "link" | "search";
@@ -125,7 +125,7 @@ function Loader({ label }: { label: string }) {
 
 type SongSearchCardProps = {
   /** When provided, the resolved result card shows a submit affordance (e.g.
-   *  "submit to this round") that calls back with the resolved song. Returning
+   *  "submit to this mix") that calls back with the resolved song. Returning
    *  false resets the card to the empty search state (used by duplicate-ISRC
    *  rejection — MYS-147). */
   onSubmit?: (song: ResolvedSong) => Promise<boolean> | boolean | void;

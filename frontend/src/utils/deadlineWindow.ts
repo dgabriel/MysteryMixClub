@@ -1,4 +1,4 @@
-/** Bounds for a round's submission/voting window, matching the API
+/** Bounds for a mix's submission/voting window, matching the API
  *  (`ge=4, le=168` on `submission_window_hours` / `voting_window_hours`). */
 export const MIN_WINDOW_HOURS = 4;
 export const MAX_WINDOW_HOURS = 168;

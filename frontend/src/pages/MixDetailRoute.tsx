@@ -7,22 +7,22 @@ import {
   deleteSubmission,
   editSubmission,
   extendVotingDeadline,
-  getLeague,
-  getLeagueMembers,
+  getClub,
+  getClubMembers,
   getMyMembership,
   getMySubmissions,
   getMyVotes,
   getNotes,
   getPlaylist,
   getResults,
-  getRound,
+  getMix,
   getVoteCounts,
   submitSong,
-  updateRound,
+  updateMix,
   updateSubmissionNote,
-  type League,
+  type Club,
   type LeaderboardEntry,
-  type LeagueMember,
+  type ClubMember,
   type MostNotedWinner,
   type Note,
   type PlatformKey,
@@ -30,10 +30,10 @@ import {
   type ResolvedSong,
   type ResultNote,
   type ResultSubmission,
-  type Round,
-  type RoundResults,
+  type Mix,
+  type MixResults,
   type RevealPick,
-  type RoundState,
+  type MixState,
   type SubmissionInput,
   type SubmissionResult,
   type VoteCountEntry,
@@ -58,7 +58,7 @@ import { MusicNoteIcon } from "../components/MusicNoteIcon";
 import { DeadlineChip } from "../components/DeadlineChip";
 import { toDatetimeLocalValue } from "../utils/deadline";
 
-const STATE_LABEL: Record<RoundState, string> = {
+const STATE_LABEL: Record<MixState, string> = {
   pending: "upcoming",
   open_submission: "submissions open",
   open_voting: "voting open",
@@ -75,27 +75,27 @@ const PLATFORM_LABELS: { key: string; label: string }[] = [
 ];
 
 /**
- * Round detail (`/rounds/:id`). State-aware:
+ * Mix detail (`/mixes/:id`). State-aware:
  *  - open_submission → submit/replace your song (organizer can open voting)
  *  - open_voting     → the anonymous, shuffled playlist (organizer can close)
  *  - closed          → revealed submissions
- * Self-contained: loads the round + league (for organizer/name) plus the
+ * Self-contained: loads the mix + club (for organizer/name) plus the
  * state-specific data, and wires submit / advance back to the API.
  */
-export function RoundDetailRoute() {
+export function MixDetailRoute() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { userId } = useAuth();
 
-  const [round, setRound] = useState<Round | null>(null);
-  const [league, setLeague] = useState<League | null>(null);
-  // League membership (MYS-99), fetched alongside league so co-organizers get
-  // parity with the fixed organizer on round-management controls (see isAdmin).
-  const [members, setMembers] = useState<LeagueMember[]>([]);
+  const [mix, setMix] = useState<Mix | null>(null);
+  const [club, setClub] = useState<Club | null>(null);
+  // Club membership (MYS-99), fetched alongside club so co-organizers get
+  // parity with the fixed organizer on mix-management controls (see isAdmin).
+  const [members, setMembers] = useState<ClubMember[]>([]);
   const [mySubmissions, setMySubmissions] = useState<SubmissionResult[]>([]);
-  // Per-round "Just Vibes for this Round" toggle (MYS-60), seeded from the
-  // existing submission's mode, else the caller's per-league vibe setting.
-  const [roundVibe, setRoundVibe] = useState(false);
+  // Per-mix "Just Vibes for this Mix" toggle (MYS-60), seeded from the
+  // existing submission's mode, else the caller's per-club vibe setting.
+  const [mixVibe, setMixVibe] = useState(false);
   const [playlist, setPlaylist] = useState<PlaylistEntry[]>([]);
   const [youtubePlaylistUrl, setYoutubePlaylistUrl] = useState<string | null>(null);
   const [youtubeTrackCount, setYoutubeTrackCount] = useState(0);
@@ -106,14 +106,14 @@ export function RoundDetailRoute() {
   const [myVotes, setMyVotes] = useState<string[]>([]);
   const [voteCounts, setVoteCounts] = useState<VoteCountEntry[]>([]);
   const [isVotesLocked, setIsVotesLocked] = useState(false);
-  const [results, setResults] = useState<RoundResults | null>(null);
+  const [results, setResults] = useState<MixResults | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [leagueRepeatWarning, setLeagueRepeatWarning] = useState(false);
+  const [clubRepeatWarning, setClubRepeatWarning] = useState(false);
   const [advancing, setAdvancing] = useState(false);
   const [rollingBack, setRollingBack] = useState(false);
   const [extendingVoting, setExtendingVoting] = useState(false);
@@ -122,9 +122,9 @@ export function RoundDetailRoute() {
   const [casting, setCasting] = useState(false);
   const [votesSaved, setVotesSaved] = useState(false);
 
-  const submissionCap = league?.songs_per_submission ?? 1;
+  const submissionCap = club?.songs_per_submission ?? 1;
   const partiallySubmitted =
-    round?.state === "open_submission" &&
+    mix?.state === "open_submission" &&
     mySubmissions.length > 0 &&
     mySubmissions.length < submissionCap;
 
@@ -144,39 +144,39 @@ export function RoundDetailRoute() {
     setLoading(true);
     setError(null);
     try {
-      const loadedRound = await getRound(id);
-      const [loadedLeague, loadedMembers] = await Promise.all([
-        getLeague(loadedRound.club_id),
-        getLeagueMembers(loadedRound.club_id),
+      const loadedMix = await getMix(id);
+      const [loadedClub, loadedMembers] = await Promise.all([
+        getClub(loadedMix.club_id),
+        getClubMembers(loadedMix.club_id),
       ]);
-      setRound(loadedRound);
-      setLeague(loadedLeague);
+      setMix(loadedMix);
+      setClub(loadedClub);
       setMembers(loadedMembers);
 
-      if (loadedRound.state === "pending") {
-        // Nothing to load yet — the round isn't open. The organizer can edit its
+      if (loadedMix.state === "pending") {
+        // Nothing to load yet — the mix isn't open. The organizer can edit its
         // theme/description and open it from here.
-      } else if (loadedRound.state === "open_submission") {
+      } else if (loadedMix.state === "open_submission") {
         const [loadedMine, membership] = await Promise.all([
           getMySubmissions(id),
-          getMyMembership(loadedRound.club_id),
+          getMyMembership(loadedMix.club_id),
         ]);
         setMySubmissions(loadedMine);
-        // Seed the round toggle: the player's current stance (uniform across
-        // their songs) wins, else the member's per-league default.
-        setRoundVibe(
+        // Seed the mix toggle: the player's current stance (uniform across
+        // their songs) wins, else the member's per-club default.
+        setMixVibe(
           loadedMine.length > 0
             ? loadedMine[0].participation_mode === "vibing"
             : membership.vibe_mode,
         );
-      } else if (loadedRound.state === "open_voting") {
+      } else if (loadedMix.state === "open_voting") {
         const [loadedPlaylist, loadedVotes, loadedMine, loadedCounts, membership] =
           await Promise.all([
             getPlaylist(id),
             getMyVotes(id),
             getMySubmissions(id),
             getVoteCounts(id),
-            getMyMembership(loadedRound.club_id),
+            getMyMembership(loadedMix.club_id),
           ]);
         setPlaylist(loadedPlaylist.entries);
         setYoutubePlaylistUrl(loadedPlaylist.youtube_playlist_url);
@@ -190,17 +190,17 @@ export function RoundDetailRoute() {
         setIsVotesLocked(loadedVotes.submission_ids.length > 0);
         setMySubmissions(loadedMine);
         // Seed the vibe stance for voting the same way submission does: the
-        // player's per-round stance (uniform across their songs) if they
-        // submitted, else their per-league default — so a vibe-mode non-submitter
+        // player's per-mix stance (uniform across their songs) if they
+        // submitted, else their per-club default — so a vibe-mode non-submitter
         // sits voting out instead of seeing a ballot the API rejects (MYS-167).
-        setRoundVibe(
+        setMixVibe(
           loadedMine.length > 0
             ? loadedMine[0].participation_mode === "vibing"
             : membership.vibe_mode,
         );
       } else {
         // Closed: the reveal plus a way to still listen to the mix (MYS-133).
-        // The playlist endpoint serves closed rounds too.
+        // The playlist endpoint serves closed mixes too.
         const [loadedResults, loadedPlaylist] = await Promise.all([
           getResults(id),
           getPlaylist(id),
@@ -222,18 +222,18 @@ export function RoundDetailRoute() {
   }, [load]);
 
   // Poll every 60s so state transitions (submission → voting → closed) and
-  // progress counts update without a manual reload. Fetches only the round on
+  // progress counts update without a manual reload. Fetches only the mix on
   // each tick; triggers a full load() only when the state actually changes.
   usePolling(() => {
     if (!id) return;
     void (async () => {
       try {
-        const refreshed = await getRound(id);
-        if (refreshed.state !== round?.state) {
+        const refreshed = await getMix(id);
+        if (refreshed.state !== mix?.state) {
           void load();
           return;
         }
-        setRound(refreshed);
+        setMix(refreshed);
         if (refreshed.state === "open_voting") {
           try {
             const counts = await getVoteCounts(id);
@@ -248,20 +248,20 @@ export function RoundDetailRoute() {
     })();
   });
 
-  const isOrganizer = !!userId && !!league && league.organizer_id === userId;
+  const isOrganizer = !!userId && !!club && club.organizer_id === userId;
   // Co-organizers (role === "admin") get parity with the fixed organizer on
-  // round-management controls (MYS-99) — same derivation as LeagueHomeRoute.
+  // mix-management controls (MYS-99) — same derivation as ClubHomeRoute.
   const ownMember = members.find((m) => m.user_id === userId);
   const isAdmin = isOrganizer || ownMember?.is_admin === true;
 
-  // Refresh the round so "X of Y submitted" reflects an add/remove right away
+  // Refresh the mix so "X of Y submitted" reflects an add/remove right away
   // (MYS-101). Refetch rather than locally increment so a *replacement* (which
   // doesn't change the distinct-player count) stays correct too. Non-fatal: the
   // mutation already saved; only the counter would lag.
   const refreshCount = useCallback(async () => {
     if (!id) return;
     try {
-      setRound(await getRound(id));
+      setMix(await getMix(id));
     } catch {
       // leave the counter as-is; the submission mutation itself succeeded.
     }
@@ -279,7 +279,7 @@ export function RoundDetailRoute() {
       album: song.album,
       album_art_url: song.thumbnail_url,
       // The stance is uniform across all your songs; the backend propagates it.
-      participation_mode: roundVibe ? "vibing" : "playing",
+      participation_mode: mixVibe ? "vibing" : "playing",
     };
   }
 
@@ -290,11 +290,11 @@ export function RoundDetailRoute() {
     }
     setSubmitting(true);
     setActionError(null);
-    setLeagueRepeatWarning(false);
+    setClubRepeatWarning(false);
     try {
       const result = await submitSong(id, { ...trackPayload(song), note });
       setMySubmissions((current) => [...current, result]);
-      if (result.league_previously_submitted) setLeagueRepeatWarning(true);
+      if (result.league_previously_submitted) setClubRepeatWarning(true);
       await refreshCount();
       return true;
     } catch (err) {
@@ -322,7 +322,7 @@ export function RoundDetailRoute() {
     }
     setSubmitting(true);
     setActionError(null);
-    setLeagueRepeatWarning(false);
+    setClubRepeatWarning(false);
     try {
       const result = await editSubmission(id, submissionId, { ...trackPayload(song), note });
       // Replace the edited song, and keep the stance uniform across the list
@@ -332,7 +332,7 @@ export function RoundDetailRoute() {
           s.id === submissionId ? result : { ...s, participation_mode: result.participation_mode },
         ),
       );
-      if (result.league_previously_submitted) setLeagueRepeatWarning(true);
+      if (result.league_previously_submitted) setClubRepeatWarning(true);
       return true;
     } catch (err) {
       if (err instanceof ApiError && err.message.includes("already in this")) {
@@ -401,14 +401,14 @@ export function RoundDetailRoute() {
         // Votes are now locked - can't change after casting
         setIsVotesLocked(true);
       } catch {
-        // A 409 from vote-counts means the round auto-advanced to closed because
-        // this was the last voter (MYS-69). Re-fetch the round and, if it's no
+        // A 409 from vote-counts means the mix auto-advanced to closed because
+        // this was the last voter (MYS-69). Re-fetch the mix and, if it's no
         // longer in voting, pull results so the final voter transitions straight
         // to the reveal instead of being stranded on a stale voting screen.
         try {
-          const updatedRound = await getRound(id);
-          setRound(updatedRound);
-          if (updatedRound.state !== "open_voting") {
+          const updatedMix = await getMix(id);
+          setMix(updatedMix);
+          if (updatedMix.state !== "open_voting") {
             setResults(await getResults(id));
           }
         } catch {
@@ -424,13 +424,13 @@ export function RoundDetailRoute() {
     }
   }
 
-  async function handleEditRound(input: { theme?: string | null; description?: string | null }) {
+  async function handleEditMix(input: { theme?: string | null; description?: string | null }) {
     if (!id) return;
     setSavingEdit(true);
     setEditError(null);
     try {
-      const updated = await updateRound(id, input);
-      setRound(updated);
+      const updated = await updateMix(id, input);
+      setMix(updated);
       return true;
     } catch (err) {
       setEditError(err instanceof ApiError ? err.message : "couldn't save the mystery mix. try again.");
@@ -440,23 +440,23 @@ export function RoundDetailRoute() {
     }
   }
 
-  async function handleAdvance(next: RoundState) {
+  async function handleAdvance(next: MixState) {
     if (!id) return;
     setAdvancing(true);
     setActionError(null);
     try {
-      await updateRound(id, { state: next });
+      await updateMix(id, { state: next });
       await load();
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : "couldn't update the mystery mix.");
     } finally {
       // Reset on success too — otherwise the button sticks on "opening…" after
-      // the round has opened (MYS-95).
+      // the mix has opened (MYS-95).
       setAdvancing(false);
     }
   }
 
-  // Organizer: roll an open_voting round back to open_submission (MYS-168) —
+  // Organizer: roll an open_voting mix back to open_submission (MYS-168) —
   // the one sanctioned backward step. Separate busy/error handling from
   // handleAdvance so the two organizer actions don't fight over one flag.
   async function handleRollback() {
@@ -464,7 +464,7 @@ export function RoundDetailRoute() {
     setRollingBack(true);
     setActionError(null);
     try {
-      await updateRound(id, { state: "open_submission" });
+      await updateMix(id, { state: "open_submission" });
       await load();
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : "couldn't reopen submissions.");
@@ -474,7 +474,7 @@ export function RoundDetailRoute() {
   }
 
   // Organizer: push voting to a chosen time, up to 48h out, without waiting for
-  // it to close and reopening submissions (MYS-180) — the round stays exactly
+  // it to close and reopening submissions (MYS-180) — the mix stays exactly
   // where it is. `localDatetime` is the raw <input type="datetime-local"> value
   // (browser-local, no timezone marker); Date() parses that as local time, so
   // toISOString() below correctly converts it to UTC for the API.
@@ -484,7 +484,7 @@ export function RoundDetailRoute() {
     setActionError(null);
     try {
       const updated = await extendVotingDeadline(id, new Date(localDatetime).toISOString());
-      setRound(updated);
+      setMix(updated);
       return true;
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : "couldn't extend voting.");
@@ -502,7 +502,7 @@ export function RoundDetailRoute() {
     );
   }
 
-  if (error || !round || !id) {
+  if (error || !mix || !id) {
     return (
       <main className="flex flex-1 flex-col items-center justify-center px-4 text-center sm:px-8">
         <p className="font-mono text-[13px] font-light text-muted">{error ?? "mystery mix not found."}</p>
@@ -535,60 +535,60 @@ export function RoundDetailRoute() {
         </div>
       ) : null}
       {/* Content-only: the shared TopNav is rendered once by AuthedLayout. The
-        round's league is reached via a named link above the title (not a generic
-        "← league" in the nav), so members always see which league they're in. */}
+        mix's club is reached via a named link above the title (not a generic
+        "← club" in the nav), so members always see which club they're in. */}
       <main className="mx-auto w-full max-w-lg px-4 pb-16 sm:px-8">
-        {league ? (
+        {club ? (
           <button
             type="button"
-            onClick={() => navigate(`/clubs/${round.club_id}`)}
+            onClick={() => navigate(`/clubs/${mix.club_id}`)}
             className="inline-flex items-center gap-1.5 font-mono uppercase tracking-ui text-[11px] text-sage transition-colors duration-150 hover:text-ink"
           >
             <span aria-hidden="true">←</span>
-            {league.name}
+            {club.name}
           </button>
         ) : null}
         <span className="mt-3 block font-mono uppercase tracking-label text-[9px] text-muted">
-          mystery mix {round.mix_number}
+          mystery mix {mix.mix_number}
         </span>
         <div className="mt-1 flex items-start justify-between gap-4">
           <h1 className="font-serif text-[32px] leading-tight text-ink">
-            {round.theme ?? `Mystery Mix ${round.mix_number}`}
+            {mix.theme ?? `Mystery Mix ${mix.mix_number}`}
           </h1>
           <div className="shrink-0 pt-2">
-            <Badge>{STATE_LABEL[round.state]}</Badge>
+            <Badge>{STATE_LABEL[mix.state]}</Badge>
           </div>
         </div>
-        {round.description ? (
+        {mix.description ? (
           <p className="mt-3 font-mono text-[13px] font-light leading-relaxed text-muted">
-            {round.description}
+            {mix.description}
           </p>
         ) : null}
 
         {/* Prominent, phase-appropriate deadline chip (MYS-161) — viewer-local
-            time plus a live countdown. Renders nothing for legacy rounds with
+            time plus a live countdown. Renders nothing for legacy mixes with
             no deadline set. */}
-        <DeadlineChip round={round} className="mt-4" showCountdown />
+        <DeadlineChip mix={mix} className="mt-4" showCountdown />
 
         {isAdmin ? (
           <>
             <OrganizerControls
-              state={round.state}
+              state={mix.state}
               advancing={advancing}
               onAdvance={handleAdvance}
-              isFinalRound={!!league && round.mix_number >= league.total_mixes}
+              isFinalMix={!!club && mix.mix_number >= club.total_mixes}
               onRollback={handleRollback}
               rollingBack={rollingBack}
-              votingDeadline={round.voting_deadline}
+              votingDeadline={mix.voting_deadline}
               onExtendVoting={handleExtendVoting}
               extendingVoting={extendingVoting}
               totalVotes={voteCounts.reduce((sum, entry) => sum + entry.vote_count, 0)}
             />
-            <EditRoundForm
-              round={round}
+            <EditMixForm
+              mix={mix}
               saving={savingEdit}
               error={editError}
-              onSave={handleEditRound}
+              onSave={handleEditMix}
               onDismissError={() => setEditError(null)}
             />
           </>
@@ -599,37 +599,37 @@ export function RoundDetailRoute() {
             {actionError}
           </p>
         ) : null}
-        {leagueRepeatWarning && !actionError ? (
+        {clubRepeatWarning && !actionError ? (
           <p className="mt-6 font-mono text-[11px] text-muted">
             this song was submitted in a previous mystery mix — submitted anyway.
           </p>
         ) : null}
 
         <section className="mt-10">
-          {round.state === "pending" ? (
+          {mix.state === "pending" ? (
             <p className="font-mono text-[13px] font-light text-muted">
               this mystery mix hasn&apos;t opened yet.
             </p>
-          ) : round.state === "open_submission" ? (
+          ) : mix.state === "open_submission" ? (
             <>
-              <SubmissionProgress submitted={round.submission_count} total={round.member_count} />
+              <SubmissionProgress submitted={mix.submission_count} total={mix.member_count} />
               <SubmissionManager
                 submissions={mySubmissions}
-                cap={league?.songs_per_submission ?? 1}
+                cap={club?.songs_per_submission ?? 1}
                 submitting={submitting}
                 removingId={removingId}
                 onAdd={handleAddSong}
                 onEdit={handleEditSong}
                 onRemove={handleRemoveSong}
                 onSaveNote={handleSaveNote}
-                onConfirm={() => navigate(`/clubs/${round.club_id}`)}
+                onConfirm={() => navigate(`/clubs/${mix.club_id}`)}
               />
             </>
-          ) : round.state === "open_voting" ? (
+          ) : mix.state === "open_voting" ? (
             <VotingSection
               // Remount to re-seed the selection whenever the saved votes change.
               key={myVotes.join(",")}
-              roundId={id}
+              mixId={id}
               entries={playlist}
               voteCounts={voteCounts}
               isVotesLocked={isVotesLocked}
@@ -638,14 +638,14 @@ export function RoundDetailRoute() {
               votingEligible={votingEligible}
               votingActed={votingActed}
               vibingCount={vibingCount}
-              votesPerPlayer={round.votes_per_player}
+              votesPerPlayer={mix.votes_per_player}
               myVotes={myVotes}
               // A submitter's stance is their song's mode; a non-submitter falls
-              // back to their league vibe flag so vibe-mode members sit out (MYS-167).
+              // back to their club vibe flag so vibe-mode members sit out (MYS-167).
               isVibingParticipant={
                 mySubmissions.length > 0
                   ? mySubmissions[0].participation_mode === "vibing"
-                  : roundVibe
+                  : mixVibe
               }
               casting={casting}
               votesSaved={votesSaved}
@@ -655,9 +655,9 @@ export function RoundDetailRoute() {
             />
           ) : (
             <>
-              {/* Closed rounds keep a way to listen to the mix (MYS-133). */}
+              {/* Closed mixes keep a way to listen to the mix (MYS-133). */}
               <ClosedListen
-                roundId={id}
+                mixId={id}
                 youtubePlaylistUrl={youtubePlaylistUrl}
                 youtubeTrackCount={youtubeTrackCount}
                 entryCount={playlist.length}
@@ -680,7 +680,7 @@ function OrganizerControls({
   state,
   advancing,
   onAdvance,
-  isFinalRound,
+  isFinalMix,
   onRollback,
   rollingBack,
   votingDeadline,
@@ -688,10 +688,10 @@ function OrganizerControls({
   extendingVoting,
   totalVotes,
 }: {
-  state: RoundState;
+  state: MixState;
   advancing: boolean;
-  onAdvance: (next: RoundState) => void;
-  isFinalRound: boolean;
+  onAdvance: (next: MixState) => void;
+  isFinalMix: boolean;
   onRollback: () => void;
   rollingBack: boolean;
   votingDeadline: string | null;
@@ -714,7 +714,7 @@ function OrganizerControls({
   const [chosenDeadline, setChosenDeadline] = useState("");
 
   if (state === "closed") return null;
-  const next: RoundState =
+  const next: MixState =
     state === "pending"
       ? "open_submission"
       : state === "open_submission"
@@ -758,7 +758,7 @@ function OrganizerControls({
     return (
       <div className="mt-6 space-y-4 border-t border-border pt-6">
         <p className="font-mono text-[13px] font-light text-muted">
-          {isFinalRound
+          {isFinalMix
             ? "this closes the mystery mix and completes the club. it can't be undone."
             : "this closes the mystery mix and opens the next one, starting its submission deadline. it can't be undone."}
         </p>
@@ -872,22 +872,22 @@ function OrganizerControls({
 }
 
 /**
- * Organizer round editor. Theme and description are the round's identity — the
- * API allows editing them ONLY while the round is `pending` (409 otherwise).
- * Once the round opens there's nothing left to edit here, so the affordance
- * simply doesn't render for non-pending rounds.
+ * Organizer mix editor. Theme and description are the mix's identity — the
+ * API allows editing them ONLY while the mix is `pending` (409 otherwise).
+ * Once the mix opens there's nothing left to edit here, so the affordance
+ * simply doesn't render for non-pending mixes.
  *
  * No Rust on this screen: the single Rust signal is reserved elsewhere (the
- * closed-round reveal).
+ * closed-mix reveal).
  */
-function EditRoundForm({
-  round,
+function EditMixForm({
+  mix,
   saving,
   error,
   onSave,
   onDismissError,
 }: {
-  round: Round;
+  mix: Mix;
   saving: boolean;
   error?: string | null;
   onSave: (input: {
@@ -897,16 +897,16 @@ function EditRoundForm({
   onDismissError: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [theme, setTheme] = useState(round.theme ?? "");
-  const [description, setDescription] = useState(round.description ?? "");
+  const [theme, setTheme] = useState(mix.theme ?? "");
+  const [description, setDescription] = useState(mix.description ?? "");
 
-  // Theme/description are only editable while the round is still `pending`;
+  // Theme/description are only editable while the mix is still `pending`;
   // once it opens there's nothing left to edit, so don't render the affordance.
-  if (round.state !== "pending") return null;
+  if (mix.state !== "pending") return null;
 
   function openForm() {
-    setTheme(round.theme ?? "");
-    setDescription(round.description ?? "");
+    setTheme(mix.theme ?? "");
+    setDescription(mix.description ?? "");
     onDismissError();
     setOpen(true);
   }
@@ -919,15 +919,15 @@ function EditRoundForm({
     } = {};
 
     // Only send fields that changed. A cleared theme is sent as null so an
-    // unnamed round can be saved back to unnamed.
+    // unnamed mix can be saved back to unnamed.
     const trimmedTheme = theme.trim();
-    const currentTheme = round.theme ?? "";
+    const currentTheme = mix.theme ?? "";
     if (trimmedTheme !== currentTheme) {
       input.theme = trimmedTheme ? trimmedTheme : null;
     }
 
     const trimmedDescription = description.trim();
-    const currentDescription = round.description ?? "";
+    const currentDescription = mix.description ?? "";
     if (trimmedDescription !== currentDescription) {
       input.description = trimmedDescription ? trimmedDescription : null;
     }
@@ -955,7 +955,7 @@ function EditRoundForm({
     <form onSubmit={handleSubmit} className="mt-6 space-y-6 border-t border-border pt-6">
       <div>
         <TextField
-          id="edit-round-theme"
+          id="edit-mix-theme"
           label="theme"
           name="theme"
           value={theme}
@@ -965,12 +965,12 @@ function EditRoundForm({
         />
       </div>
 
-      <label htmlFor="edit-round-description" className="block">
+      <label htmlFor="edit-mix-description" className="block">
         <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
           description
         </span>
         <textarea
-          id="edit-round-description"
+          id="edit-mix-description"
           rows={2}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
@@ -998,10 +998,10 @@ function EditRoundForm({
 }
 
 /**
- * Submission progress (MYS-101): "X of Y submitted" while a round is open for
+ * Submission progress (MYS-101): "X of Y submitted" while a mix is open for
  * submissions, so members can see how many picks are in. A quiet muted label —
  * no Rust (this screen reserves its single Rust use for the voting/reveal
- * states). Renders nothing until the league's member count is known.
+ * states). Renders nothing until the club's member count is known.
  */
 function SubmissionProgress({ submitted, total }: { submitted: number; total: number }) {
   if (total <= 0) return null;
@@ -1180,14 +1180,14 @@ function ComposerSlot({
 
 /**
  * Multi-song submission manager (MYS-116/142). Shows one slot per song the
- * league allows (`cap`): a filled slot is a song card with change/remove, an
- * empty slot is a submit composer — so a 2-song league shows two submit cards up
+ * club allows (`cap`): a filled slot is a song card with change/remove, an
+ * empty slot is a submit composer — so a 2-song club shows two submit cards up
  * front, no "add another" button. At cap 1 it's the classic single submit/edit.
- * The "just vibes" stance is a league-level setting chosen by the organizer at
- * league creation; there is no per-player toggle here, so the stance is uniform
+ * The "just vibes" stance is a club-level setting chosen by the organizer at
+ * club creation; there is no per-player toggle here, so the stance is uniform
  * across all of a player's songs.
  *
- * No Rust here — the round screen reserves its single Rust signal for the
+ * No Rust here — the mix screen reserves its single Rust signal for the
  * voting/reveal states.
  */
 function SubmissionManager({
@@ -1219,10 +1219,10 @@ function SubmissionManager({
   // lets users submit out of order, which confuses the positional slot labels.
   const emptySlots = submissions.length < cap ? 1 : 0;
   // Number the slots only when more than one is allowed, so a single-song
-  // league reads exactly as before ("submit a song" / "your song").
+  // club reads exactly as before ("submit a song" / "your song").
   const numbered = cap > 1;
   // Once every slot is filled (multi-song only), offer a confirm that returns to
-  // the league — the natural "I'm done submitting" exit.
+  // the club — the natural "I'm done submitting" exit.
   const allSubmitted = numbered && submissions.length === cap;
 
   return (
@@ -1418,20 +1418,20 @@ function toSourceOnly(
 }
 
 /**
- * Listen affordance for a closed round (MYS-133): the whole-mix YouTube +
- * Spotify links, so members can still play the round after it closes. Reuses the
- * voting-screen components; renders nothing when the round had no submissions.
+ * Listen affordance for a closed mix (MYS-133): the whole-mix YouTube +
+ * Spotify links, so members can still play the mix after it closes. Reuses the
+ * voting-screen components; renders nothing when the mix had no submissions.
  * Stays in the Sage/Ink family — the reveal reserves its one Rust use for Most
  * Noted.
  */
 function ClosedListen({
-  roundId,
+  mixId,
   youtubePlaylistUrl,
   youtubeTrackCount,
   entryCount,
   sourceOnly,
 }: {
-  roundId: string;
+  mixId: string;
   youtubePlaylistUrl: string | null;
   youtubeTrackCount: number;
   entryCount: number;
@@ -1447,14 +1447,14 @@ function ClosedListen({
         entryCount={entryCount}
       />
       <SourceOnlyTracks tracks={sourceOnly} />
-      <SpotifyPlaylist roundId={roundId} />
-      <AppleMusicPlaylist roundId={roundId} />
+      <SpotifyPlaylist mixId={mixId} />
+      <AppleMusicPlaylist mixId={mixId} />
     </div>
   );
 }
 
 function VotingSection({
-  roundId,
+  mixId,
   entries,
   voteCounts,
   isVotesLocked,
@@ -1472,7 +1472,7 @@ function VotingSection({
   onSelectionChange,
   onActionError,
 }: {
-  roundId: string;
+  mixId: string;
   entries: PlaylistEntry[];
   voteCounts: VoteCountEntry[];
   isVotesLocked: boolean;
@@ -1534,8 +1534,8 @@ function VotingSection({
             entryCount={entries.length}
           />
           <SourceOnlyTracks tracks={toSourceOnly(entries)} />
-          <SpotifyPlaylist roundId={roundId} />
-          <AppleMusicPlaylist roundId={roundId} />
+          <SpotifyPlaylist mixId={mixId} />
+          <AppleMusicPlaylist mixId={mixId} />
         </div>
         <ul className="mt-4 space-y-4">
           {entries.map((entry) => (
@@ -1580,8 +1580,8 @@ function VotingSection({
         entryCount={entries.length}
       />
       <SourceOnlyTracks tracks={toSourceOnly(entries)} />
-      <SpotifyPlaylist roundId={roundId} />
-      <AppleMusicPlaylist roundId={roundId} />
+      <SpotifyPlaylist mixId={mixId} />
+      <AppleMusicPlaylist mixId={mixId} />
       <div className="flex items-baseline justify-between gap-4">
         <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
           cast your votes
@@ -1725,7 +1725,7 @@ function VotingSection({
  * Vote tally (MYS-148): shows running vote counts per song once voting is locked.
  * This replaces the voting controls after a player has cast their votes.
  * The vote counts update automatically as others vote, but notes remain hidden
- * until the round closes (MYS-72 - notes revealed only in the reveal).
+ * until the mix closes (MYS-72 - notes revealed only in the reveal).
  */
 function VotingTally({
   voteCounts,
@@ -1997,7 +1997,7 @@ type PlayerGroup = {
   songs: ResultSubmission[];
 };
 
-/** Group a round's submissions by submitter, summing votes across each player's
+/** Group a mix's submissions by submitter, summing votes across each player's
  *  songs — so a multi-song player reads as a single entrant (MYS-116). Order
  *  follows the incoming (vote-sorted) submissions: a player first appears where
  *  their best song does. */
@@ -2021,7 +2021,7 @@ function groupByPlayer(submissions: ResultSubmission[]): PlayerGroup[] {
 }
 
 /**
- * The winning player(s) of the round — the most votes by per-player total, so
+ * The winning player(s) of the mix — the most votes by per-player total, so
  * the highlight matches the leaderboard (MYS-116). A tie shows every winner.
  * Returns [] when nobody drew a vote. Every submitter competes, vibers included
  * (MYS-112). Stays in the Sage/Ink family — no Rust, which the reveal reserves
@@ -2061,7 +2061,7 @@ function CollapsibleNotes({ notes }: { notes: ResultNote[] }) {
 }
 
 /**
- * Closed-round reveal (MYS-24 / MYS-71). A static results moment — subtle
+ * Closed-mix reveal (MYS-24 / MYS-71). A static results moment — subtle
  * fade-in only, no staged animation (deferred to MYS-54). Top to bottom: Most
  * Noted (the one Rust signal on this screen), the Winner(s) by votes, the
  * Playing leaderboard, then a single ranked "the picks" list with every
@@ -2074,7 +2074,7 @@ function ResultsSection({
   results,
   userId,
 }: {
-  results: RoundResults | null;
+  results: MixResults | null;
   userId: string | null;
 }) {
   if (!results) {
@@ -2168,7 +2168,7 @@ function ResultsSection({
   );
 }
 
-/** A song's rank within its round. Top 3 get a filled Sage badge — the app's
+/** A song's rank within its mix. Top 3 get a filled Sage badge — the app's
  *  hierarchy color, not a new signal — so they read as distinct at a glance
  *  without competing with the Rust/Gold signals used elsewhere on this screen. */
 function RankBadge({ rank }: { rank: number }) {
@@ -2210,7 +2210,7 @@ function RankBadge({ rank }: { rank: number }) {
  * one Rust signal), the winner(s) by votes — named, no counts — and the full
  * tracklist with notes but NO scores or leaderboard.
  */
-function VibingReveal({ results }: { results: RoundResults }) {
+function VibingReveal({ results }: { results: MixResults }) {
   const { most_noted, winners, picks } = results;
   return (
     <div className="animate-fade-in space-y-12">
@@ -2256,7 +2256,7 @@ function VibeWinnersSection({ winners }: { winners: WinnerReveal[] }) {
 
 /** The full tracklist as a vibing viewer sees it (MYS-134): every submitted song
  *  with its submitter and notes, but NO vote counts or ranking — so they can see
- *  what was in the round without any scores. */
+ *  what was in the mix without any scores. */
 function VibePicksSection({ picks }: { picks: RevealPick[] }) {
   return (
     <section>
@@ -2338,7 +2338,7 @@ function MostNotedSection({ winners }: { winners: MostNotedWinner[] }) {
 }
 
 /**
- * The round's winner(s) by votes — prominent but secondary to Most Noted (no
+ * The mix's winner(s) by votes — prominent but secondary to Most Noted (no
  * Rust accent here, so Most Noted keeps the screen's single Rust signal). A tie
  * co-recognizes every top-voted pick.
  */

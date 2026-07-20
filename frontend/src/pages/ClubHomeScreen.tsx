@@ -1,11 +1,11 @@
 import { type FormEvent, useState } from "react";
 import type {
   LeaderboardEntry,
-  League,
-  LeagueMember,
-  Round,
-  RoundResults,
-  RoundState,
+  Club,
+  ClubMember,
+  Mix,
+  MixResults,
+  MixState,
 } from "../services/api";
 import { Button } from "../components/Button";
 import { Badge } from "../components/Badge";
@@ -23,47 +23,47 @@ import {
   validateWindowHours,
 } from "../utils/deadlineWindow";
 
-const ROUND_STATE_LABEL: Record<RoundState, string> = {
+const MIX_STATE_LABEL: Record<MixState, string> = {
   pending: "upcoming",
   open_submission: "submissions open",
   open_voting: "voting open",
   closed: "closed",
 };
 
-/** A round is "active" when members can act on it right now. */
-function isActiveRound(state: RoundState): boolean {
+/** A mix is "active" when members can act on it right now. */
+function isActiveMix(state: MixState): boolean {
   return state === "open_submission" || state === "open_voting";
 }
 
-type LeagueHomeScreenProps = {
-  league: League;
-  members: LeagueMember[];
-  rounds: Round[];
-  /** Reveal results keyed by round id, present once a closed round's results load. */
-  roundResults: Record<string, RoundResults>;
+type ClubHomeScreenProps = {
+  club: Club;
+  members: ClubMember[];
+  mixes: Mix[];
+  /** Reveal results keyed by mix id, present once a closed mix's results load. */
+  mixResults: Record<string, MixResults>;
   /** The fixed organizer only — narrower than isAdmin. Still needed to decide
-   *  whether the leave-league section renders (co-organizers can leave; the
+   *  whether the leave-club section renders (co-organizers can leave; the
    *  fixed organizer cannot). */
   isOrganizer: boolean;
   /** isOrganizer OR the caller's own membership row has is_admin === true
-   *  (co-organizer, MYS-99). Gates round management, league settings edit,
+   *  (co-organizer, MYS-99). Gates mix management, club settings edit,
    *  and member removal/role changes. */
   isAdmin: boolean;
   loading: boolean;
   error?: string | null;
   onBack: () => void;
-  onOpenRound: (roundId: string) => void;
-  onUpdateRound: (
-    roundId: string,
+  onOpenMix: (mixId: string) => void;
+  onUpdateMix: (
+    mixId: string,
     input: { theme?: string | null; description?: string | null },
   ) => Promise<boolean>;
-  savingRoundId: string | null;
-  updateRoundError?: string | null;
+  savingMixId: string | null;
+  updateMixError?: string | null;
   inviteUrl: string | null;
   onGenerateInvite: () => void;
   generatingInvite: boolean;
   inviteError?: string | null;
-  onUpdateLeague: (input: {
+  onUpdateClub: (input: {
     name?: string;
     description?: string | null;
     total_mixes?: number;
@@ -79,38 +79,38 @@ type LeagueHomeScreenProps = {
   onChangeMemberRole: (userId: string, role: "admin" | "member") => void;
   changingRoleUserId: string | null;
   roleChangeError?: string | null;
-  // --- Organizer admin: delete league (MYS-124) ---
-  onDeleteLeague: () => void;
-  deletingLeague: boolean;
-  deleteLeagueError?: string | null;
+  // --- Organizer admin: delete club (MYS-124) ---
+  onDeleteClub: () => void;
+  deletingClub: boolean;
+  deleteClubError?: string | null;
   // --- Member self-leave (MYS-97) ---
-  onLeaveLeague: () => void;
-  leavingLeague: boolean;
-  leaveLeagueError?: string | null;
+  onLeaveClub: () => void;
+  leavingClub: boolean;
+  leaveClubError?: string | null;
   // --- All-time vote leaderboard (MYS-157) ---
   leaderboard: LeaderboardEntry[];
   userId: string | null;
 };
 
-export function LeagueHomeScreen({
-  league,
+export function ClubHomeScreen({
+  club,
   members,
-  rounds,
-  roundResults,
+  mixes,
+  mixResults,
   isOrganizer,
   isAdmin,
   loading,
   error,
   onBack,
-  onOpenRound,
-  onUpdateRound,
-  savingRoundId,
-  updateRoundError,
+  onOpenMix,
+  onUpdateMix,
+  savingMixId,
+  updateMixError,
   inviteUrl,
   onGenerateInvite,
   generatingInvite,
   inviteError,
-  onUpdateLeague,
+  onUpdateClub,
   updating,
   updateError,
   onRemoveMember,
@@ -119,15 +119,15 @@ export function LeagueHomeScreen({
   onChangeMemberRole,
   changingRoleUserId,
   roleChangeError,
-  onDeleteLeague,
-  deletingLeague,
-  deleteLeagueError,
-  onLeaveLeague,
-  leavingLeague,
-  leaveLeagueError,
+  onDeleteClub,
+  deletingClub,
+  deleteClubError,
+  onLeaveClub,
+  leavingClub,
+  leaveClubError,
   leaderboard,
   userId,
-}: LeagueHomeScreenProps) {
+}: ClubHomeScreenProps) {
   if (loading) {
     return (
       <main className="flex flex-1 items-center justify-center px-4 sm:px-8">
@@ -150,27 +150,27 @@ export function LeagueHomeScreen({
   }
 
   // Rust budget: this screen's single Rust signal is reserved for the
-  // destructive delete-league confirm (DeleteLeagueSection below), visible to
+  // destructive delete-club confirm (DeleteClubSection below), visible to
   // any admin — the fixed organizer or a co-organizer (MYS-99). Every other
-  // element — including the league-state badge and the co-organizer badge —
+  // element — including the club-state badge and the co-organizer badge —
   // stays in the Sage family. The shared TopNav is rendered by AuthedLayout,
   // so this is content-only.
-  const isComplete = league.state === "complete";
+  const isComplete = club.state === "complete";
 
   return (
     <main className="mx-auto w-full max-w-lg px-4 pb-16 sm:px-8">
       {isComplete ? <Confetti /> : null}
       <div className="flex items-start justify-between gap-4">
-        <h1 className="font-serif text-[32px] leading-tight text-ink">{league.name}</h1>
+        <h1 className="font-serif text-[32px] leading-tight text-ink">{club.name}</h1>
         <div className="shrink-0 pt-2">
-          <Badge>{league.state}</Badge>
+          <Badge>{club.state}</Badge>
         </div>
       </div>
-        {league.description ? (
-          <p className="mt-2 font-mono text-[13px] font-light text-muted">{league.description}</p>
+        {club.description ? (
+          <p className="mt-2 font-mono text-[13px] font-light text-muted">{club.description}</p>
         ) : null}
         <p className="mt-3 font-mono text-[11px] font-light text-muted">
-          mix {league.current_mix} of {league.total_mixes}
+          mix {club.current_mix} of {club.total_mixes}
         </p>
         {isComplete ? (
           <p className="mt-4 font-serif italic text-[18px] text-muted">
@@ -180,22 +180,22 @@ export function LeagueHomeScreen({
 
         {isAdmin ? (
           <OrganizerEdit
-            league={league}
-            onUpdateLeague={onUpdateLeague}
+            club={club}
+            onUpdateClub={onUpdateClub}
             updating={updating}
             updateError={updateError}
           />
         ) : null}
 
-        {/* Rounds */}
-        <RoundsSection
-          rounds={rounds}
-          roundResults={roundResults}
+        {/* Mixes */}
+        <MixesSection
+          mixes={mixes}
+          mixResults={mixResults}
           isAdmin={isAdmin}
-          onOpenRound={onOpenRound}
-          onUpdateRound={onUpdateRound}
-          savingRoundId={savingRoundId}
-          updateRoundError={updateRoundError}
+          onOpenMix={onOpenMix}
+          onUpdateMix={onUpdateMix}
+          savingMixId={savingMixId}
+          updateMixError={updateMixError}
         />
 
         {/* Members / all-time leaderboard (MYS-157) */}
@@ -308,26 +308,26 @@ export function LeagueHomeScreen({
         </section>
 
         {/* Destructive actions (MYS-99): any admin (fixed organizer or
-            co-organizer) can delete the league outright. The fixed organizer
+            co-organizer) can delete the club outright. The fixed organizer
             can never leave (the backend guard blocks it) so they only see
             delete; a co-organizer is the one case that sees both — they can
-            leave individually, or delete the whole league; a plain member
+            leave individually, or delete the whole club; a plain member
             only sees leave. Delete's confirm carries this screen's single
-            Rust signal (see DeleteLeagueSection) — because a co-organizer can
-            have both sections open at once, LeaveLeagueSection's confirm
+            Rust signal (see DeleteClubSection) — because a co-organizer can
+            have both sections open at once, LeaveClubSection's confirm
             intentionally stays in the Sage/ghost family, never Rust. */}
         {isAdmin ? (
-          <DeleteLeagueSection
-            onDeleteLeague={onDeleteLeague}
-            deletingLeague={deletingLeague}
-            deleteLeagueError={deleteLeagueError}
+          <DeleteClubSection
+            onDeleteClub={onDeleteClub}
+            deletingClub={deletingClub}
+            deleteClubError={deleteClubError}
           />
         ) : null}
         {!isOrganizer ? (
-          <LeaveLeagueSection
-            onLeaveLeague={onLeaveLeague}
-            leavingLeague={leavingLeague}
-            leaveLeagueError={leaveLeagueError}
+          <LeaveClubSection
+            onLeaveClub={onLeaveClub}
+            leavingClub={leavingClub}
+            leaveClubError={leaveClubError}
           />
         ) : null}
     </main>
@@ -339,17 +339,17 @@ export function LeagueHomeScreen({
  * (MYS-99). A two-step confirm (calm copy, no exclamation marks): the first
  * action arms the confirm, the second commits. This confirm carries the
  * screen's single Rust signal — the `link`-variant Button renders in Rust.
- * The backend rejects deleting an in-progress league (409); that calm
+ * The backend rejects deleting an in-progress club (409); that calm
  * message is surfaced verbatim.
  */
-function DeleteLeagueSection({
-  onDeleteLeague,
-  deletingLeague,
-  deleteLeagueError,
+function DeleteClubSection({
+  onDeleteClub,
+  deletingClub,
+  deleteClubError,
 }: {
-  onDeleteLeague: () => void;
-  deletingLeague: boolean;
-  deleteLeagueError?: string | null;
+  onDeleteClub: () => void;
+  deletingClub: boolean;
+  deleteClubError?: string | null;
 }) {
   const [confirming, setConfirming] = useState(false);
 
@@ -367,16 +367,16 @@ function DeleteLeagueSection({
             <Button
               variant="link"
               type="button"
-              onClick={onDeleteLeague}
-              disabled={deletingLeague}
+              onClick={onDeleteClub}
+              disabled={deletingClub}
             >
-              {deletingLeague ? "deleting…" : "delete this club"}
+              {deletingClub ? "deleting…" : "delete this club"}
             </Button>
             <Button
               variant="ghost"
               type="button"
               onClick={() => setConfirming(false)}
-              disabled={deletingLeague}
+              disabled={deletingClub}
             >
               cancel
             </Button>
@@ -390,9 +390,9 @@ function DeleteLeagueSection({
         </div>
       )}
 
-      {deleteLeagueError ? (
+      {deleteClubError ? (
         <p role="alert" className="mt-3 font-mono text-[11px] text-ink">
-          {deleteLeagueError}
+          {deleteClubError}
         </p>
       ) : null}
     </section>
@@ -402,20 +402,20 @@ function DeleteLeagueSection({
 /**
  * Destructive action for anyone but the fixed organizer (plain members and,
  * since MYS-99, co-organizers too). Two-step confirm, mirrors
- * DeleteLeagueSection — but its confirm intentionally uses the `ghost`
+ * DeleteClubSection — but its confirm intentionally uses the `ghost`
  * Button variant, not `link` (Rust). A co-organizer can have this section
- * open at the same time as DeleteLeagueSection, which already spends this
+ * open at the same time as DeleteClubSection, which already spends this
  * screen's single Rust use; keeping this one in the Sage/ghost family avoids
  * a second Rust element appearing in the same view.
  */
-function LeaveLeagueSection({
-  onLeaveLeague,
-  leavingLeague,
-  leaveLeagueError,
+function LeaveClubSection({
+  onLeaveClub,
+  leavingClub,
+  leaveClubError,
 }: {
-  onLeaveLeague: () => void;
-  leavingLeague: boolean;
-  leaveLeagueError?: string | null;
+  onLeaveClub: () => void;
+  leavingClub: boolean;
+  leaveClubError?: string | null;
 }) {
   const [confirming, setConfirming] = useState(false);
 
@@ -432,16 +432,16 @@ function LeaveLeagueSection({
             <Button
               variant="ghost"
               type="button"
-              onClick={onLeaveLeague}
-              disabled={leavingLeague}
+              onClick={onLeaveClub}
+              disabled={leavingClub}
             >
-              {leavingLeague ? "leaving…" : "leave this club"}
+              {leavingClub ? "leaving…" : "leave this club"}
             </Button>
             <Button
               variant="ghost"
               type="button"
               onClick={() => setConfirming(false)}
-              disabled={leavingLeague}
+              disabled={leavingClub}
             >
               cancel
             </Button>
@@ -455,57 +455,57 @@ function LeaveLeagueSection({
         </div>
       )}
 
-      {leaveLeagueError ? (
+      {leaveClubError ? (
         <p role="alert" className="mt-3 font-mono text-[11px] text-ink">
-          {leaveLeagueError}
+          {leaveClubError}
         </p>
       ) : null}
     </section>
   );
 }
 
-function RoundsSection({
-  rounds,
-  roundResults,
+function MixesSection({
+  mixes,
+  mixResults,
   isAdmin,
-  onOpenRound,
-  onUpdateRound,
-  savingRoundId,
-  updateRoundError,
+  onOpenMix,
+  onUpdateMix,
+  savingMixId,
+  updateMixError,
 }: {
-  rounds: Round[];
-  roundResults: Record<string, RoundResults>;
+  mixes: Mix[];
+  mixResults: Record<string, MixResults>;
   isAdmin: boolean;
-  onOpenRound: (roundId: string) => void;
-  onUpdateRound: (
-    roundId: string,
+  onOpenMix: (mixId: string) => void;
+  onUpdateMix: (
+    mixId: string,
     input: { theme?: string | null; description?: string | null },
   ) => Promise<boolean>;
-  savingRoundId: string | null;
-  updateRoundError?: string | null;
+  savingMixId: string | null;
+  updateMixError?: string | null;
 }) {
-  // Rounds are auto-created with the league, so the slate always exists. The
-  // empty state is a fallback only (e.g. a stale/odd league with zero rounds).
+  // Mixes are auto-created with the club, so the slate always exists. The
+  // empty state is a fallback only (e.g. a stale/odd club with zero mixes).
   return (
     <section className="mt-12">
       <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
-        mystery mixes ({rounds.length})
+        mystery mixes ({mixes.length})
       </h2>
 
-      {rounds.length === 0 ? (
+      {mixes.length === 0 ? (
         <p className="mt-4 font-mono text-[13px] font-light text-muted">no mystery mixes yet</p>
       ) : (
         <ul className="mt-4 space-y-3">
-          {rounds.map((round) => (
-            <li key={round.id}>
-              <RoundRow
-                round={round}
-                results={roundResults[round.id]}
+          {mixes.map((mix) => (
+            <li key={mix.id}>
+              <MixRow
+                mix={mix}
+                results={mixResults[mix.id]}
                 isAdmin={isAdmin}
-                onOpen={() => onOpenRound(round.id)}
-                onUpdate={(input) => onUpdateRound(round.id, input)}
-                saving={savingRoundId === round.id}
-                error={savingRoundId === round.id ? updateRoundError : null}
+                onOpen={() => onOpenMix(mix.id)}
+                onUpdate={(input) => onUpdateMix(mix.id, input)}
+                saving={savingMixId === mix.id}
+                error={savingMixId === mix.id ? updateMixError : null}
               />
             </li>
           ))}
@@ -516,25 +516,25 @@ function RoundsSection({
 }
 
 /**
- * One round in the rounds list. State drives the visual weight, within the
+ * One mix in the mixes list. State drives the visual weight, within the
  * Sage/Ink family only — no Rust here (the screen reserves its single Rust use
- * for the delete-league confirm):
- *  - active round (open submission/voting) → Sage-pale fill, the eye lands here
+ * for the delete-club confirm):
+ *  - active mix (open submission/voting) → Sage-pale fill, the eye lands here
  *  - upcoming (pending) → muted theme, quiet
  *  - closed → plain
  *
- * The heading is always "round N". When the organizer has named the round the
- * theme shows beneath it; an unnamed round shows a quiet muted prompt to the
- * organizer (and nothing to members). Organizers can rename a `pending` round
+ * The heading is always "mix N". When the organizer has named the mix the
+ * theme shows beneath it; an unnamed mix shows a quiet muted prompt to the
+ * organizer (and nothing to members). Organizers can rename a `pending` mix
  * in place (theme + description); once it opens the API locks those fields
  * (409), so the edit affordance is replaced by a calm muted note.
  *
- * A closed round also carries a compact reveal summary — the winner (top of the
+ * A closed mix also carries a compact reveal summary — the winner (top of the
  * vote leaderboard) and the most-noted pick — once its `results` have loaded.
  * Ties show every co-winner.
  */
-function RoundRow({
-  round,
+function MixRow({
+  mix,
   results,
   isAdmin,
   onOpen,
@@ -542,8 +542,8 @@ function RoundRow({
   saving,
   error,
 }: {
-  round: Round;
-  results?: RoundResults;
+  mix: Mix;
+  results?: MixResults;
   isAdmin: boolean;
   onOpen: () => void;
   onUpdate: (input: { theme?: string | null; description?: string | null }) => Promise<boolean>;
@@ -552,15 +552,15 @@ function RoundRow({
 }) {
   const [editing, setEditing] = useState(false);
 
-  const active = isActiveRound(round.state);
-  const pending = round.state === "pending";
-  const named = !!round.theme;
+  const active = isActiveMix(mix.state);
+  const pending = mix.state === "pending";
+  const named = !!mix.theme;
 
   if (editing) {
     return (
       <div className="rounded-[3px] border border-border bg-white px-5 py-5">
-        <RoundEditForm
-          round={round}
+        <MixEditForm
+          mix={mix}
           saving={saving}
           error={error}
           onCancel={() => setEditing(false)}
@@ -584,11 +584,11 @@ function RoundRow({
         <div className="flex items-start justify-between gap-4">
           <span className="min-w-0">
             <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
-              mystery mix {round.mix_number}
+              mystery mix {mix.mix_number}
             </span>
             {named ? (
               <span className="mt-0.5 block truncate font-serif text-[16px] text-ink">
-                {round.theme}
+                {mix.theme}
               </span>
             ) : isAdmin ? (
               <span className="mt-0.5 block truncate font-mono text-[13px] font-light italic text-muted">
@@ -597,37 +597,37 @@ function RoundRow({
             ) : null}
           </span>
           <span className="shrink-0">
-            <Badge>{ROUND_STATE_LABEL[round.state]}</Badge>
+            <Badge>{MIX_STATE_LABEL[mix.state]}</Badge>
           </span>
         </div>
-        {round.description ? (
+        {mix.description ? (
           <p className="mt-2 font-mono text-[11px] font-light leading-relaxed text-muted">
-            {round.description}
+            {mix.description}
           </p>
         ) : null}
-        {/* Submission progress while the round is open for submissions (MYS-101). */}
-        {round.state === "open_submission" && round.member_count > 0 ? (
+        {/* Submission progress while the mix is open for submissions (MYS-101). */}
+        {mix.state === "open_submission" && mix.member_count > 0 ? (
           <p className="mt-2 font-mono uppercase tracking-label text-[9px] text-muted">
-            {round.submission_count} of {round.member_count} submitted
+            {mix.submission_count} of {mix.member_count} submitted
           </p>
         ) : null}
-        {/* Voting progress while the round is open for voting (MYS-110). */}
-        {round.state === "open_voting" && round.voting_eligible_count > 0 ? (
+        {/* Voting progress while the mix is open for voting (MYS-110). */}
+        {mix.state === "open_voting" && mix.voting_eligible_count > 0 ? (
           <p className="mt-2 font-mono uppercase tracking-label text-[9px] text-muted">
-            {round.voted_count} of {round.voting_eligible_count} voted
+            {mix.voted_count} of {mix.voting_eligible_count} voted
           </p>
         ) : null}
         {/* Prominent, phase-appropriate deadline chip (MYS-161) — viewer-local
-            time. Renders nothing for legacy rounds with no deadline set. */}
-        <DeadlineChip round={round} className="mt-3" />
+            time. Renders nothing for legacy mixes with no deadline set. */}
+        <DeadlineChip mix={mix} className="mt-3" />
         {/* Viewer participation indicators — subtle sage checkmarks. */}
-        {round.viewer_submitted || round.viewer_voted ? (
+        {mix.viewer_submitted || mix.viewer_voted ? (
           <p className="mt-1.5 flex items-center gap-3 font-mono uppercase tracking-label text-[9px] text-sage">
-            {round.viewer_submitted ? <ViewerCheck label="you submitted" /> : null}
-            {round.viewer_voted ? <ViewerCheck label="you voted" /> : null}
+            {mix.viewer_submitted ? <ViewerCheck label="you submitted" /> : null}
+            {mix.viewer_voted ? <ViewerCheck label="you voted" /> : null}
           </p>
         ) : null}
-        {round.state === "closed" && results ? <ClosedRoundSummary results={results} /> : null}
+        {mix.state === "closed" && results ? <ClosedMixSummary results={results} /> : null}
       </button>
 
       {isAdmin ? (
@@ -674,12 +674,12 @@ function topVoteWinners(leaderboard: LeaderboardEntry[]): LeaderboardEntry[] {
 }
 
 /**
- * Compact reveal summary for a closed round's card: the winner (top of the vote
+ * Compact reveal summary for a closed mix's card: the winner (top of the vote
  * leaderboard) and the most-noted pick. Both can tie — every co-winner is named.
  * Label-left / value-right, staying in the Sage/Ink family (no Rust here — the
- * screen reserves its single Rust use for the delete-league confirm).
+ * screen reserves its single Rust use for the delete-club confirm).
  */
-function ClosedRoundSummary({ results }: { results: RoundResults }) {
+function ClosedMixSummary({ results }: { results: MixResults }) {
   const winners = topVoteWinners(results.leaderboard);
   const mostNoted = results.most_noted.winners;
   if (winners.length === 0 && mostNoted.length === 0) return null;
@@ -713,39 +713,39 @@ function ClosedRoundSummary({ results }: { results: RoundResults }) {
 }
 
 /**
- * Inline theme + description editor for a single pending round, shown in place
- * within the rounds list. Underline inputs only (TextField + an underline
- * textarea), matching the round-detail editor. No Rust — this screen's single
- * Rust use is the delete-league confirm.
+ * Inline theme + description editor for a single pending mix, shown in place
+ * within the mixes list. Underline inputs only (TextField + an underline
+ * textarea), matching the mix-detail editor. No Rust — this screen's single
+ * Rust use is the delete-club confirm.
  */
-function RoundEditForm({
-  round,
+function MixEditForm({
+  mix,
   saving,
   error,
   onCancel,
   onSave,
 }: {
-  round: Round;
+  mix: Mix;
   saving: boolean;
   error?: string | null;
   onCancel: () => void;
   onSave: (input: { theme?: string | null; description?: string | null }) => void;
 }) {
-  const [theme, setTheme] = useState(round.theme ?? "");
-  const [description, setDescription] = useState(round.description ?? "");
+  const [theme, setTheme] = useState(mix.theme ?? "");
+  const [description, setDescription] = useState(mix.description ?? "");
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     const input: { theme?: string | null; description?: string | null } = {};
 
     const trimmedTheme = theme.trim();
-    const currentTheme = round.theme ?? "";
+    const currentTheme = mix.theme ?? "";
     if (trimmedTheme !== currentTheme) {
       input.theme = trimmedTheme ? trimmedTheme : null;
     }
 
     const trimmedDescription = description.trim();
-    const currentDescription = round.description ?? "";
+    const currentDescription = mix.description ?? "";
     if (trimmedDescription !== currentDescription) {
       input.description = trimmedDescription ? trimmedDescription : null;
     }
@@ -760,11 +760,11 @@ function RoundEditForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
-        mystery mix {round.mix_number}
+        mystery mix {mix.mix_number}
       </span>
 
       <TextField
-        id={`round-theme-${round.id}`}
+        id={`mix-theme-${mix.id}`}
         label="theme"
         name="theme"
         placeholder="late summer feels"
@@ -774,12 +774,12 @@ function RoundEditForm({
         autoComplete="off"
       />
 
-      <label htmlFor={`round-description-${round.id}`} className="block">
+      <label htmlFor={`mix-description-${mix.id}`} className="block">
         <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
           description
         </span>
         <textarea
-          id={`round-description-${round.id}`}
+          id={`mix-description-${mix.id}`}
           rows={2}
           placeholder="a line or two of color for this mystery mix"
           value={description}
@@ -808,22 +808,22 @@ function RoundEditForm({
 }
 
 function OrganizerEdit({
-  league,
-  onUpdateLeague,
+  club,
+  onUpdateClub,
   updating,
   updateError,
 }: {
-  league: League;
-  onUpdateLeague: LeagueHomeScreenProps["onUpdateLeague"];
+  club: Club;
+  onUpdateClub: ClubHomeScreenProps["onUpdateClub"];
   updating: boolean;
   updateError?: string | null;
 }) {
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState(league.name);
-  const [description, setDescription] = useState(league.description ?? "");
-  const [totalRounds, setTotalRounds] = useState(String(league.total_mixes));
-  const initialSubmissionWindow = hoursToDaysAndHours(league.submission_window_hours);
-  const initialVotingWindow = hoursToDaysAndHours(league.voting_window_hours);
+  const [name, setName] = useState(club.name);
+  const [description, setDescription] = useState(club.description ?? "");
+  const [totalMixes, setTotalMixes] = useState(String(club.total_mixes));
+  const initialSubmissionWindow = hoursToDaysAndHours(club.submission_window_hours);
+  const initialVotingWindow = hoursToDaysAndHours(club.voting_window_hours);
   const [submissionWindowDays, setSubmissionWindowDays] = useState(
     String(initialSubmissionWindow.days),
   );
@@ -835,13 +835,13 @@ function OrganizerEdit({
   const [windowError, setWindowError] = useState<string | null>(null);
 
   function openForm() {
-    setName(league.name);
-    setDescription(league.description ?? "");
-    setTotalRounds(String(league.total_mixes));
-    const submissionWindow = hoursToDaysAndHours(league.submission_window_hours);
+    setName(club.name);
+    setDescription(club.description ?? "");
+    setTotalMixes(String(club.total_mixes));
+    const submissionWindow = hoursToDaysAndHours(club.submission_window_hours);
     setSubmissionWindowDays(String(submissionWindow.days));
     setSubmissionWindowHours(String(submissionWindow.hours));
-    const votingWindow = hoursToDaysAndHours(league.voting_window_hours);
+    const votingWindow = hoursToDaysAndHours(club.voting_window_hours);
     setVotingWindowDays(String(votingWindow.days));
     setVotingWindowHours(String(votingWindow.hours));
     setWindowError(null);
@@ -859,17 +859,17 @@ function OrganizerEdit({
     } = {};
 
     const trimmedName = name.trim();
-    if (trimmedName && trimmedName !== league.name) input.name = trimmedName;
+    if (trimmedName && trimmedName !== club.name) input.name = trimmedName;
 
     const trimmedDescription = description.trim();
-    const currentDescription = league.description ?? "";
+    const currentDescription = club.description ?? "";
     if (trimmedDescription !== currentDescription) {
       input.description = trimmedDescription ? trimmedDescription : null;
     }
 
-    const rounds = Number(totalRounds);
-    if (Number.isFinite(rounds) && rounds >= 1 && rounds !== league.total_mixes) {
-      input.total_mixes = rounds;
+    const mixes = Number(totalMixes);
+    if (Number.isFinite(mixes) && mixes >= 1 && mixes !== club.total_mixes) {
+      input.total_mixes = mixes;
     }
 
     const submissionHours = daysAndHoursToTotal(
@@ -888,14 +888,14 @@ function OrganizerEdit({
       return;
     }
     setWindowError(null);
-    if (submissionHours !== league.submission_window_hours) {
+    if (submissionHours !== club.submission_window_hours) {
       input.submission_window_hours = submissionHours;
     }
-    if (votingHours !== league.voting_window_hours) {
+    if (votingHours !== club.voting_window_hours) {
       input.voting_window_hours = votingHours;
     }
 
-    onUpdateLeague(input);
+    onUpdateClub(input);
   }
 
   if (!open) {
@@ -911,7 +911,7 @@ function OrganizerEdit({
   return (
     <form onSubmit={handleSubmit} className="mt-6 space-y-6 border-t border-border pt-6">
       <TextField
-        id="edit-league-name"
+        id="edit-club-name"
         label="name"
         name="name"
         value={name}
@@ -919,7 +919,7 @@ function OrganizerEdit({
         disabled={updating}
       />
       <TextField
-        id="edit-league-description"
+        id="edit-club-description"
         label="description"
         name="description"
         value={description}
@@ -927,13 +927,13 @@ function OrganizerEdit({
         disabled={updating}
       />
       <TextField
-        id="edit-league-total-rounds"
+        id="edit-club-total-mixes"
         label="mystery mixes"
         name="total_mixes"
         type="number"
         min={1}
-        value={totalRounds}
-        onChange={(e) => setTotalRounds(e.target.value)}
+        value={totalMixes}
+        onChange={(e) => setTotalMixes(e.target.value)}
         disabled={updating}
       />
       <DeadlineWindowField

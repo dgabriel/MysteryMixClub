@@ -6,10 +6,13 @@
 #
 # Requires the invoking user to have passwordless sudo for:
 #   systemctl restart mysterymixclub-api
-#   cp scripts/mysterymixclub-advance-rounds.{service,timer} /etc/systemd/system/
+#   systemctl disable --now mysterymixclub-advance-rounds.timer
+#   rm -f /etc/systemd/system/mysterymixclub-advance-rounds.{service,timer}
+#   cp scripts/mysterymixclub-advance-mixes.{service,timer} /etc/systemd/system/
 #   systemctl daemon-reload
-#   systemctl enable --now mysterymixclub-advance-rounds.timer
-# (the last three keep the MYS-145/162 deadline job's unit files and timer current.)
+#   systemctl enable --now mysterymixclub-advance-mixes.timer
+# (the advance-rounds steps retire the pre-MYS-195 unit name; the advance-mixes
+# steps keep the MYS-145/162 deadline job's unit files and timer current.)
 # The web root is owned by the deploy user (see bootstrap-droplet.sh), so the
 # frontend publish step needs no sudo. (See docs/staging-setup.md.)
 set -euo pipefail
@@ -44,14 +47,24 @@ alembic upgrade head
 echo "==> Restarting the API service"
 sudo systemctl restart mysterymixclub-api
 
+echo "==> Retiring the pre-rename advance-rounds unit (MYS-195)"
+# Disable and remove the old unit name before installing the new one, so a
+# stale job never keeps running alongside (or instead of) the renamed one.
+# Idempotent: safe to re-run, and safe once the old unit is already gone —
+# `disable --now` on a unit systemd doesn't know about just errors, which the
+# `|| true` swallows, and `rm -f` is a no-op on a missing file.
+sudo systemctl disable --now mysterymixclub-advance-rounds.timer 2>/dev/null || true
+sudo rm -f /etc/systemd/system/mysterymixclub-advance-rounds.service \
+  /etc/systemd/system/mysterymixclub-advance-rounds.timer
+
 echo "==> Installing/refreshing the deadline force-advance job (MYS-145/162)"
 # Keep the job's unit files current with the checkout and its timer enabled, so
 # code and schedule changes take effect on deploy. Idempotent: re-copying and
 # re-enabling are no-ops when nothing changed.
-sudo cp "${REPO_ROOT}/scripts/mysterymixclub-advance-rounds.service" /etc/systemd/system/
-sudo cp "${REPO_ROOT}/scripts/mysterymixclub-advance-rounds.timer" /etc/systemd/system/
+sudo cp "${REPO_ROOT}/scripts/mysterymixclub-advance-mixes.service" /etc/systemd/system/
+sudo cp "${REPO_ROOT}/scripts/mysterymixclub-advance-mixes.timer" /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now mysterymixclub-advance-rounds.timer
+sudo systemctl enable --now mysterymixclub-advance-mixes.timer
 
 echo "==> Building and publishing the frontend"
 cd ../frontend

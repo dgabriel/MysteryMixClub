@@ -50,6 +50,7 @@ import { SongSearchCard } from "../components/songs/SongSearchCard";
 import { SourceBadge } from "../components/SourceBadge";
 import { AppleMusicPlaylist } from "../components/AppleMusicPlaylist";
 import { SpotifyPlaylist } from "../components/SpotifyPlaylist";
+import { SourceOnlyTracks, type SourceOnlyTrack } from "../components/SourceOnlyTracks";
 import { CheckmarkIcon } from "../components/CheckmarkIcon";
 import { CrownIcon } from "../components/CrownIcon";
 import { MedalIcon } from "../components/MedalIcon";
@@ -660,6 +661,11 @@ export function RoundDetailRoute() {
                 youtubePlaylistUrl={youtubePlaylistUrl}
                 youtubeTrackCount={youtubeTrackCount}
                 entryCount={playlist.length}
+                sourceOnly={
+                  results
+                    ? toSourceOnly(results.viewer_is_vibing ? results.picks : results.submissions)
+                    : []
+                }
               />
               <ResultsSection results={results} userId={userId} />
             </>
@@ -1388,6 +1394,29 @@ function VotingProgress({
   );
 }
 
+/** Pull the Bandcamp/YouTube-only picks out of a mix's tracklist for the unified
+ *  source-only list, keyed off each track's own `source` (known at submission
+ *  time, independent of whether any playlist has been generated). */
+function toSourceOnly(
+  items: {
+    submission_id: string;
+    title: string;
+    artist: string;
+    source: "youtube" | "bandcamp" | null;
+    source_url: string | null;
+  }[],
+): SourceOnlyTrack[] {
+  return items
+    .filter((i) => i.source != null && i.source_url != null)
+    .map((i) => ({
+      submission_id: i.submission_id,
+      title: i.title,
+      artist: i.artist,
+      source: i.source as "youtube" | "bandcamp",
+      source_url: i.source_url as string,
+    }));
+}
+
 /**
  * Listen affordance for a closed round (MYS-133): the whole-mix YouTube +
  * Spotify links, so members can still play the round after it closes. Reuses the
@@ -1400,11 +1429,13 @@ function ClosedListen({
   youtubePlaylistUrl,
   youtubeTrackCount,
   entryCount,
+  sourceOnly,
 }: {
   roundId: string;
   youtubePlaylistUrl: string | null;
   youtubeTrackCount: number;
   entryCount: number;
+  sourceOnly: SourceOnlyTrack[];
 }) {
   if (entryCount === 0) return null;
   return (
@@ -1415,6 +1446,7 @@ function ClosedListen({
         youtubeTrackCount={youtubeTrackCount}
         entryCount={entryCount}
       />
+      <SourceOnlyTracks tracks={sourceOnly} />
       <SpotifyPlaylist roundId={roundId} />
       <AppleMusicPlaylist roundId={roundId} />
     </div>
@@ -1501,6 +1533,7 @@ function VotingSection({
             youtubeTrackCount={youtubeTrackCount}
             entryCount={entries.length}
           />
+          <SourceOnlyTracks tracks={toSourceOnly(entries)} />
           <SpotifyPlaylist roundId={roundId} />
           <AppleMusicPlaylist roundId={roundId} />
         </div>
@@ -1546,6 +1579,7 @@ function VotingSection({
         youtubeTrackCount={youtubeTrackCount}
         entryCount={entries.length}
       />
+      <SourceOnlyTracks tracks={toSourceOnly(entries)} />
       <SpotifyPlaylist roundId={roundId} />
       <AppleMusicPlaylist roundId={roundId} />
       <div className="flex items-baseline justify-between gap-4">

@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { MusicNoteIcon } from "./MusicNoteIcon";
-import { PlaylistGap } from "./PlaylistGap";
-import { getSpotifyPlaylistLink, type UnmatchedTrack } from "../services/api";
+import { getSpotifyPlaylistLink } from "../services/api";
 
 /**
  * Read-only Spotify playlist link for a round (MYS-83, MYS-169).
@@ -23,7 +22,6 @@ const NOTE_CLASS = "font-mono text-[11px] font-light text-muted";
 
 export function SpotifyPlaylist({ roundId }: { roundId: string }) {
   const [playlistUrl, setPlaylistUrl] = useState<string | null | undefined>(undefined);
-  const [unmatched, setUnmatched] = useState<UnmatchedTrack[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -31,7 +29,6 @@ export function SpotifyPlaylist({ roundId }: { roundId: string }) {
       .then((r) => {
         if (!active) return;
         setPlaylistUrl(r.playlist_url);
-        setUnmatched(r.unmatched);
       })
       .catch(() => {
         if (active) setPlaylistUrl(null);
@@ -47,13 +44,10 @@ export function SpotifyPlaylist({ roundId }: { roundId: string }) {
   return (
     <div className="mb-8">
       {playlistUrl ? (
-        <>
-          <PlaylistGap unmatched={unmatched} />
-          <a href={playlistUrl} target="_blank" rel="noopener noreferrer" className={LINK_CLASS}>
-            <MusicNoteIcon />
-            open playlist in Spotify
-          </a>
-        </>
+        <a href={playlistUrl} target="_blank" rel="noopener noreferrer" className={LINK_CLASS}>
+          <MusicNoteIcon />
+          open playlist in Spotify
+        </a>
       ) : (
         <p className={NOTE_CLASS}>no spotify playlist yet</p>
       )}

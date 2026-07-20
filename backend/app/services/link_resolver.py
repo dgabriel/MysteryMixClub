@@ -119,7 +119,17 @@ class InvalidSongURLError(ResolverError):
 
 
 class SongNotFoundError(ResolverError):
-    """The URL could not be matched to a song (-> 404)."""
+    """The URL could not be matched to a song (-> 404).
+
+    ``code`` is an optional stable tag for a specific, known failure reason
+    (e.g. ``"bandcamp_custom_domain"``) that the router uses to show the
+    exception's own message instead of the generic fallback — unset for the
+    ordinary "no match" case, which stays generic.
+    """
+
+    def __init__(self, message: str = "song not found", *, code: str | None = None) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 class ResolverRateLimitError(ResolverError):
@@ -162,9 +172,21 @@ def _bandcamp_redirect_target(current: str, location: str | None) -> str:
     if not location:
         raise SongNotFoundError("could not resolve that link")
     target = urljoin(current, location)
-    host = (urlparse(target).hostname or "").lower()
-    if not _looks_like_url(target) or not _is_bandcamp_host(host):
+    if not _looks_like_url(target):
         raise SongNotFoundError("could not resolve that link")
+    host = (urlparse(target).hostname or "").lower()
+    if not _is_bandcamp_host(host):
+        # A legitimate Bandcamp Pro custom domain looks identical, at this
+        # point, to a hostile redirect target — both are just "not
+        # *.bandcamp.com" — so this still refuses to follow it (MYS-200's
+        # SSRF guard). Tagged with a code so the router can give the user an
+        # accurate reason instead of the generic "not found" (MYS-212 backlog
+        # tracks properly supporting custom domains via a resolved-IP check).
+        raise SongNotFoundError(
+            "this bandcamp link redirects to a custom domain, which isn't "
+            "supported yet. try a link that stays on bandcamp.com",
+            code="bandcamp_custom_domain",
+        )
     return target
 
 

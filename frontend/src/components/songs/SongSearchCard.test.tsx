@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SongSearchCard } from "./SongSearchCard";
-import { resolveSong, searchSongs } from "../../services/api";
+import { ApiError, resolveSong, searchSongs } from "../../services/api";
 import type { ResolvedSong, SongSearchResults } from "../../services/api";
 
 // Mock the API module; keep ApiError real so instanceof works.
@@ -147,6 +147,32 @@ describe("SongSearchCard", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "We couldn't find that song. Check the link and try again.",
     );
+  });
+
+  it("shows a specific message for a Bandcamp custom-domain redirect (MYS-212)", async () => {
+    mockResolve.mockRejectedValue(
+      new ApiError(
+        404,
+        "this bandcamp link redirects to a custom domain, which isn't supported "
+          + "yet. try a link that stays on bandcamp.com",
+      ),
+    );
+    const user = userEvent.setup();
+    render(<SongSearchCard />);
+
+    await user.click(screen.getByRole("tab", { name: /paste a link/i }));
+    await user.type(
+      screen.getByLabelText(/paste a link/i),
+      "https://wrwtfww.bandcamp.com/track/1224-live",
+    );
+    await user.click(screen.getByRole("button", { name: /^resolve$/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "This Bandcamp link redirects to a custom domain, which we don't support yet. " +
+        "Try a link that stays on bandcamp.com.",
+    );
+    // The pointless source-only retry never fires for this failure.
+    expect(mockResolve).toHaveBeenCalledTimes(1);
   });
 
   it("search mode: returns rows, and selecting one resolves to the result card", async () => {

@@ -89,7 +89,15 @@ async def _seed_member(db_session, round_: Round, email: str) -> User:
 
 
 async def _add_submission(
-    db_session, round_id, user_id, *, isrc, title, spotify_track_uri=None, source_key=None
+    db_session,
+    round_id,
+    user_id,
+    *,
+    isrc,
+    title,
+    spotify_track_uri=None,
+    source_key=None,
+    participation_mode="playing",
 ):
     submission = Submission(
         round_id=round_id,
@@ -100,6 +108,7 @@ async def _add_submission(
         artist="A",
         platform_links={},
         spotify_track_uri=spotify_track_uri,
+        participation_mode=participation_mode,
     )
     db_session.add(submission)
     await db_session.commit()
@@ -450,6 +459,9 @@ async def test_generate_skips_source_only_track_without_isrc_lookup(db_session, 
     assert [u.title for u in result.unmatched] == ["bandcamp only"]
     # Reported as source-only, distinct from a catalog miss (MYS-201 Phase 2).
     assert result.unmatched[0].reason == "source_only"
+    # Carries its Bandcamp page for the frontend to link out to (MYS-201).
+    assert result.unmatched[0].source == "bandcamp"
+    assert result.unmatched[0].source_url == "https://coolband.bandcamp.com/track/demo"
     # Only the catalog track's ISRC was ever looked up; None was never searched.
     assert fake_spotify.searched_isrcs == ["I-MATCH"]
 
@@ -705,6 +717,13 @@ async def test_link_reports_unmatched_gap_after_generation(
         str(src.id): "source_only",
     }
     assert str(hit.id) not in reasons
+    # source_only entries carry their Bandcamp/YouTube page for link-out; catalog
+    # misses have no source_key, so both fields stay null (MYS-201).
+    by_id = {u["submission_id"]: u for u in body["unmatched"]}
+    assert by_id[str(src.id)]["source"] == "bandcamp"
+    assert by_id[str(src.id)]["source_url"] == "https://coolband.bandcamp.com/track/demo"
+    assert by_id[str(miss.id)]["source"] is None
+    assert by_id[str(miss.id)]["source_url"] is None
 
 
 # --------------------------------------------------------------------------- #
@@ -726,6 +745,36 @@ async def test_voting_open_auto_generates_playlist(spotify_client, db_session, f
     link = await spotify_client.get(_playlist_url(round_.id), headers=_auth(organizer.id))
     assert link.json()["playlist_url"] == "https://open.spotify.com/playlist/pl1"
     assert fake_spotify.created["public"] is True
+
+
+async def test_all_vibing_round_still_auto_generates_playlist(
+    spotify_client, db_session, fake_spotify
+):
+    # Bug: an all-vibing round chains open_voting -> closed in the same PATCH
+    # (nobody can vote), which used to suppress the voting_open *event* used to
+    # notify AND, by the same check, the playlist-generation trigger. Vibers
+    # still deserve a listen-along playlist even though the round never really
+    # waits for votes.
+    organizer = await _seed_user(db_session, "o@example.com")
+    round_ = await _seed_round(db_session, organizer, state="open_submission")
+    await _seed_shared_account(db_session)
+    await _add_submission(
+        db_session,
+        round_.id,
+        organizer.id,
+        isrc="I-MATCH",
+        title="hit",
+        participation_mode="vibing",
+    )
+
+    resp = await spotify_client.patch(
+        f"/api/v1/mixes/{round_.id}", json={"state": "open_voting"}, headers=_auth(organizer.id)
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["state"] == "closed"
+
+    link = await spotify_client.get(_playlist_url(round_.id), headers=_auth(organizer.id))
+    assert link.json()["playlist_url"] == "https://open.spotify.com/playlist/pl1"
 
 
 async def test_voting_open_does_not_auto_generate_when_unconfigured(client, db_session):

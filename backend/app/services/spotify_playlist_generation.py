@@ -41,6 +41,7 @@ from app.services.spotify_client import (
     SpotifyClient,
     SpotifyNotFoundError,
 )
+from app.services.source_tracks import Source, source_fields
 from app.services.spotify_playlist import playlist_description, playlist_name
 from app.services.spotify_token_crypto import (
     SpotifyTokenCryptoError,
@@ -63,6 +64,11 @@ class UnmatchedSubmission:
     title: str
     artist: str
     reason: UnmatchedReason
+    # For a "source_only" entry, the Bandcamp/YouTube page it can be linked out to
+    # (MYS-201); both None for a "no_catalog_match" entry, which has an ISRC rather
+    # than a source_key.
+    source: Source | None = None
+    source_url: str | None = None
 
 
 @dataclass
@@ -148,12 +154,15 @@ async def generate_round_playlist(
         if uri:
             matched_uris.append(uri)
         else:
+            source, source_url = source_fields(s.source_key)
             unmatched.append(
                 UnmatchedSubmission(
                     submission_id=s.id,
                     title=s.title,
                     artist=s.artist,
                     reason="source_only" if not s.isrc else "no_catalog_match",
+                    source=source,
+                    source_url=source_url,
                 )
             )
 

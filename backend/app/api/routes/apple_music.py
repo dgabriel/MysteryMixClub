@@ -68,6 +68,10 @@ class UnmatchedTrack(WireModel):
     # ISRC-backed track Apple's storefront just doesn't carry. Lets the gap
     # summary say why rather than only how many.
     reason: Literal["source_only", "no_catalog_match"]
+    # For a "source_only" track, the Bandcamp/YouTube page to link out to
+    # (MYS-201); both None for "no_catalog_match" (it has an ISRC, no source_key).
+    source: Literal["youtube", "bandcamp"] | None = None
+    source_url: str | None = None
 
 
 class GeneratePlaylistRequest(WireModel):
@@ -177,6 +181,8 @@ async def create_round_apple_playlist(
                 title=u.title,
                 artist=u.artist,
                 reason=u.reason,
+                source=u.source,
+                source_url=u.source_url,
             )
             for u in result.unmatched
         ],

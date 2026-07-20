@@ -60,6 +60,7 @@ from app.services.spotify_playlist_generation import (
     get_shared_connection,
     playlist_account_user_id,
 )
+from app.services.source_tracks import source_fields
 from app.services.spotify_token_crypto import encrypt_refresh_token
 
 router = APIRouter(tags=["spotify"])
@@ -105,6 +106,10 @@ class UnmatchedTrack(WireModel):
     # ISRC-backed track Spotify's catalog just doesn't carry. Lets the gap summary
     # say why rather than only how many.
     reason: Literal["source_only", "no_catalog_match"]
+    # For a "source_only" track, the Bandcamp/YouTube page to link out to
+    # (MYS-201); both None for "no_catalog_match" (it has an ISRC, no source_key).
+    source: Literal["youtube", "bandcamp"] | None = None
+    source_url: str | None = None
 
 
 class SpotifyPlaylistLinkResponse(WireModel):
@@ -281,6 +286,8 @@ async def get_round_spotify_playlist_link(
             title=s.title,
             artist=s.artist,
             reason="source_only" if not s.isrc else "no_catalog_match",
+            source=source_fields(s.source_key)[0],
+            source_url=source_fields(s.source_key)[1],
         )
         for s in submissions
         if not s.spotify_track_uri

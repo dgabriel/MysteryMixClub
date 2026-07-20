@@ -27,6 +27,7 @@ from app.models.league import League
 from app.models.round import Round
 from app.models.submission import Submission
 from app.services.apple_music_client import LIBRARY_URL, AppleMusicClient
+from app.services.source_tracks import Source, source_fields
 from app.services.spotify_playlist import playlist_description, playlist_name
 
 
@@ -42,6 +43,11 @@ class UnmatchedSubmission:
     title: str
     artist: str
     reason: UnmatchedReason
+    # For a "source_only" entry, the Bandcamp/YouTube page it can be linked out to
+    # (MYS-201); both None for a "no_catalog_match" entry, which has an ISRC rather
+    # than a source_key.
+    source: Source | None = None
+    source_url: str | None = None
 
 
 @dataclass
@@ -135,12 +141,15 @@ async def generate_round_playlist(
         if song_id:
             track_ids.append(song_id)
         else:
+            source, source_url = source_fields(s.source_key)
             unmatched.append(
                 UnmatchedSubmission(
                     submission_id=s.id,
                     title=s.title,
                     artist=s.artist,
                     reason="source_only" if not s.isrc else "no_catalog_match",
+                    source=source,
+                    source_url=source_url,
                 )
             )
 

@@ -392,6 +392,9 @@ async def test_generate_reports_unmatched_tracks(apple_app, db_session):
     assert [u["title"] for u in body["unmatched"]] == ["Obscure"]
     # An ISRC-backed track Apple's catalog just doesn't carry (MYS-201 Phase 2).
     assert body["unmatched"][0]["reason"] == "no_catalog_match"
+    # No source_key on a catalog track — nothing to link out to (MYS-201).
+    assert body["unmatched"][0]["source"] is None
+    assert body["unmatched"][0]["source_url"] is None
 
 
 async def test_generate_skips_source_only_track_without_catalog_lookup(apple_app, db_session):
@@ -418,6 +421,9 @@ async def test_generate_skips_source_only_track_without_catalog_lookup(apple_app
     assert [u["title"] for u in body["unmatched"]] == ["bandcamp only"]
     # Reported as source-only, distinct from a catalog miss (MYS-201 Phase 2).
     assert body["unmatched"][0]["reason"] == "source_only"
+    # Carries the Bandcamp page so the frontend can link out to it (MYS-201).
+    assert body["unmatched"][0]["source"] == "bandcamp"
+    assert body["unmatched"][0]["source_url"] == "https://coolband.bandcamp.com/track/demo"
     # No catalog /songs lookup was attempted for the source-only track.
     assert not any("/catalog/" in p and p.endswith("/songs") for p in apple_app.dispatch.paths())
 

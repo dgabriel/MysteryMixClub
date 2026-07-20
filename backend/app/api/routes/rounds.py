@@ -574,6 +574,7 @@ async def update_round(
     # Lifecycle emails to fire once the transition commits (MYS-109). Collected as
     # (round, event) so an auto-opened next round notifies for *its* opening.
     events: list[tuple[Round, RoundEvent]] = []
+    voting_opened = False
 
     # Field edits (theme, deadlines) are frozen once the round is closed.
     if updates and round_.state == "closed":
@@ -639,10 +640,14 @@ async def update_round(
             # "submissions reopened" email. `events` stays empty.
         else:
             events = await advance_round_state(round_, league, new_state, db)
+            voting_opened = any(event == "voting_open" for _, event in events)
             # All-vibing edge: if voting just opened but every participant is vibing,
             # nobody will ever call cast_votes, so voting quorum is immediately met.
             # Close in the same transaction and suppress the voting_open notification
-            # (nobody could vote in a round that closes in the same breath).
+            # (nobody could vote in a round that closes in the same breath) — but
+            # `voting_opened` stays true so the playlist still generates below; vibers
+            # still get a listen-along playlist even though the round never really
+            # waits for votes.
             if round_.state == "open_voting" and await voting_quorum_met(round_, db):
                 events = [e for e in events if e != (round_, "voting_open")]
                 events += await advance_round_state(round_, league, "closed", db)
@@ -660,8 +665,10 @@ async def update_round(
 
     # Auto-generate the shared-account Spotify playlist the moment voting opens
     # (MYS-176) — no admin click needed. Best-effort: never raises, so a Spotify
-    # hiccup can't block this transition (see try_auto_generate_playlist).
-    if any(event == "voting_open" for _, event in events):
+    # hiccup can't block this transition (see try_auto_generate_playlist). Uses
+    # `voting_opened` (captured before the all-vibing rollup above may have
+    # stripped the voting_open event from `events`), not the events list itself.
+    if voting_opened:
         await try_auto_generate_playlist(round_id, round_, league, db, spotify_client, settings)
 
     await db.commit()

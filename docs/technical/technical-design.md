@@ -411,18 +411,22 @@ tracks and explain playlist gaps (MYS-201):
   catalog track — so a source-only pick renders a "YouTube only"/"Bandcamp only"
   badge with a working link.
 - The Apple generation response (`POST /mixes/{id}/apple-playlist`) reports each
-  skipped track in `unmatched` with `title`, `artist`, and a `reason` of
+  skipped track in `unmatched` with `title`, `artist`, a `reason` of
   `"source_only"` (no ISRC — a Bandcamp/YouTube track that can never match a
   catalog) or `"no_catalog_match"` (an ISRC-backed track this storefront doesn't
-  carry), so the gap summary can say *why* rather than only *how many*.
+  carry), plus `source` (`"youtube"`/`"bandcamp"`) and `source_url` — populated
+  for a `"source_only"` entry so the frontend can link it out to its page, null
+  for a `"no_catalog_match"` entry (it has an ISRC, not a source_key). So the gap
+  summary can say *why* rather than only *how many*.
 - The shared Spotify playlist is auto-generated on voting-open (no HTTP
   generation call), so its read route `GET /mixes/{id}/spotify-playlist` carries
   the same gap summary: alongside `playlist_url` it returns `unmatched` (a list
-  of `{submission_id, title, artist, reason}` with the identical `reason`
-  values). The list is recomputed at read time from persisted state — generation
-  caches each matched track's `spotify_track_uri` on its submission, so a
-  submission with no cached URI is exactly one the playlist skipped — and is
-  empty when no playlist exists yet (nothing generated, or nothing matched).
+  of `{submission_id, title, artist, reason, source, source_url}` with the
+  identical `reason`/`source`/`source_url` semantics). The list is recomputed at
+  read time from persisted state — generation caches each matched track's
+  `spotify_track_uri` on its submission, so a submission with no cached URI is
+  exactly one the playlist skipped — and is empty when no playlist exists yet
+  (nothing generated, or nothing matched).
 
 ---
 

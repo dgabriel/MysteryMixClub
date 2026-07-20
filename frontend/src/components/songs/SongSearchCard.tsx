@@ -39,7 +39,7 @@ const SEARCH_ERROR = "Something went wrong with that search. Try again.";
 // case (see the "custom domain" substring check below) so we can give an
 // accurate reason instead of the generic LINK_ERROR.
 const BANDCAMP_CUSTOM_DOMAIN_ERROR =
-  "This Bandcamp link redirects to a custom domain, which we don't support yet. Try a link that stays on bandcamp.com.";
+  "Some Bandcamp Pro accounts with a custom domain aren't supported yet, but will be in the future. Try a link that stays on bandcamp.com.";
 
 function isBandcampCustomDomainError(err: unknown): boolean {
   return err instanceof ApiError && err.status === 404 && err.message.includes("custom domain");

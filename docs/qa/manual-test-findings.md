@@ -1,3 +1,5 @@
+> Terminology: this document predates the July 2026 rename — "league" is now "club", "round" is now "mystery mix" (internal: mix).
+
 # Manual Test Findings — running log
 
 Drop findings here as you test. When you're ready, hand it to Claude and it will

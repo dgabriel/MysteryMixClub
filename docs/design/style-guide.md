@@ -32,7 +32,7 @@
 
 - **Rust is a signal.** Use it for the single most important piece of information or action on a screen — a status badge, a card accent line, a CTA arrow. Never use it twice in the same view.
   - **Exception — the nav brand mark.** The concentric-rings mark in the shared top nav may carry its single off-center Rust dot ("the fish") as persistent *brand identity*. Because the nav is global chrome, this dot does **not** count against a screen's one-Rust budget: a screen may still use Rust once in its own content. This is the only standing exception to the one-use rule.
-- **Gold is an achievement signal.** Use it exclusively for achievement moments: winner and most-noted reveals (the crown icon on section headings) and a **completed league** (the crown + thin left accent on a finished league's card). Do not use Gold decoratively or expand it to other contexts without updating this guide.
+- **Gold is an achievement signal.** Use it exclusively for achievement moments: winner and most-noted reveals (the crown icon on section headings) and a **completed club** (the crown + thin left accent on a finished club's card). Do not use Gold decoratively or expand it to other contexts without updating this guide.
 - **Vinyl is for avatar illustrations only.** The five music hardware SVG avatars (cassette, record, boom box, walkman, flying V) use Vinyl as their stroke/fill. Do not use Vinyl outside of avatar illustration contexts.
 - **Ink as a surface is a time signal.** An Ink-filled chip with Cream text is reserved for time-critical information — deadlines and countdowns (see Badges → Time signal). One per screen; never decorative.
 - **No pure black or pure white.** Cream is the lightest surface; Ink is the darkest text.
@@ -44,7 +44,7 @@
 
 | Role            | Font                  | Size   | Weight  | Treatment                        |
 |-----------------|-----------------------|--------|---------|----------------------------------|
-| Display         | DM Serif Display      | 32–40px | Regular | Headlines, round names, page titles |
+| Display         | DM Serif Display      | 32–40px | Regular | Headlines, mystery mix names, page titles |
 | Display Italic  | DM Serif Display      | 24–32px | Italic  | Subheads, taglines, flavor text  |
 | Body            | DM Mono               | 13px   | 300     | Descriptions, paragraph text     |
 | Label           | DM Mono               | 9–11px | 400     | ALL CAPS, letter-spacing 0.15em  |
@@ -122,7 +122,7 @@ Page horizontal padding: `32px` (desktop), `16px` (mobile)
 - Border: `1px solid #D6D2CA`
 - Border radius: `3px`
 - Padding: `20px 24px`
-- Optional left accent bar: `3px wide`, Rust `#B5533C` — only when the card requires special attention (active round, your submission due, etc.)
+- Optional left accent bar: `3px wide`, Rust `#B5533C` — only when the card requires special attention (active mystery mix, your submission due, etc.)
 
 **Card anatomy (top to bottom):**
 1. Eyebrow — Label style, Muted
@@ -200,7 +200,7 @@ The rings use the Sage color family (Sage Pale → Sage Light → Sage → Sage)
 - Short, confident, lowercase where possible
 - No exclamation marks
 - No em dashes in UI copy — use a period, comma, or parentheses instead
-- Round names can be poetic, e.g. *Late Summer Feels*, *The One That Got Away*
+- Mystery mix names can be poetic, e.g. *Late Summer Feels*, *The One That Got Away*
 - Status labels are plain: `open`, `voting`, `closed`, `reveal`
 - Error messages: direct and calm, e.g. "That link didn't work. Try another." not "Oops!"
 

@@ -1,13 +1,13 @@
-"""Tests for MYS-62: rounds auto-generated at league creation.
+"""Tests for MYS-62: mixes auto-generated at club creation.
 
-When a league is created the backend inserts its full slate of ``pending``
-rounds (one per ``total_rounds``, default 6), numbered 1..N with no theme or
-description and the league's ``votes_per_player``. ``current_round`` stays 0
-until a round is opened. theme is now nullable end-to-end, so a pending round's
+When a club is created the backend inserts its full slate of ``pending``
+mixes (one per ``total_mixes``, default 6), numbered 1..N with no theme or
+description and the club's ``votes_per_player``. ``current_mix`` stays 0
+until a mix is opened. theme is now nullable end-to-end, so a pending mix's
 theme/description can be set and later cleared while it is still pending.
 
-Reuses the seed/auth helpers in ``test_rounds.py`` for users and membership, but
-creates leagues through the POST endpoint so the auto-generation runs.
+Reuses the seed/auth helpers in ``test_mixes.py`` for users and membership, but
+creates clubs through the POST endpoint so the auto-generation runs.
 """
 
 import uuid
@@ -21,126 +21,126 @@ from tests.test_mixes import (  # reuse established helpers
     _add_member,
     _advance,
     _auth,
-    _rounds_url,
+    _mixes_url,
     _seed_user,
 )
 
-LEAGUES_URL = "/api/v1/clubs"
+CLUBS_URL = "/api/v1/clubs"
 
 
-async def _create_league(client, user_id, *, name="Autogen Club", **fields):
+async def _create_club(client, user_id, *, name="Autogen Club", **fields):
     body = {"name": name}
     body.update(fields)
-    return await client.post(LEAGUES_URL, json=body, headers=_auth(user_id))
+    return await client.post(CLUBS_URL, json=body, headers=_auth(user_id))
 
 
-async def _rounds_for(db_session, league_id):
+async def _mixes_for(db_session, club_id):
     return list(
         await db_session.scalars(
-            select(Mix).where(Mix.club_id == league_id).order_by(Mix.mix_number.asc())
+            select(Mix).where(Mix.club_id == club_id).order_by(Mix.mix_number.asc())
         )
     )
 
 
-async def _round_id_by_number(client, league_id, user_id, number):
-    """Resolve a round's id via the API so we never read db_session mid-test."""
-    resp = await client.get(_rounds_url(league_id), headers=_auth(user_id))
+async def _mix_id_by_number(client, club_id, user_id, number):
+    """Resolve a mix's id via the API so we never read db_session mid-test."""
+    resp = await client.get(_mixes_url(club_id), headers=_auth(user_id))
     assert resp.status_code == 200, resp.text
     for r in resp.json():
         if r["mix_number"] == number:
             return r["id"]
-    raise AssertionError(f"round {number} not found")
+    raise AssertionError(f"mix {number} not found")
 
 
 # --------------------------------------------------------------------------- #
-# a. create_league with total_mixes=N -> N pending rounds, fully specified
+# a. create_club with total_mixes=N -> N pending mixes, fully specified
 # --------------------------------------------------------------------------- #
 
 
-async def test_create_league_autogenerates_n_pending_rounds(client, db_session):
+async def test_create_club_autogenerates_n_pending_mixes(client, db_session):
     organizer = await _seed_user(db_session, "org@example.com")
 
-    resp = await _create_league(client, organizer.id, total_mixes=4, votes_per_player=7)
+    resp = await _create_club(client, organizer.id, total_mixes=4, votes_per_player=7)
     assert resp.status_code == 201, resp.text
-    league_id = uuid.UUID(resp.json()["id"])
+    club_id = uuid.UUID(resp.json()["id"])
     assert resp.json()["current_mix"] == 0
 
-    rounds = await _rounds_for(db_session, league_id)
-    assert [r.mix_number for r in rounds] == [1, 2, 3, 4]
-    assert all(r.state == "pending" for r in rounds)
-    assert all(r.theme is None for r in rounds)
-    assert all(r.description is None for r in rounds)
-    # votes_per_player propagates from the league to each round.
-    assert all(r.votes_per_player == 7 for r in rounds)
+    mixes = await _mixes_for(db_session, club_id)
+    assert [r.mix_number for r in mixes] == [1, 2, 3, 4]
+    assert all(r.state == "pending" for r in mixes)
+    assert all(r.theme is None for r in mixes)
+    assert all(r.description is None for r in mixes)
+    # votes_per_player propagates from the club to each mix.
+    assert all(r.votes_per_player == 7 for r in mixes)
 
-    # current_round stays 0 on the persisted league row.
+    # current_mix stays 0 on the persisted club row.
     db_session.expire_all()
-    league = await db_session.scalar(select(Club).where(Club.id == league_id))
-    assert league.current_mix == 0
+    club = await db_session.scalar(select(Club).where(Club.id == club_id))
+    assert club.current_mix == 0
 
 
 # --------------------------------------------------------------------------- #
-# b. Omitting total_rounds -> 6 pending rounds (the new default)
+# b. Omitting total_mixes -> 6 pending mixes (the new default)
 # --------------------------------------------------------------------------- #
 
 
-async def test_create_league_defaults_to_six_pending_rounds(client, db_session):
+async def test_create_club_defaults_to_six_pending_mixes(client, db_session):
     organizer = await _seed_user(db_session, "org@example.com")
 
-    resp = await _create_league(client, organizer.id)  # total_rounds omitted
+    resp = await _create_club(client, organizer.id)  # total_mixes omitted
     assert resp.status_code == 201, resp.text
     assert resp.json()["total_mixes"] == 6
-    league_id = uuid.UUID(resp.json()["id"])
+    club_id = uuid.UUID(resp.json()["id"])
 
-    rounds = await _rounds_for(db_session, league_id)
-    assert [r.mix_number for r in rounds] == [1, 2, 3, 4, 5, 6]
-    assert all(r.state == "pending" for r in rounds)
+    mixes = await _mixes_for(db_session, club_id)
+    assert [r.mix_number for r in mixes] == [1, 2, 3, 4, 5, 6]
+    assert all(r.state == "pending" for r in mixes)
 
 
 # --------------------------------------------------------------------------- #
-# c. total_rounds bounds at create: 0 -> 422, 51 -> 422
+# c. total_mixes bounds at create: 0 -> 422, 51 -> 422
 # --------------------------------------------------------------------------- #
 
 
-async def test_create_league_total_rounds_zero_is_422(client, db_session):
+async def test_create_club_total_mixes_zero_is_422(client, db_session):
     organizer = await _seed_user(db_session, "org@example.com")
-    resp = await _create_league(client, organizer.id, total_mixes=0)
+    resp = await _create_club(client, organizer.id, total_mixes=0)
     assert resp.status_code == 422, resp.text
 
 
-async def test_create_league_total_rounds_above_max_is_422(client, db_session):
+async def test_create_club_total_mixes_above_max_is_422(client, db_session):
     organizer = await _seed_user(db_session, "org@example.com")
-    resp = await _create_league(client, organizer.id, total_mixes=51)
+    resp = await _create_club(client, organizer.id, total_mixes=51)
     assert resp.status_code == 422, resp.text
 
 
-async def test_create_league_total_rounds_at_max_is_allowed(client, db_session):
+async def test_create_club_total_mixes_at_max_is_allowed(client, db_session):
     organizer = await _seed_user(db_session, "org@example.com")
-    resp = await _create_league(client, organizer.id, total_mixes=50)
+    resp = await _create_club(client, organizer.id, total_mixes=50)
     assert resp.status_code == 201, resp.text
-    league_id = uuid.UUID(resp.json()["id"])
-    rounds = await _rounds_for(db_session, league_id)
-    assert len(rounds) == 50
+    club_id = uuid.UUID(resp.json()["id"])
+    mixes = await _mixes_for(db_session, club_id)
+    assert len(mixes) == 50
 
 
 # --------------------------------------------------------------------------- #
-# d. Non-organizer members can list and see all pending rounds
+# d. Non-organizer members can list and see all pending mixes
 # --------------------------------------------------------------------------- #
 
 
-async def test_member_sees_all_pending_rounds(client, db_session):
+async def test_member_sees_all_pending_mixes(client, db_session):
     organizer = await _seed_user(db_session, "org@example.com")
     member = await _seed_user(db_session, "member@example.com")
-    resp = await _create_league(client, organizer.id, total_mixes=3)
-    league_id = uuid.UUID(resp.json()["id"])
-    await _add_member(db_session, league_id, member)
+    resp = await _create_club(client, organizer.id, total_mixes=3)
+    club_id = uuid.UUID(resp.json()["id"])
+    await _add_member(db_session, club_id, member)
 
-    listed = await client.get(_rounds_url(league_id), headers=_auth(member.id))
+    listed = await client.get(_mixes_url(club_id), headers=_auth(member.id))
     assert listed.status_code == 200, listed.text
-    rounds = listed.json()
-    assert [r["mix_number"] for r in rounds] == [1, 2, 3]
-    assert all(r["state"] == "pending" for r in rounds)
-    assert all(r["theme"] is None for r in rounds)
+    mixes = listed.json()
+    assert [r["mix_number"] for r in mixes] == [1, 2, 3]
+    assert all(r["state"] == "pending" for r in mixes)
+    assert all(r["theme"] is None for r in mixes)
 
 
 # --------------------------------------------------------------------------- #
@@ -150,14 +150,14 @@ async def test_member_sees_all_pending_rounds(client, db_session):
 
 async def test_theme_set_and_cleared_while_pending(client, db_session):
     organizer = await _seed_user(db_session, "org@example.com")
-    resp = await _create_league(client, organizer.id, total_mixes=2)
-    league_id = uuid.UUID(resp.json()["id"])
+    resp = await _create_club(client, organizer.id, total_mixes=2)
+    club_id = uuid.UUID(resp.json()["id"])
 
-    round1_id = await _round_id_by_number(client, league_id, organizer.id, 1)
+    mix1_id = await _mix_id_by_number(client, club_id, organizer.id, 1)
 
-    # Set theme + description on the pending round.
+    # Set theme + description on the pending mix.
     set_resp = await client.patch(
-        f"/api/v1/mixes/{round1_id}",
+        f"/api/v1/mixes/{mix1_id}",
         json={"theme": "  golden hour  ", "description": "warm, late-day songs"},
         headers=_auth(organizer.id),
     )
@@ -166,13 +166,13 @@ async def test_theme_set_and_cleared_while_pending(client, db_session):
     assert set_resp.json()["description"] == "warm, late-day songs"
 
     # GET reflects the set values.
-    got = await client.get(f"/api/v1/mixes/{round1_id}", headers=_auth(organizer.id))
+    got = await client.get(f"/api/v1/mixes/{mix1_id}", headers=_auth(organizer.id))
     assert got.json()["theme"] == "golden hour"
     assert got.json()["description"] == "warm, late-day songs"
 
-    # Clear theme back to null (round still pending — nullable column, no validator).
+    # Clear theme back to null (mix still pending — nullable column, no validator).
     clear_resp = await client.patch(
-        f"/api/v1/mixes/{round1_id}",
+        f"/api/v1/mixes/{mix1_id}",
         json={"theme": None},
         headers=_auth(organizer.id),
     )
@@ -183,32 +183,32 @@ async def test_theme_set_and_cleared_while_pending(client, db_session):
 
 
 # --------------------------------------------------------------------------- #
-# j. Regression: edit-lock + activation still hold on auto-generated rounds
+# j. Regression: edit-lock + activation still hold on auto-generated mixes
 # --------------------------------------------------------------------------- #
 
 
-async def test_edit_lock_and_activation_on_autogen_round(client, db_session):
+async def test_edit_lock_and_activation_on_autogen_mix(client, db_session):
     organizer = await _seed_user(db_session, "org@example.com")
-    resp = await _create_league(client, organizer.id, total_mixes=2)
-    league_id = uuid.UUID(resp.json()["id"])
+    resp = await _create_club(client, organizer.id, total_mixes=2)
+    club_id = uuid.UUID(resp.json()["id"])
 
-    round1_id = await _round_id_by_number(client, league_id, organizer.id, 1)
+    mix1_id = await _mix_id_by_number(client, club_id, organizer.id, 1)
 
-    # Manually open round 1: activation sets current_round to 1.
-    opened = await _advance(client, round1_id, organizer.id, "open_submission")
+    # Manually open mix 1: activation sets current_mix to 1.
+    opened = await _advance(client, mix1_id, organizer.id, "open_submission")
     assert opened.status_code == 200, opened.text
 
-    # theme is now locked (round left pending).
+    # theme is now locked (mix left pending).
     locked = await client.patch(
-        f"/api/v1/mixes/{round1_id}",
+        f"/api/v1/mixes/{mix1_id}",
         json={"theme": "too late"},
         headers=_auth(organizer.id),
     )
     assert locked.status_code == 409, locked.text
     assert "locked" in locked.json()["detail"]
 
-    # current_round advanced to 1 on activation (asserted last so all API calls
+    # current_mix advanced to 1 on activation (asserted last so all API calls
     # finish before db_session is read — async expire_all/greenlet convention).
     db_session.expire_all()
-    league = await db_session.scalar(select(Club).where(Club.id == league_id))
-    assert league.current_mix == 1
+    club = await db_session.scalar(select(Club).where(Club.id == club_id))
+    assert club.current_mix == 1

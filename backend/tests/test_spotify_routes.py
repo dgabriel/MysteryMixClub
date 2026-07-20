@@ -13,7 +13,7 @@ account's app-user id. Generation itself is automatic — triggered on the
 generation-engine tests below call
 :func:`app.services.spotify_playlist_generation.generate_mix_playlist`
 directly rather than through a route. Regular members only ever read the
-resulting link via ``GET /rounds/:id/spotify-playlist``.
+resulting link via ``GET /mixes/:id/spotify-playlist``.
 """
 
 import random
@@ -68,29 +68,29 @@ async def _seed_shared_account(db_session, *, connected: bool = True) -> User:
     return user
 
 
-async def _seed_round(db_session, organizer: User, *, state: str = "open_voting") -> Mix:
-    league = Club(name="L", organizer_id=organizer.id, total_mixes=3, votes_per_player=3)
-    db_session.add(league)
+async def _seed_mix(db_session, organizer: User, *, state: str = "open_voting") -> Mix:
+    club = Club(name="L", organizer_id=organizer.id, total_mixes=3, votes_per_player=3)
+    db_session.add(club)
     await db_session.flush()
-    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id))
-    round_ = Mix(club_id=league.id, mix_number=1, theme="Late Summer", state=state)
-    db_session.add(round_)
+    db_session.add(ClubMember(club_id=club.id, user_id=organizer.id))
+    mix_ = Mix(club_id=club.id, mix_number=1, theme="Late Summer", state=state)
+    db_session.add(mix_)
     await db_session.commit()
-    await db_session.refresh(round_)
-    return round_
+    await db_session.refresh(mix_)
+    return mix_
 
 
-async def _seed_member(db_session, round_: Mix, email: str) -> User:
-    """A second league member (submissions are unique per round+user)."""
+async def _seed_member(db_session, mix_: Mix, email: str) -> User:
+    """A second club member (submissions are unique per mix+user)."""
     user = await _seed_user(db_session, email)
-    db_session.add(ClubMember(club_id=round_.club_id, user_id=user.id))
+    db_session.add(ClubMember(club_id=mix_.club_id, user_id=user.id))
     await db_session.commit()
     return user
 
 
 async def _add_submission(
     db_session,
-    round_id,
+    mix_id,
     user_id,
     *,
     isrc,
@@ -100,7 +100,7 @@ async def _add_submission(
     participation_mode="playing",
 ):
     submission = Submission(
-        mix_id=round_id,
+        mix_id=mix_id,
         user_id=user_id,
         isrc=isrc,
         source_key=source_key,
@@ -131,8 +131,8 @@ def _auth(user_id: uuid.UUID) -> dict[str, str]:
     return {"Authorization": f"Bearer {create_access_token(user_id)}"}
 
 
-def _playlist_url(round_id) -> str:
-    return f"/api/v1/mixes/{round_id}/spotify-playlist"
+def _playlist_url(mix_id) -> str:
+    return f"/api/v1/mixes/{mix_id}/spotify-playlist"
 
 
 # --------------------------------------------------------------------------- #
@@ -314,23 +314,23 @@ async def test_callback_redirects_to_home_not_root(spotify_client):
     assert resp.headers["location"].endswith("/home?spotify=error")
 
 
-async def test_callback_denied_returns_to_round_from_state(spotify_client, db_session):
-    # A valid state carrying return_to lands back on that round (MYS-93). User
+async def test_callback_denied_returns_to_mix_from_state(spotify_client, db_session):
+    # A valid state carrying return_to lands back on that mix (MYS-93). User
     # denying consent (or Spotify erroring before a code is issued) is the
     # "denied" flag (MYS-169 — distinct from exchange_failed/api_error below).
     user = await _seed_user(db_session, "u@example.com")
-    state = create_oauth_state(user.id, "spotify", "/rounds/r-123")
+    state = create_oauth_state(user.id, "spotify", "/mixes/r-123")
     resp = await spotify_client.get(f"/api/v1/spotify/callback?state={state}&error=denied")
     assert resp.status_code == 303
-    assert resp.headers["location"].endswith("/rounds/r-123?spotify=denied")
+    assert resp.headers["location"].endswith("/mixes/r-123?spotify=denied")
 
 
 async def test_callback_no_code_is_denied(spotify_client, db_session):
     user = await _seed_user(db_session, "u@example.com")
-    state = create_oauth_state(user.id, "spotify", "/rounds/r-123")
+    state = create_oauth_state(user.id, "spotify", "/mixes/r-123")
     resp = await spotify_client.get(f"/api/v1/spotify/callback?state={state}")
     assert resp.status_code == 303
-    assert resp.headers["location"].endswith("/rounds/r-123?spotify=denied")
+    assert resp.headers["location"].endswith("/mixes/r-123?spotify=denied")
 
 
 async def test_callback_exchange_failure_is_exchange_failed(session_factory, db_session):
@@ -338,12 +338,12 @@ async def test_callback_exchange_failure_is_exchange_failed(session_factory, db_
 
     fake = FakeSpotifyClient(exchange_raises=SpotifyApiError("spotify token request returned 500"))
     user = await _seed_user(db_session, "u@example.com")
-    state = create_oauth_state(user.id, "spotify", "/rounds/r-123")
+    state = create_oauth_state(user.id, "spotify", "/mixes/r-123")
 
     async with _client_with_spotify(session_factory, fake) as c:
         resp = await c.get(f"/api/v1/spotify/callback?state={state}&code=abc")
     assert resp.status_code == 303
-    assert resp.headers["location"].endswith("/rounds/r-123?spotify=exchange_failed")
+    assert resp.headers["location"].endswith("/mixes/r-123?spotify=exchange_failed")
 
 
 async def test_callback_missing_refresh_token_is_exchange_failed(session_factory, db_session):
@@ -351,12 +351,12 @@ async def test_callback_missing_refresh_token_is_exchange_failed(session_factory
     # future access tokens, so this is treated the same as an exchange failure.
     fake = FakeSpotifyClient(exchange_refresh_token=None)
     user = await _seed_user(db_session, "u@example.com")
-    state = create_oauth_state(user.id, "spotify", "/rounds/r-123")
+    state = create_oauth_state(user.id, "spotify", "/mixes/r-123")
 
     async with _client_with_spotify(session_factory, fake) as c:
         resp = await c.get(f"/api/v1/spotify/callback?state={state}&code=abc")
     assert resp.status_code == 303
-    assert resp.headers["location"].endswith("/rounds/r-123?spotify=exchange_failed")
+    assert resp.headers["location"].endswith("/mixes/r-123?spotify=exchange_failed")
 
 
 async def test_callback_get_user_id_failure_is_api_error(session_factory, db_session):
@@ -364,12 +364,12 @@ async def test_callback_get_user_id_failure_is_api_error(session_factory, db_ses
 
     fake = FakeSpotifyClient(get_user_id_raises=SpotifyApiError("spotify /me returned 500"))
     user = await _seed_user(db_session, "u@example.com")
-    state = create_oauth_state(user.id, "spotify", "/rounds/r-123")
+    state = create_oauth_state(user.id, "spotify", "/mixes/r-123")
 
     async with _client_with_spotify(session_factory, fake) as c:
         resp = await c.get(f"/api/v1/spotify/callback?state={state}&code=abc")
     assert resp.status_code == 303
-    assert resp.headers["location"].endswith("/rounds/r-123?spotify=api_error")
+    assert resp.headers["location"].endswith("/mixes/r-123?spotify=api_error")
 
 
 async def test_callback_success_persists_connection_and_redirects_connected(
@@ -379,12 +379,12 @@ async def test_callback_success_persists_connection_and_redirects_connected(
 
     fake = FakeSpotifyClient()
     user = await _seed_user(db_session, "u@example.com")
-    state = create_oauth_state(user.id, "spotify", "/rounds/r-123")
+    state = create_oauth_state(user.id, "spotify", "/mixes/r-123")
 
     async with _client_with_spotify(session_factory, fake) as c:
         resp = await c.get(f"/api/v1/spotify/callback?state={state}&code=abc")
     assert resp.status_code == 303
-    assert resp.headers["location"].endswith("/rounds/r-123?spotify=connected")
+    assert resp.headers["location"].endswith("/mixes/r-123?spotify=connected")
 
     connection = await db_session.scalar(
         select(SpotifyConnection).where(SpotifyConnection.user_id == user.id)
@@ -402,26 +402,26 @@ async def test_callback_success_persists_connection_and_redirects_connected(
 # --------------------------------------------------------------------------- #
 
 
-async def _generate(db_session, round_: Mix, client: FakeSpotifyClient):
-    league = await db_session.scalar(select(Club).where(Club.id == round_.club_id))
+async def _generate(db_session, mix_: Mix, client: FakeSpotifyClient):
+    club = await db_session.scalar(select(Club).where(Club.id == mix_.club_id))
     connection = await db_session.scalar(
         select(SpotifyConnection).where(SpotifyConnection.user_id == _SHARED_ACCOUNT_ID)
     )
     return await generate_mix_playlist(
-        round_.id, round_, league, _SHARED_ACCOUNT_ID, connection, db_session, client
+        mix_.id, mix_, club, _SHARED_ACCOUNT_ID, connection, db_session, client
     )
 
 
 async def test_generate_builds_playlist_and_reports_unmatched(db_session, fake_spotify):
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     await _seed_shared_account(db_session)
-    other = await _seed_member(db_session, round_, "m2@example.com")
+    other = await _seed_member(db_session, mix_, "m2@example.com")
     # One track resolves via the fake's isrc_map; one does not.
-    await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
-    await _add_submission(db_session, round_.id, other.id, isrc="I-MISS", title="miss")
+    await _add_submission(db_session, mix_.id, organizer.id, isrc="I-MATCH", title="hit")
+    await _add_submission(db_session, mix_.id, other.id, isrc="I-MISS", title="miss")
 
-    result = await _generate(db_session, round_, fake_spotify)
+    result = await _generate(db_session, mix_, fake_spotify)
     assert result.playlist_url == "https://open.spotify.com/playlist/pl1"
     assert result.track_count == 1
     assert result.total_count == 2
@@ -440,20 +440,20 @@ async def test_generate_skips_source_only_track_without_isrc_lookup(db_session, 
     # A source-only submission has no ISRC to search by, so it goes unmatched and
     # its (null) ISRC is never handed to the Spotify search (MYS-201).
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     await _seed_shared_account(db_session)
-    other = await _seed_member(db_session, round_, "m2@example.com")
-    await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
+    other = await _seed_member(db_session, mix_, "m2@example.com")
+    await _add_submission(db_session, mix_.id, organizer.id, isrc="I-MATCH", title="hit")
     await _add_submission(
         db_session,
-        round_.id,
+        mix_.id,
         other.id,
         isrc=None,
         source_key="bandcamp:coolband/demo",
         title="bandcamp only",
     )
 
-    result = await _generate(db_session, round_, fake_spotify)
+    result = await _generate(db_session, mix_, fake_spotify)
     assert result.track_count == 1
     assert result.total_count == 2
     assert [u.title for u in result.unmatched] == ["bandcamp only"]
@@ -468,24 +468,24 @@ async def test_generate_skips_source_only_track_without_isrc_lookup(db_session, 
 
 async def test_generate_caches_resolved_uri_on_submission(db_session, fake_spotify):
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     await _seed_shared_account(db_session)
-    await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
+    await _add_submission(db_session, mix_.id, organizer.id, isrc="I-MATCH", title="hit")
 
-    await _generate(db_session, round_, fake_spotify)
+    await _generate(db_session, mix_, fake_spotify)
 
     # The resolved uri should now be cached on the submission row.
-    sub = await db_session.scalar(select(Submission).where(Submission.mix_id == round_.id))
+    sub = await db_session.scalar(select(Submission).where(Submission.mix_id == mix_.id))
     assert sub.spotify_track_uri == "spotify:track:matched"
 
 
 async def test_generate_no_matches_returns_no_playlist(db_session, fake_spotify):
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     await _seed_shared_account(db_session)
-    await _add_submission(db_session, round_.id, organizer.id, isrc="I-MISS", title="miss")
+    await _add_submission(db_session, mix_.id, organizer.id, isrc="I-MISS", title="miss")
 
-    result = await _generate(db_session, round_, fake_spotify)
+    result = await _generate(db_session, mix_, fake_spotify)
     assert result.playlist_url is None
     assert result.track_count == 0
     assert fake_spotify.created is None  # no empty playlist created
@@ -494,19 +494,19 @@ async def test_generate_no_matches_returns_no_playlist(db_session, fake_spotify)
 async def test_first_generate_stores_playlist_id_in_db(db_session, fake_spotify):
     # First generate: creates the playlist and writes a SpotifyMixPlaylist row (MYS-89).
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     await _seed_shared_account(db_session)
-    await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
+    await _add_submission(db_session, mix_.id, organizer.id, isrc="I-MATCH", title="hit")
 
-    await _generate(db_session, round_, fake_spotify)
+    await _generate(db_session, mix_, fake_spotify)
 
-    round_id = round_.id
+    mix_id = mix_.id
     db_session.expire_all()
 
     # Stored against the shared account (MYS-169).
     stored = await db_session.scalar(
         select(SpotifyMixPlaylist).where(
-            SpotifyMixPlaylist.mix_id == round_id,
+            SpotifyMixPlaylist.mix_id == mix_id,
             SpotifyMixPlaylist.user_id == _SHARED_ACCOUNT_ID,
         )
     )
@@ -518,16 +518,16 @@ async def test_second_generate_reuses_stored_id_without_creating(db_session):
     # Second generate: DB row exists → replace_tracks on stored ID, no new playlist (MYS-89).
     fake = FakeSpotifyClient(isrc_map={"I-MATCH": "spotify:track:matched"})
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     await _seed_shared_account(db_session)
-    await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
+    await _add_submission(db_session, mix_.id, organizer.id, isrc="I-MATCH", title="hit")
     # Seed the stored playlist ID directly, keyed to the shared account (MYS-169).
     db_session.add(
-        SpotifyMixPlaylist(mix_id=round_.id, user_id=_SHARED_ACCOUNT_ID, playlist_id="pl-stored")
+        SpotifyMixPlaylist(mix_id=mix_.id, user_id=_SHARED_ACCOUNT_ID, playlist_id="pl-stored")
     )
     await db_session.commit()
 
-    result = await _generate(db_session, round_, fake)
+    result = await _generate(db_session, mix_, fake)
     assert fake.created is None
     assert fake.replaced == {"playlist_id": "pl-stored", "uris": ["spotify:track:matched"]}
     assert result.playlist_url == "https://open.spotify.com/playlist/pl-stored"
@@ -539,17 +539,17 @@ async def test_generate_recreates_when_stored_playlist_deleted_in_spotify(db_ses
         isrc_map={"I-MATCH": "spotify:track:matched"}, replace_raises_not_found=True
     )
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     await _seed_shared_account(db_session)
-    await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
+    await _add_submission(db_session, mix_.id, organizer.id, isrc="I-MATCH", title="hit")
     db_session.add(
-        SpotifyMixPlaylist(mix_id=round_.id, user_id=_SHARED_ACCOUNT_ID, playlist_id="pl-deleted")
+        SpotifyMixPlaylist(mix_id=mix_.id, user_id=_SHARED_ACCOUNT_ID, playlist_id="pl-deleted")
     )
     await db_session.commit()
 
-    round_id = round_.id
+    mix_id = mix_.id
 
-    await _generate(db_session, round_, fake)
+    await _generate(db_session, mix_, fake)
     # A new playlist was created (the fake always returns "pl1").
     assert fake.created is not None
     assert fake.added == ["spotify:track:matched"]
@@ -557,7 +557,7 @@ async def test_generate_recreates_when_stored_playlist_deleted_in_spotify(db_ses
     db_session.expire_all()
     stored = await db_session.scalar(
         select(SpotifyMixPlaylist).where(
-            SpotifyMixPlaylist.mix_id == round_id,
+            SpotifyMixPlaylist.mix_id == mix_id,
             SpotifyMixPlaylist.user_id == _SHARED_ACCOUNT_ID,
         )
     )
@@ -567,8 +567,8 @@ async def test_generate_recreates_when_stored_playlist_deleted_in_spotify(db_ses
 
 
 async def test_playlist_track_order_matches_seeded_shuffle(db_session):
-    # Spotify track order must match random.Random(round_id.int) applied to
-    # id-sorted submissions — same algorithm as get_round_playlist (MYS-151).
+    # Spotify track order must match random.Random(mix_id.int) applied to
+    # id-sorted submissions — same algorithm as get_mix_playlist (MYS-151).
     # Two known ISRCs both resolve; the shuffle determines which comes first.
     id_a = uuid.UUID("00000000-0000-0000-0000-000000000001")
     id_b = uuid.UUID("00000000-0000-0000-0000-000000000002")
@@ -577,15 +577,15 @@ async def test_playlist_track_order_matches_seeded_shuffle(db_session):
     fake = FakeSpotifyClient(isrc_map={isrc_a: uri_a, isrc_b: uri_b})
 
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     await _seed_shared_account(db_session)
-    other = await _seed_member(db_session, round_, "m2@example.com")
+    other = await _seed_member(db_session, mix_, "m2@example.com")
 
     # Insert in reverse id order so insertion order ≠ id-sorted order.
     db_session.add(
         Submission(
             id=id_b,
-            mix_id=round_.id,
+            mix_id=mix_.id,
             user_id=other.id,
             isrc=isrc_b,
             title="B",
@@ -596,7 +596,7 @@ async def test_playlist_track_order_matches_seeded_shuffle(db_session):
     db_session.add(
         Submission(
             id=id_a,
-            mix_id=round_.id,
+            mix_id=mix_.id,
             user_id=organizer.id,
             isrc=isrc_a,
             title="A",
@@ -608,35 +608,35 @@ async def test_playlist_track_order_matches_seeded_shuffle(db_session):
 
     # Compute expected order: sort by id, then seed-shuffle.
     subs_sorted = sorted([id_a, id_b])
-    rng = random.Random(round_.id.int)
+    rng = random.Random(mix_.id.int)
     rng.shuffle(subs_sorted)
     expected_uris = [uri_a if sid == id_a else uri_b for sid in subs_sorted]
 
-    await _generate(db_session, round_, fake)
+    await _generate(db_session, mix_, fake)
     assert fake.added == expected_uris
 
 
 # --------------------------------------------------------------------------- #
-# read-only link — GET /rounds/:id/spotify-playlist (MYS-169)
+# read-only link — GET /mixes/:id/spotify-playlist (MYS-169)
 # --------------------------------------------------------------------------- #
 
 
-def _link_url(round_id) -> str:
-    return f"/api/v1/mixes/{round_id}/spotify-playlist"
+def _link_url(mix_id) -> str:
+    return f"/api/v1/mixes/{mix_id}/spotify-playlist"
 
 
 async def test_link_requires_auth(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer)
-    resp = await client.get(_link_url(round_.id))
+    mix_ = await _seed_mix(db_session, organizer)
+    resp = await client.get(_link_url(mix_.id))
     assert resp.status_code == 401
 
 
-async def test_link_requires_league_membership(client, db_session):
+async def test_link_requires_club_membership(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
     outsider = await _seed_user(db_session, "x@example.com")
-    round_ = await _seed_round(db_session, organizer)
-    resp = await client.get(_link_url(round_.id), headers=_auth(outsider.id))
+    mix_ = await _seed_mix(db_session, organizer)
+    resp = await client.get(_link_url(mix_.id), headers=_auth(outsider.id))
     assert resp.status_code == 403
 
 
@@ -644,17 +644,17 @@ async def test_link_null_before_generation(spotify_client, db_session):
     # Shared account is even connected here — still null because nothing has
     # been generated yet (read-only: this endpoint never generates).
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     await _seed_shared_account(db_session)
-    resp = await spotify_client.get(_link_url(round_.id), headers=_auth(organizer.id))
+    resp = await spotify_client.get(_link_url(mix_.id), headers=_auth(organizer.id))
     assert resp.status_code == 200
     assert resp.json() == {"playlist_url": None, "unmatched": []}
 
 
 async def test_link_null_when_shared_account_not_configured(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer)
-    resp = await client.get(_link_url(round_.id), headers=_auth(organizer.id))
+    mix_ = await _seed_mix(db_session, organizer)
+    resp = await client.get(_link_url(mix_.id), headers=_auth(organizer.id))
     assert resp.status_code == 200
     assert resp.json() == {"playlist_url": None, "unmatched": []}
 
@@ -665,14 +665,14 @@ async def test_link_visible_to_any_member_after_generation(
     # A member who never touched Spotify still sees the link once it's been
     # generated (MYS-169) — this endpoint is read-only for everyone.
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     await _seed_shared_account(db_session)
-    member = await _seed_member(db_session, round_, "m@example.com")
-    await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
+    member = await _seed_member(db_session, mix_, "m@example.com")
+    await _add_submission(db_session, mix_.id, organizer.id, isrc="I-MATCH", title="hit")
 
-    await _generate(db_session, round_, fake_spotify)
+    await _generate(db_session, mix_, fake_spotify)
 
-    link_resp = await spotify_client.get(_link_url(round_.id), headers=_auth(member.id))
+    link_resp = await spotify_client.get(_link_url(mix_.id), headers=_auth(member.id))
     assert link_resp.status_code == 200
     assert link_resp.json() == {
         "playlist_url": "https://open.spotify.com/playlist/pl1",
@@ -688,22 +688,22 @@ async def test_link_reports_unmatched_gap_after_generation(
     # both show up as unmatched, each with its reason — recomputed from the cached
     # spotify_track_uri, no Spotify call.
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     await _seed_shared_account(db_session)
-    hit = await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
-    miss = await _add_submission(db_session, round_.id, organizer.id, isrc="I-MISS", title="miss")
+    hit = await _add_submission(db_session, mix_.id, organizer.id, isrc="I-MATCH", title="hit")
+    miss = await _add_submission(db_session, mix_.id, organizer.id, isrc="I-MISS", title="miss")
     src = await _add_submission(
         db_session,
-        round_.id,
+        mix_.id,
         organizer.id,
         isrc=None,
         source_key="bandcamp:coolband/demo",
         title="demo",
     )
 
-    await _generate(db_session, round_, fake_spotify)
+    await _generate(db_session, mix_, fake_spotify)
 
-    resp = await spotify_client.get(_link_url(round_.id), headers=_auth(organizer.id))
+    resp = await spotify_client.get(_link_url(mix_.id), headers=_auth(organizer.id))
     assert resp.status_code == 200
     body = resp.json()
     assert body["playlist_url"] == "https://open.spotify.com/playlist/pl1"
@@ -729,34 +729,34 @@ async def test_link_reports_unmatched_gap_after_generation(
 
 async def test_voting_open_auto_generates_playlist(spotify_client, db_session, fake_spotify):
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer, state="open_submission")
+    mix_ = await _seed_mix(db_session, organizer, state="open_submission")
     await _seed_shared_account(db_session)
-    await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
+    await _add_submission(db_session, mix_.id, organizer.id, isrc="I-MATCH", title="hit")
 
     resp = await spotify_client.patch(
-        f"/api/v1/mixes/{round_.id}", json={"state": "open_voting"}, headers=_auth(organizer.id)
+        f"/api/v1/mixes/{mix_.id}", json={"state": "open_voting"}, headers=_auth(organizer.id)
     )
     assert resp.status_code == 200, resp.text
 
-    link = await spotify_client.get(_playlist_url(round_.id), headers=_auth(organizer.id))
+    link = await spotify_client.get(_playlist_url(mix_.id), headers=_auth(organizer.id))
     assert link.json()["playlist_url"] == "https://open.spotify.com/playlist/pl1"
     assert fake_spotify.created["public"] is True
 
 
-async def test_all_vibing_round_still_auto_generates_playlist(
+async def test_all_vibing_mix_still_auto_generates_playlist(
     spotify_client, db_session, fake_spotify
 ):
-    # Bug: an all-vibing round chains open_voting -> closed in the same PATCH
+    # Bug: an all-vibing mix chains open_voting -> closed in the same PATCH
     # (nobody can vote), which used to suppress the voting_open *event* used to
     # notify AND, by the same check, the playlist-generation trigger. Vibers
-    # still deserve a listen-along playlist even though the round never really
+    # still deserve a listen-along playlist even though the mix never really
     # waits for votes.
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer, state="open_submission")
+    mix_ = await _seed_mix(db_session, organizer, state="open_submission")
     await _seed_shared_account(db_session)
     await _add_submission(
         db_session,
-        round_.id,
+        mix_.id,
         organizer.id,
         isrc="I-MATCH",
         title="hit",
@@ -764,24 +764,24 @@ async def test_all_vibing_round_still_auto_generates_playlist(
     )
 
     resp = await spotify_client.patch(
-        f"/api/v1/mixes/{round_.id}", json={"state": "open_voting"}, headers=_auth(organizer.id)
+        f"/api/v1/mixes/{mix_.id}", json={"state": "open_voting"}, headers=_auth(organizer.id)
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["state"] == "closed"
 
-    link = await spotify_client.get(_playlist_url(round_.id), headers=_auth(organizer.id))
+    link = await spotify_client.get(_playlist_url(mix_.id), headers=_auth(organizer.id))
     assert link.json()["playlist_url"] == "https://open.spotify.com/playlist/pl1"
 
 
 async def test_voting_open_does_not_auto_generate_when_unconfigured(client, db_session):
     # `client` (conftest's default fixture) has no SPOTIFY_PLAYLIST_ACCOUNT_USER_ID
-    # set — the round transition must succeed exactly as before MYS-176.
+    # set — the mix transition must succeed exactly as before MYS-176.
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer, state="open_submission")
-    await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
+    mix_ = await _seed_mix(db_session, organizer, state="open_submission")
+    await _add_submission(db_session, mix_.id, organizer.id, isrc="I-MATCH", title="hit")
 
     resp = await client.patch(
-        f"/api/v1/mixes/{round_.id}", json={"state": "open_voting"}, headers=_auth(organizer.id)
+        f"/api/v1/mixes/{mix_.id}", json={"state": "open_voting"}, headers=_auth(organizer.id)
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["state"] == "open_voting"
@@ -799,13 +799,13 @@ async def test_voting_open_auto_generate_failure_does_not_block_transition(
             raise SpotifyAuthError("invalid_grant")
 
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer, state="open_submission")
+    mix_ = await _seed_mix(db_session, organizer, state="open_submission")
     await _seed_shared_account(db_session)
-    await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
+    await _add_submission(db_session, mix_.id, organizer.id, isrc="I-MATCH", title="hit")
 
     async with _client_with_spotify(session_factory, _RejectingClient()) as ac:
         resp = await ac.patch(
-            f"/api/v1/mixes/{round_.id}",
+            f"/api/v1/mixes/{mix_.id}",
             json={"state": "open_voting"},
             headers=_auth(organizer.id),
         )

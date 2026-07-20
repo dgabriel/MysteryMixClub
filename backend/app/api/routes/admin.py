@@ -90,9 +90,9 @@ async def create_platform_invite(
     admin: User = Depends(get_platform_admin),
     db: AsyncSession = Depends(get_db),
 ) -> InviteResponse:
-    """Generate a platform invite (MYS-182): grants signup only, no league
-    attachment — the recipient can create their own league (or later, join an
-    open one). Same shareable-link shape and 48h expiry as a league invite;
+    """Generate a platform invite (MYS-182): grants signup only, no club
+    attachment — the recipient can create their own club (or later, join an
+    open one). Same shareable-link shape and 48h expiry as a club invite;
     regenerating from this screen is one click, so that stays low-friction."""
     invite = Invite(
         club_id=None,

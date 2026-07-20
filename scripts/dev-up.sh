@@ -26,7 +26,7 @@
 #          http://127.0.0.1:8000/api/v1/spotify/callback
 #        and put the same value in SPOTIFY_REDIRECT_URI.
 #
-#   Resend (magic-link sign-in + round-notification email). Until RESEND_API_KEY
+#   Resend (magic-link sign-in + mix-notification email). Until RESEND_API_KEY
 #   is set, no email is sent — in dev the magic-link is printed to the API log
 #   (.dev/logs/backend.log) so you can still sign in.
 #     1. Create an account at https://resend.com and verify a sending domain (or

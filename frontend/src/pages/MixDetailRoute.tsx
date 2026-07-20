@@ -294,7 +294,7 @@ export function MixDetailRoute() {
     try {
       const result = await submitSong(id, { ...trackPayload(song), note });
       setMySubmissions((current) => [...current, result]);
-      if (result.league_previously_submitted) setClubRepeatWarning(true);
+      if (result.club_previously_submitted) setClubRepeatWarning(true);
       await refreshCount();
       return true;
     } catch (err) {
@@ -332,7 +332,7 @@ export function MixDetailRoute() {
           s.id === submissionId ? result : { ...s, participation_mode: result.participation_mode },
         ),
       );
-      if (result.league_previously_submitted) setClubRepeatWarning(true);
+      if (result.club_previously_submitted) setClubRepeatWarning(true);
       return true;
     } catch (err) {
       if (err instanceof ApiError && err.message.includes("already in this")) {

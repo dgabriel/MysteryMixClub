@@ -327,29 +327,29 @@ async def test_send_failure_in_production_returns_502(session_factory, db_sessio
 # the SAME neutral response is returned with NO token persisted and NO email
 # sent — both anti-bot (no open sign-up) and anti-enumeration. A valid invite
 # token rides through to /auth/verify on the link's &invite= so the new account
-# is joined to that league.
+# is joined to that club.
 # --------------------------------------------------------------------------- #
 
 
 async def _seed_invite(db_session, *, expires_at: datetime | None) -> str:
-    """Seed an organizer + league + shareable invite and return its token."""
+    """Seed an organizer + club + shareable invite and return its token."""
     organizer = User(email="org@example.com", display_name="Org")
     db_session.add(organizer)
     await db_session.flush()
-    league = Club(
+    club = Club(
         name="Invited Club",
         organizer_id=organizer.id,
         total_mixes=3,
         votes_per_player=3,
         state="active",
     )
-    db_session.add(league)
+    db_session.add(club)
     await db_session.flush()
-    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id))
+    db_session.add(ClubMember(club_id=club.id, user_id=organizer.id))
     token = "tok_" + uuid.uuid4().hex
     db_session.add(
         Invite(
-            club_id=league.id,
+            club_id=club.id,
             created_by=organizer.id,
             token=token,
             expires_at=expires_at,
@@ -397,7 +397,7 @@ async def test_new_email_with_valid_invite_issues_token_and_carries_invite(
     assert await _count_rows(db_session, "invitee@example.com") == 1
     assert email_spy.call_count == 1
     # The link carries the invite token through to verify so the new account is
-    # joined to the league on sign-in.
+    # joined to the club on sign-in.
     _, link = email_spy.calls[-1]
     assert f"&invite={token}" in link
 

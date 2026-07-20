@@ -16,7 +16,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     display_name: Mapped[str] = mapped_column(String, nullable=False)
     preferred_service: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    # Whether to send round-lifecycle email notifications (MYS-109). Default on;
+    # Whether to send mix-lifecycle email notifications (MYS-109). Default on;
     # toggled off in-app or via the one-click unsubscribe link in each email.
     email_notifications: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("true")

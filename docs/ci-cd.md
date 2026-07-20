@@ -72,8 +72,8 @@ timer (`mysterymixclub-advance-mixes.timer`) — see
 > closing works in prod. Options: a DO App Platform **Job** component with a cron
 > schedule (e.g. `*/15 * * * *`) running `python -m app.jobs.advance_mixes`
 > against the managed Postgres, added to `.do/app.prod.yaml`; or an external
-> scheduler hitting the same entrypoint. Until then, prod rounds close on quorum
-> only. Tracked as a deploy-prod follow-up to this PR.
+> scheduler hitting the same entrypoint. Until then, prod mystery mixes close on
+> quorum only. Tracked as a deploy-prod follow-up to this PR.
 
 ---
 

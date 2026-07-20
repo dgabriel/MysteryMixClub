@@ -17,7 +17,7 @@ MYS-169: Spotify's extended quota requires 250k MAU, so the app stays in
 Development Mode indefinitely (~25 allowlisted accounts platform-wide) — per-user
 OAuth playlist creation is dead as a general feature. One designated
 MysteryMixClub Spotify account (``settings.spotify_playlist_account_user_id``)
-creates each round's playlist as PUBLIC; every member gets the same link.
+creates each mix's playlist as PUBLIC; every member gets the same link.
 
 Generation is automatic, triggered on the ``voting_open`` event (MYS-176) via
 :func:`app.services.spotify_playlist_generation.try_auto_generate_playlist` —
@@ -70,7 +70,7 @@ _OAUTH_PURPOSE = "spotify"
 
 
 def _safe_return_path(path: str | None) -> str | None:
-    """Accept only an in-app **absolute path** (e.g. ``/rounds/<id>``) to guard
+    """Accept only an in-app **absolute path** (e.g. ``/mixes/<id>``) to guard
     against open-redirect — the callback concatenates this onto our own base URL.
     Rejects anything not single-slash-rooted, protocol-relative (``//``), or
     carrying a scheme/backslash/newline."""
@@ -113,10 +113,10 @@ class UnmatchedTrack(WireModel):
 
 
 class SpotifyPlaylistLinkResponse(WireModel):
-    """The round page's read-only view (MYS-169/MYS-176): just the link, or null
+    """The mix page's read-only view (MYS-169/MYS-176): just the link, or null
     if generation hasn't run (or hasn't matched anything) yet.
 
-    ``unmatched`` (MYS-201) accompanies an existing playlist and lists the round's
+    ``unmatched`` (MYS-201) accompanies an existing playlist and lists the mix's
     submissions that didn't make it, with a reason — empty when there's no
     playlist yet (nothing generated, or nothing matched)."""
 
@@ -140,7 +140,7 @@ async def spotify_connect(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="spotify is not configured on this server",
         )
-    # `return_to` (e.g. the round that started the connect) rides in the signed
+    # `return_to` (e.g. the mix that started the connect) rides in the signed
     # state so the callback can land the user back where they were (MYS-93).
     state = create_oauth_state(current_user.id, _OAUTH_PURPOSE, _safe_return_path(return_to))
     return ConnectResponse(authorize_url=client.authorize_url(state))
@@ -156,7 +156,7 @@ async def spotify_callback(
     settings: Settings = Depends(get_settings),
 ) -> RedirectResponse:
     """Spotify redirects here after consent. Validates state, exchanges the code,
-    persists the connection, and bounces back to the SPA — to the round the user
+    persists the connection, and bounces back to the SPA — to the mix the user
     started from (``return_to`` in the state), else ``/home``.
 
     Note the landing is an authenticated route, never ``/`` — the root route
@@ -220,7 +220,7 @@ async def spotify_status(
 ) -> StatusResponse:
     """``connected`` now reflects the shared playlist account (MYS-169), not the
     calling user — every member sees the same status, since no one connects
-    their own account anymore. Drives whether the round page shows the
+    their own account anymore. Drives whether the mix page shows the
     playlist affordance at all."""
     account_id = playlist_account_user_id(settings)
     connection = await get_shared_connection(db, account_id) if account_id else None

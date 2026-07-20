@@ -5,7 +5,7 @@ client's catalog resolution and create-then-add, and the three routes:
 developer token, read the caller's playlist, generate it.
 
 Per-player is the whole point here (MYS-107): playlists are keyed by
-(round, user), so one member must never see another's link.
+(mix, user), so one member must never see another's link.
 """
 
 import json
@@ -210,22 +210,22 @@ async def _seed_user(db_session, email: str) -> User:
     return user
 
 
-async def _seed_round(db_session, organizer: User) -> Mix:
-    league = Club(name="L", organizer_id=organizer.id, total_mixes=3, votes_per_player=3)
-    db_session.add(league)
+async def _seed_mix(db_session, organizer: User) -> Mix:
+    club = Club(name="L", organizer_id=organizer.id, total_mixes=3, votes_per_player=3)
+    db_session.add(club)
     await db_session.flush()
-    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id))
-    round_ = Mix(club_id=league.id, mix_number=1, theme="Late Summer", state="open_voting")
-    db_session.add(round_)
+    db_session.add(ClubMember(club_id=club.id, user_id=organizer.id))
+    mix_ = Mix(club_id=club.id, mix_number=1, theme="Late Summer", state="open_voting")
+    db_session.add(mix_)
     await db_session.commit()
-    await db_session.refresh(round_)
-    return round_
+    await db_session.refresh(mix_)
+    return mix_
 
 
-async def _add_submission(db_session, round_id, user_id, *, isrc, title, source_key=None):
+async def _add_submission(db_session, mix_id, user_id, *, isrc, title, source_key=None):
     db_session.add(
         Submission(
-            mix_id=round_id,
+            mix_id=mix_id,
             user_id=user_id,
             isrc=isrc,
             source_key=source_key,
@@ -241,8 +241,8 @@ def _auth(user_id: uuid.UUID) -> dict[str, str]:
     return {"Authorization": f"Bearer {create_access_token(user_id)}"}
 
 
-def _url(round_id) -> str:
-    return f"/api/v1/mixes/{round_id}/apple-playlist"
+def _url(mix_id) -> str:
+    return f"/api/v1/mixes/{mix_id}/apple-playlist"
 
 
 @pytest_asyncio.fixture
@@ -303,25 +303,25 @@ async def test_developer_token_null_when_unconfigured(db_session):
 
 async def test_get_playlist_null_when_none_generated(apple_app, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer)
-    r = await apple_app.get(_url(round_.id), headers=_auth(organizer.id))
+    mix_ = await _seed_mix(db_session, organizer)
+    r = await apple_app.get(_url(mix_.id), headers=_auth(organizer.id))
     assert r.status_code == 200
     assert r.json()["playlist_url"] is None
 
 
 async def test_get_playlist_returns_own_link(apple_app, db_session):
     organizer = await _seed_user(db_session, "o2@example.com")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     db_session.add(
         AppleMixPlaylist(
-            mix_id=round_.id,
+            mix_id=mix_.id,
             user_id=organizer.id,
             playlist_id="p.MINE",
             playlist_name="Mix: Mix 1",
         )
     )
     await db_session.commit()
-    r = await apple_app.get(_url(round_.id), headers=_auth(organizer.id))
+    r = await apple_app.get(_url(mix_.id), headers=_auth(organizer.id))
     assert r.json()["playlist_url"] == "https://music.apple.com/library"
     assert r.json()["playlist_name"] == "Mix: Mix 1"
 
@@ -329,20 +329,20 @@ async def test_get_playlist_returns_own_link(apple_app, db_session):
 async def test_get_playlist_is_per_user_not_shared(apple_app, db_session):
     """Another member's playlist must never leak — the link is personal."""
     organizer = await _seed_user(db_session, "o3@example.com")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     other = await _seed_user(db_session, "m3@example.com")
-    db_session.add(ClubMember(club_id=round_.club_id, user_id=other.id))
-    db_session.add(AppleMixPlaylist(mix_id=round_.id, user_id=organizer.id, playlist_id="p.ORG"))
+    db_session.add(ClubMember(club_id=mix_.club_id, user_id=other.id))
+    db_session.add(AppleMixPlaylist(mix_id=mix_.id, user_id=organizer.id, playlist_id="p.ORG"))
     await db_session.commit()
-    r = await apple_app.get(_url(round_.id), headers=_auth(other.id))
+    r = await apple_app.get(_url(mix_.id), headers=_auth(other.id))
     assert r.json()["playlist_url"] is None
 
 
 async def test_get_playlist_forbidden_for_non_member(apple_app, db_session):
     organizer = await _seed_user(db_session, "o4@example.com")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     outsider = await _seed_user(db_session, "x4@example.com")
-    r = await apple_app.get(_url(round_.id), headers=_auth(outsider.id))
+    r = await apple_app.get(_url(mix_.id), headers=_auth(outsider.id))
     assert r.status_code == 403
 
 
@@ -353,12 +353,12 @@ async def test_get_playlist_forbidden_for_non_member(apple_app, db_session):
 
 async def test_generate_creates_playlist_and_persists_it(apple_app, db_session):
     organizer = await _seed_user(db_session, "o5@example.com")
-    round_ = await _seed_round(db_session, organizer)
-    await _add_submission(db_session, round_.id, organizer.id, isrc="I1", title="Creep")
+    mix_ = await _seed_mix(db_session, organizer)
+    await _add_submission(db_session, mix_.id, organizer.id, isrc="I1", title="Creep")
     apple_app.dispatch.catalog = httpx.Response(200, json={"data": [_song("s1", "Creep")]})
 
     r = await apple_app.post(
-        _url(round_.id), json={"music_user_token": "mut"}, headers=_auth(organizer.id)
+        _url(mix_.id), json={"music_user_token": "mut"}, headers=_auth(organizer.id)
     )
     assert r.status_code == 200, r.text
     body = r.json()
@@ -369,19 +369,19 @@ async def test_generate_creates_playlist_and_persists_it(apple_app, db_session):
     assert body["unmatched"] == []
 
     # Persisted, so the link survives a reload.
-    follow_up = await apple_app.get(_url(round_.id), headers=_auth(organizer.id))
+    follow_up = await apple_app.get(_url(mix_.id), headers=_auth(organizer.id))
     assert follow_up.json()["playlist_url"] == body["playlist_url"]
 
 
 async def test_generate_reports_unmatched_tracks(apple_app, db_session):
     """No catalog match is expected, not fatal — MYS-166 tracks have no ISRC."""
     organizer = await _seed_user(db_session, "o6@example.com")
-    round_ = await _seed_round(db_session, organizer)
-    await _add_submission(db_session, round_.id, organizer.id, isrc="I1", title="Obscure")
+    mix_ = await _seed_mix(db_session, organizer)
+    await _add_submission(db_session, mix_.id, organizer.id, isrc="I1", title="Obscure")
     apple_app.dispatch.catalog = httpx.Response(200, json={"data": []})
 
     r = await apple_app.post(
-        _url(round_.id), json={"music_user_token": "mut"}, headers=_auth(organizer.id)
+        _url(mix_.id), json={"music_user_token": "mut"}, headers=_auth(organizer.id)
     )
     assert r.status_code == 200
     body = r.json()
@@ -399,10 +399,10 @@ async def test_generate_skips_source_only_track_without_catalog_lookup(apple_app
     # A source-only submission has no ISRC to resolve against Apple's catalog, so
     # it goes unmatched and Apple's catalog is never queried for it (MYS-201).
     organizer = await _seed_user(db_session, "src@example.com")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     await _add_submission(
         db_session,
-        round_.id,
+        mix_.id,
         organizer.id,
         isrc=None,
         source_key="bandcamp:coolband/demo",
@@ -410,7 +410,7 @@ async def test_generate_skips_source_only_track_without_catalog_lookup(apple_app
     )
 
     r = await apple_app.post(
-        _url(round_.id), json={"music_user_token": "mut"}, headers=_auth(organizer.id)
+        _url(mix_.id), json={"music_user_token": "mut"}, headers=_auth(organizer.id)
     )
     assert r.status_code == 200, r.text
     body = r.json()
@@ -429,13 +429,13 @@ async def test_generate_skips_source_only_track_without_catalog_lookup(apple_app
 async def test_generate_401_when_apple_rejects_user_token(apple_app, db_session):
     """Expired/revoked MUT → 401 so the client re-runs the MusicKit popup."""
     organizer = await _seed_user(db_session, "o7@example.com")
-    round_ = await _seed_round(db_session, organizer)
-    await _add_submission(db_session, round_.id, organizer.id, isrc="I1", title="Creep")
+    mix_ = await _seed_mix(db_session, organizer)
+    await _add_submission(db_session, mix_.id, organizer.id, isrc="I1", title="Creep")
     apple_app.dispatch.catalog = httpx.Response(200, json={"data": [_song("s1", "Creep")]})
     apple_app.dispatch.create = httpx.Response(401, json={})
 
     r = await apple_app.post(
-        _url(round_.id), json={"music_user_token": "stale"}, headers=_auth(organizer.id)
+        _url(mix_.id), json={"music_user_token": "stale"}, headers=_auth(organizer.id)
     )
     assert r.status_code == 401
     assert "reconnect" in r.json()["detail"]
@@ -443,23 +443,23 @@ async def test_generate_401_when_apple_rejects_user_token(apple_app, db_session)
 
 async def test_generate_502_on_apple_failure(apple_app, db_session):
     organizer = await _seed_user(db_session, "o8@example.com")
-    round_ = await _seed_round(db_session, organizer)
-    await _add_submission(db_session, round_.id, organizer.id, isrc="I1", title="Creep")
+    mix_ = await _seed_mix(db_session, organizer)
+    await _add_submission(db_session, mix_.id, organizer.id, isrc="I1", title="Creep")
     apple_app.dispatch.catalog = httpx.Response(200, json={"data": [_song("s1", "Creep")]})
     apple_app.dispatch.create = httpx.Response(500, json={})
 
     r = await apple_app.post(
-        _url(round_.id), json={"music_user_token": "mut"}, headers=_auth(organizer.id)
+        _url(mix_.id), json={"music_user_token": "mut"}, headers=_auth(organizer.id)
     )
     assert r.status_code == 502
 
 
 async def test_generate_forbidden_for_non_member(apple_app, db_session):
     organizer = await _seed_user(db_session, "o9@example.com")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     outsider = await _seed_user(db_session, "x9@example.com")
     r = await apple_app.post(
-        _url(round_.id), json={"music_user_token": "mut"}, headers=_auth(outsider.id)
+        _url(mix_.id), json={"music_user_token": "mut"}, headers=_auth(outsider.id)
     )
     assert r.status_code == 403
 
@@ -475,16 +475,16 @@ async def test_generate_503_when_unconfigured(db_session):
         _Dispatch(), configured=False
     )
     organizer = await _seed_user(db_session, "o10@example.com")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         r = await ac.post(
-            _url(round_.id), json={"music_user_token": "mut"}, headers=_auth(organizer.id)
+            _url(mix_.id), json={"music_user_token": "mut"}, headers=_auth(organizer.id)
         )
     assert r.status_code == 503
 
 
 # --------------------------------------------------------------------------- #
-# Revision naming after a round is reopened (MYS-108)
+# Revision naming after a mix is reopened (MYS-108)
 # --------------------------------------------------------------------------- #
 
 
@@ -507,12 +507,12 @@ def test_revised_playlist_name_wraps_across_midnight():
 
 async def test_first_generation_has_no_revision_suffix(apple_app, db_session):
     organizer = await _seed_user(db_session, "rev1@example.com")
-    round_ = await _seed_round(db_session, organizer)
-    await _add_submission(db_session, round_.id, organizer.id, isrc="I1", title="Creep")
+    mix_ = await _seed_mix(db_session, organizer)
+    await _add_submission(db_session, mix_.id, organizer.id, isrc="I1", title="Creep")
     apple_app.dispatch.catalog = httpx.Response(200, json={"data": [_song("s1", "Creep")]})
 
     await apple_app.post(
-        _url(round_.id), json={"music_user_token": "mut"}, headers=_auth(organizer.id)
+        _url(mix_.id), json={"music_user_token": "mut"}, headers=_auth(organizer.id)
     )
 
     create = next(c for c in apple_app.dispatch.calls if c.url.path.endswith("/library/playlists"))
@@ -522,17 +522,17 @@ async def test_first_generation_has_no_revision_suffix(apple_app, db_session):
 async def test_rebuild_after_supersede_is_named_as_a_revision(apple_app, db_session):
     """The whole point: Apple allows two same-named playlists, so say which is new."""
     organizer = await _seed_user(db_session, "rev2@example.com")
-    round_ = await _seed_round(db_session, organizer)
-    # Captured before the expire_all() below — reading round_.id afterwards
+    mix_ = await _seed_mix(db_session, organizer)
+    # Captured before the expire_all() below — reading mix_.id afterwards
     # triggers a lazy refresh and raises MissingGreenlet.
-    round_id = round_.id
-    await _add_submission(db_session, round_id, organizer.id, isrc="I1", title="Creep")
+    mix_id = mix_.id
+    await _add_submission(db_session, mix_id, organizer.id, isrc="I1", title="Creep")
     apple_app.dispatch.catalog = httpx.Response(200, json={"data": [_song("s1", "Creep")]})
 
-    # A superseded playlist from before the round was reopened.
+    # A superseded playlist from before the mix was reopened.
     db_session.add(
         AppleMixPlaylist(
-            mix_id=round_id,
+            mix_id=mix_id,
             user_id=organizer.id,
             playlist_id="p.OLD",
             superseded_at=datetime.now(timezone.utc),
@@ -540,13 +540,13 @@ async def test_rebuild_after_supersede_is_named_as_a_revision(apple_app, db_sess
     )
     await db_session.commit()
 
-    # It's hidden from the round page, so the build CTA is offered again.
-    assert (await apple_app.get(_url(round_id), headers=_auth(organizer.id))).json()[
+    # It's hidden from the mix page, so the build CTA is offered again.
+    assert (await apple_app.get(_url(mix_id), headers=_auth(organizer.id))).json()[
         "playlist_url"
     ] is None
 
     r = await apple_app.post(
-        _url(round_id),
+        _url(mix_id),
         json={"music_user_token": "mut", "tz_offset_minutes": 0},
         headers=_auth(organizer.id),
     )
@@ -555,12 +555,10 @@ async def test_rebuild_after_supersede_is_named_as_a_revision(apple_app, db_sess
     create = next(c for c in apple_app.dispatch.calls if c.url.path.endswith("/library/playlists"))
     assert "[revised on" in json.loads(create.read())["attributes"]["name"]
 
-    # One row per (round, user): the rebuild takes over rather than piling up.
+    # One row per (mix, user): the rebuild takes over rather than piling up.
     db_session.expire_all()
     rows = (
-        await db_session.scalars(
-            select(AppleMixPlaylist).where(AppleMixPlaylist.mix_id == round_id)
-        )
+        await db_session.scalars(select(AppleMixPlaylist).where(AppleMixPlaylist.mix_id == mix_id))
     ).all()
     assert len(rows) == 1
     assert rows[0].playlist_id == "p.NEW"
@@ -569,9 +567,9 @@ async def test_rebuild_after_supersede_is_named_as_a_revision(apple_app, db_sess
 
 async def test_rejects_absurd_tz_offset(apple_app, db_session):
     organizer = await _seed_user(db_session, "rev3@example.com")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     r = await apple_app.post(
-        _url(round_.id),
+        _url(mix_.id),
         json={"music_user_token": "mut", "tz_offset_minutes": 5000},
         headers=_auth(organizer.id),
     )
@@ -581,28 +579,28 @@ async def test_rejects_absurd_tz_offset(apple_app, db_session):
 async def test_get_playlist_name_null_for_pre_mys190_rows(apple_app, db_session):
     """Rows created before names were recorded still return a usable link."""
     organizer = await _seed_user(db_session, "legacy@example.com")
-    round_ = await _seed_round(db_session, organizer)
-    db_session.add(AppleMixPlaylist(mix_id=round_.id, user_id=organizer.id, playlist_id="p.OLD"))
+    mix_ = await _seed_mix(db_session, organizer)
+    db_session.add(AppleMixPlaylist(mix_id=mix_.id, user_id=organizer.id, playlist_id="p.OLD"))
     await db_session.commit()
 
-    r = await apple_app.get(_url(round_.id), headers=_auth(organizer.id))
+    r = await apple_app.get(_url(mix_.id), headers=_auth(organizer.id))
     assert r.json()["playlist_url"] == "https://music.apple.com/library"
     assert r.json()["playlist_name"] is None
 
 
 async def test_generated_name_is_persisted_for_later_visits(apple_app, db_session):
     organizer = await _seed_user(db_session, "persist@example.com")
-    round_ = await _seed_round(db_session, organizer)
-    await _add_submission(db_session, round_.id, organizer.id, isrc="I1", title="Creep")
+    mix_ = await _seed_mix(db_session, organizer)
+    await _add_submission(db_session, mix_.id, organizer.id, isrc="I1", title="Creep")
     apple_app.dispatch.catalog = httpx.Response(200, json={"data": [_song("s1", "Creep")]})
 
     created = await apple_app.post(
-        _url(round_.id), json={"music_user_token": "mut"}, headers=_auth(organizer.id)
+        _url(mix_.id), json={"music_user_token": "mut"}, headers=_auth(organizer.id)
     )
     name = created.json()["playlist_name"]
     assert name
 
     # Same name on a later read — it's stored, not recomputed (a revision's
     # "[revised on HH:MM]" suffix could never be reconstructed).
-    follow_up = await apple_app.get(_url(round_.id), headers=_auth(organizer.id))
+    follow_up = await apple_app.get(_url(mix_.id), headers=_auth(organizer.id))
     assert follow_up.json()["playlist_name"] == name

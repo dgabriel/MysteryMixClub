@@ -31,7 +31,7 @@ Run these steps before writing any code:
 
 ## Project
 
-**MysteryMixClub** — platform-agnostic music league for close-knit friend groups.
+**MysteryMixClub** — platform-agnostic music club for close-knit friend groups.
 Competitor to Music League. Multi-streaming-service support. Invite-only.
 
 Stack: Python / FastAPI · React / TypeScript · Digital Ocean

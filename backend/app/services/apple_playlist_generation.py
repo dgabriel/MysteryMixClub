@@ -95,7 +95,7 @@ def revised_playlist_name(name: str, when: datetime, tz_offset_minutes: int | No
     """Append a ``[revised on HH:MM]`` suffix to a rebuilt playlist's name.
 
     Apple accepts two identically-named playlists without complaint, which
-    leaves the member's library ambiguous after a round is reopened. The time is
+    leaves the member's library ambiguous after a mix is reopened. The time is
     rendered in the member's own timezone when the client sends its offset,
     since a UTC clock time on a personal playlist is worse than no clock time.
     """
@@ -122,7 +122,7 @@ async def generate_mix_playlist(
     """
     submissions = list(await db.scalars(select(Submission).where(Submission.mix_id == round_id)))
     # Same seeded shuffle as the Spotify/YouTube playlists so every service
-    # presents the round in one identical order (MYS-151). Sort first for a
+    # presents the mix in one identical order (MYS-151). Sort first for a
     # stable input — Postgres order without ORDER BY is not guaranteed.
     submissions.sort(key=lambda s: s.id)
     random.Random(round_id.int).shuffle(submissions)

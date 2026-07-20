@@ -25,13 +25,13 @@ violation returns **422** with no manual handling.
 | Field | Endpoint | strip | min | max |
 |---|---|---|---|---|
 | `display_name` | `PATCH /users/me` | yes | 1 | 50 |
-| league `name` | `POST`/`PATCH /leagues` | yes | 1 | 100 |
-| league `description` | `POST`/`PATCH /leagues` | yes | — | 2000 |
-| round `theme` | `POST /leagues/:id/rounds` | yes | 1 | 200 |
-| submission `title` / `artist` | `POST /rounds/:id/submissions` | yes | 1 | 500 |
-| submission `note` | `POST /rounds/:id/submissions` | yes | — | 280 |
-| submission `album` | `POST /rounds/:id/submissions` | yes | — | 500 |
-| submission `album_art_url` | `POST /rounds/:id/submissions` | no (URL) | — | 2048 |
+| club `name` | `POST`/`PATCH /clubs` | yes | 1 | 100 |
+| club `description` | `POST`/`PATCH /clubs` | yes | — | 2000 |
+| mystery mix `theme` | `POST /clubs/:id/mixes` | yes | 1 | 200 |
+| submission `title` / `artist` | `POST /mixes/:id/submissions` | yes | 1 | 500 |
+| submission `note` | `POST /mixes/:id/submissions` | yes | — | 280 |
+| submission `album` | `POST /mixes/:id/submissions` | yes | — | 500 |
+| submission `album_art_url` | `POST /mixes/:id/submissions` | no (URL) | — | 2048 |
 | notes `body` | `POST /submissions/:id/notes` | yes | 1 | 280 |
 | search `q` | `GET /songs/search` | — | 1 | 200 |
 | search `artist` | `GET /songs/search` | — | — | 200 |
@@ -43,8 +43,8 @@ violation returns **422** with no manual handling.
 
 The audit found most fields already bounded. Two gaps were closed:
 
-- **`league.description`** was `str | None` — **unbounded**. Now bounded to 2000
-  chars (trimmed). `LeagueUpdate`'s explicit-null validator was preserved:
+- **`club.description`** was `str | None` — **unbounded**. Now bounded to 2000
+  chars (trimmed). `ClubUpdate`'s explicit-null validator was preserved:
   `description: null` on PATCH still clears the field; the validator's NOT-NULL
   reject list (`name`, `total_rounds`) is unchanged.
 - **`submission.note`** had `max_length=280` but no trim — added

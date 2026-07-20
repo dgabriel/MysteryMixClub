@@ -1,14 +1,14 @@
 """Song submission endpoints (MYS-51).
 
-Puts songs — picked via the search/resolve flow — into a round. A player may hold
-up to the league's ``songs_per_submission`` cap (MYS-116); at cap 1 this is the
-classic one-song-per-round behavior.
+Puts songs — picked via the search/resolve flow — into a mystery mix. A player
+may hold up to the club's ``songs_per_submission`` cap (MYS-116); at cap 1 this
+is the classic one-song-per-mix behavior.
 
-* ``POST   /api/v1/rounds/:id/submissions``       — add a song (up to the cap)
-* ``PATCH  /api/v1/rounds/:id/submissions/:sid``  — replace one of your songs
-* ``DELETE /api/v1/rounds/:id/submissions/:sid``  — remove one of your songs
-* ``GET    /api/v1/rounds/:id/submissions/mine``  — your songs for the round
-* ``GET    /api/v1/rounds/:id/submissions``       — all submissions (after close only)
+* ``POST   /api/v1/mixes/:id/submissions``       — add a song (up to the cap)
+* ``PATCH  /api/v1/mixes/:id/submissions/:sid``  — replace one of your songs
+* ``DELETE /api/v1/mixes/:id/submissions/:sid``  — remove one of your songs
+* ``GET    /api/v1/mixes/:id/submissions/mine``  — your songs for the mix
+* ``GET    /api/v1/mixes/:id/submissions``       — all submissions (after close only)
 
 The canonical track fields (isrc/title/artist/album/art) come from the client's
 prior search/resolve call; the server additionally assembles cross-service
@@ -16,8 +16,8 @@ platform links (keyless) and persists them as ``submissions.platform_links`` for
 playlist/playback. The assembler always returns at least open-on-service deep
 links, so a transient upstream hiccup never blocks the submission.
 
-``participation_mode`` (just-vibing) is a per-player stance for the round, not a
-per-song one: it is kept uniform across all of a player's songs (MYS-112/116).
+``participation_mode`` (just-vibing) is a per-player stance for the mystery mix,
+not a per-song one: it is kept uniform across all of a player's songs (MYS-112/116).
 """
 
 import uuid
@@ -113,10 +113,10 @@ class SubmissionResponse(WireModel):
     note: str | None
     participation_mode: str
     created_at: datetime
-    league_previously_submitted: bool = False
+    club_previously_submitted: bool = False
 
 
-def _to_response(s: Submission, *, league_previously_submitted: bool = False) -> SubmissionResponse:
+def _to_response(s: Submission, *, club_previously_submitted: bool = False) -> SubmissionResponse:
     source, source_url = source_fields(s.source_key)
     return SubmissionResponse(
         id=str(s.id),
@@ -132,7 +132,7 @@ def _to_response(s: Submission, *, league_previously_submitted: bool = False) ->
         note=s.note,
         participation_mode=s.participation_mode,
         created_at=s.created_at,
-        league_previously_submitted=league_previously_submitted,
+        club_previously_submitted=club_previously_submitted,
     )
 
 
@@ -315,7 +315,7 @@ async def submit_song(
     await db.flush()
     await db.commit()
     await db.refresh(submission)
-    return _to_response(submission, league_previously_submitted=club_repeat)
+    return _to_response(submission, club_previously_submitted=club_repeat)
 
 
 @router.patch("/mixes/{round_id}/submissions/{submission_id}", response_model=SubmissionResponse)
@@ -364,7 +364,7 @@ async def edit_song(
 
     await db.commit()
     await db.refresh(submission)
-    return _to_response(submission, league_previously_submitted=club_repeat)
+    return _to_response(submission, club_previously_submitted=club_repeat)
 
 
 @router.delete(

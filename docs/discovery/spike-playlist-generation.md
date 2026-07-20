@@ -1,3 +1,5 @@
+> Terminology: this document predates the July 2026 rename — "league" is now "club", "round" is now "mystery mix" (internal: mix).
+
 # Spike — Auto-generate streaming playlists (YouTube, Deezer, Spotify)
 
 **Linear:** MYS-76 · **Status:** findings (research only, no production code)

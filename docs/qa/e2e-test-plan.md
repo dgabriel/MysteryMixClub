@@ -8,13 +8,13 @@
 
 ## 1. Objective & Scope
 
-Validate the full league lifecycle — auth → league creation → invites → round
+Validate the full club lifecycle — auth → club creation → invites → mystery mix
 submission → voting → reveal — as a human clicking through the real UI, across
 **multiple players on multiple devices** simultaneously. Staging environment
 (DO Droplet), not prod.
 
 In scope: all wired routes (`/login`, `/auth/verify`, `/onboarding`, `/home`,
-`/leagues/new`, `/leagues/:id`, `/rounds/:id`, `/join/:token`).
+`/clubs/new`, `/clubs/:id`, `/mixes/:id`, `/join/:token`).
 
 Out of scope: load/perf, automated tests, prod deploy gate.
 
@@ -26,7 +26,7 @@ Out of scope: load/perf, automated tests, prod deploy gate.
 |------|-------|
 | URL | staging (DO Droplet `67.207.81.183` / staging host) |
 | Email delivery | Resend — each player needs a **real, accessible inbox** to click the magic link (15-min expiry, single-use). Rate limit: **max 5 magic-link requests per email per hour.** |
-| Reset | Use fresh emails per run, or have DB access to clear `users`/leagues between runs. |
+| Reset | Use fresh emails per run, or have DB access to clear `users`/clubs between runs. |
 
 **Players & devices** (run concurrently — keep all sessions live):
 
@@ -56,19 +56,19 @@ Out of scope: load/perf, automated tests, prod deploy gate.
 | A1 | Visit base URL | Redirects to `/login` |
 | A2 | Enter email, submit | "Check email" screen shown |
 | A3 | Open inbox **on that device**, click magic link | Lands `/auth/verify`, verifies, → `/onboarding` (first login) |
-| A4 | Enter display name, submit | → `/home` (My Leagues) |
+| A4 | Enter display name, submit | → `/home` (My Clubs) |
 | A5 | Request a 2nd link, click the **first/old** link | Rejected (single-use/expired) — clear error, not silent |
 | A6 | Request 6 links within an hour | 6th is rate-limited |
 | A7 | Returning login (existing user) | Skips onboarding → straight to `/home` |
 
-### B. League Creation & Management — Player A (organizer)
+### B. Club Creation & Management — Player A (organizer)
 
 | # | Step | Expected |
 |---|------|----------|
-| B1 | `/home` → create league | `/leagues/new` form |
-| B2 | Submit name + description + total_rounds (e.g. 4) | → league home `/leagues/:id`; header "round 0 of 4"; A listed as **organizer** badge |
-| B3 | Tap **edit** → change name, description, total_rounds → save | Values update in place |
-| B4 | Set total_rounds below current_round / to 0 or blank | Rejected / no-op (min 1 enforced) |
+| B1 | `/home` → create club | `/clubs/new` form |
+| B2 | Submit name + description + total_mixes (e.g. 4) | → club home `/clubs/:id`; header "mix 0 of 4"; A listed as **organizer** badge |
+| B3 | Tap **edit** → change name, description, total_mixes → save | Values update in place |
+| B4 | Set total_mixes below current_mix / to 0 or blank | Rejected / no-op (min 1 enforced) |
 | B5 | Confirm **edit** and **remove member** controls visible only to A | Hidden for B/C/D |
 
 ### C. Invites & Joining (multi-player, multi-device)
@@ -78,18 +78,18 @@ Out of scope: load/perf, automated tests, prod deploy gate.
 | C1 | A taps **invite** → generates link → **copy** | "copied" confirmation; share link field populated |
 | C2 | A on mobile: **share** button present (Web Share API); desktop hides it | Correct per-device |
 | C3 | Send link to B, C, D | — |
-| C4 | B (logged in) opens `/join/:token` | League preview shown; join → B in members list |
+| C4 | B (logged in) opens `/join/:token` | Club preview shown; join → B in members list |
 | C5 | C **logged out** opens invite link | Bounces to login, preserves `pendingInvitePath`; after magic-link auth + onboarding, lands back on join → joins |
-| C6 | A's screen: refresh league home | Members count reflects B & C |
-| C7 | A removes D after D joins | D removed from list; D loses access to league on refresh |
+| C6 | A's screen: refresh club home | Members count reflects B & C |
+| C7 | A removes D after D joins | D removed from list; D loses access to club on refresh |
 | C8 | Open an expired/garbage `/join/:token` | Clear "invalid invite" state, no crash |
 
-### D. Round — Submission phase
+### D. Mystery Mix — Submission phase
 
 | # | Step | Expected |
 |---|------|----------|
-| D1 | A → **new round**, theme e.g. "late summer feels" → create | Round appears, badge **submissions open**; league current_round advances |
-| D2 | Each player opens round `/rounds/:id` | State-aware submission UI; only A sees **open voting** organizer control |
+| D1 | A → **new mystery mix**, theme e.g. "late summer feels" → create | Mystery mix appears, badge **submissions open**; club current_mix advances |
+| D2 | Each player opens mystery mix `/mixes/:id` | State-aware submission UI; only A sees **open voting** organizer control |
 | D3 | B searches a song (Odesli) and submits | "your submission" card with title/artist + mode badge |
 | D4 | B taps **change song**, submits a different track | Replaces prior submission (one per player) |
 | D5 | C submits via search on Safari/iOS | Works; touch targets adequate |
@@ -100,8 +100,8 @@ Out of scope: load/perf, automated tests, prod deploy gate.
 
 | # | Step | Expected |
 |---|------|----------|
-| E1 | A taps **open voting** | Round badge → **voting open** for all players |
-| E2 | All players open round | Anonymous, **shuffled** playlist — no submitter names; order may differ per player |
+| E1 | A taps **open voting** | Mystery mix badge → **voting open** for all players |
+| E2 | All players open the mystery mix | Anonymous, **shuffled** playlist — no submitter names; order may differ per player |
 | E3 | Select votes | Counter "N / 3 selected"; cannot exceed `votes_per_player` (extra cards disabled) |
 | E4 | Toggle a vote off/on | Selection + counter update |
 | E5 | **Cast votes** | "votes saved" confirmation |
@@ -124,13 +124,13 @@ Out of scope: load/perf, automated tests, prod deploy gate.
 
 | # | Step | Expected |
 |---|------|----------|
-| G1 | A taps **close round** | Badge → **closed** for all |
-| G2 | All players open round | Reveal view: **Most Noted** (Rust accent — should be the ONLY Rust on screen), **Leaderboard** (ranked, no Rust), **the picks** with submitters now revealed |
+| G1 | A taps **close mystery mix** | Badge → **closed** for all |
+| G2 | All players open the mystery mix | Reveal view: **Most Noted** (Rust accent — should be the ONLY Rust on screen), **Leaderboard** (ranked, no Rust), **the picks** with submitters now revealed |
 | G3 | Own pick | Labeled "you" |
 | G4 | Vote counts & ranking | Match votes cast in E |
 | G5 | Notes from F | Shown read-only under each pick / Most Noted |
 | G6 | Tie in Most Noted | All winners co-recognized |
-| G7 | Complete the final round (reach total_rounds) | League badge flips to **complete** (Rust); "new round" hidden |
+| G7 | Complete the final mystery mix (reach total_mixes) | Club badge flips to **complete** (Rust); "new mystery mix" hidden |
 
 ### H. Cross-device & Session
 
@@ -145,9 +145,9 @@ Out of scope: load/perf, automated tests, prod deploy gate.
 
 | # | Step | Expected |
 |---|------|----------|
-| I1 | Player B, while not a member of A's *other* league, opens its `/leagues/:id` URL directly | Denied / not-found, no data leak |
-| I2 | Removed player D opens league/round URL after removal | Access denied |
-| I3 | Open another league's `/rounds/:id` directly | Denied |
+| I1 | Player B, while not a member of A's *other* club, opens its `/clubs/:id` URL directly | Denied / not-found, no data leak |
+| I2 | Removed player D opens club/mystery-mix URL after removal | Access denied |
+| I3 | Open another club's `/mixes/:id` directly | Denied |
 
 ### J. PWA / Responsive
 
@@ -162,7 +162,7 @@ Out of scope: load/perf, automated tests, prod deploy gate.
 | # | Step | Expected |
 |---|------|----------|
 | K1 | Submit a song after voting opens | Blocked |
-| K2 | Cast votes after round closed | Blocked |
+| K2 | Cast votes after mystery mix closed | Blocked |
 | K3 | Non-organizer hits organizer actions via URL/API | Forbidden |
 | K4 | Empty theme / empty display name / whitespace-only | Validation blocks |
 | K5 | Note / submission with HTML or emoji | Sanitized, renders safely (XSS check) |

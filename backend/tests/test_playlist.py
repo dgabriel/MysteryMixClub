@@ -1,4 +1,4 @@
-"""Tests for MYS-18 slice B: GET /rounds/:id/playlist.
+"""Tests for MYS-18 slice B: GET /mixes/:id/playlist.
 
 The playlist reads each submission's stored platform_links (no live Odesli), so the
 shared client fixture is used. Covers auth/membership gates, the open_submission
@@ -38,21 +38,21 @@ async def _seed_user(db_session, email: str, *, preferred: str | None = None) ->
     return user
 
 
-async def _seed_round(db_session, organizer: User, *, state: str = "open_voting") -> Mix:
-    league = Club(name="L", organizer_id=organizer.id, total_mixes=3, votes_per_player=3)
-    db_session.add(league)
+async def _seed_mix(db_session, organizer: User, *, state: str = "open_voting") -> Mix:
+    club = Club(name="L", organizer_id=organizer.id, total_mixes=3, votes_per_player=3)
+    db_session.add(club)
     await db_session.flush()
-    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id))
-    round_ = Mix(club_id=league.id, mix_number=1, theme="t", state=state)
-    db_session.add(round_)
+    db_session.add(ClubMember(club_id=club.id, user_id=organizer.id))
+    mix_ = Mix(club_id=club.id, mix_number=1, theme="t", state=state)
+    db_session.add(mix_)
     await db_session.commit()
-    await db_session.refresh(round_)
-    return round_
+    await db_session.refresh(mix_)
+    return mix_
 
 
 async def _add_submission(
     db_session,
-    round_id,
+    mix_id,
     user_id,
     *,
     title,
@@ -64,7 +64,7 @@ async def _add_submission(
 ):
     db_session.add(
         Submission(
-            mix_id=round_id,
+            mix_id=mix_id,
             user_id=user_id,
             isrc=isrc,
             source_key=source_key,
@@ -82,8 +82,8 @@ def _auth(user_id: uuid.UUID) -> dict[str, str]:
     return {"Authorization": f"Bearer {create_access_token(user_id)}"}
 
 
-def _url(round_id) -> str:
-    return f"/api/v1/mixes/{round_id}/playlist"
+def _url(mix_id) -> str:
+    return f"/api/v1/mixes/{mix_id}/playlist"
 
 
 # --------------------------------------------------------------------------- #
@@ -93,23 +93,23 @@ def _url(round_id) -> str:
 
 async def test_playlist_requires_auth(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer)
-    resp = await client.get(_url(round_.id))
+    mix_ = await _seed_mix(db_session, organizer)
+    resp = await client.get(_url(mix_.id))
     assert resp.status_code == 401
 
 
 async def test_playlist_non_member_forbidden(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
     outsider = await _seed_user(db_session, "x@example.com")
-    round_ = await _seed_round(db_session, organizer)
-    resp = await client.get(_url(round_.id), headers=_auth(outsider.id))
+    mix_ = await _seed_mix(db_session, organizer)
+    resp = await client.get(_url(mix_.id), headers=_auth(outsider.id))
     assert resp.status_code == 403
 
 
 async def test_playlist_hidden_during_submission(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer, state="open_submission")
-    resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+    mix_ = await _seed_mix(db_session, organizer, state="open_submission")
+    resp = await client.get(_url(mix_.id), headers=_auth(organizer.id))
     assert resp.status_code == 409
 
 
@@ -120,16 +120,16 @@ async def test_playlist_hidden_during_submission(client, db_session):
 
 async def test_playlist_entries_are_anonymous(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     await _add_submission(
         db_session,
-        round_.id,
+        mix_.id,
         organizer.id,
         title="bad guy",
         isrc="I1",
         platform_links=_links("deezer"),
     )
-    resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+    resp = await client.get(_url(mix_.id), headers=_auth(organizer.id))
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["theme"] == "t"
@@ -150,22 +150,22 @@ async def test_playlist_entries_are_anonymous(client, db_session):
 async def test_playlist_marks_callers_own_submission(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
     other = await _seed_user(db_session, "x@example.com")
-    round_ = await _seed_round(db_session, organizer)
-    db_session.add(ClubMember(club_id=round_.club_id, user_id=other.id))
+    mix_ = await _seed_mix(db_session, organizer)
+    db_session.add(ClubMember(club_id=mix_.club_id, user_id=other.id))
     await db_session.commit()
     await _add_submission(
         db_session,
-        round_.id,
+        mix_.id,
         organizer.id,
         title="mine",
         isrc="I1",
         platform_links=_links("deezer"),
     )
     await _add_submission(
-        db_session, round_.id, other.id, title="theirs", isrc="I2", platform_links=_links("deezer")
+        db_session, mix_.id, other.id, title="theirs", isrc="I2", platform_links=_links("deezer")
     )
 
-    resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+    resp = await client.get(_url(mix_.id), headers=_auth(organizer.id))
     assert resp.status_code == 200, resp.text
     by_title = {e["title"]: e for e in resp.json()["entries"]}
     # Only the caller's own pick is flagged; no other submitter is revealed.
@@ -176,16 +176,16 @@ async def test_playlist_marks_callers_own_submission(client, db_session):
 
 async def test_preferred_service_link_is_chosen(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com", preferred="deezer")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     await _add_submission(
         db_session,
-        round_.id,
+        mix_.id,
         organizer.id,
         title="x",
         isrc="I1",
         platform_links=_links("spotify", "deezer", "youtube"),
     )
-    resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+    resp = await client.get(_url(mix_.id), headers=_auth(organizer.id))
     entry = resp.json()["entries"][0]
     assert entry["preferred_url"] == "https://deezer/x"
     assert set(entry["platforms"]) == {"spotify", "deezer", "youtube"}
@@ -193,26 +193,26 @@ async def test_preferred_service_link_is_chosen(client, db_session):
 
 async def test_youtube_fallback_when_no_preference(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com", preferred=None)
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     await _add_submission(
         db_session,
-        round_.id,
+        mix_.id,
         organizer.id,
         title="x",
         isrc="I1",
         platform_links=_links("spotify", "youtube"),
     )
-    resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+    resp = await client.get(_url(mix_.id), headers=_auth(organizer.id))
     assert resp.json()["entries"][0]["preferred_url"] == "https://youtube/x"
 
 
 async def test_preferred_url_none_when_no_platforms(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     await _add_submission(
-        db_session, round_.id, organizer.id, title="x", isrc="I1", platform_links=None
+        db_session, mix_.id, organizer.id, title="x", isrc="I1", platform_links=None
     )
-    resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+    resp = await client.get(_url(mix_.id), headers=_auth(organizer.id))
     entry = resp.json()["entries"][0]
     assert entry["platforms"] == {}
     assert entry["preferred_url"] is None
@@ -223,10 +223,10 @@ async def test_playlist_carries_bandcamp_track_id_key_without_leaking_as_url(cli
     # exposed platforms dict, but must never be chosen as a playable URL: with a
     # preferred service and youtube both present, the real link still wins.
     organizer = await _seed_user(db_session, "o@example.com", preferred="deezer")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     await _add_submission(
         db_session,
-        round_.id,
+        mix_.id,
         organizer.id,
         title="bc",
         isrc="I1",
@@ -236,7 +236,7 @@ async def test_playlist_carries_bandcamp_track_id_key_without_leaking_as_url(cli
             "bandcampTrackId": "12345",
         },
     )
-    resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+    resp = await client.get(_url(mix_.id), headers=_auth(organizer.id))
     assert resp.status_code == 200, resp.text
     entry = resp.json()["entries"][0]
     assert entry["platforms"]["bandcampTrackId"] == "12345"
@@ -247,10 +247,10 @@ async def test_playlist_bandcamp_track_id_not_chosen_as_fallback_url(client, db_
     # No preference and no youtube: the fallback takes the FIRST real link, never
     # the trailing non-URL id (it is always merged last into platform_links).
     organizer = await _seed_user(db_session, "o@example.com", preferred=None)
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     await _add_submission(
         db_session,
-        round_.id,
+        mix_.id,
         organizer.id,
         title="bc",
         isrc="I1",
@@ -259,7 +259,7 @@ async def test_playlist_bandcamp_track_id_not_chosen_as_fallback_url(client, db_
             "bandcampTrackId": "12345",
         },
     )
-    resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+    resp = await client.get(_url(mix_.id), headers=_auth(organizer.id))
     entry = resp.json()["entries"][0]
     assert entry["preferred_url"] == "https://x.bandcamp.com/track/y"
     assert entry["platforms"]["bandcampTrackId"] == "12345"
@@ -267,25 +267,25 @@ async def test_playlist_bandcamp_track_id_not_chosen_as_fallback_url(client, db_
 
 async def test_playlist_shuffle_is_deterministic(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     for i in range(6):
         u = await _seed_user(db_session, f"u{i}@example.com")
-        db_session.add(ClubMember(club_id=round_.club_id, user_id=u.id))
+        db_session.add(ClubMember(club_id=mix_.club_id, user_id=u.id))
         await db_session.commit()
         await _add_submission(
             db_session,
-            round_.id,
+            mix_.id,
             u.id,
             title=f"song {i}",
             isrc=f"I{i}",
             platform_links=_links("youtube"),
         )
 
-    first = await client.get(_url(round_.id), headers=_auth(organizer.id))
-    second = await client.get(_url(round_.id), headers=_auth(organizer.id))
+    first = await client.get(_url(mix_.id), headers=_auth(organizer.id))
+    second = await client.get(_url(mix_.id), headers=_auth(organizer.id))
     order1 = [e["title"] for e in first.json()["entries"]]
     order2 = [e["title"] for e in second.json()["entries"]]
-    assert order1 == order2  # stable per round
+    assert order1 == order2  # stable per mix
     assert sorted(order1) == [f"song {i}" for i in range(6)]  # all present
 
 
@@ -331,17 +331,17 @@ def _ids_in_url(body: dict) -> list[str]:
 
 async def test_youtube_playlist_url_includes_only_stored_ids_in_order(session_factory, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     for i in range(2):
         u = await _seed_user(db_session, f"m{i}@example.com")
-        db_session.add(ClubMember(club_id=round_.club_id, user_id=u.id))
+        db_session.add(ClubMember(club_id=mix_.club_id, user_id=u.id))
     await db_session.commit()
     members = list(await db_session.scalars(select(User).where(User.email.like("m%@example.com"))))
 
     # Three submissions: two carry a stored YouTube id, one has none.
     await _add_submission(
         db_session,
-        round_.id,
+        mix_.id,
         organizer.id,
         title="s0",
         isrc="I0",
@@ -350,7 +350,7 @@ async def test_youtube_playlist_url_includes_only_stored_ids_in_order(session_fa
     )
     await _add_submission(
         db_session,
-        round_.id,
+        mix_.id,
         members[0].id,
         title="s1",
         isrc="I1",
@@ -359,7 +359,7 @@ async def test_youtube_playlist_url_includes_only_stored_ids_in_order(session_fa
     )
     await _add_submission(
         db_session,
-        round_.id,
+        mix_.id,
         members[1].id,
         title="s2",
         isrc="I2",
@@ -371,7 +371,7 @@ async def test_youtube_playlist_url_includes_only_stored_ids_in_order(session_fa
     youtube = _FakeYouTube(by_title={})
 
     async with _client_with_youtube(session_factory, youtube) as client:
-        resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+        resp = await client.get(_url(mix_.id), headers=_auth(organizer.id))
     assert resp.status_code == 200, resp.text
     body = resp.json()
 
@@ -386,10 +386,10 @@ async def test_youtube_playlist_url_includes_only_stored_ids_in_order(session_fa
 
 async def test_youtube_playlist_url_none_when_nothing_resolves(session_factory, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     await _add_submission(
         db_session,
-        round_.id,
+        mix_.id,
         organizer.id,
         title="s",
         isrc="I",
@@ -400,7 +400,7 @@ async def test_youtube_playlist_url_none_when_nothing_resolves(session_factory, 
     youtube = _FakeYouTube(by_title={})
 
     async with _client_with_youtube(session_factory, youtube) as client:
-        resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+        resp = await client.get(_url(mix_.id), headers=_auth(organizer.id))
     body = resp.json()
     assert body["youtube_playlist_url"] is None
     assert body["youtube_track_count"] == 0
@@ -408,10 +408,10 @@ async def test_youtube_playlist_url_none_when_nothing_resolves(session_factory, 
 
 async def test_stored_id_is_used_without_calling_resolver(session_factory, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     await _add_submission(
         db_session,
-        round_.id,
+        mix_.id,
         organizer.id,
         title="cached",
         isrc="I",
@@ -422,7 +422,7 @@ async def test_stored_id_is_used_without_calling_resolver(session_factory, db_se
     youtube = _FakeYouTube(by_title={"cached": "SHOULD_NOT_BE_USED"})
 
     async with _client_with_youtube(session_factory, youtube) as client:
-        resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+        resp = await client.get(_url(mix_.id), headers=_auth(organizer.id))
     body = resp.json()
     assert youtube.calls == []  # resolver never touched for a cached track
     assert body["youtube_track_count"] == 1
@@ -431,10 +431,10 @@ async def test_stored_id_is_used_without_calling_resolver(session_factory, db_se
 
 async def test_lazy_backfill_resolves_and_caches_null_id(session_factory, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     await _add_submission(
         db_session,
-        round_.id,
+        mix_.id,
         organizer.id,
         title="needs backfill",
         isrc="I",
@@ -444,27 +444,27 @@ async def test_lazy_backfill_resolves_and_caches_null_id(session_factory, db_ses
     youtube = _FakeYouTube(by_title={"needs backfill": "NEWVID"})
 
     async with _client_with_youtube(session_factory, youtube) as client:
-        first = await client.get(_url(round_.id), headers=_auth(organizer.id))
+        first = await client.get(_url(mix_.id), headers=_auth(organizer.id))
     body = first.json()
     assert _ids_in_url(body) == ["NEWVID"]
     assert body["youtube_track_count"] == 1
     assert youtube.calls == [("needs backfill", "A")]  # resolved once
 
     # The id is cached back; a fresh read sees it without resolving again.
-    sub = await db_session.scalar(select(Submission).where(Submission.mix_id == round_.id))
+    sub = await db_session.scalar(select(Submission).where(Submission.mix_id == mix_.id))
     assert sub.youtube_video_id == "NEWVID"
 
     async with _client_with_youtube(session_factory, youtube) as client:
-        await client.get(_url(round_.id), headers=_auth(organizer.id))
+        await client.get(_url(mix_.id), headers=_auth(organizer.id))
     assert youtube.calls == [("needs backfill", "A")]  # not called a second time
 
 
 async def test_resolver_failure_is_swallowed_and_endpoint_stays_200(session_factory, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     await _add_submission(
         db_session,
-        round_.id,
+        mix_.id,
         organizer.id,
         title="s",
         isrc="I",
@@ -474,7 +474,7 @@ async def test_resolver_failure_is_swallowed_and_endpoint_stays_200(session_fact
     youtube = _FakeYouTube(error=True)
 
     async with _client_with_youtube(session_factory, youtube) as client:
-        resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+        resp = await client.get(_url(mix_.id), headers=_auth(organizer.id))
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["youtube_playlist_url"] is None
@@ -485,13 +485,13 @@ async def test_track_count_matches_url_when_duplicate_ids_collapse(session_facto
     # Two distinct submissions with the SAME stored video id must count once,
     # matching the de-duped URL (regression: count was off the raw appended list).
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     other = await _seed_user(db_session, "x@example.com")
-    db_session.add(ClubMember(club_id=round_.club_id, user_id=other.id))
+    db_session.add(ClubMember(club_id=mix_.club_id, user_id=other.id))
     await db_session.commit()
     await _add_submission(
         db_session,
-        round_.id,
+        mix_.id,
         organizer.id,
         title="a",
         isrc="I0",
@@ -500,7 +500,7 @@ async def test_track_count_matches_url_when_duplicate_ids_collapse(session_facto
     )
     await _add_submission(
         db_session,
-        round_.id,
+        mix_.id,
         other.id,
         title="b",
         isrc="I1",
@@ -510,7 +510,7 @@ async def test_track_count_matches_url_when_duplicate_ids_collapse(session_facto
     youtube = _FakeYouTube(by_title={})
 
     async with _client_with_youtube(session_factory, youtube) as client:
-        resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+        resp = await client.get(_url(mix_.id), headers=_auth(organizer.id))
     body = resp.json()
     ids = _ids_in_url(body)
     assert ids == ["SAME"]
@@ -520,14 +520,14 @@ async def test_track_count_matches_url_when_duplicate_ids_collapse(session_facto
 async def test_track_count_matches_url_when_capped_at_fifty(session_factory, db_session):
     # >50 stored ids: the URL caps at 50, and the count must too.
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     for i in range(51):
         u = await _seed_user(db_session, f"c{i}@example.com")
-        db_session.add(ClubMember(club_id=round_.club_id, user_id=u.id))
+        db_session.add(ClubMember(club_id=mix_.club_id, user_id=u.id))
         await db_session.commit()
         await _add_submission(
             db_session,
-            round_.id,
+            mix_.id,
             u.id,
             title=f"s{i}",
             isrc=f"I{i}",
@@ -537,7 +537,7 @@ async def test_track_count_matches_url_when_capped_at_fifty(session_factory, db_
     youtube = _FakeYouTube(by_title={})
 
     async with _client_with_youtube(session_factory, youtube) as client:
-        resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+        resp = await client.get(_url(mix_.id), headers=_auth(organizer.id))
     body = resp.json()
     ids = _ids_in_url(body)
     assert len(ids) == 50
@@ -549,9 +549,9 @@ async def test_track_count_matches_url_when_capped_at_fifty(session_factory, db_
 # --------------------------------------------------------------------------- #
 
 
-async def _submission_id(db_session, round_id, user_id):
+async def _submission_id(db_session, mix_id, user_id):
     return await db_session.scalar(
-        select(Submission.id).where(Submission.mix_id == round_id, Submission.user_id == user_id)
+        select(Submission.id).where(Submission.mix_id == mix_id, Submission.user_id == user_id)
     )
 
 
@@ -562,27 +562,27 @@ async def test_playlist_reports_voting_progress(client, db_session):
     two do nothing. One vibing submitter (Z=1) sits voting out.
     """
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     voter = await _seed_user(db_session, "voter@example.com")
     noter = await _seed_user(db_session, "noter@example.com")
     idle = await _seed_user(db_session, "idle@example.com")
     viber = await _seed_user(db_session, "vibe@example.com")
 
     await _add_submission(
-        db_session, round_.id, organizer.id, title="org", isrc="IO", platform_links=_links("deezer")
+        db_session, mix_.id, organizer.id, title="org", isrc="IO", platform_links=_links("deezer")
     )
     await _add_submission(
-        db_session, round_.id, voter.id, title="v", isrc="IV", platform_links=_links("deezer")
+        db_session, mix_.id, voter.id, title="v", isrc="IV", platform_links=_links("deezer")
     )
     await _add_submission(
-        db_session, round_.id, noter.id, title="n", isrc="IN", platform_links=_links("deezer")
+        db_session, mix_.id, noter.id, title="n", isrc="IN", platform_links=_links("deezer")
     )
     await _add_submission(
-        db_session, round_.id, idle.id, title="i", isrc="II", platform_links=_links("deezer")
+        db_session, mix_.id, idle.id, title="i", isrc="II", platform_links=_links("deezer")
     )
     await _add_submission(
         db_session,
-        round_.id,
+        mix_.id,
         viber.id,
         title="z",
         isrc="IZ",
@@ -590,13 +590,13 @@ async def test_playlist_reports_voting_progress(client, db_session):
         mode="vibing",
     )
 
-    org_sub = await _submission_id(db_session, round_.id, organizer.id)
+    org_sub = await _submission_id(db_session, mix_.id, organizer.id)
     # voter votes for the organizer's song; noter leaves a note on it.
-    db_session.add(Vote(mix_id=round_.id, voter_id=voter.id, submission_id=org_sub))
-    db_session.add(Note(mix_id=round_.id, author_id=noter.id, submission_id=org_sub, body="nice"))
+    db_session.add(Vote(mix_id=mix_.id, voter_id=voter.id, submission_id=org_sub))
+    db_session.add(Note(mix_id=mix_.id, author_id=noter.id, submission_id=org_sub, body="nice"))
     await db_session.commit()
 
-    resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+    resp = await client.get(_url(mix_.id), headers=_auth(organizer.id))
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["voting_eligible"] == 4  # four playing submitters
@@ -607,34 +607,34 @@ async def test_playlist_reports_voting_progress(client, db_session):
 async def test_playlist_vibing_noter_not_counted_as_acted(client, db_session):
     """A vibing player who leaves a note is reported under Z, never inside X/Y."""
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     viber = await _seed_user(db_session, "vibe@example.com")
 
     await _add_submission(
-        db_session, round_.id, organizer.id, title="org", isrc="IO", platform_links=_links("deezer")
+        db_session, mix_.id, organizer.id, title="org", isrc="IO", platform_links=_links("deezer")
     )
     await _add_submission(
         db_session,
-        round_.id,
+        mix_.id,
         viber.id,
         title="z",
         isrc="IZ",
         platform_links=_links("deezer"),
         mode="vibing",
     )
-    org_sub = await _submission_id(db_session, round_.id, organizer.id)
+    org_sub = await _submission_id(db_session, mix_.id, organizer.id)
     # The vibing player notes on the organizer's song — counts as vibing, not acted.
-    db_session.add(Note(mix_id=round_.id, author_id=viber.id, submission_id=org_sub, body="vibes"))
+    db_session.add(Note(mix_id=mix_.id, author_id=viber.id, submission_id=org_sub, body="vibes"))
     await db_session.commit()
 
-    body = (await client.get(_url(round_.id), headers=_auth(organizer.id))).json()
+    body = (await client.get(_url(mix_.id), headers=_auth(organizer.id))).json()
     assert body["voting_eligible"] == 1  # only the organizer is playing
     assert body["voting_acted"] == 0  # organizer didn't act; vibing noter excluded
     assert body["vibing_count"] == 1
 
 
 # --------------------------------------------------------------------------- #
-# MYS-201: source-only tracks in the round playlist
+# MYS-201: source-only tracks in the mix playlist
 # --------------------------------------------------------------------------- #
 
 
@@ -642,10 +642,10 @@ async def test_bandcamp_source_only_skips_youtube_backfill(session_factory, db_s
     # A bandcamp source_key row must never be fuzzy-resolved to a *guessed* video:
     # it carries no youtube_video_id and sits out the YouTube playlist entirely.
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     await _add_submission(
         db_session,
-        round_.id,
+        mix_.id,
         organizer.id,
         title="bandcamp track",
         isrc=None,
@@ -657,7 +657,7 @@ async def test_bandcamp_source_only_skips_youtube_backfill(session_factory, db_s
     youtube = _FakeYouTube(by_title={"bandcamp track": "GUESSVID1234"})
 
     async with _client_with_youtube(session_factory, youtube) as client:
-        resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+        resp = await client.get(_url(mix_.id), headers=_auth(organizer.id))
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert youtube.calls == []  # never fuzzy-resolved
@@ -676,10 +676,10 @@ async def test_youtube_source_only_uses_stored_id_without_backfill(session_facto
     # A youtube source_key row already carries its exact id from submit time; the
     # playlist uses it directly, never re-resolving.
     organizer = await _seed_user(db_session, "o@example.com")
-    round_ = await _seed_round(db_session, organizer)
+    mix_ = await _seed_mix(db_session, organizer)
     await _add_submission(
         db_session,
-        round_.id,
+        mix_.id,
         organizer.id,
         title="yt only",
         isrc=None,
@@ -690,7 +690,7 @@ async def test_youtube_source_only_uses_stored_id_without_backfill(session_facto
     youtube = _FakeYouTube(by_title={"yt only": "SHOULD_NOT_USE"})
 
     async with _client_with_youtube(session_factory, youtube) as client:
-        resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+        resp = await client.get(_url(mix_.id), headers=_auth(organizer.id))
     body = resp.json()
     assert youtube.calls == []  # exact stored id, no backfill
     assert body["youtube_track_count"] == 1

@@ -2,9 +2,9 @@
 
 DELETE /users/me soft-deletes; this scheduled job finishes the job by
 hard-deleting accounts soft-deleted more than ``retention_days`` ago and
-cascading to every piece of personal data — notes, votes, submissions, league
+cascading to every piece of personal data — notes, votes, submissions, club
 memberships, sessions, magic-link tokens at the tombstoned email — and nulling
-the organizer FK on any leagues the purged account organized. It returns the
+the organizer FK on any clubs the purged account organized. It returns the
 number of accounts purged.
 
 Tests call ``purge_deleted_accounts(db_session, now=...)`` directly with an
@@ -50,35 +50,35 @@ async def _seed_user(db_session, email: str, *, deleted_at=None, name: str = "Us
     return user
 
 
-async def _seed_league(db_session, organizer_id, *, name="L", state="active") -> Club:
-    league = Club(
+async def _seed_club(db_session, organizer_id, *, name="L", state="active") -> Club:
+    club = Club(
         name=name, organizer_id=organizer_id, total_mixes=3, votes_per_player=3, state=state
     )
-    db_session.add(league)
+    db_session.add(club)
     await db_session.flush()
-    db_session.add(ClubMember(club_id=league.id, user_id=organizer_id))
+    db_session.add(ClubMember(club_id=club.id, user_id=organizer_id))
     await db_session.commit()
-    await db_session.refresh(league)
-    return league
+    await db_session.refresh(club)
+    return club
 
 
-async def _seed_round(db_session, league_id, *, number=1, state="closed") -> Mix:
-    round_ = Mix(
-        club_id=league_id,
+async def _seed_mix(db_session, club_id, *, number=1, state="closed") -> Mix:
+    mix_ = Mix(
+        club_id=club_id,
         mix_number=number,
         theme="a theme",
         state=state,
         votes_per_player=3,
     )
-    db_session.add(round_)
+    db_session.add(mix_)
     await db_session.commit()
-    await db_session.refresh(round_)
-    return round_
+    await db_session.refresh(mix_)
+    return mix_
 
 
-async def _seed_submission(db_session, round_id, user_id, *, isrc="USABC1234567") -> Submission:
+async def _seed_submission(db_session, mix_id, user_id, *, isrc="USABC1234567") -> Submission:
     sub = Submission(
-        mix_id=round_id,
+        mix_id=mix_id,
         user_id=user_id,
         isrc=isrc,
         title="song",
@@ -91,25 +91,25 @@ async def _seed_submission(db_session, round_id, user_id, *, isrc="USABC1234567"
     return sub
 
 
-async def _seed_vote(db_session, round_id, voter_id, submission_id) -> Vote:
-    vote = Vote(mix_id=round_id, voter_id=voter_id, submission_id=submission_id)
+async def _seed_vote(db_session, mix_id, voter_id, submission_id) -> Vote:
+    vote = Vote(mix_id=mix_id, voter_id=voter_id, submission_id=submission_id)
     db_session.add(vote)
     await db_session.commit()
     await db_session.refresh(vote)
     return vote
 
 
-async def _seed_note(db_session, round_id, author_id, submission_id, body="nice") -> Note:
-    note = Note(mix_id=round_id, author_id=author_id, submission_id=submission_id, body=body)
+async def _seed_note(db_session, mix_id, author_id, submission_id, body="nice") -> Note:
+    note = Note(mix_id=mix_id, author_id=author_id, submission_id=submission_id, body=body)
     db_session.add(note)
     await db_session.commit()
     await db_session.refresh(note)
     return note
 
 
-async def _seed_invite(db_session, league_id, created_by) -> Invite:
+async def _seed_invite(db_session, club_id, created_by) -> Invite:
     invite = Invite(
-        club_id=league_id,
+        club_id=club_id,
         created_by=created_by,
         token="tok-" + uuid.uuid4().hex,
         expires_at=None,
@@ -120,8 +120,8 @@ async def _seed_invite(db_session, league_id, created_by) -> Invite:
     return invite
 
 
-async def _seed_membership(db_session, league_id, user_id) -> ClubMember:
-    member = ClubMember(club_id=league_id, user_id=user_id)
+async def _seed_membership(db_session, club_id, user_id) -> ClubMember:
+    member = ClubMember(club_id=club_id, user_id=user_id)
     db_session.add(member)
     await db_session.commit()
     await db_session.refresh(member)
@@ -171,30 +171,30 @@ async def test_eligible_user_fully_cascaded(client, db_session):
     user.deleted_at = NOW - timedelta(days=31)
     await db_session.commit()
 
-    # A second user to own the round/submission this user votes/notes on.
+    # A second user to own the mix/submission this user votes/notes on.
     other = await _seed_user(db_session, email="other@example.com", name="Other")
     other_id = other.id
 
-    league = await _seed_league(db_session, other_id, name="L1", state="complete")
-    league_id = league.id
-    round_ = await _seed_round(db_session, league_id)
-    round_id = round_.id
+    club = await _seed_club(db_session, other_id, name="L1", state="complete")
+    club_id = club.id
+    mix_ = await _seed_mix(db_session, club_id)
+    mix_id = mix_.id
 
     # The purged user's own data.
-    my_sub = await _seed_submission(db_session, round_id, user_id)
+    my_sub = await _seed_submission(db_session, mix_id, user_id)
     my_sub_id = my_sub.id
-    other_sub = await _seed_submission(db_session, round_id, other_id, isrc="GBXYZ7654321")
+    other_sub = await _seed_submission(db_session, mix_id, other_id, isrc="GBXYZ7654321")
     other_sub_id = other_sub.id
 
-    await _seed_vote(db_session, round_id, user_id, other_sub_id)
-    await _seed_note(db_session, round_id, user_id, other_sub_id)
-    await _seed_membership(db_session, league_id, user_id)
+    await _seed_vote(db_session, mix_id, user_id, other_sub_id)
+    await _seed_note(db_session, mix_id, user_id, other_sub_id)
+    await _seed_membership(db_session, club_id, user_id)
     await _seed_session(db_session, user_id)
     await _seed_magic_token(db_session, tombstone)
     # invites.created_by is a NOT NULL FK to users.id with no ON DELETE — the
     # purge must delete the purged user's invites or the User delete raises
     # IntegrityError (regression guard for the reviewer-found gap).
-    await _seed_invite(db_session, league_id, user_id)
+    await _seed_invite(db_session, club_id, user_id)
 
     count = await purge_deleted_accounts(db_session, now=NOW)
     assert count == 1
@@ -225,7 +225,7 @@ async def test_eligible_user_fully_cascaded(client, db_session):
 async def test_purged_user_invites_deleted_co_user_invites_survive(client, db_session):
     """Reproduces the reviewer-found blocker: a purged user who created an invite
     is purged without an IntegrityError on the NOT NULL invites.created_by FK.
-    A co-user in the same league who created their OWN invite keeps it.
+    A co-user in the same club who created their OWN invite keeps it.
 
     Without the ``delete(Invite)`` step in the purge, the final User delete would
     raise IntegrityError; with it, the purged user's invite is gone and only the
@@ -240,15 +240,15 @@ async def test_purged_user_invites_deleted_co_user_invites_survive(client, db_se
     co_user = await _seed_user(db_session, email="co@example.com", name="Co")
     co_user_id = co_user.id
 
-    league = await _seed_league(db_session, co_user_id, name="Shared", state="active")
-    league_id = league.id
-    await _seed_membership(db_session, league_id, purged_id)
+    club = await _seed_club(db_session, co_user_id, name="Shared", state="active")
+    club_id = club.id
+    await _seed_membership(db_session, club_id, purged_id)
 
     # The purged user's invite (the one that would trip the FK) and the
-    # co-user's own invite in the same league (must survive).
-    purged_invite = await _seed_invite(db_session, league_id, purged_id)
+    # co-user's own invite in the same club (must survive).
+    purged_invite = await _seed_invite(db_session, club_id, purged_id)
     purged_invite_id = purged_invite.id
-    co_invite = await _seed_invite(db_session, league_id, co_user_id)
+    co_invite = await _seed_invite(db_session, club_id, co_user_id)
     co_invite_id = co_invite.id
 
     count = await purge_deleted_accounts(db_session, now=NOW)
@@ -261,7 +261,7 @@ async def test_purged_user_invites_deleted_co_user_invites_survive(client, db_se
     assert await _count(db_session, Invite, id=purged_invite_id) == 0
     assert await _count(db_session, Invite, created_by=purged_id) == 0
     # ...but the co-user and their own invite survive (only the purged user's
-    # invites are deleted, not every invite in the league).
+    # invites are deleted, not every invite in the club).
     assert await _count(db_session, User, id=co_user_id) == 1
     assert await _count(db_session, Invite, id=co_invite_id) == 1
     assert await _count(db_session, Invite, created_by=co_user_id) == 1
@@ -308,8 +308,8 @@ async def test_not_deleted_user_untouched(client, db_session):
 # --------------------------------------------------------------------------- #
 
 
-async def test_purged_organizer_nulls_league_and_preserves_others(client, db_session):
-    """A purged user who organized a completed league: the league survives with
+async def test_purged_organizer_nulls_club_and_preserves_others(client, db_session):
+    """A purged user who organized a completed club: the club survives with
     organizer_id IS NULL, a co-member's submission survives, and the purged
     user's own submission is removed."""
     organizer = await _seed_user(db_session, email="org@example.com", name="Org")
@@ -321,15 +321,15 @@ async def test_purged_organizer_nulls_league_and_preserves_others(client, db_ses
     member = await _seed_user(db_session, email="member@example.com", name="Member")
     member_id = member.id
 
-    league = await _seed_league(db_session, organizer_id, name="Completed", state="complete")
-    league_id = league.id
-    await _seed_membership(db_session, league_id, member_id)
-    round_ = await _seed_round(db_session, league_id)
-    round_id = round_.id
+    club = await _seed_club(db_session, organizer_id, name="Completed", state="complete")
+    club_id = club.id
+    await _seed_membership(db_session, club_id, member_id)
+    mix_ = await _seed_mix(db_session, club_id)
+    mix_id = mix_.id
 
-    org_sub = await _seed_submission(db_session, round_id, organizer_id)
+    org_sub = await _seed_submission(db_session, mix_id, organizer_id)
     org_sub_id = org_sub.id
-    member_sub = await _seed_submission(db_session, round_id, member_id, isrc="GBXYZ7654321")
+    member_sub = await _seed_submission(db_session, mix_id, member_id, isrc="GBXYZ7654321")
     member_sub_id = member_sub.id
 
     count = await purge_deleted_accounts(db_session, now=NOW)
@@ -337,9 +337,9 @@ async def test_purged_organizer_nulls_league_and_preserves_others(client, db_ses
 
     db_session.expire_all()
     # Club still exists, organizer FK nulled.
-    league_row = await db_session.scalar(select(Club).where(Club.id == league_id))
-    assert league_row is not None
-    assert league_row.organizer_id is None
+    club_row = await db_session.scalar(select(Club).where(Club.id == club_id))
+    assert club_row is not None
+    assert club_row.organizer_id is None
 
     # Co-member and their data intact.
     assert await _count(db_session, User, id=member_id) == 1

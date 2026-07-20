@@ -1,14 +1,14 @@
 """Tests for MYS-50: DELETE /api/v1/users/me (account soft-delete).
 
 Right-to-be-forgotten part 1. DELETE /users/me requires auth, blocks while the
-caller organizes an active league (409), and otherwise soft-deletes the caller
+caller organizes an active club (409), and otherwise soft-deletes the caller
 in one commit: sets deleted_at, tombstones the email to
 ``deleted+{id}@deleted.invalid``, and invalidates all of the caller's sessions
 (204). It does NOT remove submissions/votes/notes/memberships — those wait for
 the scheduled hard purge (see test_purge_accounts.py).
 
 Covers: 401 unauthenticated, happy-path soft-delete + persisted state, the old
-token being locked out afterward, the active-organizer block, a completed-league
+token being locked out afterward, the active-organizer block, a completed-club
 organizer NOT being blocked, and the tombstoned email freeing re-signup.
 
 PKs are captured into locals before any expire_all (project MissingGreenlet
@@ -67,20 +67,20 @@ async def _seed_session(db_session, user_id: uuid.UUID, **overrides) -> Session:
     return session
 
 
-async def _seed_league(db_session, organizer_id: uuid.UUID, *, state: str) -> Club:
-    league = Club(
+async def _seed_club(db_session, organizer_id: uuid.UUID, *, state: str) -> Club:
+    club = Club(
         name="A Club",
         organizer_id=organizer_id,
         total_mixes=3,
         votes_per_player=3,
         state=state,
     )
-    db_session.add(league)
+    db_session.add(club)
     await db_session.flush()
-    db_session.add(ClubMember(club_id=league.id, user_id=organizer_id))
+    db_session.add(ClubMember(club_id=club.id, user_id=organizer_id))
     await db_session.commit()
-    await db_session.refresh(league)
-    return league
+    await db_session.refresh(club)
+    return club
 
 
 def _auth_header(user_id: uuid.UUID) -> dict[str, str]:
@@ -159,10 +159,10 @@ async def test_old_token_rejected_after_delete(client, db_session):
 # --------------------------------------------------------------------------- #
 
 
-async def test_active_league_organizer_blocked_409_and_not_deleted(client, db_session):
+async def test_active_club_organizer_blocked_409_and_not_deleted(client, db_session):
     user = await _seed_user(db_session, email="organizer@example.com")
     user_id = user.id
-    await _seed_league(db_session, user_id, state="active")
+    await _seed_club(db_session, user_id, state="active")
 
     resp = await client.delete(ME_URL, headers=_auth_header(user_id))
 
@@ -177,10 +177,10 @@ async def test_active_league_organizer_blocked_409_and_not_deleted(client, db_se
     assert fresh.email == "organizer@example.com"
 
 
-async def test_completed_league_organizer_not_blocked_204(client, db_session):
+async def test_completed_club_organizer_not_blocked_204(client, db_session):
     user = await _seed_user(db_session, email="retiree@example.com")
     user_id = user.id
-    await _seed_league(db_session, user_id, state="complete")
+    await _seed_club(db_session, user_id, state="complete")
 
     resp = await client.delete(ME_URL, headers=_auth_header(user_id))
 
@@ -208,11 +208,11 @@ async def test_resignup_after_delete_creates_new_user_same_email(client, db_sess
     resp = await client.delete(ME_URL, headers=_auth_header(deleted_id))
     assert resp.status_code == 204, resp.text
 
-    # A fresh shareable invite (organizer + league seeded for it).
+    # A fresh shareable invite (organizer + club seeded for it).
     organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
-    league = await _seed_league(db_session, organizer.id, state="active")
+    club = await _seed_club(db_session, organizer.id, state="active")
     invite_token = "tok_" + uuid.uuid4().hex
-    db_session.add(Invite(club_id=league.id, created_by=organizer.id, token=invite_token))
+    db_session.add(Invite(club_id=club.id, created_by=organizer.id, token=invite_token))
     await db_session.commit()
 
     # Email is now tombstoned, freeing the original address. Re-run the magic-link

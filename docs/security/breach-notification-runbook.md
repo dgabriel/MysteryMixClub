@@ -116,7 +116,7 @@ credentials, are exposed) — which a full DB compromise clearly is. Notify
 > how it was discovered].
 >
 > **What was exposed:** [specific data categories — e.g. "your email address
-> and display name" / "the songs and notes you've submitted to your leagues"].
+> and display name" / "the songs and notes you've submitted to your clubs"].
 > We do not store payment information, so no payment details were involved.
 >
 > **What we've done:** [containment steps taken — secrets rotated, systems

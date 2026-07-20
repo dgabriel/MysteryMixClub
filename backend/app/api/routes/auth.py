@@ -94,9 +94,9 @@ async def _load_valid_invite(
 ) -> Invite | None:
     """Return the invite for ``invite_token`` if it exists, is unexpired, and
     (for a platform invite) hasn't already been used, else None. Legacy
-    invites with no expires_at never expire (MYS-126/127). A league invite
+    invites with no expires_at never expire (MYS-126/127). A club invite
     stays multi-use — used_at is never set for one, so that check never
-    excludes it. A platform (league-less) invite is single-use (MYS-182
+    excludes it. A platform (club-less) invite is single-use (MYS-182
     follow-up): once used_at is stamped, it reads the same as nonexistent."""
     if not invite_token:
         return None
@@ -162,7 +162,7 @@ async def request_magic_link(
 
     link = f"{settings.app_base_url.rstrip('/')}/auth/verify?token={raw_token}"
     # Carry a valid invite token through to verify so the new account (or an
-    # existing user following someone's link) is joined to that league.
+    # existing user following someone's link) is joined to that club.
     if invite is not None:
         link = f"{link}&invite={payload.invite_token}"
     try:
@@ -239,7 +239,7 @@ async def verify_magic_link(
         if invite_row.club_id is None:
             # Single-use (MYS-182 follow-up): lock and re-check so two
             # concurrent signups can't both consume the same platform invite.
-            # A league invite is untouched here — it stays multi-use.
+            # A club invite is untouched here — it stays multi-use.
             locked_invite = await db.scalar(
                 select(Invite).where(Invite.id == invite_row.id).with_for_update()
             )

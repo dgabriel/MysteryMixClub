@@ -1287,14 +1287,28 @@ function SubmissionManager({
   );
 }
 
+// A source-only track (MYS-201) has a real track page on exactly one service
+// family; every other platform's link is only a title/artist search that looks
+// broken. Restrict the buttons to the platforms that are genuinely that track.
+const SOURCE_PLATFORMS: Record<"youtube" | "bandcamp", PlatformKey[]> = {
+  youtube: ["youtube", "youtubeMusic"],
+  bandcamp: ["bandcamp"],
+};
+
 function PlatformLinks({
   platforms,
   title,
+  source,
 }: {
   platforms: Partial<Record<PlatformKey, string>>;
   title: string;
+  source?: "youtube" | "bandcamp" | null;
 }) {
-  const available = PLATFORM_LABELS.filter((p) => platforms[p.key as PlatformKey]);
+  const available = PLATFORM_LABELS.filter((p) => {
+    if (!platforms[p.key as PlatformKey]) return false;
+    if (source) return SOURCE_PLATFORMS[source].includes(p.key as PlatformKey);
+    return true;
+  });
   if (available.length === 0) return null;
   return (
     <ul className="mt-3 flex flex-wrap gap-2">
@@ -1508,7 +1522,11 @@ function VotingSection({
                     &ldquo;{entry.submitter_note}&rdquo;
                   </p>
                 ) : null}
-                <PlatformLinks platforms={entry.platforms} title={entry.title} />
+                <PlatformLinks
+                  platforms={entry.platforms}
+                  title={entry.title}
+                  source={entry.source}
+                />
                 {/* Vibers don't vote, but they can still leave notes — it's how
                     they take part (MYS-132). */}
                 <SongNotes submissionId={entry.submission_id} onActionError={onActionError} />
@@ -1577,7 +1595,11 @@ function VotingSection({
                   <p className="mt-2 font-mono text-[11px] font-light text-muted">
                     you can&apos;t vote for your own song
                   </p>
-                  <PlatformLinks platforms={entry.platforms} title={entry.title} />
+                  <PlatformLinks
+                  platforms={entry.platforms}
+                  title={entry.title}
+                  source={entry.source}
+                />
                 </div>
               </li>
             );
@@ -1631,7 +1653,11 @@ function VotingSection({
                 </button>
                 {/* Platform links + notes live inside the card, below the vote area. */}
                 <div className="px-6 pb-5">
-                  <PlatformLinks platforms={entry.platforms} title={entry.title} />
+                  <PlatformLinks
+                  platforms={entry.platforms}
+                  title={entry.title}
+                  source={entry.source}
+                />
                   <SongNotes submissionId={entry.submission_id} onActionError={onActionError} />
                 </div>
               </div>
@@ -2079,12 +2105,17 @@ function ResultsSection({
                           {s.artist}
                         </p>
                       ) : null}
+                      {s.source ? (
+                        <div className="mt-2">
+                          <SourceBadge source={s.source} />
+                        </div>
+                      ) : null}
                       {s.submitter_note ? (
                         <p className="mt-2 font-mono text-[11px] font-light text-ink">
                           “{s.submitter_note}”
                         </p>
                       ) : null}
-                      <PlatformLinks platforms={s.platforms} title={s.title} />
+                      <PlatformLinks platforms={s.platforms} title={s.title} source={s.source} />
                       {s.voters.length > 0 ? (
                         <p className="mt-2 font-mono text-[11px] font-light text-muted">
                           voted by {s.voters.map((v) => v.display_name).join(", ")}
@@ -2209,12 +2240,17 @@ function VibePicksSection({ picks }: { picks: RevealPick[] }) {
               {p.artist ? (
                 <p className="mt-1 font-mono text-[11px] font-light text-muted">{p.artist}</p>
               ) : null}
+              {p.source ? (
+                <div className="mt-2">
+                  <SourceBadge source={p.source} />
+                </div>
+              ) : null}
               {p.submitter_note ? (
                 <p className="mt-2 font-mono text-[11px] font-light text-ink">
                   “{p.submitter_note}”
                 </p>
               ) : null}
-              <PlatformLinks platforms={p.platforms} title={p.title} />
+              <PlatformLinks platforms={p.platforms} title={p.title} source={p.source} />
               {p.notes.length > 0 ? <CollapsibleNotes notes={p.notes} /> : null}
             </Card>
           </li>

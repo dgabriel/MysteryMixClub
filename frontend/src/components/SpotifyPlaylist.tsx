@@ -48,11 +48,11 @@ export function SpotifyPlaylist({ roundId }: { roundId: string }) {
     <div className="mb-8">
       {playlistUrl ? (
         <>
+          <PlaylistGap unmatched={unmatched} />
           <a href={playlistUrl} target="_blank" rel="noopener noreferrer" className={LINK_CLASS}>
             <MusicNoteIcon />
             open playlist in Spotify
           </a>
-          <PlaylistGap unmatched={unmatched} />
         </>
       ) : (
         <p className={NOTE_CLASS}>no spotify playlist yet</p>

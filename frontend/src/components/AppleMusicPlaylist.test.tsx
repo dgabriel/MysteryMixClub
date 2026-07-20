@@ -109,8 +109,22 @@ describe("AppleMusicPlaylist", () => {
       track_count: 14,
       total_count: 16,
       unmatched: [
-        { submission_id: "s1", title: "A", artist: "X", reason: "no_catalog_match" },
-        { submission_id: "s2", title: "B", artist: "Y", reason: "source_only" },
+        {
+          submission_id: "s1",
+          title: "A",
+          artist: "X",
+          reason: "no_catalog_match",
+          source: null,
+          source_url: null,
+        },
+        {
+          submission_id: "s2",
+          title: "B",
+          artist: "Y",
+          reason: "source_only",
+          source: "bandcamp",
+          source_url: "https://artist.bandcamp.com/track/b",
+        },
       ],
     });
 

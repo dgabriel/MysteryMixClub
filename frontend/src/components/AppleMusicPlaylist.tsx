@@ -107,6 +107,7 @@ export function AppleMusicPlaylist({ roundId }: { roundId: string }) {
     <div className="mb-8">
       {playlistUrl ? (
         <>
+          <PlaylistGap unmatched={unmatched} />
           <a href={playlistUrl} target="_blank" rel="noopener noreferrer" className={LINK_CLASS}>
             <MusicNoteIcon />
             open apple music library
@@ -126,7 +127,6 @@ export function AppleMusicPlaylist({ roundId }: { roundId: string }) {
               "go to your Apple Music playlists to find it"
             )}
           </p>
-          <PlaylistGap unmatched={unmatched} />
         </>
       ) : (
         <>

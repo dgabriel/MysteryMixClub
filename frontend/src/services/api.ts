@@ -972,6 +972,11 @@ export type UnmatchedTrack = {
   title: string;
   artist: string;
   reason: UnmatchedReason;
+  /** Set for a `source_only` track (Bandcamp/YouTube, no catalog ISRC — MYS-201):
+   *  `source_url` links the exact page so the gap summary can offer it. Both null
+   *  for a `no_catalog_match` track, which has nowhere to send the listener. */
+  source: "youtube" | "bandcamp" | null;
+  source_url: string | null;
 };
 
 export type ApplePlaylistResult = {
@@ -1067,7 +1072,14 @@ export type ResultSubmission = {
   submission_id: string;
   user_id: string;
   submitter_display_name: string;
-  isrc: string;
+  /** Null for a source-only track (MYS-201) — `source`/`source_url` identify it
+   *  instead. */
+  isrc: string | null;
+  /** Set for a source-only track (Bandcamp/YouTube, no catalog ISRC — MYS-201):
+   *  `source` drives the "BANDCAMP ONLY"/"YOUTUBE ONLY" badge, `source_url` is the
+   *  exact page link. Null for a normal catalog track. */
+  source: "youtube" | "bandcamp" | null;
+  source_url: string | null;
   title: string;
   artist: string;
   album: string | null;
@@ -1119,6 +1131,11 @@ export type RevealPick = {
   submitter_display_name: string;
   title: string;
   artist: string;
+  /** Set for a source-only track (Bandcamp/YouTube, no catalog ISRC — MYS-201):
+   *  `source` drives the "BANDCAMP ONLY"/"YOUTUBE ONLY" badge, `source_url` is the
+   *  exact page link. Null for a normal catalog track. */
+  source: "youtube" | "bandcamp" | null;
+  source_url: string | null;
   /** Playback links so the tiles are playable. */
   platforms: Partial<Record<PlatformKey, string>>;
   submitter_note: string | null;

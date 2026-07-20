@@ -53,9 +53,15 @@ echo "==> Retiring the pre-rename advance-rounds unit (MYS-195)"
 # Idempotent: safe to re-run, and safe once the old unit is already gone —
 # `disable --now` on a unit systemd doesn't know about just errors, which the
 # `|| true` swallows, and `rm -f` is a no-op on a missing file.
+# Both commands require the sudoers grant added for MYS-195 (see
+# docs/staging-setup.md §6) — `|| true` also covers a Droplet whose sudoers
+# file predates that grant, so a stale grant never hard-fails the deploy; on
+# such a Droplet the old unit just lingers (and its ExecStart will start
+# erroring in journalctl, since advance_rounds.py no longer exists) until the
+# sudoers file is updated by hand.
 sudo systemctl disable --now mysterymixclub-advance-rounds.timer 2>/dev/null || true
 sudo rm -f /etc/systemd/system/mysterymixclub-advance-rounds.service \
-  /etc/systemd/system/mysterymixclub-advance-rounds.timer
+  /etc/systemd/system/mysterymixclub-advance-rounds.timer 2>/dev/null || true
 
 echo "==> Installing/refreshing the deadline force-advance job (MYS-145/162)"
 # Keep the job's unit files current with the checkout and its timer enabled, so

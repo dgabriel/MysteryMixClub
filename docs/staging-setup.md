@@ -178,6 +178,8 @@ publish needs no sudo). Grant passwordless sudo for exactly those commands:
 # on the Droplet, as root
 cat >/etc/sudoers.d/mysterymixclub-deploy <<'EOF'
 mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl restart mysterymixclub-api
+mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl disable --now mysterymixclub-advance-rounds.timer
+mysterymixclub ALL=(root) NOPASSWD: /usr/bin/rm -f /etc/systemd/system/mysterymixclub-advance-rounds.service /etc/systemd/system/mysterymixclub-advance-rounds.timer
 mysterymixclub ALL=(root) NOPASSWD: /usr/bin/cp /home/mysterymixclub/app/scripts/mysterymixclub-advance-mixes.service /etc/systemd/system/
 mysterymixclub ALL=(root) NOPASSWD: /usr/bin/cp /home/mysterymixclub/app/scripts/mysterymixclub-advance-mixes.timer /etc/systemd/system/
 mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl daemon-reload
@@ -186,9 +188,17 @@ EOF
 chmod 440 /etc/sudoers.d/mysterymixclub-deploy
 ```
 
-> The last four lines were added for the MYS-145/162 deadline job. On a Droplet
-> bootstrapped before this change, add them to the existing sudoers file (and see
-> §7) or the next deploy will fail at the timer-refresh step.
+> The four `advance-mixes` lines were added for the MYS-145/162 deadline job. On
+> a Droplet bootstrapped before this change, add them to the existing sudoers
+> file (and see §7) or the next deploy will fail at the timer-refresh step.
+>
+> The `disable --now .../rm -f ...advance-rounds...` lines were added for
+> MYS-195 (the club/mix identifier rename), which deletes `advance_rounds.py`
+> — the old unit's `ExecStart` target. `deploy-staging.sh` guards both commands
+> with `|| true` so a Droplet without this grant yet won't fail its deploy, but
+> the old unit will linger and start erroring in journalctl every time it fires
+> (its target module is gone) until this grant is applied by hand on the
+> **live staging Droplet** — do this before or at the next deploy off `develop`.
 
 **GitHub secrets** (Settings → Secrets and variables → Actions → environment
 `staging`):

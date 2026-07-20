@@ -49,6 +49,6 @@ async def unsubscribe(token: str, db: AsyncSession = Depends(get_db)) -> HTMLRes
     await db.execute(update(User).where(User.id == user_id).values(email_notifications=False))
     await db.commit()
     return _page(
-        "You're unsubscribed from MysteryMixClub round emails. "
+        "You're unsubscribed from MysteryMixClub mystery mix emails. "
         "You can turn them back on anytime in your account settings."
     )

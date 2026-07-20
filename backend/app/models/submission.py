@@ -48,7 +48,7 @@ class Submission(Base):
     album_art_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     # Assembled cross-service links {platform: url} for playback (best-effort).
     platform_links: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
-    # Cached YouTube video id for the round playlist link (MYS-78). The stored
+    # Cached YouTube video id for the mix playlist link (MYS-78). The stored
     # YouTube platform_link is only a search deep-link with no video id, so this
     # is resolved via the YouTube Data API at submit time (and lazily backfilled
     # at playlist time for pre-existing rows), then cached to avoid repeat calls.

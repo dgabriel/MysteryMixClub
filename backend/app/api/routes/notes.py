@@ -5,10 +5,10 @@ Leaving and reading free-form appreciation notes on a submission:
 * ``POST /api/v1/submissions/:id/notes`` — leave a note on a submission
 * ``GET  /api/v1/submissions/:id/notes`` — read the notes on a submission
 
-Notes may be left only while the round is in ``open_voting`` (frozen at close).
-Reading is gated by round state: while voting is open a member sees only their
+Notes may be left only while the mix is in ``open_voting`` (frozen at close).
+Reading is gated by mix state: while voting is open a member sees only their
 own notes (others' stay hidden so notes can't sway votes, MYS-67); the full set
-is revealed once the round is closed.
+is revealed once the mix is closed.
 Self-notes are allowed, and every submission is eligible regardless of its
 ``participation_mode`` (playing or vibing) — a vibing player who can't vote
 leaves notes instead. There is no per-author cap: multiple notes per author per

@@ -86,16 +86,16 @@ async def _join_via_invite(db: AsyncSession, user_id: uuid.UUID, invite: Invite)
 
 
 class InvitePreviewResponse(WireModel):
-    # Null for a platform (league-less) invite (MYS-182) — grants signup only,
-    # no league to preview.
+    # Null for a platform (club-less) invite (MYS-182) — grants signup only,
+    # no club to preview.
     league_id: uuid.UUID | None
     league_name: str | None
     member_count: int | None
     # True when the (optionally authenticated) caller is already an active
-    # member of this league. The frontend redirects straight into the league
+    # member of this club. The frontend redirects straight into the club
     # rather than showing the join screen — most useful on an expired link,
     # which would otherwise 410 before a legitimate member ever sees it
-    # (MYS-181). Always false for a platform invite — there's no league to be
+    # (MYS-181). Always false for a platform invite — there's no club to be
     # a member of.
     already_member: bool = False
 

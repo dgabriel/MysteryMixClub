@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     # UUID of the app user whose spotify_connections row is the shared/dedicated
     # MysteryMixClub Spotify account (MYS-169). Spotify's Development Mode caps
     # the app at ~25 allowlisted accounts, so per-user OAuth playlist creation
-    # (MYS-83) is dormant: every round's playlist is created PUBLIC by this one
+    # (MYS-83) is dormant: every mix's playlist is created PUBLIC by this one
     # account and shared as a link. Empty = playlist generation is unavailable.
     spotify_playlist_account_user_id: str = Field(default="")
     # Apple Music developer-token credentials (MYS-104/MYS-105). Server-side only:

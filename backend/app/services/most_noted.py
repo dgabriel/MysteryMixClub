@@ -6,13 +6,13 @@ function only: it is NOT wired to any route here. MYS-23 will call it from the
 mix results endpoint (``GET /mixes/:id/results``).
 
 Semantics (product decisions for MYS-21):
-- Notes are counted raw, per submission, across the whole round.
+- Notes are counted raw, per submission, across the whole mix.
 - Most Noted is the submission(s) at the maximum note count.
 - Ties recognize ALL submissions at the max (no tiebreaker) — every winner is
   returned.
 - Eligibility is participation-mode-agnostic: playing and vibing submissions
   alike can be Most Noted.
-- A round with zero notes has no Most Noted: ``winners`` is empty and
+- A mix with zero notes has no Most Noted: ``winners`` is empty and
   ``note_count`` is ``0``.
 """
 

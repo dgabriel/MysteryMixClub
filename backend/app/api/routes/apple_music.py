@@ -106,7 +106,7 @@ async def get_developer_token(
         return DeveloperTokenResponse(token=await client.developer_token())
     except AppleMusicTokenError:
         # Configured but unsignable (malformed key, mid-rotation) — same quiet
-        # "unavailable" as unconfigured rather than a 500 on the round page.
+        # "unavailable" as unconfigured rather than a 500 on the mix page.
         return DeveloperTokenResponse(token=None)
 
 

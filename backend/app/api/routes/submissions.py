@@ -1,14 +1,14 @@
 """Song submission endpoints (MYS-51).
 
-Puts songs — picked via the search/resolve flow — into a round. A player may hold
-up to the league's ``songs_per_submission`` cap (MYS-116); at cap 1 this is the
-classic one-song-per-round behavior.
+Puts songs — picked via the search/resolve flow — into a mystery mix. A player
+may hold up to the club's ``songs_per_submission`` cap (MYS-116); at cap 1 this
+is the classic one-song-per-mix behavior.
 
-* ``POST   /api/v1/rounds/:id/submissions``       — add a song (up to the cap)
-* ``PATCH  /api/v1/rounds/:id/submissions/:sid``  — replace one of your songs
-* ``DELETE /api/v1/rounds/:id/submissions/:sid``  — remove one of your songs
-* ``GET    /api/v1/rounds/:id/submissions/mine``  — your songs for the round
-* ``GET    /api/v1/rounds/:id/submissions``       — all submissions (after close only)
+* ``POST   /api/v1/mixes/:id/submissions``       — add a song (up to the cap)
+* ``PATCH  /api/v1/mixes/:id/submissions/:sid``  — replace one of your songs
+* ``DELETE /api/v1/mixes/:id/submissions/:sid``  — remove one of your songs
+* ``GET    /api/v1/mixes/:id/submissions/mine``  — your songs for the mix
+* ``GET    /api/v1/mixes/:id/submissions``       — all submissions (after close only)
 
 The canonical track fields (isrc/title/artist/album/art) come from the client's
 prior search/resolve call; the server additionally assembles cross-service
@@ -16,8 +16,8 @@ platform links (keyless) and persists them as ``submissions.platform_links`` for
 playlist/playback. The assembler always returns at least open-on-service deep
 links, so a transient upstream hiccup never blocks the submission.
 
-``participation_mode`` (just-vibing) is a per-player stance for the round, not a
-per-song one: it is kept uniform across all of a player's songs (MYS-112/116).
+``participation_mode`` (just-vibing) is a per-player stance for the mystery mix,
+not a per-song one: it is kept uniform across all of a player's songs (MYS-112/116).
 """
 
 import uuid

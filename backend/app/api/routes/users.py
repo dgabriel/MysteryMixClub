@@ -216,8 +216,8 @@ async def update_me(
     return _to_profile(current_user, settings)
 
 
-# Calm, actionable detail when the caller still organizes a live league.
-_ACTIVE_LEAGUE_BLOCK = "finish or hand off the clubs you organize before deleting your account"
+# Calm, actionable detail when the caller still organizes a live club.
+_ACTIVE_CLUB_BLOCK = "finish or hand off the clubs you organize before deleting your account"
 
 
 @router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
@@ -242,7 +242,7 @@ async def delete_me(
     if organizes_active:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=_ACTIVE_LEAGUE_BLOCK,
+            detail=_ACTIVE_CLUB_BLOCK,
         )
 
     now = datetime.now(timezone.utc)

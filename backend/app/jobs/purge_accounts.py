@@ -2,7 +2,7 @@
 
 DELETE /users/me soft-deletes an account: it sets ``users.deleted_at`` and
 tombstones the email, but leaves submissions/votes/notes/memberships intact so
-the 30-day window keeps round history readable. This job finishes the job — it
+the 30-day window keeps mix history readable. This job finishes the job — it
 hard-deletes every account whose ``deleted_at`` is older than the retention
 window, cascading to all personal data in FK-safe order.
 

@@ -122,6 +122,59 @@ describe("AppleMusicPlaylist", () => {
     uaSpy.mockRestore();
   });
 
+  it("treats a multi-touch \"Macintosh\" as an iPad, not a real desktop", async () => {
+    // iPadOS Safari reports as "Macintosh" (Apple dropped the iPad UA marker
+    // around iOS 13 to unify with desktop Safari), so a touch-capable "Mac" is
+    // the standard tell for a real iPad rather than a desktop machine.
+    // jsdom's navigator has no maxTouchPoints property at all (unlike a real
+    // browser), so vi.spyOn (which requires an existing property) can't be
+    // used here — define it directly and remove it again after.
+    const uaSpy = vi
+      .spyOn(window.navigator, "userAgent", "get")
+      .mockReturnValue(
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/605.1.15",
+      );
+    Object.defineProperty(window.navigator, "maxTouchPoints", { value: 5, configurable: true });
+    mockLink.mockResolvedValue({
+      playlist_url: "https://music.apple.com/library",
+      direct_playlist_url: "https://music.apple.com/library/playlist/p.ABC",
+      playlist_name: "Mix: Mix 1",
+    });
+
+    render(<AppleMusicPlaylist mixId="r1" />);
+
+    const link = await screen.findByRole("link", { name: /open apple music library/i });
+    expect(link).toHaveAttribute("href", "https://music.apple.com/library");
+    expect(
+      screen.getByText(/go to your Apple Music playlists and look for/i),
+    ).toBeInTheDocument();
+
+    uaSpy.mockRestore();
+    delete (window.navigator as { maxTouchPoints?: number }).maxTouchPoints;
+  });
+
+  it("does not treat a non-touch Mac as an iPad", async () => {
+    const uaSpy = vi
+      .spyOn(window.navigator, "userAgent", "get")
+      .mockReturnValue(
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/605.1.15",
+      );
+    Object.defineProperty(window.navigator, "maxTouchPoints", { value: 0, configurable: true });
+    mockLink.mockResolvedValue({
+      playlist_url: "https://music.apple.com/library",
+      direct_playlist_url: "https://music.apple.com/library/playlist/p.ABC",
+      playlist_name: "Mix: Mix 1",
+    });
+
+    render(<AppleMusicPlaylist mixId="r1" />);
+
+    const link = await screen.findByRole("link", { name: /open in apple music/i });
+    expect(link).toHaveAttribute("href", "https://music.apple.com/library/playlist/p.ABC");
+
+    uaSpy.mockRestore();
+    delete (window.navigator as { maxTouchPoints?: number }).maxTouchPoints;
+  });
+
   it("authorizes then generates, and surfaces the resulting link", async () => {
     mockCreate.mockResolvedValue({
       playlist_url: "https://music.apple.com/library",

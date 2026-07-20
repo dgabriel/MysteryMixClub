@@ -1,7 +1,7 @@
-"""Tests for GET /api/v1/clubs/{league_id}/leaderboard (MYS-157).
+"""Tests for GET /api/v1/clubs/{club_id}/leaderboard (MYS-157).
 
 Covers: auth (401), not-found (404), non-member (403), happy-path ranking,
-tie-breaking, 0-vote members, exclusion of open-round votes, and exclusion of
+tie-breaking, 0-vote members, exclusion of open-mix votes, and exclusion of
 removed members.
 """
 
@@ -30,19 +30,19 @@ async def _seed_user(db_session, email: str, name: str) -> User:
     return user
 
 
-async def _seed_league(db_session, organizer: User) -> Club:
-    league = Club(name="Test Club", organizer_id=organizer.id, total_mixes=6, votes_per_player=3)
-    db_session.add(league)
+async def _seed_club(db_session, organizer: User) -> Club:
+    club = Club(name="Test Club", organizer_id=organizer.id, total_mixes=6, votes_per_player=3)
+    db_session.add(club)
     await db_session.flush()
-    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id))
+    db_session.add(ClubMember(club_id=club.id, user_id=organizer.id))
     await db_session.commit()
-    await db_session.refresh(league)
-    return league
+    await db_session.refresh(club)
+    return club
 
 
-async def _add_member(db_session, league: Club, user: User, *, removed: bool = False) -> None:
+async def _add_member(db_session, club: Club, user: User, *, removed: bool = False) -> None:
     m = ClubMember(
-        club_id=league.id,
+        club_id=club.id,
         user_id=user.id,
         removed_at=datetime.now(timezone.utc) if removed else None,
     )
@@ -50,17 +50,17 @@ async def _add_member(db_session, league: Club, user: User, *, removed: bool = F
     await db_session.commit()
 
 
-async def _seed_round(db_session, league: Club, *, state: str = "closed") -> Mix:
-    r = Mix(club_id=league.id, mix_number=1, theme="theme", state=state)
+async def _seed_mix(db_session, club: Club, *, state: str = "closed") -> Mix:
+    r = Mix(club_id=club.id, mix_number=1, theme="theme", state=state)
     db_session.add(r)
     await db_session.commit()
     await db_session.refresh(r)
     return r
 
 
-async def _seed_submission(db_session, round_: Mix, user: User) -> Submission:
+async def _seed_submission(db_session, mix_: Mix, user: User) -> Submission:
     sub = Submission(
-        mix_id=round_.id,
+        mix_id=mix_.id,
         user_id=user.id,
         isrc="USABC1234567",
         title="Song",
@@ -73,8 +73,8 @@ async def _seed_submission(db_session, round_: Mix, user: User) -> Submission:
     return sub
 
 
-async def _seed_vote(db_session, round_: Mix, voter: User, submission: Submission) -> None:
-    db_session.add(Vote(mix_id=round_.id, voter_id=voter.id, submission_id=submission.id))
+async def _seed_vote(db_session, mix_: Mix, voter: User, submission: Submission) -> None:
+    db_session.add(Vote(mix_id=mix_.id, voter_id=voter.id, submission_id=submission.id))
     await db_session.commit()
 
 
@@ -82,8 +82,8 @@ def _auth(user_id: uuid.UUID) -> dict[str, str]:
     return {"Authorization": f"Bearer {create_access_token(user_id)}"}
 
 
-def _url(league_id) -> str:
-    return f"/api/v1/clubs/{league_id}/leaderboard"
+def _url(club_id) -> str:
+    return f"/api/v1/clubs/{club_id}/leaderboard"
 
 
 # --------------------------------------------------------------------------- #
@@ -93,14 +93,14 @@ def _url(league_id) -> str:
 
 async def test_unauthenticated_returns_401(client, db_session):
     organizer = await _seed_user(db_session, "org@x.com", "Org")
-    league = await _seed_league(db_session, organizer)
+    club = await _seed_club(db_session, organizer)
 
-    resp = await client.get(_url(league.id))
+    resp = await client.get(_url(club.id))
 
     assert resp.status_code == 401
 
 
-async def test_unknown_league_returns_404(client, db_session):
+async def test_unknown_club_returns_404(client, db_session):
     user = await _seed_user(db_session, "u@x.com", "User")
 
     resp = await client.get(_url(uuid.uuid4()), headers=_auth(user.id))
@@ -110,10 +110,10 @@ async def test_unknown_league_returns_404(client, db_session):
 
 async def test_non_member_returns_403(client, db_session):
     organizer = await _seed_user(db_session, "org@x.com", "Org")
-    league = await _seed_league(db_session, organizer)
+    club = await _seed_club(db_session, organizer)
     stranger = await _seed_user(db_session, "stranger@x.com", "Stranger")
 
-    resp = await client.get(_url(league.id), headers=_auth(stranger.id))
+    resp = await client.get(_url(club.id), headers=_auth(stranger.id))
 
     assert resp.status_code == 403
 
@@ -125,9 +125,9 @@ async def test_non_member_returns_403(client, db_session):
 
 async def test_response_has_required_keys(client, db_session):
     organizer = await _seed_user(db_session, "org@x.com", "Org")
-    league = await _seed_league(db_session, organizer)
+    club = await _seed_club(db_session, organizer)
 
-    resp = await client.get(_url(league.id), headers=_auth(organizer.id))
+    resp = await client.get(_url(club.id), headers=_auth(organizer.id))
 
     assert resp.status_code == 200
     entry = resp.json()[0]
@@ -143,20 +143,20 @@ async def test_members_ranked_by_votes_descending(client, db_session):
     organizer = await _seed_user(db_session, "org@x.com", "Org")
     alice = await _seed_user(db_session, "alice@x.com", "Alice")
     bob = await _seed_user(db_session, "bob@x.com", "Bob")
-    league = await _seed_league(db_session, organizer)
-    await _add_member(db_session, league, alice)
-    await _add_member(db_session, league, bob)
+    club = await _seed_club(db_session, organizer)
+    await _add_member(db_session, club, alice)
+    await _add_member(db_session, club, bob)
 
-    round_ = await _seed_round(db_session, league, state="closed")
-    alice_sub = await _seed_submission(db_session, round_, alice)
-    bob_sub = await _seed_submission(db_session, round_, bob)
+    mix_ = await _seed_mix(db_session, club, state="closed")
+    alice_sub = await _seed_submission(db_session, mix_, alice)
+    bob_sub = await _seed_submission(db_session, mix_, bob)
 
     # Alice gets 2 votes, Bob gets 1.
-    await _seed_vote(db_session, round_, organizer, alice_sub)
-    await _seed_vote(db_session, round_, bob, alice_sub)
-    await _seed_vote(db_session, round_, alice, bob_sub)
+    await _seed_vote(db_session, mix_, organizer, alice_sub)
+    await _seed_vote(db_session, mix_, bob, alice_sub)
+    await _seed_vote(db_session, mix_, alice, bob_sub)
 
-    resp = await client.get(_url(league.id), headers=_auth(organizer.id))
+    resp = await client.get(_url(club.id), headers=_auth(organizer.id))
     data = resp.json()
 
     assert resp.status_code == 200
@@ -172,11 +172,11 @@ async def test_members_ranked_by_votes_descending(client, db_session):
 async def test_zero_vote_members_included(client, db_session):
     organizer = await _seed_user(db_session, "org@x.com", "Org")
     alice = await _seed_user(db_session, "alice@x.com", "Alice")
-    league = await _seed_league(db_session, organizer)
-    await _add_member(db_session, league, alice)
+    club = await _seed_club(db_session, organizer)
+    await _add_member(db_session, club, alice)
 
-    # No rounds, no votes — alice and organizer both show 0
-    resp = await client.get(_url(league.id), headers=_auth(organizer.id))
+    # No mixes, no votes — alice and organizer both show 0
+    resp = await client.get(_url(club.id), headers=_auth(organizer.id))
     data = resp.json()
 
     assert resp.status_code == 200
@@ -184,21 +184,21 @@ async def test_zero_vote_members_included(client, db_session):
     assert all(e["vote_count"] == 0 for e in data)
 
 
-async def test_open_round_votes_excluded(client, db_session):
+async def test_open_mix_votes_excluded(client, db_session):
     organizer = await _seed_user(db_session, "org@x.com", "Org")
     alice = await _seed_user(db_session, "alice@x.com", "Alice")
-    league = await _seed_league(db_session, organizer)
-    await _add_member(db_session, league, alice)
+    club = await _seed_club(db_session, organizer)
+    await _add_member(db_session, club, alice)
 
-    open_round = await _seed_round(db_session, league, state="open_voting")
-    alice_sub = await _seed_submission(db_session, open_round, alice)
-    await _seed_vote(db_session, open_round, organizer, alice_sub)
+    open_mix = await _seed_mix(db_session, club, state="open_voting")
+    alice_sub = await _seed_submission(db_session, open_mix, alice)
+    await _seed_vote(db_session, open_mix, organizer, alice_sub)
 
-    resp = await client.get(_url(league.id), headers=_auth(organizer.id))
+    resp = await client.get(_url(club.id), headers=_auth(organizer.id))
     data = resp.json()
 
     assert resp.status_code == 200
-    # Votes from open_voting round must not count.
+    # Votes from open_voting mix must not count.
     assert all(e["vote_count"] == 0 for e in data)
 
 
@@ -206,17 +206,17 @@ async def test_ties_broken_alphabetically(client, db_session):
     organizer = await _seed_user(db_session, "org@x.com", "Zara")
     alice = await _seed_user(db_session, "alice@x.com", "Alice")
     bob = await _seed_user(db_session, "bob@x.com", "Bob")
-    league = await _seed_league(db_session, organizer)
-    await _add_member(db_session, league, alice)
-    await _add_member(db_session, league, bob)
+    club = await _seed_club(db_session, organizer)
+    await _add_member(db_session, club, alice)
+    await _add_member(db_session, club, bob)
 
-    round_ = await _seed_round(db_session, league, state="closed")
-    alice_sub = await _seed_submission(db_session, round_, alice)
-    bob_sub = await _seed_submission(db_session, round_, bob)
-    await _seed_vote(db_session, round_, organizer, alice_sub)
-    await _seed_vote(db_session, round_, organizer, bob_sub)
+    mix_ = await _seed_mix(db_session, club, state="closed")
+    alice_sub = await _seed_submission(db_session, mix_, alice)
+    bob_sub = await _seed_submission(db_session, mix_, bob)
+    await _seed_vote(db_session, mix_, organizer, alice_sub)
+    await _seed_vote(db_session, mix_, organizer, bob_sub)
 
-    resp = await client.get(_url(league.id), headers=_auth(organizer.id))
+    resp = await client.get(_url(club.id), headers=_auth(organizer.id))
     data = resp.json()
 
     assert resp.status_code == 200
@@ -230,10 +230,10 @@ async def test_ties_broken_alphabetically(client, db_session):
 async def test_removed_members_excluded(client, db_session):
     organizer = await _seed_user(db_session, "org@x.com", "Org")
     gone = await _seed_user(db_session, "gone@x.com", "Gone")
-    league = await _seed_league(db_session, organizer)
-    await _add_member(db_session, league, gone, removed=True)
+    club = await _seed_club(db_session, organizer)
+    await _add_member(db_session, club, gone, removed=True)
 
-    resp = await client.get(_url(league.id), headers=_auth(organizer.id))
+    resp = await client.get(_url(club.id), headers=_auth(organizer.id))
     data = resp.json()
 
     assert resp.status_code == 200
@@ -241,14 +241,14 @@ async def test_removed_members_excluded(client, db_session):
     assert "Gone" not in names
 
 
-async def test_votes_aggregate_across_multiple_closed_rounds(client, db_session):
+async def test_votes_aggregate_across_multiple_closed_mixes(client, db_session):
     organizer = await _seed_user(db_session, "org@x.com", "Org")
     alice = await _seed_user(db_session, "alice@x.com", "Alice")
-    league = await _seed_league(db_session, organizer)
-    await _add_member(db_session, league, alice)
+    club = await _seed_club(db_session, organizer)
+    await _add_member(db_session, club, alice)
 
-    r1 = await _seed_round(db_session, league, state="closed")
-    r2 = Mix(club_id=league.id, mix_number=2, theme="r2", state="closed")
+    r1 = await _seed_mix(db_session, club, state="closed")
+    r2 = Mix(club_id=club.id, mix_number=2, theme="r2", state="closed")
     db_session.add(r2)
     await db_session.commit()
     await db_session.refresh(r2)
@@ -258,7 +258,7 @@ async def test_votes_aggregate_across_multiple_closed_rounds(client, db_session)
     await _seed_vote(db_session, r1, organizer, sub1)
     await _seed_vote(db_session, r2, organizer, sub2)
 
-    resp = await client.get(_url(league.id), headers=_auth(organizer.id))
+    resp = await client.get(_url(club.id), headers=_auth(organizer.id))
     data = resp.json()
 
     assert resp.status_code == 200

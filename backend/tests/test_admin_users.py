@@ -213,24 +213,24 @@ async def test_delete_hard_deletes_user_and_all_personal_data(client, db_session
     organizer = await _seed_user(db_session, "org@example.com", name="Org")
     target = await _seed_user(db_session, "bad@example.com", name="BadActor")
 
-    # A league owned by the organizer, with the target as a member, plus a round
+    # A club owned by the organizer, with the target as a member, plus a mix
     # in which the target submitted, voted, and left a note.
-    league = Club(
+    club = Club(
         name="A Club",
         organizer_id=organizer.id,
         total_mixes=3,
         votes_per_player=3,
         state="active",
     )
-    db_session.add(league)
+    db_session.add(club)
     await db_session.flush()
-    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id))
-    db_session.add(ClubMember(club_id=league.id, user_id=target.id))
-    round_ = Mix(club_id=league.id, mix_number=1, theme="t", state="closed")
-    db_session.add(round_)
+    db_session.add(ClubMember(club_id=club.id, user_id=organizer.id))
+    db_session.add(ClubMember(club_id=club.id, user_id=target.id))
+    mix_ = Mix(club_id=club.id, mix_number=1, theme="t", state="closed")
+    db_session.add(mix_)
     await db_session.flush()
     submission = Submission(
-        mix_id=round_.id,
+        mix_id=mix_.id,
         user_id=target.id,
         isrc="USABC1234567",
         title="song",
@@ -239,10 +239,10 @@ async def test_delete_hard_deletes_user_and_all_personal_data(client, db_session
     )
     db_session.add(submission)
     await db_session.flush()
-    db_session.add(Vote(mix_id=round_.id, voter_id=target.id, submission_id=submission.id))
+    db_session.add(Vote(mix_id=mix_.id, voter_id=target.id, submission_id=submission.id))
     db_session.add(
         Note(
-            mix_id=round_.id,
+            mix_id=mix_.id,
             author_id=target.id,
             submission_id=submission.id,
             body="a note",
@@ -258,7 +258,7 @@ async def test_delete_hard_deletes_user_and_all_personal_data(client, db_session
     )
     db_session.add(
         Invite(
-            club_id=league.id,
+            club_id=club.id,
             created_by=target.id,
             token="tok_" + uuid.uuid4().hex,
         )
@@ -285,34 +285,34 @@ async def test_delete_hard_deletes_user_and_all_personal_data(client, db_session
     assert await _count(db_session, Invite, created_by=target_id) == 0
     # No orphaned vote/note pointing at the deleted submission.
     assert await _count(db_session, Vote, submission_id=submission_id) == 0
-    # Co-members are untouched; the organizer and league survive.
+    # Co-members are untouched; the organizer and club survive.
     assert await _count(db_session, User, id=organizer_id) == 1
     assert await _count(db_session, ClubMember, user_id=organizer_id) == 1
 
 
-async def test_delete_nulls_organizer_fk_on_targets_leagues(client, db_session):
-    # If the bad actor organized a league, the league survives with organizer_id
+async def test_delete_nulls_organizer_fk_on_targets_clubs(client, db_session):
+    # If the bad actor organized a club, the club survives with organizer_id
     # nulled (mirrors the purge job), rather than being deleted.
     admin = await _seed_admin(db_session)
     target = await _seed_user(db_session, "bad@example.com")
-    league = Club(
+    club = Club(
         name="Orphaned Club",
         organizer_id=target.id,
         total_mixes=3,
         votes_per_player=3,
         state="complete",
     )
-    db_session.add(league)
+    db_session.add(club)
     await db_session.flush()
-    db_session.add(ClubMember(club_id=league.id, user_id=target.id))
+    db_session.add(ClubMember(club_id=club.id, user_id=target.id))
     await db_session.commit()
 
-    league_id = league.id
+    club_id = club.id
 
     resp = await client.delete(_delete_url(target.id), headers=_auth_header(admin.id))
     assert resp.status_code == 204, resp.text
 
     db_session.expire_all()
-    surviving = await db_session.scalar(select(Club).where(Club.id == league_id))
+    surviving = await db_session.scalar(select(Club).where(Club.id == club_id))
     assert surviving is not None
     assert surviving.organizer_id is None

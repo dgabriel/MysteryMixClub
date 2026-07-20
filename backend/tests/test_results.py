@@ -1,14 +1,14 @@
-"""Tests for MYS-23: round results endpoint.
+"""Tests for MYS-23: mix results endpoint.
 
 ``GET /api/v1/mixes/:id/results`` is the read-only reveal that surfaces, once a
-round is closed: every submission with its submitter revealed and vote tally,
+mix is closed: every submission with its submitter revealed and vote tally,
 per-submission notes, a leaderboard of playing players, and the Most Noted
 result (reusing ``compute_most_noted``).
 
-Gates covered: 401 unauth, 404 unknown round, 403 non-member, 409 while the
-round is still ``open_submission`` or ``open_voting``.
+Gates covered: 401 unauth, 404 unknown mix, 403 non-member, 409 while the
+mix is still ``open_submission`` or ``open_voting``.
 
-Happy-path coverage (closed round, multi-member league with submissions, votes,
+Happy-path coverage (closed mix, multi-member club with submissions, votes,
 and notes): full submission list ordering and vote counts, per-submission note
 ordering, leaderboard membership/ordering/ranks, and Most Noted (clear winner,
 empty case, and the mode-agnostic vibing-winner case).
@@ -45,31 +45,31 @@ async def _seed_user(db_session, email: str, name: str) -> User:
     return user
 
 
-async def _seed_league_with_round(db_session, organizer: User, *, state: str = "closed") -> Mix:
-    league = Club(name="L", organizer_id=organizer.id, total_mixes=3, votes_per_player=3)
-    db_session.add(league)
+async def _seed_club_with_mix(db_session, organizer: User, *, state: str = "closed") -> Mix:
+    club = Club(name="L", organizer_id=organizer.id, total_mixes=3, votes_per_player=3)
+    db_session.add(club)
     await db_session.flush()
-    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id))
-    round_ = Mix(
-        club_id=league.id,
+    db_session.add(ClubMember(club_id=club.id, user_id=organizer.id))
+    mix_ = Mix(
+        club_id=club.id,
         mix_number=1,
         theme="late summer feels",
         state=state,
     )
-    db_session.add(round_)
+    db_session.add(mix_)
     await db_session.commit()
-    await db_session.refresh(round_)
-    return round_
+    await db_session.refresh(mix_)
+    return mix_
 
 
-async def _add_member(db_session, league_id: uuid.UUID, user: User) -> None:
-    db_session.add(ClubMember(club_id=league_id, user_id=user.id))
+async def _add_member(db_session, club_id: uuid.UUID, user: User) -> None:
+    db_session.add(ClubMember(club_id=club_id, user_id=user.id))
     await db_session.commit()
 
 
 async def _seed_submission(
     db_session,
-    round_: Mix,
+    mix_: Mix,
     user: User,
     *,
     title: str = "song",
@@ -80,7 +80,7 @@ async def _seed_submission(
     source_key: str | None = None,
 ) -> Submission:
     sub = Submission(
-        mix_id=round_.id,
+        mix_id=mix_.id,
         user_id=user.id,
         isrc=isrc,
         source_key=source_key,
@@ -97,14 +97,14 @@ async def _seed_submission(
     return sub
 
 
-async def _seed_vote(db_session, round_id, voter: User, submission: Submission) -> None:
-    db_session.add(Vote(mix_id=round_id, voter_id=voter.id, submission_id=submission.id))
+async def _seed_vote(db_session, mix_id, voter: User, submission: Submission) -> None:
+    db_session.add(Vote(mix_id=mix_id, voter_id=voter.id, submission_id=submission.id))
     await db_session.commit()
 
 
 async def _seed_note(
     db_session,
-    round_id,
+    mix_id,
     author: User,
     submission: Submission,
     *,
@@ -112,7 +112,7 @@ async def _seed_note(
     created_at: datetime | None = None,
 ) -> None:
     note = Note(
-        mix_id=round_id,
+        mix_id=mix_id,
         author_id=author.id,
         submission_id=submission.id,
         body=body,
@@ -127,8 +127,8 @@ def _auth(user_id: uuid.UUID) -> dict[str, str]:
     return {"Authorization": f"Bearer {create_access_token(user_id)}"}
 
 
-def _url(round_id) -> str:
-    return f"/api/v1/mixes/{round_id}/results"
+def _url(mix_id) -> str:
+    return f"/api/v1/mixes/{mix_id}/results"
 
 
 # --------------------------------------------------------------------------- #
@@ -138,14 +138,14 @@ def _url(round_id) -> str:
 
 async def test_results_requires_auth(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com", "Org")
-    round_ = await _seed_league_with_round(db_session, organizer)
-    resp = await client.get(_url(round_.id))
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    resp = await client.get(_url(mix_.id))
     assert resp.status_code == 401
 
 
-async def test_results_unknown_round_404(client, db_session):
+async def test_results_unknown_mix_404(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com", "Org")
-    await _seed_league_with_round(db_session, organizer)
+    await _seed_club_with_mix(db_session, organizer)
     resp = await client.get(_url(uuid.uuid4()), headers=_auth(organizer.id))
     assert resp.status_code == 404
     assert resp.json()["detail"] == "mystery mix not found"
@@ -154,24 +154,24 @@ async def test_results_unknown_round_404(client, db_session):
 async def test_results_non_member_403(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com", "Org")
     outsider = await _seed_user(db_session, "x@example.com", "Out")
-    round_ = await _seed_league_with_round(db_session, organizer)
-    resp = await client.get(_url(round_.id), headers=_auth(outsider.id))
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    resp = await client.get(_url(mix_.id), headers=_auth(outsider.id))
     assert resp.status_code == 403
     assert resp.json()["detail"] == "you are not a member of this club"
 
 
 async def test_results_open_submission_409(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com", "Org")
-    round_ = await _seed_league_with_round(db_session, organizer, state="open_submission")
-    resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+    mix_ = await _seed_club_with_mix(db_session, organizer, state="open_submission")
+    resp = await client.get(_url(mix_.id), headers=_auth(organizer.id))
     assert resp.status_code == 409
     assert resp.json()["detail"] == "results are available once the mystery mix closes"
 
 
 async def test_results_open_voting_409(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com", "Org")
-    round_ = await _seed_league_with_round(db_session, organizer, state="open_voting")
-    resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+    mix_ = await _seed_club_with_mix(db_session, organizer, state="open_voting")
+    resp = await client.get(_url(mix_.id), headers=_auth(organizer.id))
     assert resp.status_code == 409
     assert resp.json()["detail"] == "results are available once the mystery mix closes"
 
@@ -187,29 +187,29 @@ async def test_results_full_submissions_revealed_and_ordered(client, db_session)
     alice = await _seed_user(db_session, "a@example.com", "Alice")
     bob = await _seed_user(db_session, "b@example.com", "Bob")
     carol = await _seed_user(db_session, "c@example.com", "Carol")
-    round_ = await _seed_league_with_round(db_session, organizer)
-    round_id = round_.id
-    league_id = round_.club_id
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    mix_id = mix_.id
+    club_id = mix_.club_id
     for u in (alice, bob, carol):
-        await _add_member(db_session, league_id, u)
+        await _add_member(db_session, club_id, u)
 
     # Alice: 2 votes; Bob: 1 vote; Carol: 0 votes.
-    s_alice = await _seed_submission(db_session, round_, alice, title="Banana")
-    s_bob = await _seed_submission(db_session, round_, bob, title="Apple")
-    s_carol = await _seed_submission(db_session, round_, carol, title="Cherry")
+    s_alice = await _seed_submission(db_session, mix_, alice, title="Banana")
+    s_bob = await _seed_submission(db_session, mix_, bob, title="Apple")
+    s_carol = await _seed_submission(db_session, mix_, carol, title="Cherry")
 
-    await _seed_vote(db_session, round_id, bob, s_alice)
-    await _seed_vote(db_session, round_id, carol, s_alice)
-    await _seed_vote(db_session, round_id, alice, s_bob)
+    await _seed_vote(db_session, mix_id, bob, s_alice)
+    await _seed_vote(db_session, mix_id, carol, s_alice)
+    await _seed_vote(db_session, mix_id, alice, s_bob)
 
     s_alice_id, s_bob_id, s_carol_id = s_alice.id, s_bob.id, s_carol.id
     alice_id, bob_id, carol_id = alice.id, bob.id, carol.id
 
-    resp = await client.get(_url(round_id), headers=_auth(organizer.id))
+    resp = await client.get(_url(mix_id), headers=_auth(organizer.id))
     assert resp.status_code == 200, resp.text
     body = resp.json()
 
-    assert body["mix_id"] == str(round_id)
+    assert body["mix_id"] == str(mix_id)
     assert body["mix_number"] == 1
     assert body["theme"] == "late summer feels"
     assert body["state"] == "closed"
@@ -239,27 +239,27 @@ async def test_results_full_submissions_revealed_and_ordered(client, db_session)
 
 
 async def test_results_voters_named_per_submission_and_sorted(client, db_session):
-    """MYS-173: closed-round results name who voted for each song, sorted by
+    """MYS-173: closed-mix results name who voted for each song, sorted by
     display name. A zero-vote submission gets an empty voters list."""
     organizer = await _seed_user(db_session, "o@example.com", "Org")
     alice = await _seed_user(db_session, "a@example.com", "Alice")
     bob = await _seed_user(db_session, "b@example.com", "Bob")
     carol = await _seed_user(db_session, "c@example.com", "Carol")
-    round_ = await _seed_league_with_round(db_session, organizer)
-    round_id = round_.id
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    mix_id = mix_.id
     for u in (alice, bob, carol):
-        await _add_member(db_session, round_.club_id, u)
+        await _add_member(db_session, mix_.club_id, u)
 
-    s_alice = await _seed_submission(db_session, round_, alice, title="Banana")
-    s_bob = await _seed_submission(db_session, round_, bob, title="Apple")
+    s_alice = await _seed_submission(db_session, mix_, alice, title="Banana")
+    s_bob = await _seed_submission(db_session, mix_, bob, title="Apple")
     s_alice_id, s_bob_id = s_alice.id, s_bob.id
     bob_id, carol_id = bob.id, carol.id
 
     # Carol and Bob vote for Alice's song; nobody votes for Bob's.
-    await _seed_vote(db_session, round_id, carol, s_alice)
-    await _seed_vote(db_session, round_id, bob, s_alice)
+    await _seed_vote(db_session, mix_id, carol, s_alice)
+    await _seed_vote(db_session, mix_id, bob, s_alice)
 
-    resp = await client.get(_url(round_id), headers=_auth(organizer.id))
+    resp = await client.get(_url(mix_id), headers=_auth(organizer.id))
     assert resp.status_code == 200, resp.text
     subs = {s["submission_id"]: s for s in resp.json()["submissions"]}
 
@@ -276,20 +276,20 @@ async def test_results_submissions_tiebreak_title_asc(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com", "Org")
     alice = await _seed_user(db_session, "a@example.com", "Alice")
     bob = await _seed_user(db_session, "b@example.com", "Bob")
-    round_ = await _seed_league_with_round(db_session, organizer)
-    round_id = round_.id
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    mix_id = mix_.id
     for u in (alice, bob):
-        await _add_member(db_session, round_.club_id, u)
+        await _add_member(db_session, mix_.club_id, u)
 
-    s_alice = await _seed_submission(db_session, round_, alice, title="Zebra")
-    s_bob = await _seed_submission(db_session, round_, bob, title="Antelope")
+    s_alice = await _seed_submission(db_session, mix_, alice, title="Zebra")
+    s_bob = await _seed_submission(db_session, mix_, bob, title="Antelope")
     # Each gets exactly one vote (tie on count).
-    await _seed_vote(db_session, round_id, bob, s_alice)
-    await _seed_vote(db_session, round_id, alice, s_bob)
+    await _seed_vote(db_session, mix_id, bob, s_alice)
+    await _seed_vote(db_session, mix_id, alice, s_bob)
 
     s_alice_id, s_bob_id = s_alice.id, s_bob.id
 
-    resp = await client.get(_url(round_id), headers=_auth(organizer.id))
+    resp = await client.get(_url(mix_id), headers=_auth(organizer.id))
     assert resp.status_code == 200, resp.text
     subs = resp.json()["submissions"]
     # Tie on vote_count (1 each) -> title asc: "Antelope" (Bob) before "Zebra" (Alice).
@@ -305,25 +305,25 @@ async def test_results_per_submission_notes_ordered_and_authored(client, db_sess
     organizer = await _seed_user(db_session, "o@example.com", "Org")
     alice = await _seed_user(db_session, "a@example.com", "Alice")
     bob = await _seed_user(db_session, "b@example.com", "Bob")
-    round_ = await _seed_league_with_round(db_session, organizer)
-    round_id = round_.id
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    mix_id = mix_.id
     for u in (alice, bob):
-        await _add_member(db_session, round_.club_id, u)
+        await _add_member(db_session, mix_.club_id, u)
 
-    s_alice = await _seed_submission(db_session, round_, alice, title="Song A")
+    s_alice = await _seed_submission(db_session, mix_, alice, title="Song A")
     s_alice_id = s_alice.id
 
     base = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
     # Insert out of chronological order; results must return them created_at asc.
     await _seed_note(
-        db_session, round_id, bob, s_alice, body="second", created_at=base + timedelta(minutes=10)
+        db_session, mix_id, bob, s_alice, body="second", created_at=base + timedelta(minutes=10)
     )
-    await _seed_note(db_session, round_id, organizer, s_alice, body="first", created_at=base)
+    await _seed_note(db_session, mix_id, organizer, s_alice, body="first", created_at=base)
     await _seed_note(
-        db_session, round_id, alice, s_alice, body="third", created_at=base + timedelta(minutes=20)
+        db_session, mix_id, alice, s_alice, body="third", created_at=base + timedelta(minutes=20)
     )
 
-    resp = await client.get(_url(round_id), headers=_auth(organizer.id))
+    resp = await client.get(_url(mix_id), headers=_auth(organizer.id))
     assert resp.status_code == 200, resp.text
     subs = {s["submission_id"]: s for s in resp.json()["submissions"]}
     notes = subs[str(s_alice_id)]["notes"]
@@ -345,28 +345,28 @@ async def test_results_leaderboard_ranks_all_submitters_including_vibers(client,
     bob = await _seed_user(db_session, "b@example.com", "Bob")
     carol = await _seed_user(db_session, "c@example.com", "Carol")
     viber = await _seed_user(db_session, "v@example.com", "Vera")
-    round_ = await _seed_league_with_round(db_session, organizer)
-    round_id = round_.id
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    mix_id = mix_.id
     for u in (alice, bob, carol, viber):
-        await _add_member(db_session, round_.club_id, u)
+        await _add_member(db_session, mix_.club_id, u)
 
-    s_alice = await _seed_submission(db_session, round_, alice, title="A-song")
-    s_bob = await _seed_submission(db_session, round_, bob, title="B-song")
-    await _seed_submission(db_session, round_, carol, title="C-song")
-    s_viber = await _seed_submission(db_session, round_, viber, title="V-song", mode="vibing")
+    s_alice = await _seed_submission(db_session, mix_, alice, title="A-song")
+    s_bob = await _seed_submission(db_session, mix_, bob, title="B-song")
+    await _seed_submission(db_session, mix_, carol, title="C-song")
+    s_viber = await _seed_submission(db_session, mix_, viber, title="V-song", mode="vibing")
 
     # Alice: 2 votes, Bob: 2 votes (tie -> display_name asc: Alice then Bob),
     # Vera (vibing): 1 vote — she competes now. Carol: 0 votes (last).
-    await _seed_vote(db_session, round_id, bob, s_alice)
-    await _seed_vote(db_session, round_id, carol, s_alice)
-    await _seed_vote(db_session, round_id, alice, s_bob)
-    await _seed_vote(db_session, round_id, carol, s_bob)
-    await _seed_vote(db_session, round_id, alice, s_viber)
+    await _seed_vote(db_session, mix_id, bob, s_alice)
+    await _seed_vote(db_session, mix_id, carol, s_alice)
+    await _seed_vote(db_session, mix_id, alice, s_bob)
+    await _seed_vote(db_session, mix_id, carol, s_bob)
+    await _seed_vote(db_session, mix_id, alice, s_viber)
 
     alice_id, bob_id, carol_id, viber_id = alice.id, bob.id, carol.id, viber.id
 
     # Viewer is the organizer (a non-submitter → player → full reveal).
-    resp = await client.get(_url(round_id), headers=_auth(organizer.id))
+    resp = await client.get(_url(mix_id), headers=_auth(organizer.id))
     assert resp.status_code == 200, resp.text
     body = resp.json()
     lb = body["leaderboard"]
@@ -391,26 +391,26 @@ async def test_results_leaderboard_sums_votes_per_player_across_songs(client, db
     organizer = await _seed_user(db_session, "o@example.com", "Org")
     alice = await _seed_user(db_session, "a@example.com", "Alice")
     bob = await _seed_user(db_session, "b@example.com", "Bob")
-    round_ = await _seed_league_with_round(db_session, organizer)
-    round_id = round_.id
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    mix_id = mix_.id
     for u in (alice, bob):
-        await _add_member(db_session, round_.club_id, u)
+        await _add_member(db_session, mix_.club_id, u)
 
     # Alice submits two songs, Bob one.
-    a1 = await _seed_submission(db_session, round_, alice, title="A-one")
-    a2 = await _seed_submission(db_session, round_, alice, title="A-two")
-    b1 = await _seed_submission(db_session, round_, bob, title="B-one")
+    a1 = await _seed_submission(db_session, mix_, alice, title="A-one")
+    a2 = await _seed_submission(db_session, mix_, alice, title="A-two")
+    b1 = await _seed_submission(db_session, mix_, bob, title="B-one")
     # Alice: a1=1 + a2=2 = 3 total; Bob: b1=2.
-    await _seed_vote(db_session, round_id, bob, a1)
-    await _seed_vote(db_session, round_id, organizer, a2)
-    await _seed_vote(db_session, round_id, bob, a2)
-    await _seed_vote(db_session, round_id, alice, b1)
-    await _seed_vote(db_session, round_id, organizer, b1)
+    await _seed_vote(db_session, mix_id, bob, a1)
+    await _seed_vote(db_session, mix_id, organizer, a2)
+    await _seed_vote(db_session, mix_id, bob, a2)
+    await _seed_vote(db_session, mix_id, alice, b1)
+    await _seed_vote(db_session, mix_id, organizer, b1)
 
     alice_id, bob_id = alice.id, bob.id
     a1_id, a2_id, b1_id = a1.id, a2.id, b1.id
 
-    resp = await client.get(_url(round_id), headers=_auth(organizer.id))
+    resp = await client.get(_url(mix_id), headers=_auth(organizer.id))
     assert resp.status_code == 200, resp.text
     body = resp.json()
 
@@ -436,24 +436,24 @@ async def test_results_most_noted_clear_winner(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com", "Org")
     alice = await _seed_user(db_session, "a@example.com", "Alice")
     bob = await _seed_user(db_session, "b@example.com", "Bob")
-    round_ = await _seed_league_with_round(db_session, organizer)
-    round_id = round_.id
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    mix_id = mix_.id
     for u in (alice, bob):
-        await _add_member(db_session, round_.club_id, u)
+        await _add_member(db_session, mix_.club_id, u)
 
-    s_alice = await _seed_submission(db_session, round_, alice, title="Winner", artist="A")
-    s_bob = await _seed_submission(db_session, round_, bob, title="Runner", artist="B")
+    s_alice = await _seed_submission(db_session, mix_, alice, title="Winner", artist="A")
+    s_bob = await _seed_submission(db_session, mix_, bob, title="Runner", artist="B")
     s_alice_id = s_alice.id
 
     base = datetime(2026, 2, 1, 9, 0, 0, tzinfo=timezone.utc)
     # Alice gets 2 notes, Bob gets 1 -> Alice is the clear Most Noted.
-    await _seed_note(db_session, round_id, bob, s_alice, body="n1", created_at=base)
+    await _seed_note(db_session, mix_id, bob, s_alice, body="n1", created_at=base)
     await _seed_note(
-        db_session, round_id, organizer, s_alice, body="n2", created_at=base + timedelta(minutes=5)
+        db_session, mix_id, organizer, s_alice, body="n2", created_at=base + timedelta(minutes=5)
     )
-    await _seed_note(db_session, round_id, alice, s_bob, body="n3", created_at=base)
+    await _seed_note(db_session, mix_id, alice, s_bob, body="n3", created_at=base)
 
-    resp = await client.get(_url(round_id), headers=_auth(organizer.id))
+    resp = await client.get(_url(mix_id), headers=_auth(organizer.id))
     assert resp.status_code == 200, resp.text
     mn = resp.json()["most_noted"]
 
@@ -471,12 +471,12 @@ async def test_results_most_noted_clear_winner(client, db_session):
 async def test_results_most_noted_empty_when_no_notes(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com", "Org")
     alice = await _seed_user(db_session, "a@example.com", "Alice")
-    round_ = await _seed_league_with_round(db_session, organizer)
-    round_id = round_.id
-    await _add_member(db_session, round_.club_id, alice)
-    await _seed_submission(db_session, round_, alice, title="Lonely")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    mix_id = mix_.id
+    await _add_member(db_session, mix_.club_id, alice)
+    await _seed_submission(db_session, mix_, alice, title="Lonely")
 
-    resp = await client.get(_url(round_id), headers=_auth(organizer.id))
+    resp = await client.get(_url(mix_id), headers=_auth(organizer.id))
     assert resp.status_code == 200, resp.text
     mn = resp.json()["most_noted"]
     assert mn["winners"] == []
@@ -493,24 +493,24 @@ async def test_results_vibing_submission_can_be_most_noted_and_on_leaderboard(cl
     organizer = await _seed_user(db_session, "o@example.com", "Org")
     alice = await _seed_user(db_session, "a@example.com", "Alice")
     viber = await _seed_user(db_session, "v@example.com", "Vera")
-    round_ = await _seed_league_with_round(db_session, organizer)
-    round_id = round_.id
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    mix_id = mix_.id
     for u in (alice, viber):
-        await _add_member(db_session, round_.club_id, u)
+        await _add_member(db_session, mix_.club_id, u)
 
-    s_alice = await _seed_submission(db_session, round_, alice, title="Played", mode="playing")
-    s_viber = await _seed_submission(db_session, round_, viber, title="Vibed", mode="vibing")
+    s_alice = await _seed_submission(db_session, mix_, alice, title="Played", mode="playing")
+    s_viber = await _seed_submission(db_session, mix_, viber, title="Vibed", mode="vibing")
     s_viber_id, viber_id = s_viber.id, viber.id
 
     base = datetime(2026, 3, 1, 8, 0, 0, tzinfo=timezone.utc)
     # Vibing submission gets the most notes (2 vs 1).
-    await _seed_note(db_session, round_id, alice, s_viber, body="v1", created_at=base)
+    await _seed_note(db_session, mix_id, alice, s_viber, body="v1", created_at=base)
     await _seed_note(
-        db_session, round_id, organizer, s_viber, body="v2", created_at=base + timedelta(minutes=2)
+        db_session, mix_id, organizer, s_viber, body="v2", created_at=base + timedelta(minutes=2)
     )
-    await _seed_note(db_session, round_id, viber, s_alice, body="a1", created_at=base)
+    await _seed_note(db_session, mix_id, viber, s_alice, body="a1", created_at=base)
 
-    resp = await client.get(_url(round_id), headers=_auth(organizer.id))
+    resp = await client.get(_url(mix_id), headers=_auth(organizer.id))
     assert resp.status_code == 200, resp.text
     body = resp.json()
 
@@ -536,22 +536,22 @@ async def test_results_vibing_viewer_gets_trimmed_reveal(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com", "Org")
     alice = await _seed_user(db_session, "a@example.com", "Alice")
     viber = await _seed_user(db_session, "v@example.com", "Vera")
-    round_ = await _seed_league_with_round(db_session, organizer)
-    round_id = round_.id
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    mix_id = mix_.id
     for u in (alice, viber):
-        await _add_member(db_session, round_.club_id, u)
+        await _add_member(db_session, mix_.club_id, u)
 
-    await _seed_submission(db_session, round_, organizer, title="Org-song")
-    s_alice = await _seed_submission(db_session, round_, alice, title="Winner")
-    s_viber = await _seed_submission(db_session, round_, viber, title="Vibed", mode="vibing")
+    await _seed_submission(db_session, mix_, organizer, title="Org-song")
+    s_alice = await _seed_submission(db_session, mix_, alice, title="Winner")
+    s_viber = await _seed_submission(db_session, mix_, viber, title="Vibed", mode="vibing")
     s_alice_id, s_viber_id = s_alice.id, s_viber.id
 
     # Alice wins the vote; a note is left on the viber's own song.
-    await _seed_vote(db_session, round_id, organizer, s_alice)
-    await _seed_vote(db_session, round_id, viber, s_alice)
-    await _seed_note(db_session, round_id, alice, s_viber, body="love this")
+    await _seed_vote(db_session, mix_id, organizer, s_alice)
+    await _seed_vote(db_session, mix_id, viber, s_alice)
+    await _seed_note(db_session, mix_id, alice, s_viber, body="love this")
 
-    resp = await client.get(_url(round_id), headers=_auth(viber.id))
+    resp = await client.get(_url(mix_id), headers=_auth(viber.id))
     assert resp.status_code == 200, resp.text
     body = resp.json()
 
@@ -582,15 +582,15 @@ async def test_results_playing_viewer_gets_full_reveal(client, db_session):
     """A playing submitter sees the full reveal; the viber-only fields are empty."""
     organizer = await _seed_user(db_session, "o@example.com", "Org")
     alice = await _seed_user(db_session, "a@example.com", "Alice")
-    round_ = await _seed_league_with_round(db_session, organizer)
-    round_id = round_.id
-    await _add_member(db_session, round_.club_id, alice)
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    mix_id = mix_.id
+    await _add_member(db_session, mix_.club_id, alice)
 
-    s_org = await _seed_submission(db_session, round_, organizer, title="Org-song", mode="playing")
-    await _seed_submission(db_session, round_, alice, title="A-song")
-    await _seed_vote(db_session, round_id, alice, s_org)
+    s_org = await _seed_submission(db_session, mix_, organizer, title="Org-song", mode="playing")
+    await _seed_submission(db_session, mix_, alice, title="A-song")
+    await _seed_vote(db_session, mix_id, alice, s_org)
 
-    resp = await client.get(_url(round_id), headers=_auth(organizer.id))
+    resp = await client.get(_url(mix_id), headers=_auth(organizer.id))
     assert resp.status_code == 200, resp.text
     body = resp.json()
 
@@ -612,20 +612,20 @@ async def test_results_full_reveal_carries_source_fields(client, db_session):
     # ISRC plus source/source_url, so the UI can badge it "YouTube/Bandcamp only".
     organizer = await _seed_user(db_session, "o@example.com", "Org")
     alice = await _seed_user(db_session, "a@example.com", "Alice")
-    round_ = await _seed_league_with_round(db_session, organizer)
-    await _add_member(db_session, round_.club_id, alice)
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    await _add_member(db_session, mix_.club_id, alice)
 
-    await _seed_submission(db_session, round_, organizer, title="Catalog", mode="playing")
+    await _seed_submission(db_session, mix_, organizer, title="Catalog", mode="playing")
     await _seed_submission(
         db_session,
-        round_,
+        mix_,
         alice,
         title="Source Only",
         isrc=None,
         source_key="youtube:PRpiBpDy7MQ",
     )
 
-    resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+    resp = await client.get(_url(mix_.id), headers=_auth(organizer.id))
     assert resp.status_code == 200, resp.text
     by_title = {s["title"]: s for s in resp.json()["submissions"]}
     assert by_title["Catalog"]["isrc"] == "USABC1234567"
@@ -640,14 +640,14 @@ async def test_results_vibe_reveal_picks_carry_source_fields(client, db_session)
     organizer = await _seed_user(db_session, "o@example.com", "Org")
     alice = await _seed_user(db_session, "a@example.com", "Alice")
     viber = await _seed_user(db_session, "v@example.com", "Vera")
-    round_ = await _seed_league_with_round(db_session, organizer)
+    mix_ = await _seed_club_with_mix(db_session, organizer)
     for u in (alice, viber):
-        await _add_member(db_session, round_.club_id, u)
+        await _add_member(db_session, mix_.club_id, u)
 
-    await _seed_submission(db_session, round_, alice, title="Winner")
+    await _seed_submission(db_session, mix_, alice, title="Winner")
     await _seed_submission(
         db_session,
-        round_,
+        mix_,
         viber,
         title="Bandcamp Pick",
         mode="vibing",
@@ -655,7 +655,7 @@ async def test_results_vibe_reveal_picks_carry_source_fields(client, db_session)
         source_key="bandcamp:coolband/song-title",
     )
 
-    resp = await client.get(_url(round_.id), headers=_auth(viber.id))
+    resp = await client.get(_url(mix_.id), headers=_auth(viber.id))
     assert resp.status_code == 200, resp.text
     picks = {p["title"]: p for p in resp.json()["picks"]}
     assert picks["Bandcamp Pick"]["isrc"] is None
@@ -668,12 +668,12 @@ async def test_results_platforms_carry_bandcamp_track_id_key(client, db_session)
     # non-URL bandcampTrackId key (MYS-201/204) rides along well-formed next to the
     # real links, without disturbing them.
     organizer = await _seed_user(db_session, "o@example.com", "Org")
-    round_ = await _seed_league_with_round(db_session, organizer)
-    sub = await _seed_submission(db_session, round_, organizer, title="bc")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    sub = await _seed_submission(db_session, mix_, organizer, title="bc")
     sub.platform_links = {"deezer": "https://deezer/x", "bandcampTrackId": "12345"}
     await db_session.commit()
 
-    resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+    resp = await client.get(_url(mix_.id), headers=_auth(organizer.id))
     assert resp.status_code == 200, resp.text
     pick = resp.json()["submissions"][0]
     assert pick["platforms"]["bandcampTrackId"] == "12345"

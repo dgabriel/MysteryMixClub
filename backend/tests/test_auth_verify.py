@@ -8,7 +8,7 @@ token, missing param), and the v2 invite-gated sign-up + cap model (MYS-127):
   through on the link's &invite= (else 403 invite-required), and creation is
   blocked once the user cap is reached (403 at-capacity).
 - An EXISTING user signs in with no invite at all.
-- A valid invite joins the (new or existing) user to that league, idempotently.
+- A valid invite joins the (new or existing) user to that club, idempotently.
 
 See technical-design.md §5, §6.
 
@@ -46,7 +46,7 @@ _AT_CAPACITY_MESSAGE = "MysteryMixClub is at capacity right now"
 # v2 (MYS-127): /auth/request only mails a link to an existing user or via a
 # valid invite token, and a NEW account at /auth/verify requires that invite to
 # ride along on &invite=. Helpers seed the precondition (existing user, or a
-# league + shareable invite) and run the real flow.
+# club + shareable invite) and run the real flow.
 # --------------------------------------------------------------------------- #
 
 
@@ -60,23 +60,23 @@ async def _seed_user(db_session, email: str, **overrides) -> User:
     return user
 
 
-async def _seed_league_with_invite(db_session, *, expires_at: datetime | None = None) -> Invite:
-    """Seed an organizer + active league + shareable invite; return the Invite."""
+async def _seed_club_with_invite(db_session, *, expires_at: datetime | None = None) -> Invite:
+    """Seed an organizer + active club + shareable invite; return the Invite."""
     organizer = User(email="org@example.com", display_name="Org")
     db_session.add(organizer)
     await db_session.flush()
-    league = Club(
+    club = Club(
         name="Invited Club",
         organizer_id=organizer.id,
         total_mixes=3,
         votes_per_player=3,
         state="active",
     )
-    db_session.add(league)
+    db_session.add(club)
     await db_session.flush()
-    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id))
+    db_session.add(ClubMember(club_id=club.id, user_id=organizer.id))
     invite = Invite(
-        club_id=league.id,
+        club_id=club.id,
         created_by=organizer.id,
         token="tok_" + uuid.uuid4().hex,
         expires_at=expires_at,
@@ -88,8 +88,8 @@ async def _seed_league_with_invite(db_session, *, expires_at: datetime | None = 
 
 
 async def _seed_platform_invite(db_session, *, expires_at: datetime | None = None) -> Invite:
-    """Seed an admin-generated, league-less invite (MYS-182): grants signup
-    only, no league attachment."""
+    """Seed an admin-generated, club-less invite (MYS-182): grants signup
+    only, no club attachment."""
     admin = User(email="admin@example.com", display_name="Admin")
     db_session.add(admin)
     await db_session.flush()
@@ -123,11 +123,11 @@ async def _count(db_session, model, **filters) -> int:
     return await db_session.scalar(stmt)
 
 
-async def _active_member_count(db_session, league_id, user_id) -> int:
+async def _active_member_count(db_session, club_id, user_id) -> int:
     rows = (
         await db_session.scalars(
             select(ClubMember).where(
-                ClubMember.club_id == league_id,
+                ClubMember.club_id == club_id,
                 ClubMember.user_id == user_id,
                 ClubMember.removed_at.is_(None),
             )
@@ -227,7 +227,7 @@ async def test_magic_link_token_deleted_after_successful_verify(client, email_sp
 async def test_first_login_with_invite_creates_user_with_empty_name_and_vibe_false(
     client, email_spy, db_session
 ):
-    invite = await _seed_league_with_invite(db_session)
+    invite = await _seed_club_with_invite(db_session)
     token = invite.token
 
     raw = await _request_link(client, email_spy, "newbie@example.com", invite_token=token)
@@ -239,10 +239,10 @@ async def test_first_login_with_invite_creates_user_with_empty_name_and_vibe_fal
     assert new_user.display_name == ""
 
 
-async def test_first_login_with_invite_joins_the_league(client, email_spy, db_session):
-    invite = await _seed_league_with_invite(db_session)
+async def test_first_login_with_invite_joins_the_club(client, email_spy, db_session):
+    invite = await _seed_club_with_invite(db_session)
     token = invite.token
-    league_id = invite.club_id
+    club_id = invite.club_id
 
     raw = await _request_link(client, email_spy, "newbie@example.com", invite_token=token)
     resp = await client.get(VERIFY_URL, params={"token": raw, "invite": token})
@@ -251,14 +251,14 @@ async def test_first_login_with_invite_joins_the_league(client, email_spy, db_se
     db_session.expire_all()
     new_user = await db_session.scalar(select(User).where(User.email == "newbie@example.com"))
     assert new_user is not None
-    assert await _active_member_count(db_session, league_id, new_user.id) == 1
+    assert await _active_member_count(db_session, club_id, new_user.id) == 1
 
 
-async def test_first_login_with_platform_invite_creates_account_without_joining_any_league(
+async def test_first_login_with_platform_invite_creates_account_without_joining_any_club(
     client, email_spy, db_session
 ):
-    # MYS-182: a platform (league-less) invite grants signup only — the new
-    # account is created but joined to nothing, unlike a league invite.
+    # MYS-182: a platform (club-less) invite grants signup only — the new
+    # account is created but joined to nothing, unlike a club invite.
     invite = await _seed_platform_invite(db_session)
     token = invite.token
 
@@ -335,13 +335,13 @@ async def test_second_new_account_with_same_platform_invite_returns_403(
     assert second_user is None
 
 
-async def test_league_invite_stays_multi_use_after_a_new_signup(client, email_spy, db_session):
-    # The single-use change is scoped to platform invites only — a league
+async def test_club_invite_stays_multi_use_after_a_new_signup(client, email_spy, db_session):
+    # The single-use change is scoped to platform invites only — a club
     # invite must keep working for every subsequent person (MYS-182 follow-up
     # explicitly does not touch this path).
-    invite = await _seed_league_with_invite(db_session)
+    invite = await _seed_club_with_invite(db_session)
     token = invite.token
-    league_id = invite.club_id
+    club_id = invite.club_id
     invite_id = invite.id
 
     raw1 = await _request_link(client, email_spy, "first@example.com", invite_token=token)
@@ -355,7 +355,7 @@ async def test_league_invite_stays_multi_use_after_a_new_signup(client, email_sp
     db_session.expire_all()
     second_user = await db_session.scalar(select(User).where(User.email == "second@example.com"))
     assert second_user is not None
-    assert await _active_member_count(db_session, league_id, second_user.id) == 1
+    assert await _active_member_count(db_session, club_id, second_user.id) == 1
 
     invite_row = await db_session.scalar(select(Invite).where(Invite.id == invite_id))
     assert invite_row is not None
@@ -387,7 +387,7 @@ async def test_new_account_without_invite_param_returns_403(client, db_session):
 
 
 async def test_new_account_with_expired_invite_param_returns_403(client, db_session):
-    invite = await _seed_league_with_invite(
+    invite = await _seed_club_with_invite(
         db_session, expires_at=datetime.now(timezone.utc) - timedelta(minutes=1)
     )
     token = invite.token
@@ -423,7 +423,7 @@ class TestUserCap:
         return 1
 
     async def test_new_signup_blocked_at_capacity_returns_403(self, client, email_spy, db_session):
-        invite = await _seed_league_with_invite(db_session)  # organizer = 1 user
+        invite = await _seed_club_with_invite(db_session)  # organizer = 1 user
         token = invite.token
 
         raw = await _request_link(client, email_spy, "overflow@example.com", invite_token=token)
@@ -455,10 +455,10 @@ class TestExistingUserUnaffectedByCap:
 # --------------------------------------------------------------------------- #
 
 
-async def test_existing_user_following_invite_joins_league(client, email_spy, db_session):
-    invite = await _seed_league_with_invite(db_session)
+async def test_existing_user_following_invite_joins_club(client, email_spy, db_session):
+    invite = await _seed_club_with_invite(db_session)
     token = invite.token
-    league_id = invite.club_id
+    club_id = invite.club_id
     user = await _seed_user(db_session, "follower@example.com")
     user_id = user.id
 
@@ -467,13 +467,13 @@ async def test_existing_user_following_invite_joins_league(client, email_spy, db
     assert resp.status_code == 200, resp.text
 
     db_session.expire_all()
-    assert await _active_member_count(db_session, league_id, user_id) == 1
+    assert await _active_member_count(db_session, club_id, user_id) == 1
 
 
 async def test_invite_join_is_idempotent_on_second_login(client, email_spy, db_session):
-    invite = await _seed_league_with_invite(db_session)
+    invite = await _seed_club_with_invite(db_session)
     token = invite.token
-    league_id = invite.club_id
+    club_id = invite.club_id
 
     raw1 = await _request_link(client, email_spy, "newbie@example.com", invite_token=token)
     r1 = await client.get(VERIFY_URL, params={"token": raw1, "invite": token})
@@ -491,7 +491,7 @@ async def test_invite_join_is_idempotent_on_second_login(client, email_spy, db_s
     all_rows = (
         await db_session.scalars(
             select(ClubMember).where(
-                ClubMember.club_id == league_id,
+                ClubMember.club_id == club_id,
                 ClubMember.user_id == user_id,
             )
         )
@@ -501,14 +501,14 @@ async def test_invite_join_is_idempotent_on_second_login(client, email_spy, db_s
 
 
 async def test_invite_reactivates_removed_membership(client, email_spy, db_session):
-    invite = await _seed_league_with_invite(db_session)
+    invite = await _seed_club_with_invite(db_session)
     token = invite.token
-    league_id = invite.club_id
+    club_id = invite.club_id
 
     # The user existed, joined, and was removed previously.
     user = await _seed_user(db_session, "returning@example.com")
     user_id = user.id
-    removed = ClubMember(club_id=league_id, user_id=user_id, removed_at=datetime.now(timezone.utc))
+    removed = ClubMember(club_id=club_id, user_id=user_id, removed_at=datetime.now(timezone.utc))
     db_session.add(removed)
     await db_session.commit()
     await db_session.refresh(removed)
@@ -522,7 +522,7 @@ async def test_invite_reactivates_removed_membership(client, email_spy, db_sessi
     rows = (
         await db_session.scalars(
             select(ClubMember).where(
-                ClubMember.club_id == league_id,
+                ClubMember.club_id == club_id,
                 ClubMember.user_id == user_id,
             )
         )

@@ -17,9 +17,9 @@ def test_roundtrip_returns_user_id_and_no_return_path_by_default():
 
 def test_roundtrip_carries_return_path():
     uid = uuid.uuid4()
-    decoded = decode_oauth_state(create_oauth_state(uid, "spotify", "/rounds/abc"), "spotify")
+    decoded = decode_oauth_state(create_oauth_state(uid, "spotify", "/mixes/abc"), "spotify")
     assert decoded.user_id == uid
-    assert decoded.return_to == "/rounds/abc"
+    assert decoded.return_to == "/mixes/abc"
 
 
 def test_purpose_mismatch_rejected():

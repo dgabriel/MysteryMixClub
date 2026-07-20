@@ -56,7 +56,7 @@ async def _seed_user(db_session, email: str, *, notifications: bool = True) -> U
     return user
 
 
-async def _seed_league(
+async def _seed_club(
     db_session,
     organizer: User,
     *,
@@ -65,7 +65,7 @@ async def _seed_league(
     voting_window_hours: int = 72,
     songs_per_submission: int = 1,
 ) -> Club:
-    league = Club(
+    club = Club(
         name="Deadline Club",
         organizer_id=organizer.id,
         total_mixes=total_mixes,
@@ -73,22 +73,22 @@ async def _seed_league(
         voting_window_hours=voting_window_hours,
         songs_per_submission=songs_per_submission,
     )
-    db_session.add(league)
+    db_session.add(club)
     await db_session.flush()
-    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id))
+    db_session.add(ClubMember(club_id=club.id, user_id=organizer.id))
     await db_session.commit()
-    await db_session.refresh(league)
-    return league
+    await db_session.refresh(club)
+    return club
 
 
-async def _add_member(db_session, league_id: uuid.UUID, user: User) -> None:
-    db_session.add(ClubMember(club_id=league_id, user_id=user.id))
+async def _add_member(db_session, club_id: uuid.UUID, user: User) -> None:
+    db_session.add(ClubMember(club_id=club_id, user_id=user.id))
     await db_session.commit()
 
 
-async def _seed_round(
+async def _seed_mix(
     db_session,
-    league_id: uuid.UUID,
+    club_id: uuid.UUID,
     number: int,
     *,
     state: str,
@@ -96,26 +96,26 @@ async def _seed_round(
     voting_deadline: datetime | None = None,
     submission_opened_at: datetime | None = None,
 ) -> Mix:
-    round_ = Mix(
-        club_id=league_id,
+    mix_ = Mix(
+        club_id=club_id,
         mix_number=number,
-        theme=f"round {number}",
+        theme=f"mix {number}",
         state=state,
         submission_deadline=submission_deadline,
         voting_deadline=voting_deadline,
         submission_opened_at=submission_opened_at,
     )
-    db_session.add(round_)
+    db_session.add(mix_)
     await db_session.commit()
-    await db_session.refresh(round_)
-    return round_
+    await db_session.refresh(mix_)
+    return mix_
 
 
 async def _seed_submission(
-    db_session, round_id: uuid.UUID, user: User, *, mode: str = "playing", title: str = "song"
+    db_session, mix_id: uuid.UUID, user: User, *, mode: str = "playing", title: str = "song"
 ) -> Submission:
     sub = Submission(
-        mix_id=round_id,
+        mix_id=mix_id,
         user_id=user.id,
         isrc=f"ISRC-{uuid.uuid4()}",
         title=title,
@@ -128,10 +128,8 @@ async def _seed_submission(
     return sub
 
 
-async def _seed_vote(
-    db_session, round_id: uuid.UUID, voter: User, submission_id: uuid.UUID
-) -> None:
-    db_session.add(Vote(mix_id=round_id, voter_id=voter.id, submission_id=submission_id))
+async def _seed_vote(db_session, mix_id: uuid.UUID, voter: User, submission_id: uuid.UUID) -> None:
+    db_session.add(Vote(mix_id=mix_id, voter_id=voter.id, submission_id=submission_id))
     await db_session.commit()
 
 
@@ -158,8 +156,8 @@ def _approx(actual: datetime, expected: datetime, *, tol_seconds: int = 30) -> b
 async def test_branch1_stamps_null_submission_deadline(run_job, db_session, email_spy):
     now = datetime.now(timezone.utc)
     org = await _seed_user(db_session, "o@e.com")
-    league = await _seed_league(db_session, org, submission_window_hours=72)
-    rnd = await _seed_round(db_session, league.id, 1, state="open_submission")
+    club = await _seed_club(db_session, org, submission_window_hours=72)
+    rnd = await _seed_mix(db_session, club.id, 1, state="open_submission")
     rid = rnd.id
 
     report = await run_job(now)
@@ -181,8 +179,8 @@ async def test_branch1_stamps_null_submission_deadline(run_job, db_session, emai
 async def test_branch1_stamps_null_voting_deadline(run_job, db_session, email_spy):
     now = datetime.now(timezone.utc)
     org = await _seed_user(db_session, "o@e.com")
-    league = await _seed_league(db_session, org, voting_window_hours=48)
-    rnd = await _seed_round(db_session, league.id, 1, state="open_voting")
+    club = await _seed_club(db_session, org, voting_window_hours=48)
+    rnd = await _seed_mix(db_session, club.id, 1, state="open_voting")
     rid = rnd.id
 
     report = await run_job(now)
@@ -203,16 +201,16 @@ async def test_branch1_stamps_null_voting_deadline(run_job, db_session, email_sp
 async def test_branch2_submission_warning_recipients_and_idempotent(run_job, db_session, email_spy):
     now = datetime.now(timezone.utc)
     org = await _seed_user(db_session, "o@e.com")  # member, 0 songs → outstanding
-    league = await _seed_league(db_session, org, submission_window_hours=72, songs_per_submission=2)
+    club = await _seed_club(db_session, org, submission_window_hours=72, songs_per_submission=2)
     partial = await _seed_user(db_session, "partial@e.com")
     complete = await _seed_user(db_session, "complete@e.com")
     optout = await _seed_user(db_session, "optout@e.com", notifications=False)
     for u in (partial, complete, optout):
-        await _add_member(db_session, league.id, u)
+        await _add_member(db_session, club.id, u)
 
-    rnd = await _seed_round(
+    rnd = await _seed_mix(
         db_session,
-        league.id,
+        club.id,
         1,
         state="open_submission",
         submission_deadline=now + timedelta(hours=10),
@@ -252,17 +250,17 @@ async def test_branch2_submission_warning_recipients_and_idempotent(run_job, db_
 async def test_branch2_voting_warning_recipients(run_job, db_session, email_spy):
     now = datetime.now(timezone.utc)
     org = await _seed_user(db_session, "o@e.com")  # member, not a submitter → excluded
-    league = await _seed_league(db_session, org, voting_window_hours=72)
+    club = await _seed_club(db_session, org, voting_window_hours=72)
     playing = await _seed_user(db_session, "playing@e.com")  # playing, not voted → included
     voted = await _seed_user(db_session, "voted@e.com")  # playing, voted → excluded
     viber = await _seed_user(db_session, "viber@e.com")  # vibing → excluded
     optout = await _seed_user(db_session, "optout@e.com", notifications=False)  # excluded
     for u in (playing, voted, viber, optout):
-        await _add_member(db_session, league.id, u)
+        await _add_member(db_session, club.id, u)
 
-    rnd = await _seed_round(
+    rnd = await _seed_mix(
         db_session,
-        league.id,
+        club.id,
         1,
         state="open_voting",
         voting_deadline=now + timedelta(hours=10),
@@ -285,11 +283,11 @@ async def test_branch2_short_window_never_warns(run_job, db_session, email_spy):
     now = datetime.now(timezone.utc)
     org = await _seed_user(db_session, "o@e.com")
     member = await _seed_user(db_session, "m@e.com")
-    league = await _seed_league(db_session, org, submission_window_hours=8)
-    await _add_member(db_session, league.id, member)
-    await _seed_round(
+    club = await _seed_club(db_session, org, submission_window_hours=8)
+    await _add_member(db_session, club.id, member)
+    await _seed_mix(
         db_session,
-        league.id,
+        club.id,
         1,
         state="open_submission",
         submission_deadline=now + timedelta(hours=4),  # inside the window, 1–12h away
@@ -305,11 +303,11 @@ async def test_branch2_under_one_hour_is_skipped(run_job, db_session, email_spy)
     now = datetime.now(timezone.utc)
     org = await _seed_user(db_session, "o@e.com")
     member = await _seed_user(db_session, "m@e.com")
-    league = await _seed_league(db_session, org, submission_window_hours=72)
-    await _add_member(db_session, league.id, member)
-    await _seed_round(
+    club = await _seed_club(db_session, org, submission_window_hours=72)
+    await _add_member(db_session, club.id, member)
+    await _seed_mix(
         db_session,
-        league.id,
+        club.id,
         1,
         state="open_submission",
         submission_deadline=now + timedelta(minutes=30),
@@ -321,19 +319,19 @@ async def test_branch2_under_one_hour_is_skipped(run_job, db_session, email_spy)
 
 
 # ========================================================================== #
-# Branch 3 — empty submission round: notify organizer, never auto-advance
+# Branch 3 — empty submission mix: notify organizer, never auto-advance
 # ========================================================================== #
 
 
-async def test_branch3_empty_round_notice(run_job, db_session, email_spy):
+async def test_branch3_empty_mix_notice(run_job, db_session, email_spy):
     now = datetime.now(timezone.utc)
     org = await _seed_user(db_session, "o@e.com")
     member = await _seed_user(db_session, "m@e.com")
-    league = await _seed_league(db_session, org, total_mixes=1)
-    await _add_member(db_session, league.id, member)
-    rnd = await _seed_round(
+    club = await _seed_club(db_session, org, total_mixes=1)
+    await _add_member(db_session, club.id, member)
+    rnd = await _seed_mix(
         db_session,
-        league.id,
+        club.id,
         1,
         state="open_submission",
         submission_deadline=now - timedelta(hours=1),  # passed
@@ -342,7 +340,7 @@ async def test_branch3_empty_round_notice(run_job, db_session, email_spy):
 
     report = await run_job(now)
     assert report.empty_notices == 1
-    # Organizer only — not the whole league.
+    # Organizer only — not the whole club.
     assert _recipients_for(email_spy, "closed with no submissions") == {"o@e.com"}
 
     db_session.expire_all()
@@ -358,15 +356,15 @@ async def test_branch3_empty_round_notice(run_job, db_session, email_spy):
     assert email_spy.sends == []
 
 
-async def test_branch3_empty_round_organizer_optout_still_stamps(run_job, db_session, email_spy):
+async def test_branch3_empty_mix_organizer_optout_still_stamps(run_job, db_session, email_spy):
     # Organizer with notifications off: no email, but the notice is still recorded
     # so repeated runs stay quiet either way.
     now = datetime.now(timezone.utc)
     org = await _seed_user(db_session, "o@e.com", notifications=False)
-    league = await _seed_league(db_session, org, total_mixes=1)
-    rnd = await _seed_round(
+    club = await _seed_club(db_session, org, total_mixes=1)
+    rnd = await _seed_mix(
         db_session,
-        league.id,
+        club.id,
         1,
         state="open_submission",
         submission_deadline=now - timedelta(hours=1),
@@ -398,12 +396,12 @@ async def test_branch4_force_advance_to_voting(run_job, db_session, email_spy):
     org = await _seed_user(db_session, "o@e.com")
     m1 = await _seed_user(db_session, "m1@e.com")
     m2 = await _seed_user(db_session, "m2@e.com")
-    league = await _seed_league(db_session, org, total_mixes=1, voting_window_hours=72)
-    await _add_member(db_session, league.id, m1)
-    await _add_member(db_session, league.id, m2)
-    rnd = await _seed_round(
+    club = await _seed_club(db_session, org, total_mixes=1, voting_window_hours=72)
+    await _add_member(db_session, club.id, m1)
+    await _add_member(db_session, club.id, m2)
+    rnd = await _seed_mix(
         db_session,
-        league.id,
+        club.id,
         1,
         state="open_submission",
         submission_deadline=now - timedelta(hours=1),  # passed
@@ -447,10 +445,10 @@ async def test_branch4_auto_generates_spotify_playlist(
 
     now = datetime.now(timezone.utc)
     org = await _seed_user(db_session, "o@e.com")
-    league = await _seed_league(db_session, org, total_mixes=1, voting_window_hours=72)
-    rnd = await _seed_round(
+    club = await _seed_club(db_session, org, total_mixes=1, voting_window_hours=72)
+    rnd = await _seed_mix(
         db_session,
-        league.id,
+        club.id,
         1,
         state="open_submission",
         submission_deadline=now - timedelta(hours=1),
@@ -494,7 +492,7 @@ async def test_branch4_auto_generates_spotify_playlist(
 async def test_branch4_spotify_failure_does_not_block_advance(
     monkeypatch, session_factory, db_session, email_spy
 ):
-    # A revoked shared-account grant must not prevent the round from advancing
+    # A revoked shared-account grant must not prevent the mix from advancing
     # or the voting_open email from sending (MYS-176: best-effort).
     from app.config import Settings
     from app.models.spotify_connection import SpotifyConnection
@@ -510,10 +508,10 @@ async def test_branch4_spotify_failure_does_not_block_advance(
 
     now = datetime.now(timezone.utc)
     org = await _seed_user(db_session, "o@e.com")
-    league = await _seed_league(db_session, org, total_mixes=1, voting_window_hours=72)
-    rnd = await _seed_round(
+    club = await _seed_club(db_session, org, total_mixes=1, voting_window_hours=72)
+    rnd = await _seed_mix(
         db_session,
-        league.id,
+        club.id,
         1,
         state="open_submission",
         submission_deadline=now - timedelta(hours=1),
@@ -560,16 +558,16 @@ async def test_branch5_close_partial_votes_autoopens_next(run_job, db_session, e
     now = datetime.now(timezone.utc)
     org = await _seed_user(db_session, "o@e.com")
     m = await _seed_user(db_session, "m@e.com")
-    league = await _seed_league(db_session, org, total_mixes=2, submission_window_hours=72)
-    await _add_member(db_session, league.id, m)
-    r1 = await _seed_round(
+    club = await _seed_club(db_session, org, total_mixes=2, submission_window_hours=72)
+    await _add_member(db_session, club.id, m)
+    r1 = await _seed_mix(
         db_session,
-        league.id,
+        club.id,
         1,
         state="open_voting",
         voting_deadline=now - timedelta(hours=1),  # passed
     )
-    r2 = await _seed_round(db_session, league.id, 2, state="pending")
+    r2 = await _seed_mix(db_session, club.id, 2, state="pending")
     r1_id, r2_id = r1.id, r2.id
     org_sub = await _seed_submission(db_session, r1_id, org, title="o")
     m_sub = await _seed_submission(db_session, r1_id, m, title="m")
@@ -583,7 +581,7 @@ async def test_branch5_close_partial_votes_autoopens_next(run_job, db_session, e
     closed = await db_session.get(Mix, r1_id)
     nxt = await db_session.get(Mix, r2_id)
     assert closed.state == "closed"
-    # Non-final: the next round auto-opens WITH its own submission deadline stamped.
+    # Non-final: the next mix auto-opens WITH its own submission deadline stamped.
     assert nxt.state == "open_submission"
     assert nxt.submission_deadline is not None
     assert _approx(nxt.submission_deadline, now + timedelta(hours=72), tol_seconds=120)
@@ -597,16 +595,16 @@ async def test_branch5_zero_votes_still_closes(run_job, db_session, email_spy):
     now = datetime.now(timezone.utc)
     org = await _seed_user(db_session, "o@e.com")
     m = await _seed_user(db_session, "m@e.com")
-    league = await _seed_league(db_session, org, total_mixes=2)
-    await _add_member(db_session, league.id, m)
-    r1 = await _seed_round(
+    club = await _seed_club(db_session, org, total_mixes=2)
+    await _add_member(db_session, club.id, m)
+    r1 = await _seed_mix(
         db_session,
-        league.id,
+        club.id,
         1,
         state="open_voting",
         voting_deadline=now - timedelta(hours=1),
     )
-    r2 = await _seed_round(db_session, league.id, 2, state="pending")
+    r2 = await _seed_mix(db_session, club.id, 2, state="pending")
     r1_id = r1.id
     _ = r2
     await _seed_submission(db_session, r1_id, org, title="o")  # a song, but nobody voted
@@ -619,20 +617,20 @@ async def test_branch5_zero_votes_still_closes(run_job, db_session, email_spy):
     assert closed.state == "closed"
 
 
-async def test_branch5_final_round_completes_league(run_job, db_session, email_spy):
+async def test_branch5_final_mix_completes_club(run_job, db_session, email_spy):
     now = datetime.now(timezone.utc)
     org = await _seed_user(db_session, "o@e.com")
     m = await _seed_user(db_session, "m@e.com")
-    league = await _seed_league(db_session, org, total_mixes=1)  # round 1 is final
-    await _add_member(db_session, league.id, m)
-    r1 = await _seed_round(
+    club = await _seed_club(db_session, org, total_mixes=1)  # mix 1 is final
+    await _add_member(db_session, club.id, m)
+    r1 = await _seed_mix(
         db_session,
-        league.id,
+        club.id,
         1,
         state="open_voting",
         voting_deadline=now - timedelta(hours=1),
     )
-    r1_id, league_id = r1.id, league.id
+    r1_id, club_id = r1.id, club.id
     m_sub = await _seed_submission(db_session, r1_id, m, title="m")
     await _seed_vote(db_session, r1_id, org, m_sub.id)
 
@@ -641,9 +639,9 @@ async def test_branch5_final_round_completes_league(run_job, db_session, email_s
 
     db_session.expire_all()
     closed = await db_session.get(Mix, r1_id)
-    league_after = await db_session.get(Club, league_id)
+    club_after = await db_session.get(Club, club_id)
     assert closed.state == "closed"
-    assert league_after.state == "complete"
+    assert club_after.state == "complete"
 
     subjects = [subj for (_to, subj, _h) in email_spy.sends]
     assert sum("results are in" in s for s in subjects) == 2  # mix_closed × 2
@@ -655,11 +653,11 @@ async def test_branch5_final_round_completes_league(run_job, db_session, email_s
 # ========================================================================== #
 
 
-def _mem_league() -> Club:
+def _mem_club() -> Club:
     return Club(id=uuid.uuid4(), name="L", organizer_id=uuid.uuid4(), total_mixes=1)
 
 
-def _mem_round(state: str, **deadlines) -> Mix:
+def _mem_mix(state: str, **deadlines) -> Mix:
     return Mix(
         id=uuid.uuid4(),
         club_id=uuid.uuid4(),
@@ -672,30 +670,30 @@ def _mem_round(state: str, **deadlines) -> Mix:
 
 
 def test_subject_body_submission_open_includes_deadline_when_set():
-    league = _mem_league()
+    club = _mem_club()
     deadline = datetime(2026, 7, 5, 21, 0, tzinfo=timezone.utc)
-    round_ = _mem_round("open_submission", submission_deadline=deadline)
-    _subj, body = _subject_and_body("submission_open", league, round_, "http://x/leagues/1")
+    mix_ = _mem_mix("open_submission", submission_deadline=deadline)
+    _subj, body = _subject_and_body("submission_open", club, mix_, "http://x/clubs/1")
     assert f"Submit by {_format_deadline(deadline)}." in body
 
 
 def test_subject_body_submission_open_omits_deadline_when_none():
-    league = _mem_league()
-    round_ = _mem_round("open_submission", submission_deadline=None)
-    _subj, body = _subject_and_body("submission_open", league, round_, "http://x/leagues/1")
+    club = _mem_club()
+    mix_ = _mem_mix("open_submission", submission_deadline=None)
+    _subj, body = _subject_and_body("submission_open", club, mix_, "http://x/clubs/1")
     assert "Submit by" not in body
 
 
 def test_subject_body_voting_open_includes_deadline_when_set():
-    league = _mem_league()
+    club = _mem_club()
     deadline = datetime(2026, 7, 8, 9, 30, tzinfo=timezone.utc)
-    round_ = _mem_round("open_voting", voting_deadline=deadline)
-    _subj, body = _subject_and_body("voting_open", league, round_, "http://x/leagues/1")
+    mix_ = _mem_mix("open_voting", voting_deadline=deadline)
+    _subj, body = _subject_and_body("voting_open", club, mix_, "http://x/clubs/1")
     assert f"Vote by {_format_deadline(deadline)}." in body
 
 
 def test_subject_body_voting_open_omits_deadline_when_none():
-    league = _mem_league()
-    round_ = _mem_round("open_voting", voting_deadline=None)
-    _subj, body = _subject_and_body("voting_open", league, round_, "http://x/leagues/1")
+    club = _mem_club()
+    mix_ = _mem_mix("open_voting", voting_deadline=None)
+    _subj, body = _subject_and_body("voting_open", club, mix_, "http://x/clubs/1")
     assert "Vote by" not in body

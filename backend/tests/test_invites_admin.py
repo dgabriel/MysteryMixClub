@@ -1,15 +1,15 @@
-"""Tests for MYS-182: admin-generated, league-less signup invites.
+"""Tests for MYS-182: admin-generated, club-less signup invites.
 
 Covers:
   POST /api/v1/admin/invites          — platform-admin only, generates a
-                                         league-less invite (null league_id)
+                                         club-less invite (null club_id)
   GET  /api/v1/invites/{token}        — preview of a platform invite: null
-                                         league fields, no membership concept
+                                         club fields, no membership concept
   POST /api/v1/invites/{token}/accept — rejected (404) for a platform token;
-                                         "accept" only makes sense for a league
+                                         "accept" only makes sense for a club
                                          invite
 
-Signup-time behavior (account created, no league joined) is covered in
+Signup-time behavior (account created, no club joined) is covered in
 test_auth_verify.py, alongside the rest of the invite-gated sign-up suite.
 """
 
@@ -26,8 +26,8 @@ from app.models.user import User
 ADMIN_EMAIL = "admin@example.com"
 CREATE_URL = "/api/v1/admin/invites"
 
-# The exact key set the create response must return — same shape as a league
-# invite (InviteResponse), just with a null league_id.
+# The exact key set the create response must return — same shape as a club
+# invite (InviteResponse), just with a null club_id.
 _INVITE_KEYS = {"id", "club_id", "token", "created_by", "created_at", "expires_at"}
 
 
@@ -94,7 +94,7 @@ async def test_create_platform_invite_non_admin_forbidden(client, db_session):
     assert resp.status_code == 403
 
 
-async def test_create_platform_invite_returns_201_and_null_league_id(client, db_session):
+async def test_create_platform_invite_returns_201_and_null_club_id(client, db_session):
     admin = await _seed_admin(db_session)
     resp = await client.post(CREATE_URL, headers=_auth(admin.id))
     assert resp.status_code == 201, resp.text
@@ -104,7 +104,7 @@ async def test_create_platform_invite_returns_201_and_null_league_id(client, db_
     assert data["created_by"] == str(admin.id)
 
 
-async def test_create_platform_invite_persists_row_with_null_league_id(client, db_session):
+async def test_create_platform_invite_persists_row_with_null_club_id(client, db_session):
     admin = await _seed_admin(db_session)
     resp = await client.post(CREATE_URL, headers=_auth(admin.id))
     assert resp.status_code == 201, resp.text
@@ -138,7 +138,7 @@ async def test_two_platform_invites_have_different_tokens(client, db_session):
 # --------------------------------------------------------------------------- #
 
 
-async def test_preview_platform_invite_returns_null_league_fields(client, db_session):
+async def test_preview_platform_invite_returns_null_club_fields(client, db_session):
     admin = await _seed_admin(db_session)
     invite = await _seed_platform_invite(db_session, admin)
 
@@ -153,7 +153,7 @@ async def test_preview_platform_invite_returns_null_league_fields(client, db_ses
 
 
 async def test_preview_platform_invite_works_without_auth(client, db_session):
-    # Anyone with the link can preview it, same as a league invite.
+    # Anyone with the link can preview it, same as a club invite.
     admin = await _seed_admin(db_session)
     invite = await _seed_platform_invite(db_session, admin)
 
@@ -174,7 +174,7 @@ async def test_preview_platform_invite_expired_returns_410(client, db_session):
 async def test_preview_platform_invite_expired_as_authenticated_visitor_still_410(
     client, db_session
 ):
-    # MYS-181's already-member bypass doesn't apply — there's no league to be
+    # MYS-181's already-member bypass doesn't apply — there's no club to be
     # a member of, so an expired platform invite always 410s.
     admin = await _seed_admin(db_session)
     visitor = await _seed_user(db_session, "visitor@example.com")
@@ -236,8 +236,8 @@ async def test_preview_platform_invite_used_by_self_passes_through(client, db_se
 
 
 async def test_accept_platform_invite_returns_404(client, db_session):
-    # "Accept" only makes sense for a league invite; a platform token isn't a
-    # league to join. The frontend never calls this for a league-less token —
+    # "Accept" only makes sense for a club invite; a platform token isn't a
+    # club to join. The frontend never calls this for a club-less token —
     # this guards a stray/direct call.
     admin = await _seed_admin(db_session)
     visitor = await _seed_user(db_session, "visitor@example.com")

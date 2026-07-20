@@ -1,4 +1,4 @@
-"""Tests for MYS-109: round-lifecycle email notifications.
+"""Tests for MYS-109: mix-lifecycle email notifications.
 
 Covers the event→email mapping at each state transition, recipient filtering
 (unsubscribed / removed members are skipped), the one-click unsubscribe
@@ -6,9 +6,9 @@ endpoint, and the profile preference surface. Notifications are scheduled as
 FastAPI background tasks; the ASGI test transport runs them before the response
 returns, so the spy sender has recorded them by the time a request resolves.
 
-Rounds are created through the autogen flow (POST /leagues seeds N *pending*
-rounds), then opened via PATCH — matching real usage. The legacy POST /rounds
-path defaults a round straight to open_submission, which wouldn't exercise the
+Mixes are created through the autogen flow (POST /clubs seeds N *pending*
+mixes), then opened via PATCH — matching real usage. The legacy POST /mixes
+path defaults a mix straight to open_submission, which wouldn't exercise the
 pending→open transition we notify on.
 """
 
@@ -40,7 +40,7 @@ def _auth(user_id: uuid.UUID) -> dict[str, str]:
     return {"Authorization": f"Bearer {create_access_token(user_id)}"}
 
 
-async def _create_league(client, user_id, *, total_mixes: int = 2):
+async def _create_club(client, user_id, *, total_mixes: int = 2):
     resp = await client.post(
         "/api/v1/clubs",
         json={"name": "Friday Mixtape", "total_mixes": total_mixes},
@@ -50,35 +50,35 @@ async def _create_league(client, user_id, *, total_mixes: int = 2):
     return uuid.UUID(resp.json()["id"])
 
 
-async def _add_member(db_session, league_id, user) -> None:
-    db_session.add(ClubMember(club_id=league_id, user_id=user.id))
+async def _add_member(db_session, club_id, user) -> None:
+    db_session.add(ClubMember(club_id=club_id, user_id=user.id))
     await db_session.commit()
 
 
-async def _round_id(client, league_id, user_id, number: int) -> str:
-    resp = await client.get(f"/api/v1/clubs/{league_id}/mixes", headers=_auth(user_id))
+async def _mix_id(client, club_id, user_id, number: int) -> str:
+    resp = await client.get(f"/api/v1/clubs/{club_id}/mixes", headers=_auth(user_id))
     assert resp.status_code == 200, resp.text
     for r in resp.json():
         if r["mix_number"] == number:
             return r["id"]
-    raise AssertionError(f"round {number} not found")
+    raise AssertionError(f"mix {number} not found")
 
 
-async def _advance(client, round_id, organizer_id, state):
+async def _advance(client, mix_id, organizer_id, state):
     return await client.patch(
-        f"/api/v1/mixes/{round_id}", json={"state": state}, headers=_auth(organizer_id)
+        f"/api/v1/mixes/{mix_id}", json={"state": state}, headers=_auth(organizer_id)
     )
 
 
-async def _league_with_members(client, db_session, *, n_members: int = 2, total_mixes: int = 2):
+async def _club_with_members(client, db_session, *, n_members: int = 2, total_mixes: int = 2):
     organizer = await _seed_user(db_session, "org@example.com", "Org")
-    league_id = await _create_league(client, organizer.id, total_mixes=total_mixes)
+    club_id = await _create_club(client, organizer.id, total_mixes=total_mixes)
     members = []
     for i in range(n_members):
         m = await _seed_user(db_session, f"m{i}@example.com", f"M{i}")
-        await _add_member(db_session, league_id, m)
+        await _add_member(db_session, club_id, m)
         members.append(m)
-    return organizer, league_id, members
+    return organizer, club_id, members
 
 
 # --------------------------------------------------------------------------- #
@@ -87,8 +87,8 @@ async def _league_with_members(client, db_session, *, n_members: int = 2, total_
 
 
 async def test_opening_submission_emails_all_members(client, db_session, email_spy):
-    organizer, league_id, _members = await _league_with_members(client, db_session)
-    rid = await _round_id(client, league_id, organizer.id, 1)
+    organizer, club_id, _members = await _club_with_members(client, db_session)
+    rid = await _mix_id(client, club_id, organizer.id, 1)
 
     email_spy.sends.clear()
     resp = await _advance(client, rid, organizer.id, "open_submission")
@@ -100,8 +100,8 @@ async def test_opening_submission_emails_all_members(client, db_session, email_s
 
 
 async def test_voting_open_emails_all_members(client, db_session, email_spy):
-    organizer, league_id, _members = await _league_with_members(client, db_session)
-    rid = await _round_id(client, league_id, organizer.id, 1)
+    organizer, club_id, _members = await _club_with_members(client, db_session)
+    rid = await _mix_id(client, club_id, organizer.id, 1)
     await _advance(client, rid, organizer.id, "open_submission")
 
     email_spy.sends.clear()
@@ -112,8 +112,8 @@ async def test_voting_open_emails_all_members(client, db_session, email_spy):
 
 
 async def test_extend_voting_emails_new_deadline(client, db_session, email_spy):
-    organizer, league_id, _members = await _league_with_members(client, db_session)
-    rid = await _round_id(client, league_id, organizer.id, 1)
+    organizer, club_id, _members = await _club_with_members(client, db_session)
+    rid = await _mix_id(client, club_id, organizer.id, 1)
     await _advance(client, rid, organizer.id, "open_submission")
     await _advance(client, rid, organizer.id, "open_voting")
     current = (await client.get(f"/api/v1/mixes/{rid}", headers=_auth(organizer.id))).json()
@@ -133,9 +133,9 @@ async def test_extend_voting_emails_new_deadline(client, db_session, email_spy):
     assert all("New deadline:" in html for (_to, _subj, html) in email_spy.sends)
 
 
-async def test_closing_round_emails_and_notifies_auto_opened_next(client, db_session, email_spy):
-    organizer, league_id, _members = await _league_with_members(client, db_session, total_mixes=2)
-    rid = await _round_id(client, league_id, organizer.id, 1)
+async def test_closing_mix_emails_and_notifies_auto_opened_next(client, db_session, email_spy):
+    organizer, club_id, _members = await _club_with_members(client, db_session, total_mixes=2)
+    rid = await _mix_id(client, club_id, organizer.id, 1)
     await _advance(client, rid, organizer.id, "open_submission")
     await _advance(client, rid, organizer.id, "open_voting")
 
@@ -143,17 +143,17 @@ async def test_closing_round_emails_and_notifies_auto_opened_next(client, db_ses
     await _advance(client, rid, organizer.id, "closed")
 
     subjects = [subj for (_to, subj, _html) in email_spy.sends]
-    # 3 members × (round_closed for r1 + submission_open for the auto-opened r2)
+    # 3 members × (mix_closed for r1 + submission_open for the auto-opened r2)
     assert len(email_spy.sends) == 6
     assert sum("results are in" in s for s in subjects) == 3
     assert sum("open for submissions" in s for s in subjects) == 3
 
 
-async def test_closing_final_round_emails_completion(client, db_session, email_spy):
-    organizer, league_id, _members = await _league_with_members(
+async def test_closing_final_mix_emails_completion(client, db_session, email_spy):
+    organizer, club_id, _members = await _club_with_members(
         client, db_session, n_members=1, total_mixes=1
     )
-    rid = await _round_id(client, league_id, organizer.id, 1)
+    rid = await _mix_id(client, club_id, organizer.id, 1)
     await _advance(client, rid, organizer.id, "open_submission")
     await _advance(client, rid, organizer.id, "open_voting")
 
@@ -161,7 +161,7 @@ async def test_closing_final_round_emails_completion(client, db_session, email_s
     await _advance(client, rid, organizer.id, "closed")
 
     subjects = [subj for (_to, subj, _html) in email_spy.sends]
-    # 2 members (organizer + m0) × (round_closed + league_complete)
+    # 2 members (organizer + m0) × (mix_closed + club_complete)
     assert sum("results are in" in s for s in subjects) == 2
     assert sum("that's a wrap" in s for s in subjects) == 2
 
@@ -172,10 +172,10 @@ async def test_closing_final_round_emails_completion(client, db_session, email_s
 
 
 async def test_unsubscribed_member_is_skipped(client, db_session, email_spy):
-    organizer, league_id, members = await _league_with_members(client, db_session)
+    organizer, club_id, members = await _club_with_members(client, db_session)
     members[0].email_notifications = False
     await db_session.commit()
-    rid = await _round_id(client, league_id, organizer.id, 1)
+    rid = await _mix_id(client, club_id, organizer.id, 1)
 
     email_spy.sends.clear()
     await _advance(client, rid, organizer.id, "open_submission")
@@ -185,11 +185,11 @@ async def test_unsubscribed_member_is_skipped(client, db_session, email_spy):
 
 
 async def test_removed_member_is_skipped(client, db_session, email_spy):
-    organizer, league_id, members = await _league_with_members(client, db_session)
+    organizer, club_id, members = await _club_with_members(client, db_session)
     lm = await db_session.scalar(select(ClubMember).where(ClubMember.user_id == members[0].id))
     lm.removed_at = datetime.now(timezone.utc)
     await db_session.commit()
-    rid = await _round_id(client, league_id, organizer.id, 1)
+    rid = await _mix_id(client, club_id, organizer.id, 1)
 
     email_spy.sends.clear()
     await _advance(client, rid, organizer.id, "open_submission")
@@ -233,8 +233,8 @@ async def test_unsubscribe_invalid_token_is_calm(client, db_session):
 
 
 async def test_unsubscribe_link_present_in_email(client, db_session, email_spy):
-    organizer, league_id, _members = await _league_with_members(client, db_session, n_members=1)
-    rid = await _round_id(client, league_id, organizer.id, 1)
+    organizer, club_id, _members = await _club_with_members(client, db_session, n_members=1)
+    rid = await _mix_id(client, club_id, organizer.id, 1)
 
     email_spy.sends.clear()
     await _advance(client, rid, organizer.id, "open_submission")
@@ -244,8 +244,8 @@ async def test_unsubscribe_link_present_in_email(client, db_session, email_spy):
 
 
 async def test_unsubscribe_header_present(client, db_session, email_spy):
-    organizer, league_id, _members = await _league_with_members(client, db_session, n_members=1)
-    rid = await _round_id(client, league_id, organizer.id, 1)
+    organizer, club_id, _members = await _club_with_members(client, db_session, n_members=1)
+    rid = await _mix_id(client, club_id, organizer.id, 1)
 
     email_spy.sends.clear()
     email_spy.sent_headers.clear()

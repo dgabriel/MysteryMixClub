@@ -27,8 +27,8 @@ from app.api.wire import WireModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.routes.leagues import _load_league_as_member
-from app.api.routes.rounds import _load_round
+from app.api.routes.clubs import _load_club_as_member
+from app.api.routes.mixes import _load_mix
 from app.auth.deps import get_current_user
 from app.db.session import get_db
 from app.models.note import Note
@@ -58,7 +58,7 @@ def _to_response(note: Note, author_display_name: str) -> NoteResponse:
     return NoteResponse(
         id=str(note.id),
         submission_id=str(note.submission_id),
-        round_id=str(note.round_id),
+        round_id=str(note.mix_id),
         author_id=str(note.author_id),
         author_display_name=author_display_name,
         body=note.body,
@@ -81,17 +81,17 @@ async def leave_note(
     db: AsyncSession = Depends(get_db),
 ) -> NoteResponse:
     submission = await _load_submission(submission_id, db)
-    round_ = await _load_round(submission.round_id, db)
-    await _load_league_as_member(round_.league_id, current_user, db)
+    mix_ = await _load_mix(submission.mix_id, db)
+    await _load_club_as_member(mix_.club_id, current_user, db)
 
-    if round_.state != "open_voting":
+    if mix_.state != "open_voting":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="notes can be left while voting is open",
         )
 
     note = Note(
-        round_id=submission.round_id,
+        mix_id=submission.mix_id,
         author_id=current_user.id,
         submission_id=submission.id,
         body=payload.body,
@@ -109,8 +109,8 @@ async def list_notes(
     db: AsyncSession = Depends(get_db),
 ) -> list[NoteResponse]:
     submission = await _load_submission(submission_id, db)
-    round_ = await _load_round(submission.round_id, db)
-    await _load_league_as_member(round_.league_id, current_user, db)
+    mix_ = await _load_mix(submission.mix_id, db)
+    await _load_club_as_member(mix_.club_id, current_user, db)
 
     stmt = (
         select(Note, User.display_name)
@@ -118,10 +118,10 @@ async def list_notes(
         .where(Note.submission_id == submission_id)
         .order_by(Note.created_at.asc())
     )
-    # Until the round closes, a member sees only their own notes — everyone
+    # Until the mix closes, a member sees only their own notes — everyone
     # else's stay hidden during voting so notes can't sway votes (MYS-67). The
-    # full set is revealed once the round is closed (the reveal).
-    if round_.state != "closed":
+    # full set is revealed once the mix is closed (the reveal).
+    if mix_.state != "closed":
         stmt = stmt.where(Note.author_id == current_user.id)
 
     rows = await db.execute(stmt)

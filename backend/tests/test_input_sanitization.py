@@ -39,10 +39,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.jwt import create_access_token
 from app.db.session import get_db
 from app.main import create_app
-from app.models.league import League
-from app.models.league_member import LeagueMember
+from app.models.club import Club
+from app.models.club_member import ClubMember
 from app.models.note import Note
-from app.models.round import Round
+from app.models.mix import Mix
 from app.models.submission import Submission
 from app.models.user import User
 from app.services.song_links import get_link_assembler
@@ -101,7 +101,7 @@ async def _seed_user(db_session, email: str = "alice@example.com", name: str = "
     return user
 
 
-async def _seed_league(db_session, organizer: User, **overrides) -> League:
+async def _seed_league(db_session, organizer: User, **overrides) -> Club:
     defaults = {
         "name": "Summer Bangers",
         "organizer_id": organizer.id,
@@ -109,10 +109,10 @@ async def _seed_league(db_session, organizer: User, **overrides) -> League:
         "votes_per_player": 3,
     }
     defaults.update(overrides)
-    league = League(**defaults)
+    league = Club(**defaults)
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id))
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id))
     await db_session.commit()
     await db_session.refresh(league)
     return league
@@ -120,21 +120,21 @@ async def _seed_league(db_session, organizer: User, **overrides) -> League:
 
 async def _seed_league_with_round(
     db_session, organizer: User, *, state: str = "open_submission"
-) -> Round:
-    league = League(name="L", organizer_id=organizer.id, total_rounds=3, votes_per_player=3)
+) -> Mix:
+    league = Club(name="L", organizer_id=organizer.id, total_mixes=3, votes_per_player=3)
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id))
-    round_ = Round(league_id=league.id, round_number=1, theme="late summer", state=state)
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id))
+    round_ = Mix(club_id=league.id, mix_number=1, theme="late summer", state=state)
     db_session.add(round_)
     await db_session.commit()
     await db_session.refresh(round_)
     return round_
 
 
-async def _seed_submission(db_session, round_: Round, user: User) -> Submission:
+async def _seed_submission(db_session, round_: Mix, user: User) -> Submission:
     sub = Submission(
-        round_id=round_.id,
+        mix_id=round_.id,
         user_id=user.id,
         isrc="USABC1234567",
         title="bad guy",
@@ -266,7 +266,7 @@ async def test_patch_explicit_null_description_still_accepted_and_clears(client,
     assert resp.json()["description"] is None
 
     db_session.expire_all()
-    persisted = await db_session.scalar(select(League).where(League.id == league_id))
+    persisted = await db_session.scalar(select(Club).where(Club.id == league_id))
     assert persisted.description is None
 
 
@@ -289,7 +289,7 @@ async def test_submission_note_is_trimmed(session_factory, db_session):
     assert resp.json()["note"] == "a quiet banger"
 
     db_session.expire_all()
-    stored = await db_session.scalar(select(Submission).where(Submission.round_id == round_id))
+    stored = await db_session.scalar(select(Submission).where(Submission.mix_id == round_id))
     assert stored.note == "a quiet banger"
 
 
@@ -399,7 +399,7 @@ async def test_submission_album_art_url_not_stripped(session_factory, db_session
     assert resp.json()["album_art_url"] == url
 
     db_session.expire_all()
-    stored = await db_session.scalar(select(Submission).where(Submission.round_id == round_id))
+    stored = await db_session.scalar(select(Submission).where(Submission.mix_id == round_id))
     assert stored.album_art_url == url
 
 
@@ -524,7 +524,7 @@ async def test_league_name_xss_payload_round_trips_verbatim(client, db_session):
     assert resp.json()["name"] == _XSS
 
     db_session.expire_all()
-    persisted = await db_session.scalar(select(League).where(League.organizer_id == user_id))
+    persisted = await db_session.scalar(select(Club).where(Club.organizer_id == user_id))
     assert persisted.name == _XSS
 
 

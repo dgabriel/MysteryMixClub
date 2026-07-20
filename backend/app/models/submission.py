@@ -4,7 +4,7 @@ from typing import Any, Optional
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column, synonym
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
@@ -14,8 +14,8 @@ PARTICIPATION_MODES = ("playing", "vibing")
 
 class Submission(Base):
     __tablename__ = "submissions"
-    # A player may submit up to the league's songs_per_submission cap per round
-    # (MYS-116), so (round_id, user_id) is no longer unique. The per-column
+    # A player may submit up to the club's songs_per_submission cap per mix
+    # (MYS-116), so (mix_id, user_id) is no longer unique. The per-column
     # indexes below cover the lookups; the cap is enforced in the endpoint.
     #
     # A submission is identified by EITHER an ISRC (catalog track) OR a
@@ -30,9 +30,8 @@ class Submission(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    # DB column is mix_id (MYS-196); attr name stays until R3/R4 cleanup.
-    round_id: Mapped[uuid.UUID] = mapped_column(
-        "mix_id", UUID(as_uuid=True), ForeignKey("mixes.id"), nullable=False, index=True
+    mix_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("mixes.id"), nullable=False, index=True
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
@@ -65,7 +64,3 @@ class Submission(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-
-    # New-vocabulary synonym (MYS-196 seam): both names work as attrs and
-    # constructor kwargs until the R3/R4 cleanup makes the new name primary.
-    mix_id = synonym("round_id")

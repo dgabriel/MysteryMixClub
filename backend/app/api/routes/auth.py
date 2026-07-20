@@ -24,13 +24,13 @@ from app.auth.jwt import create_access_token
 from app.auth.tokens import generate_token, hash_token
 from app.config import Settings, get_settings
 from app.db.session import get_db
+from app.models.club import Club
 from app.models.invite import Invite
-from app.models.league import League
 from app.models.magic_link_token import MagicLinkToken
 from app.models.session import Session
 from app.models.user import User
 from app.services.email import EmailSender, get_email_sender
-from app.services.notifications import queue_league_joined
+from app.services.notifications import queue_club_joined
 
 logger = logging.getLogger("app.api.routes.auth")
 
@@ -105,7 +105,7 @@ async def _load_valid_invite(
         return None
     if invite.expires_at is not None and invite.expires_at <= now:
         return None
-    if invite.league_id is None and invite.used_at is not None:
+    if invite.club_id is None and invite.used_at is not None:
         return None
     return invite
 
@@ -236,7 +236,7 @@ async def verify_magic_link(
         if settings.max_users and (total_users or 0) >= settings.max_users:
             await db.commit()
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=_AT_CAPACITY_MESSAGE)
-        if invite_row.league_id is None:
+        if invite_row.club_id is None:
             # Single-use (MYS-182 follow-up): lock and re-check so two
             # concurrent signups can't both consume the same platform invite.
             # A league invite is untouched here — it stays multi-use.
@@ -251,26 +251,26 @@ async def verify_magic_link(
         user = User(email=email, display_name="")
         db.add(user)
         await db.flush()
-        if invite_row.league_id is None:
+        if invite_row.club_id is None:
             # Stamped together so the preview endpoint can later tell this
             # exact user apart from anyone else hitting the now-dead link.
             assert locked_invite is not None
             locked_invite.used_at = now
             locked_invite.used_by_user_id = user.id
 
-    # Join the invite's league for both new and existing users following a link.
+    # Join the invite's club for both new and existing users following a link.
     # Capture user.id into a local before any further async work to avoid the
-    # expire_all/MissingGreenlet trap. A platform invite (MYS-182, league_id
-    # None) grants signup only — there's no league to join.
+    # expire_all/MissingGreenlet trap. A platform invite (MYS-182, club_id
+    # None) grants signup only — there's no club to join.
     user_id = user.id
     welcome_email: tuple[uuid.UUID, str] | None = None
-    if invite_row is not None and invite_row.league_id is not None:
+    if invite_row is not None and invite_row.club_id is not None:
         joined = await _join_via_invite(db, user_id, invite_row)
         if joined:
-            league = await db.scalar(select(League).where(League.id == invite_row.league_id))
-            if league is not None:
+            club = await db.scalar(select(Club).where(Club.id == invite_row.club_id))
+            if club is not None:
                 # Capture before commit so ORM expiry can't affect the bg task.
-                welcome_email = (league.id, league.name)
+                welcome_email = (club.id, club.name)
 
     raw_refresh_token = generate_token()
     device_hint = user_agent[:_DEVICE_HINT_MAX_LENGTH] if user_agent else None
@@ -290,7 +290,7 @@ async def verify_magic_link(
     await db.commit()
 
     if welcome_email is not None:
-        queue_league_joined(
+        queue_club_joined(
             background_tasks,
             email_sender,
             settings,

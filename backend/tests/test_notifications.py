@@ -18,8 +18,8 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 
 from app.auth.jwt import create_access_token, create_unsubscribe_token
-from app.models.league import League  # noqa: F401 — kept for parity/readability
-from app.models.league_member import LeagueMember
+from app.models.club import Club  # noqa: F401 — kept for parity/readability
+from app.models.club_member import ClubMember
 from app.models.user import User
 
 
@@ -40,10 +40,10 @@ def _auth(user_id: uuid.UUID) -> dict[str, str]:
     return {"Authorization": f"Bearer {create_access_token(user_id)}"}
 
 
-async def _create_league(client, user_id, *, total_rounds: int = 2):
+async def _create_league(client, user_id, *, total_mixes: int = 2):
     resp = await client.post(
         "/api/v1/clubs",
-        json={"name": "Friday Mixtape", "total_mixes": total_rounds},
+        json={"name": "Friday Mixtape", "total_mixes": total_mixes},
         headers=_auth(user_id),
     )
     assert resp.status_code == 201, resp.text
@@ -51,7 +51,7 @@ async def _create_league(client, user_id, *, total_rounds: int = 2):
 
 
 async def _add_member(db_session, league_id, user) -> None:
-    db_session.add(LeagueMember(league_id=league_id, user_id=user.id))
+    db_session.add(ClubMember(club_id=league_id, user_id=user.id))
     await db_session.commit()
 
 
@@ -70,9 +70,9 @@ async def _advance(client, round_id, organizer_id, state):
     )
 
 
-async def _league_with_members(client, db_session, *, n_members: int = 2, total_rounds: int = 2):
+async def _league_with_members(client, db_session, *, n_members: int = 2, total_mixes: int = 2):
     organizer = await _seed_user(db_session, "org@example.com", "Org")
-    league_id = await _create_league(client, organizer.id, total_rounds=total_rounds)
+    league_id = await _create_league(client, organizer.id, total_mixes=total_mixes)
     members = []
     for i in range(n_members):
         m = await _seed_user(db_session, f"m{i}@example.com", f"M{i}")
@@ -134,7 +134,7 @@ async def test_extend_voting_emails_new_deadline(client, db_session, email_spy):
 
 
 async def test_closing_round_emails_and_notifies_auto_opened_next(client, db_session, email_spy):
-    organizer, league_id, _members = await _league_with_members(client, db_session, total_rounds=2)
+    organizer, league_id, _members = await _league_with_members(client, db_session, total_mixes=2)
     rid = await _round_id(client, league_id, organizer.id, 1)
     await _advance(client, rid, organizer.id, "open_submission")
     await _advance(client, rid, organizer.id, "open_voting")
@@ -151,7 +151,7 @@ async def test_closing_round_emails_and_notifies_auto_opened_next(client, db_ses
 
 async def test_closing_final_round_emails_completion(client, db_session, email_spy):
     organizer, league_id, _members = await _league_with_members(
-        client, db_session, n_members=1, total_rounds=1
+        client, db_session, n_members=1, total_mixes=1
     )
     rid = await _round_id(client, league_id, organizer.id, 1)
     await _advance(client, rid, organizer.id, "open_submission")
@@ -186,7 +186,7 @@ async def test_unsubscribed_member_is_skipped(client, db_session, email_spy):
 
 async def test_removed_member_is_skipped(client, db_session, email_spy):
     organizer, league_id, members = await _league_with_members(client, db_session)
-    lm = await db_session.scalar(select(LeagueMember).where(LeagueMember.user_id == members[0].id))
+    lm = await db_session.scalar(select(ClubMember).where(ClubMember.user_id == members[0].id))
     lm.removed_at = datetime.now(timezone.utc)
     await db_session.commit()
     rid = await _round_id(client, league_id, organizer.id, 1)

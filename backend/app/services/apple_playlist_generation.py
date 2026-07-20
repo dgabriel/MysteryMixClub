@@ -1,4 +1,4 @@
-"""Per-player Apple Music playlist generation for a round (MYS-108).
+"""Per-player Apple Music playlist generation for a mix (MYS-108).
 
 Mirrors the Spotify engine's shape (resolve → create → record), but the model is
 fundamentally different: Spotify generates **one shared, public** playlist from a
@@ -6,7 +6,7 @@ single service account, whereas Apple library playlists cannot be made public
 (MYS-107), so every player generates **their own copy into their own library**.
 
 Consequences that show up below:
-* keyed by (round, user), never a shared account id;
+* keyed by (mix, user), never a shared account id;
 * the caller's Music User Token is passed in per call and never stored;
 * the resulting link is personal — it opens only for its owner.
 """
@@ -22,9 +22,9 @@ from typing import Literal
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.apple_round_playlist import AppleRoundPlaylist
-from app.models.league import League
-from app.models.round import Round
+from app.models.apple_mix_playlist import AppleMixPlaylist
+from app.models.club import Club
+from app.models.mix import Mix
 from app.models.submission import Submission
 from app.services.apple_music_client import LIBRARY_URL, AppleMusicClient
 from app.services.source_tracks import Source, source_fields
@@ -63,30 +63,30 @@ class GeneratedApplePlaylist:
 
 async def get_existing_playlist(
     db: AsyncSession, round_id: uuid.UUID, user_id: uuid.UUID
-) -> AppleRoundPlaylist | None:
-    """The caller's *current* playlist for a round, or None.
+) -> AppleMixPlaylist | None:
+    """The caller's *current* playlist for a mix, or None.
 
-    Superseded rows (the round was reopened for submission) are treated as
+    Superseded rows (the mix was reopened for submission) are treated as
     absent, so the UI offers a rebuild — but they stay in the table so the
     rebuild knows to name itself as a revision.
     """
     return await db.scalar(
-        select(AppleRoundPlaylist).where(
-            AppleRoundPlaylist.round_id == round_id,
-            AppleRoundPlaylist.user_id == user_id,
-            AppleRoundPlaylist.superseded_at.is_(None),
+        select(AppleMixPlaylist).where(
+            AppleMixPlaylist.mix_id == round_id,
+            AppleMixPlaylist.user_id == user_id,
+            AppleMixPlaylist.superseded_at.is_(None),
         )
     )
 
 
 async def _any_previous_playlist(
     db: AsyncSession, round_id: uuid.UUID, user_id: uuid.UUID
-) -> AppleRoundPlaylist | None:
-    """Any row for this (round, user), superseded or not."""
+) -> AppleMixPlaylist | None:
+    """Any row for this (mix, user), superseded or not."""
     return await db.scalar(
-        select(AppleRoundPlaylist).where(
-            AppleRoundPlaylist.round_id == round_id,
-            AppleRoundPlaylist.user_id == user_id,
+        select(AppleMixPlaylist).where(
+            AppleMixPlaylist.mix_id == round_id,
+            AppleMixPlaylist.user_id == user_id,
         )
     )
 
@@ -103,24 +103,24 @@ def revised_playlist_name(name: str, when: datetime, tz_offset_minutes: int | No
     return f"{name} [revised on {local:%H:%M}]"
 
 
-async def generate_round_playlist(
+async def generate_mix_playlist(
     round_id: uuid.UUID,
-    round_: Round,
-    league: League,
+    mix_: Mix,
+    club: Club,
     user_id: uuid.UUID,
     music_user_token: str,
     db: AsyncSession,
     client: AppleMusicClient,
     tz_offset_minutes: int | None = None,
 ) -> GeneratedApplePlaylist:
-    """Create this round's playlist in the caller's Apple Music library.
+    """Create this mix's playlist in the caller's Apple Music library.
 
     Raises ``AppleMusicAuthError`` / ``AppleMusicApiError``; the route maps those
     to HTTP. Submissions that don't resolve to a catalog song are reported as
     ``unmatched`` rather than failing the whole playlist — with no ISRC there's
     nothing to match on (MYS-166), so partial playlists are an expected outcome.
     """
-    submissions = list(await db.scalars(select(Submission).where(Submission.round_id == round_id)))
+    submissions = list(await db.scalars(select(Submission).where(Submission.mix_id == round_id)))
     # Same seeded shuffle as the Spotify/YouTube playlists so every service
     # presents the round in one identical order (MYS-151). Sort first for a
     # stable input — Postgres order without ORDER BY is not guaranteed.
@@ -153,8 +153,8 @@ async def generate_round_playlist(
                 )
             )
 
-    name = playlist_name(league.name, round_.round_number, round_.theme)
-    description = playlist_description(league.name, round_.round_number, round_.theme)
+    name = playlist_name(club.name, mix_.mix_number, mix_.theme)
+    description = playlist_description(club.name, mix_.mix_number, mix_.theme)
 
     # A prior row — superseded or current — means this is a rebuild, so name it
     # distinctly; Apple would otherwise leave two same-named playlists sitting
@@ -167,13 +167,13 @@ async def generate_round_playlist(
         music_user_token, name, description, track_ids
     )
 
-    # Record it so the round page can surface the link on later visits. One row
-    # per (round, user): the rebuild takes over the existing row and clears the
+    # Record it so the mix page can surface the link on later visits. One row
+    # per (mix, user): the rebuild takes over the existing row and clears the
     # superseded mark, so the table tracks the live playlist, not a history.
     if previous is None:
         db.add(
-            AppleRoundPlaylist(
-                round_id=round_id,
+            AppleMixPlaylist(
+                mix_id=round_id,
                 user_id=user_id,
                 playlist_id=playlist_id,
                 playlist_name=name,

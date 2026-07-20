@@ -8,16 +8,16 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.routes.leagues import LeagueResponse, _to_response
+from app.api.routes.clubs import ClubResponse, _to_response
 from app.auth.deps import get_current_user, get_current_user_optional
 from app.config import Settings, get_settings
 from app.db.session import get_db
+from app.models.club import Club
+from app.models.club_member import ClubMember
 from app.models.invite import Invite
-from app.models.league import League
-from app.models.league_member import LeagueMember
 from app.models.user import User
 from app.services.email import EmailSender, get_email_sender
-from app.services.notifications import queue_league_joined
+from app.services.notifications import queue_club_joined
 
 router = APIRouter(prefix="/invites", tags=["invites"])
 
@@ -32,26 +32,26 @@ def _is_expired(invite: Invite, now: datetime) -> bool:
 
 async def _is_active_member(db: AsyncSession, league_id: uuid.UUID, user_id: uuid.UUID) -> bool:
     membership = await db.scalar(
-        select(LeagueMember).where(
-            LeagueMember.league_id == league_id,
-            LeagueMember.user_id == user_id,
-            LeagueMember.removed_at.is_(None),
+        select(ClubMember).where(
+            ClubMember.club_id == league_id,
+            ClubMember.user_id == user_id,
+            ClubMember.removed_at.is_(None),
         )
     )
     return membership is not None
 
 
 async def _join_via_invite(db: AsyncSession, user_id: uuid.UUID, invite: Invite) -> bool:
-    """Join ``user_id`` to the invite's league: insert a new membership, or
+    """Join ``user_id`` to the invite's club: insert a new membership, or
     reactivate an existing (possibly removed) one in place. Shared by the invite
     accept route and the auto-join on sign-in (MYS-127). The caller commits.
 
     Returns True if the user actually joined or rejoined (False = already active, no-op)."""
     membership = await db.scalar(
-        select(LeagueMember)
+        select(ClubMember)
         .where(
-            LeagueMember.league_id == invite.league_id,
-            LeagueMember.user_id == user_id,
+            ClubMember.club_id == invite.club_id,
+            ClubMember.user_id == user_id,
         )
         .with_for_update()
     )
@@ -60,19 +60,19 @@ async def _join_via_invite(db: AsyncSession, user_id: uuid.UUID, invite: Invite)
             membership.removed_at = None
             membership.joined_at = func.now()
             # A returning member keeps their existing vibe_mode; only fresh joins
-            # seed from the league default.
+            # seed from the club default.
             return True
         return False  # already active — caller should not send a welcome email
     else:
-        # Seed the new member's per-league vibe_mode from the league default
+        # Seed the new member's per-club vibe_mode from the club default
         # (MYS-112).
-        league = await db.scalar(select(League).where(League.id == invite.league_id))
+        club = await db.scalar(select(Club).where(Club.id == invite.club_id))
         try:
             db.add(
-                LeagueMember(
-                    league_id=invite.league_id,
+                ClubMember(
+                    club_id=invite.club_id,
                     user_id=user_id,
-                    vibe_mode=league.default_vibe_mode if league is not None else False,
+                    vibe_mode=club.default_vibe_mode if club is not None else False,
                 )
             )
             # Flush now so IntegrityError surfaces here rather than at caller's
@@ -110,8 +110,8 @@ async def preview_invite(
     if invite is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invite not found")
 
-    if invite.league_id is None:
-        # Platform invite (MYS-182): a signup grant with no league to preview.
+    if invite.club_id is None:
+        # Platform invite (MYS-182): a signup grant with no club to preview.
         # Single-use (follow-up) — an already-used one reads the same as
         # expired, same copy/CTA, no separate frontend state needed. Exception
         # (MYS-183 fix): the same visitor who just consumed it passes through
@@ -128,7 +128,7 @@ async def preview_invite(
         )
 
     already_member = (
-        await _is_active_member(db, invite.league_id, current_user.id)
+        await _is_active_member(db, invite.club_id, current_user.id)
         if current_user is not None
         else False
     )
@@ -137,27 +137,27 @@ async def preview_invite(
     if _is_expired(invite, datetime.now(timezone.utc)) and not already_member:
         raise HTTPException(status_code=status.HTTP_410_GONE, detail=_EXPIRED_LINK_MESSAGE)
 
-    league = await db.scalar(select(League).where(League.id == invite.league_id))
-    if league is None:
+    club = await db.scalar(select(Club).where(Club.id == invite.club_id))
+    if club is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invite not found")
 
     member_count = await db.scalar(
         select(func.count())
-        .select_from(LeagueMember)
+        .select_from(ClubMember)
         .where(
-            LeagueMember.league_id == invite.league_id,
-            LeagueMember.removed_at.is_(None),
+            ClubMember.club_id == invite.club_id,
+            ClubMember.removed_at.is_(None),
         )
     )
     return InvitePreviewResponse(
-        league_id=invite.league_id,
-        league_name=league.name,
+        league_id=invite.club_id,
+        league_name=club.name,
         member_count=member_count or 0,
         already_member=already_member,
     )
 
 
-@router.post("/{token}/accept", response_model=LeagueResponse)
+@router.post("/{token}/accept", response_model=ClubResponse)
 async def accept_invite(
     token: str,
     background_tasks: BackgroundTasks,
@@ -165,25 +165,25 @@ async def accept_invite(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
     email_sender: EmailSender = Depends(get_email_sender),
-) -> LeagueResponse:
+) -> ClubResponse:
     invite = await db.scalar(select(Invite).where(Invite.token == token))
     if invite is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invite not found")
 
-    if invite.league_id is None:
+    if invite.club_id is None:
         # Platform invite (MYS-182): grants signup only. "Accept" only makes
-        # sense for a league invite — the frontend never calls this route for
-        # a league-less token, so a stray/direct call is treated as unknown.
+        # sense for a club invite — the frontend never calls this route for
+        # a club-less token, so a stray/direct call is treated as unknown.
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invite not found")
 
     membership = await db.scalar(
-        select(LeagueMember).where(
-            LeagueMember.league_id == invite.league_id,
-            LeagueMember.user_id == current_user.id,
+        select(ClubMember).where(
+            ClubMember.club_id == invite.club_id,
+            ClubMember.user_id == current_user.id,
         )
     )
     # Accept is idempotent (MYS-135): an existing active member just gets routed
-    # to the league rather than an error. Only a new (or previously removed)
+    # to the club rather than an error. Only a new (or previously removed)
     # membership needs the join + commit. An already-active member also passes
     # through regardless of expiry (MYS-181).
     already_active = membership is not None and membership.removed_at is None
@@ -191,23 +191,23 @@ async def accept_invite(
     if _is_expired(invite, datetime.now(timezone.utc)) and not already_active:
         raise HTTPException(status_code=status.HTTP_410_GONE, detail=_EXPIRED_LINK_MESSAGE)
 
-    league = await db.scalar(select(League).where(League.id == invite.league_id))
-    if league is None:
+    club = await db.scalar(select(Club).where(Club.id == invite.club_id))
+    if club is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invite not found")
 
     if not already_active:
         joined = await _join_via_invite(db, current_user.id, invite)
         await db.commit()
         if joined:
-            queue_league_joined(
+            queue_club_joined(
                 background_tasks,
                 email_sender,
                 settings,
                 current_user.email,
                 current_user.id,
-                league.id,
-                league.name,
+                club.id,
+                club.name,
             )
 
-    await db.refresh(league)
-    return _to_response(league)
+    await db.refresh(club)
+    return _to_response(club)

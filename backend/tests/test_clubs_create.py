@@ -1,7 +1,7 @@
 """Tests for MYS-12: POST /api/v1/clubs (create league).
 
-TDD-first: these are written before the endpoint and the League /
-LeagueMember models exist, so they are expected to FAIL (red) until the
+TDD-first: these are written before the endpoint and the Club /
+ClubMember models exist, so they are expected to FAIL (red) until the
 developer implements them.
 
 Covers auth (401), happy-path response shape, persistence of the leagues row
@@ -15,8 +15,8 @@ import uuid
 from sqlalchemy import select
 
 from app.auth.jwt import create_access_token
-from app.models.league import League
-from app.models.league_member import LeagueMember
+from app.models.club import Club
+from app.models.club_member import ClubMember
 from app.models.user import User
 
 LEAGUES_URL = "/api/v1/clubs"
@@ -97,7 +97,7 @@ async def test_create_returns_201_and_full_league_shape(client, db_session):
     body = _valid_body(
         name="Summer Bangers",
         description="A league for hot tracks",
-        total_rounds=6,
+        total_mixes=6,
         votes_per_player=5,
     )
 
@@ -135,19 +135,19 @@ async def test_create_persists_league_and_organizer_membership(client, db_sessio
 
     db_session.expire_all()
 
-    leagues = (await db_session.scalars(select(League))).all()
+    leagues = (await db_session.scalars(select(Club))).all()
     assert len(leagues) == 1
     league = leagues[0]
     assert league.organizer_id == user_id
-    assert league.current_round == 0
+    assert league.current_mix == 0
     assert league.state == "active"
     assert league.completed_at is None
 
     members = (
         await db_session.scalars(
-            select(LeagueMember).where(
-                LeagueMember.league_id == league.id,
-                LeagueMember.user_id == user_id,
+            select(ClubMember).where(
+                ClubMember.club_id == league.id,
+                ClubMember.user_id == user_id,
             )
         )
     ).all()
@@ -313,8 +313,8 @@ async def test_name_is_trimmed(client, db_session):
     resp = await client.post(
         LEAGUES_URL,
         headers=_auth_header(user.id),
-        json=_valid_body(name="  My League  "),
+        json=_valid_body(name="  My Club  "),
     )
 
     assert resp.status_code == 201, resp.text
-    assert resp.json()["name"] == "My League"
+    assert resp.json()["name"] == "My Club"

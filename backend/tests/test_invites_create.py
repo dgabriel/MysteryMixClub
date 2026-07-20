@@ -14,8 +14,8 @@ from sqlalchemy import select
 
 from app.auth.jwt import create_access_token
 from app.models.invite import Invite
-from app.models.league import League
-from app.models.league_member import LeagueMember
+from app.models.club import Club
+from app.models.club_member import ClubMember
 from app.models.user import User
 
 # The exact key set the invite-create response must return.
@@ -49,8 +49,8 @@ async def _seed_user(db_session, **overrides) -> User:
     return user
 
 
-async def _seed_league(db_session, organizer: User, **overrides) -> League:
-    """Insert and commit a League owned by ``organizer``, returning it.
+async def _seed_league(db_session, organizer: User, **overrides) -> Club:
+    """Insert and commit a Club owned by ``organizer``, returning it.
 
     Also seeds the organizer's active league_members row, mirroring how
     create_league behaves, so the organizer is an active member by default.
@@ -65,20 +65,20 @@ async def _seed_league(db_session, organizer: User, **overrides) -> League:
         "state": "active",
     }
     defaults.update(overrides)
-    league = League(**defaults)
+    league = Club(**defaults)
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id))
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id))
     await db_session.commit()
     await db_session.refresh(league)
     return league
 
 
-async def _seed_member(db_session, league: League, user: User, **overrides) -> LeagueMember:
-    """Insert and commit a LeagueMember row, returning it."""
+async def _seed_member(db_session, league: Club, user: User, **overrides) -> ClubMember:
+    """Insert and commit a ClubMember row, returning it."""
     defaults = {"club_id": league.id, "user_id": user.id}
     defaults.update(overrides)
-    member = LeagueMember(**defaults)
+    member = ClubMember(**defaults)
     db_session.add(member)
     await db_session.commit()
     await db_session.refresh(member)
@@ -224,7 +224,7 @@ async def test_create_invite_persists_invites_row(client, db_session):
     invites = (await db_session.scalars(select(Invite).where(Invite.token == token))).all()
     assert len(invites) == 1
     invite = invites[0]
-    assert invite.league_id == league_id
+    assert invite.club_id == league_id
     assert invite.created_by == organizer_id
     # v2 (MYS-126): persisted with a 48h expiry, not None.
     assert invite.expires_at is not None
@@ -262,7 +262,7 @@ def _revoke_url(league_id, invite_id) -> str:
     return f"/api/v1/clubs/{league_id}/invites/{invite_id}"
 
 
-async def _seed_invite(db_session, league: League, creator: User, **overrides) -> Invite:
+async def _seed_invite(db_session, league: Club, creator: User, **overrides) -> Invite:
     defaults = {
         "club_id": league.id,
         "created_by": creator.id,
@@ -335,7 +335,7 @@ async def test_revoke_unknown_invite_returns_404(client, db_session):
 async def test_revoke_invite_from_another_league_returns_404(client, db_session):
     organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
     league_a = await _seed_league(db_session, organizer)
-    league_b = await _seed_league(db_session, organizer, name="Other League")
+    league_b = await _seed_league(db_session, organizer, name="Other Club")
     invite_b = await _seed_invite(db_session, league_b, organizer)
 
     resp = await client.delete(

@@ -20,10 +20,10 @@ from sqlalchemy import func, select
 
 from app.auth.jwt import create_access_token
 from app.models.invite import Invite
-from app.models.league import League
-from app.models.league_member import LeagueMember
+from app.models.club import Club
+from app.models.club_member import ClubMember
 from app.models.note import Note
-from app.models.round import Round
+from app.models.mix import Mix
 from app.models.session import Session
 from app.models.submission import Submission
 from app.models.user import User
@@ -215,22 +215,22 @@ async def test_delete_hard_deletes_user_and_all_personal_data(client, db_session
 
     # A league owned by the organizer, with the target as a member, plus a round
     # in which the target submitted, voted, and left a note.
-    league = League(
-        name="A League",
+    league = Club(
+        name="A Club",
         organizer_id=organizer.id,
-        total_rounds=3,
+        total_mixes=3,
         votes_per_player=3,
         state="active",
     )
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id))
-    db_session.add(LeagueMember(league_id=league.id, user_id=target.id))
-    round_ = Round(league_id=league.id, round_number=1, theme="t", state="closed")
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id))
+    db_session.add(ClubMember(club_id=league.id, user_id=target.id))
+    round_ = Mix(club_id=league.id, mix_number=1, theme="t", state="closed")
     db_session.add(round_)
     await db_session.flush()
     submission = Submission(
-        round_id=round_.id,
+        mix_id=round_.id,
         user_id=target.id,
         isrc="USABC1234567",
         title="song",
@@ -239,10 +239,10 @@ async def test_delete_hard_deletes_user_and_all_personal_data(client, db_session
     )
     db_session.add(submission)
     await db_session.flush()
-    db_session.add(Vote(round_id=round_.id, voter_id=target.id, submission_id=submission.id))
+    db_session.add(Vote(mix_id=round_.id, voter_id=target.id, submission_id=submission.id))
     db_session.add(
         Note(
-            round_id=round_.id,
+            mix_id=round_.id,
             author_id=target.id,
             submission_id=submission.id,
             body="a note",
@@ -258,7 +258,7 @@ async def test_delete_hard_deletes_user_and_all_personal_data(client, db_session
     )
     db_session.add(
         Invite(
-            league_id=league.id,
+            club_id=league.id,
             created_by=target.id,
             token="tok_" + uuid.uuid4().hex,
         )
@@ -278,7 +278,7 @@ async def test_delete_hard_deletes_user_and_all_personal_data(client, db_session
     # The user and all of their personal data are gone — zero orphans.
     assert await _count(db_session, User, id=target_id) == 0
     assert await _count(db_session, Session, user_id=target_id) == 0
-    assert await _count(db_session, LeagueMember, user_id=target_id) == 0
+    assert await _count(db_session, ClubMember, user_id=target_id) == 0
     assert await _count(db_session, Submission, user_id=target_id) == 0
     assert await _count(db_session, Vote, voter_id=target_id) == 0
     assert await _count(db_session, Note, author_id=target_id) == 0
@@ -287,7 +287,7 @@ async def test_delete_hard_deletes_user_and_all_personal_data(client, db_session
     assert await _count(db_session, Vote, submission_id=submission_id) == 0
     # Co-members are untouched; the organizer and league survive.
     assert await _count(db_session, User, id=organizer_id) == 1
-    assert await _count(db_session, LeagueMember, user_id=organizer_id) == 1
+    assert await _count(db_session, ClubMember, user_id=organizer_id) == 1
 
 
 async def test_delete_nulls_organizer_fk_on_targets_leagues(client, db_session):
@@ -295,16 +295,16 @@ async def test_delete_nulls_organizer_fk_on_targets_leagues(client, db_session):
     # nulled (mirrors the purge job), rather than being deleted.
     admin = await _seed_admin(db_session)
     target = await _seed_user(db_session, "bad@example.com")
-    league = League(
-        name="Orphaned League",
+    league = Club(
+        name="Orphaned Club",
         organizer_id=target.id,
-        total_rounds=3,
+        total_mixes=3,
         votes_per_player=3,
         state="complete",
     )
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=target.id))
+    db_session.add(ClubMember(club_id=league.id, user_id=target.id))
     await db_session.commit()
 
     league_id = league.id
@@ -313,6 +313,6 @@ async def test_delete_nulls_organizer_fk_on_targets_leagues(client, db_session):
     assert resp.status_code == 204, resp.text
 
     db_session.expire_all()
-    surviving = await db_session.scalar(select(League).where(League.id == league_id))
+    surviving = await db_session.scalar(select(Club).where(Club.id == league_id))
     assert surviving is not None
     assert surviving.organizer_id is None

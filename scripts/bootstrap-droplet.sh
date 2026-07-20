@@ -101,10 +101,10 @@ sudo -u "${APP_USER}" bash -c "cd '${APP_ROOT}/backend' && .venv/bin/pip install
 echo "==> Installing the deadline force-advance job (systemd timer, MYS-145/162)"
 # Arm the timer now; it activates on the next boot / first deploy. `enable` (not
 # --now) so the job doesn't fire before the runtime env file below is populated.
-install -m 0644 "${APP_ROOT}/scripts/mysterymixclub-advance-rounds.service" /etc/systemd/system/
-install -m 0644 "${APP_ROOT}/scripts/mysterymixclub-advance-rounds.timer" /etc/systemd/system/
+install -m 0644 "${APP_ROOT}/scripts/mysterymixclub-advance-mixes.service" /etc/systemd/system/
+install -m 0644 "${APP_ROOT}/scripts/mysterymixclub-advance-mixes.timer" /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable mysterymixclub-advance-rounds.timer
+systemctl enable mysterymixclub-advance-mixes.timer
 
 echo "==> Configuring the firewall (ufw)"
 ufw allow 22/tcp
@@ -119,7 +119,7 @@ Bootstrap complete. Remaining steps (see docs/staging-setup.md):
   2. Install the systemd unit (scripts/mysterymixclub-api.service)
   3. Install the nginx site + create the basic-auth file, then run certbot
   4. Once the env is populated, start the deadline-job timer:
-     systemctl enable --now mysterymixclub-advance-rounds.timer
+     systemctl enable --now mysterymixclub-advance-mixes.timer
      (the timer unit is already installed + armed; this begins the 15-min runs)
 
 EOF

@@ -1,8 +1,8 @@
 # MysteryMixClub deadline force-advance timer — staging (MYS-145/162).
-# Fires mysterymixclub-advance-rounds.service every 15 minutes. Persistent=true so
+# Fires mysterymixclub-advance-mixes.service every 15 minutes. Persistent=true so
 # a missed run (Droplet reboot / downtime) fires once on the next boot rather than
 # being skipped — deadlines shouldn't slip because the box was off.
-# Install: see mysterymixclub-advance-rounds.service header.
+# Install: see mysterymixclub-advance-mixes.service header.
 [Unit]
 Description=Run the MysteryMixClub deadline force-advance job every 15 minutes (staging)
 

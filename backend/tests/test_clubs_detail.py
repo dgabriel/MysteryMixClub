@@ -14,8 +14,8 @@ import uuid
 from datetime import datetime, timezone
 
 from app.auth.jwt import create_access_token
-from app.models.league import League
-from app.models.league_member import LeagueMember
+from app.models.club import Club
+from app.models.club_member import ClubMember
 from app.models.user import User
 
 # The full league object key set, matching POST /leagues.
@@ -57,8 +57,8 @@ async def _seed_user(db_session, **overrides) -> User:
     return user
 
 
-async def _seed_league(db_session, organizer: User, **overrides) -> League:
-    """Insert and commit a League with the organizer as an active member."""
+async def _seed_league(db_session, organizer: User, **overrides) -> Club:
+    """Insert and commit a Club with the organizer as an active member."""
     defaults = {
         "name": "Summer Bangers",
         "description": "A league for hot tracks",
@@ -69,20 +69,20 @@ async def _seed_league(db_session, organizer: User, **overrides) -> League:
         "state": "active",
     }
     defaults.update(overrides)
-    league = League(**defaults)
+    league = Club(**defaults)
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id))
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id))
     await db_session.commit()
     await db_session.refresh(league)
     return league
 
 
-async def _seed_member(db_session, league: League, user: User, **overrides) -> LeagueMember:
-    """Insert and commit a LeagueMember row, returning it."""
+async def _seed_member(db_session, league: Club, user: User, **overrides) -> ClubMember:
+    """Insert and commit a ClubMember row, returning it."""
     defaults = {"club_id": league.id, "user_id": user.id}
     defaults.update(overrides)
-    member = LeagueMember(**defaults)
+    member = ClubMember(**defaults)
     db_session.add(member)
     await db_session.commit()
     await db_session.refresh(member)

@@ -15,9 +15,9 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select
 
 from app.auth.jwt import create_access_token
-from app.models.league import League
-from app.models.league_member import LeagueMember
-from app.models.round import Round
+from app.models.club import Club
+from app.models.club_member import ClubMember
+from app.models.mix import Mix
 from app.models.submission import Submission
 from app.models.user import User
 from app.models.vote import Vote
@@ -38,19 +38,19 @@ async def _seed_user(db_session, email: str) -> User:
 
 async def _seed_league_with_round(
     db_session, organizer: User, *, state: str = "open_voting", votes_per_player: int = 3
-) -> Round:
-    league = League(
+) -> Mix:
+    league = Club(
         name="L",
         organizer_id=organizer.id,
-        total_rounds=3,
+        total_mixes=3,
         votes_per_player=votes_per_player,
     )
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id))
-    round_ = Round(
-        league_id=league.id,
-        round_number=1,
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id))
+    round_ = Mix(
+        club_id=league.id,
+        mix_number=1,
         theme="late summer",
         state=state,
         votes_per_player=votes_per_player,
@@ -64,7 +64,7 @@ async def _seed_league_with_round(
 async def _add_member(
     db_session, league_id: uuid.UUID, user: User, *, vibe_mode: bool = False
 ) -> None:
-    db_session.add(LeagueMember(league_id=league_id, user_id=user.id, vibe_mode=vibe_mode))
+    db_session.add(ClubMember(club_id=league_id, user_id=user.id, vibe_mode=vibe_mode))
     await db_session.commit()
 
 
@@ -72,7 +72,7 @@ async def _seed_submission(
     db_session, round_id: uuid.UUID, user: User, *, mode: str = "playing", title: str = "song"
 ) -> Submission:
     sub = Submission(
-        round_id=round_id,
+        mix_id=round_id,
         user_id=user.id,
         isrc="USABC1234567",
         title=title,
@@ -148,7 +148,7 @@ async def test_cast_without_own_submission_succeeds(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
     voter = await _seed_user(db_session, "v@example.com")
     round_ = await _seed_league_with_round(db_session, organizer)
-    await _add_member(db_session, round_.league_id, voter)
+    await _add_member(db_session, round_.club_id, voter)
     # A target exists, but the voter has not submitted anything.
     target = await _seed_submission(db_session, round_.id, organizer)
     resp = await client.post(
@@ -164,7 +164,7 @@ async def test_cast_when_own_submission_is_vibing_409(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
     voter = await _seed_user(db_session, "v@example.com")
     round_ = await _seed_league_with_round(db_session, organizer)
-    await _add_member(db_session, round_.league_id, voter)
+    await _add_member(db_session, round_.club_id, voter)
     target = await _seed_submission(db_session, round_.id, organizer)
     await _seed_submission(db_session, round_.id, voter, mode="vibing")
     resp = await client.post(
@@ -187,7 +187,7 @@ async def test_cast_non_submitter_vibing_membership_409(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
     voter = await _seed_user(db_session, "v@example.com")
     round_ = await _seed_league_with_round(db_session, organizer)
-    await _add_member(db_session, round_.league_id, voter, vibe_mode=True)
+    await _add_member(db_session, round_.club_id, voter, vibe_mode=True)
     target = await _seed_submission(db_session, round_.id, organizer)
     resp = await client.post(
         _votes_url(round_.id),
@@ -205,7 +205,7 @@ async def test_cast_non_submitter_playing_persists_and_counts(client, db_session
     voter = await _seed_user(db_session, "v@example.com")
     round_ = await _seed_league_with_round(db_session, organizer)
     round_id = round_.id
-    await _add_member(db_session, round_.league_id, voter)  # playing by default
+    await _add_member(db_session, round_.club_id, voter)  # playing by default
     target = await _seed_submission(db_session, round_id, organizer, title="Target")
     # Capture PKs into locals before expire_all() — reading expired ORM
     # attributes later raises MissingGreenlet in async tests.
@@ -224,7 +224,7 @@ async def test_cast_non_submitter_playing_persists_and_counts(client, db_session
     db_session.expire_all()
     rows = list(
         await db_session.scalars(
-            select(Vote).where(Vote.round_id == round_id, Vote.voter_id == voter_id)
+            select(Vote).where(Vote.mix_id == round_id, Vote.voter_id == voter_id)
         )
     )
     assert len(rows) == 1
@@ -246,7 +246,7 @@ async def test_non_submitter_vote_does_not_trip_auto_close(client, db_session):
     non_submitter = await _seed_user(db_session, "n@example.com")
     round_ = await _seed_league_with_round(db_session, organizer)
     round_id = round_.id
-    league_id = round_.league_id
+    league_id = round_.club_id
     await _add_member(db_session, league_id, submitter_b)
     await _add_member(db_session, league_id, non_submitter)  # playing, no submission
 
@@ -271,7 +271,7 @@ async def test_non_submitter_vote_does_not_trip_auto_close(client, db_session):
     assert resp.status_code == 200, resp.text
 
     db_session.expire_all()
-    persisted = await db_session.scalar(select(Round).where(Round.id == round_id))
+    persisted = await db_session.scalar(select(Mix).where(Mix.id == round_id))
     assert persisted.state == "open_voting"
     assert persisted.closed_at is None
 
@@ -282,7 +282,7 @@ async def test_cast_non_submitter_over_limit_409(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
     voter = await _seed_user(db_session, "v@example.com")
     round_ = await _seed_league_with_round(db_session, organizer, votes_per_player=2)
-    await _add_member(db_session, round_.league_id, voter)  # playing, no submission
+    await _add_member(db_session, round_.club_id, voter)  # playing, no submission
     ids = [str(uuid.uuid4()) for _ in range(3)]
     resp = await client.post(
         _votes_url(round_.id),
@@ -300,8 +300,8 @@ async def test_cast_removed_member_403(client, db_session):
     voter = await _seed_user(db_session, "v@example.com")
     round_ = await _seed_league_with_round(db_session, organizer)
     db_session.add(
-        LeagueMember(
-            league_id=round_.league_id,
+        ClubMember(
+            club_id=round_.club_id,
             user_id=voter.id,
             removed_at=datetime.now(timezone.utc),
         )
@@ -349,7 +349,7 @@ async def test_cast_duplicate_ids_409(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
     voter = await _seed_user(db_session, "v@example.com")
     round_ = await _seed_league_with_round(db_session, organizer)
-    await _add_member(db_session, round_.league_id, voter)
+    await _add_member(db_session, round_.club_id, voter)
     target = await _seed_submission(db_session, round_.id, organizer)
     await _seed_submission(db_session, round_.id, voter)
     tid = str(target.id)
@@ -381,8 +381,8 @@ async def test_cast_id_from_another_round_404(client, db_session):
     round_ = await _seed_league_with_round(db_session, organizer)
     await _seed_submission(db_session, round_.id, organizer)
     # Second round under the same league with its own submission.
-    league_id = round_.league_id
-    other_round = Round(league_id=league_id, round_number=2, theme="other", state="open_voting")
+    league_id = round_.club_id
+    other_round = Mix(club_id=league_id, mix_number=2, theme="other", state="open_voting")
     db_session.add(other_round)
     await db_session.commit()
     await db_session.refresh(other_round)
@@ -415,7 +415,7 @@ async def test_cast_for_vibing_song_succeeds(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
     viber = await _seed_user(db_session, "vibe@example.com")
     round_ = await _seed_league_with_round(db_session, organizer)
-    await _add_member(db_session, round_.league_id, viber)
+    await _add_member(db_session, round_.club_id, viber)
     await _seed_submission(db_session, round_.id, organizer)  # voter's own song
     vibing_sub = await _seed_submission(db_session, round_.id, viber, mode="vibing")
     resp = await client.post(
@@ -439,7 +439,7 @@ async def test_cast_max_votes_happy_path(client, db_session):
     c = await _seed_user(db_session, "c@example.com")
     round_ = await _seed_league_with_round(db_session, organizer, votes_per_player=3)
     round_id = round_.id
-    league_id = round_.league_id
+    league_id = round_.club_id
     for u in (a, b, c):
         await _add_member(db_session, league_id, u)
     await _seed_submission(db_session, round_id, organizer)  # voter's own song
@@ -463,7 +463,7 @@ async def test_cast_max_votes_happy_path(client, db_session):
     count = await db_session.scalar(
         select(func.count())
         .select_from(Vote)
-        .where(Vote.round_id == round_id, Vote.voter_id == voter_id)
+        .where(Vote.mix_id == round_id, Vote.voter_id == voter_id)
     )
     assert count == 3
 
@@ -474,7 +474,7 @@ async def test_recast_replaces_idempotent(client, db_session):
     b = await _seed_user(db_session, "b@example.com")
     round_ = await _seed_league_with_round(db_session, organizer, votes_per_player=2)
     round_id = round_.id
-    league_id = round_.league_id
+    league_id = round_.club_id
     for u in (a, b):
         await _add_member(db_session, league_id, u)
     await _seed_submission(db_session, round_id, organizer)
@@ -501,7 +501,7 @@ async def test_recast_replaces_idempotent(client, db_session):
     db_session.expire_all()
     rows = list(
         await db_session.scalars(
-            select(Vote).where(Vote.round_id == round_id, Vote.voter_id == voter_id)
+            select(Vote).where(Vote.mix_id == round_id, Vote.voter_id == voter_id)
         )
     )
     assert len(rows) == 2  # not 3 — prior vote replaced, not doubled
@@ -541,7 +541,7 @@ async def test_get_mine_returns_cast_votes_ordered(client, db_session):
     b = await _seed_user(db_session, "b@example.com")
     round_ = await _seed_league_with_round(db_session, organizer, votes_per_player=2)
     round_id = round_.id
-    league_id = round_.league_id
+    league_id = round_.club_id
     for u in (a, b):
         await _add_member(db_session, league_id, u)
     await _seed_submission(db_session, round_id, organizer)
@@ -631,7 +631,7 @@ async def test_vote_counts_shows_counts(client, db_session):
     a = await _seed_user(db_session, "a@example.com")
     round_ = await _seed_league_with_round(db_session, organizer, votes_per_player=3)
     round_id = round_.id
-    league_id = round_.league_id
+    league_id = round_.club_id
     for u in (a,):
         await _add_member(db_session, league_id, u)
     # Create separate submissions - organizer's song too
@@ -687,7 +687,7 @@ async def test_vote_counts_honors_vote_limit(client, db_session):
     b = await _seed_user(db_session, "b@example.com")
     round_ = await _seed_league_with_round(db_session, organizer, votes_per_player=2)
     round_id = round_.id
-    league_id = round_.league_id
+    league_id = round_.club_id
     for u in (a, b):
         await _add_member(db_session, league_id, u)
     # Submissions: organizer's own song (not voted), A's song, B's song
@@ -741,7 +741,7 @@ async def test_cast_after_organizer_rollback_rejected_and_not_persisted(client, 
     voter = await _seed_user(db_session, "v@example.com")
     round_ = await _seed_league_with_round(db_session, organizer)
     round_id = round_.id
-    await _add_member(db_session, round_.league_id, voter)
+    await _add_member(db_session, round_.club_id, voter)
     target = await _seed_submission(db_session, round_id, organizer, title="Target")
     target_id = target.id
     organizer_id = organizer.id
@@ -770,7 +770,7 @@ async def test_cast_after_organizer_rollback_rejected_and_not_persisted(client, 
     db_session.expire_all()
     rows = list(
         await db_session.scalars(
-            select(Vote).where(Vote.round_id == round_id, Vote.voter_id == voter_id)
+            select(Vote).where(Vote.mix_id == round_id, Vote.voter_id == voter_id)
         )
     )
     assert rows == []

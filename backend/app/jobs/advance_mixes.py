@@ -1,30 +1,30 @@
-"""Force-advance rounds past their deadline and send 12h warnings (MYS-145 / MYS-162).
+"""Force-advance mixes past their deadline and send 12h warnings (MYS-145 / MYS-162).
 
-A round closes on quorum OR a deadline, whichever comes first (epic MYS-158). The
+A mix closes on quorum OR a deadline, whichever comes first (epic MYS-158). The
 API path handles quorum (auto-advance in votes.py); this scheduled job handles the
 deadline. It is invoked by an external scheduler (systemd timer) as a standalone
 process:
 
-    python -m app.jobs.advance_rounds
+    python -m app.jobs.advance_mixes
 
-It scans every live round (``open_submission`` / ``open_voting``) and processes
-EACH in its own transaction, taking a ``SELECT … FOR UPDATE`` lock on the round
+It scans every live mix (``open_submission`` / ``open_voting``) and processes
+EACH in its own transaction, taking a ``SELECT … FOR UPDATE`` lock on the mix
 row and re-checking state + deadline under the lock — the same discipline as the
 vote-cast auto-close, so the job never races a concurrent API transition.
 
-Per locked round, the first matching branch wins:
+Per locked mix, the first matching branch wins:
 
-1. Phase deadline is NULL  → stamp ``now + league window`` and stop (no email).
+1. Phase deadline is NULL  → stamp ``now + club window`` and stop (no email).
 2. Deadline in the future  → if the phase window is > 12h, no warning has gone
    out yet, and the deadline is 1–12h away, warn the outstanding actors and stamp
    the per-phase warning marker.
 3. Deadline passed, ``open_submission``, ZERO submissions → do NOT advance; email
-   the organizer once (extend or advance manually) and stamp the notice. The round
+   the organizer once (extend or advance manually) and stamp the notice. The mix
    holds open indefinitely.
 4. Deadline passed, ``open_submission``, ≥1 submission → advance to ``open_voting``.
 5. Deadline passed, ``open_voting`` → close (zero votes still closes).
 
-One round's failure is logged and skipped; the job exits nonzero only if the whole
+One mix's failure is logged and skipped; the job exits nonzero only if the whole
 run fails (e.g. the initial scan can't reach the database).
 """
 
@@ -37,11 +37,11 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.routes.rounds import advance_round_state
+from app.api.routes.mixes import advance_mix_state
 from app.config import Settings, get_settings
 from app.db.session import async_session_factory
-from app.models.league import League
-from app.models.round import Round
+from app.models.club import Club
+from app.models.mix import Mix
 from app.models.submission import Submission
 from app.models.vote import Vote
 from app.services.email import EmailSender, build_email_sender
@@ -50,13 +50,13 @@ from app.services.notifications import (
     Recipient,
     gather_recipients,
     send_deadline_warning,
-    send_empty_round_notice,
-    send_round_event,
+    send_empty_mix_notice,
+    send_mix_event,
 )
 from app.services.spotify_client import SpotifyClient, get_spotify_client
 from app.services.spotify_playlist_generation import try_auto_generate_playlist
 
-logger = logging.getLogger("app.jobs.advance_rounds")
+logger = logging.getLogger("app.jobs.advance_mixes")
 
 # The live states this job acts on.
 _LIVE_STATES = ("open_submission", "open_voting")
@@ -82,88 +82,88 @@ class AdvanceReport:
 
 
 async def _warning_recipients(
-    db: AsyncSession, league: League, round_: Round, phase: DeadlinePhase
+    db: AsyncSession, club: Club, mix_: Mix, phase: DeadlinePhase
 ) -> list[Recipient]:
     """The subset of email-enabled members who still need to act this phase.
 
-    Submission: members whose distinct-song count in the round is below the
-    league's ``songs_per_submission`` cap (zero included). Voting: playing
+    Submission: members whose distinct-song count in the mix is below the
+    club's ``songs_per_submission`` cap (zero included). Voting: playing
     submitters (a member with a ``playing`` submission) who have not voted."""
-    recipients = await gather_recipients(db, league.id)
+    recipients = await gather_recipients(db, club.id)
     if phase == "submission":
         rows = await db.execute(
             select(Submission.user_id, func.count())
-            .where(Submission.round_id == round_.id)
+            .where(Submission.mix_id == mix_.id)
             .group_by(Submission.user_id)
         )
         counts = {user_id: count for user_id, count in rows.all()}
-        cap = league.songs_per_submission
+        cap = club.songs_per_submission
         return [r for r in recipients if counts.get(r.user_id, 0) < cap]
     playing_ids = set(
         await db.scalars(
             select(Submission.user_id)
-            .where(Submission.round_id == round_.id, Submission.participation_mode == "playing")
+            .where(Submission.mix_id == mix_.id, Submission.participation_mode == "playing")
             .distinct()
         )
     )
     voter_ids = set(
-        await db.scalars(select(Vote.voter_id).where(Vote.round_id == round_.id).distinct())
+        await db.scalars(select(Vote.voter_id).where(Vote.mix_id == mix_.id).distinct())
     )
     outstanding = playing_ids - voter_ids
     return [r for r in recipients if r.user_id in outstanding]
 
 
-async def _organizer_recipient(db: AsyncSession, league: League) -> list[Recipient]:
-    """The organizer as a recipient, or empty if the league has no organizer
+async def _organizer_recipient(db: AsyncSession, club: Club) -> list[Recipient]:
+    """The organizer as a recipient, or empty if the club has no organizer
     (hard-purged) or the organizer has email notifications off."""
-    if league.organizer_id is None:
+    if club.organizer_id is None:
         return []
-    recipients = await gather_recipients(db, league.id)
-    return [r for r in recipients if r.user_id == league.organizer_id]
+    recipients = await gather_recipients(db, club.id)
+    return [r for r in recipients if r.user_id == club.organizer_id]
 
 
-async def _process_round(
+async def _process_mix(
     db: AsyncSession,
-    round_id: uuid.UUID,
+    mix_id: uuid.UUID,
     now: datetime,
     settings: Settings,
     sender: EmailSender,
     client: SpotifyClient,
     report: AdvanceReport,
 ) -> None:
-    """Process a single round under a row lock, in the caller's transaction.
+    """Process a single mix under a row lock, in the caller's transaction.
 
     Commits its own mutation before sending any email (so a mail failure can never
     re-fire an already-recorded advance/warning). ``expire_on_commit`` is off on
     the session factory, so the ORM objects stay readable for the post-commit send.
     """
-    # Lock the round row and re-read its state under the lock, defeating a race
+    # Lock the mix row and re-read its state under the lock, defeating a race
     # with a concurrent API transition (mirrors the vote-cast auto-close).
-    round_ = await db.scalar(
-        select(Round)
-        .where(Round.id == round_id)
+    mix_ = await db.scalar(
+        select(Mix)
+        .where(Mix.id == mix_id)
         .with_for_update()
         .execution_options(populate_existing=True)
     )
-    if round_ is None or round_.state not in _LIVE_STATES:
+    if mix_ is None or mix_.state not in _LIVE_STATES:
         report.skipped += 1
         return
-    league = await db.scalar(select(League).where(League.id == round_.league_id))
-    if league is None:
+    club = await db.scalar(select(Club).where(Club.id == mix_.club_id))
+    if club is None:
         report.skipped += 1
         return
 
-    is_submission = round_.state == "open_submission"
-    deadline = round_.submission_deadline if is_submission else round_.voting_deadline
-    window_hours = league.submission_window_hours if is_submission else league.voting_window_hours
+    is_submission = mix_.state == "open_submission"
+    deadline = mix_.submission_deadline if is_submission else mix_.voting_deadline
+    window_hours = club.submission_window_hours if is_submission else club.voting_window_hours
 
-    # Branch 1: no deadline yet — stamp it from the league window and stop.
+    # Branch 1: no deadline yet — stamp it from the club window and stop.
     if deadline is None:
         stamped = now + timedelta(hours=window_hours)
         if is_submission:
-            round_.submission_deadline = stamped
+            mix_.submission_deadline = stamped
         else:
-            round_.voting_deadline = stamped
+            mix_.voting_deadline = stamped
         await db.commit()
         report.stamped += 1
         return
@@ -171,7 +171,7 @@ async def _process_round(
     # Branch 2: deadline still ahead — maybe send the 12h warning.
     if deadline > now:
         warning_sent = (
-            round_.submission_warning_sent_at if is_submission else round_.voting_warning_sent_at
+            mix_.submission_warning_sent_at if is_submission else mix_.voting_warning_sent_at
         )
         remaining = deadline - now
         if (
@@ -180,91 +180,91 @@ async def _process_round(
             and _WARNING_LEAD_MIN <= remaining <= _WARNING_LEAD_MAX
         ):
             phase: DeadlinePhase = "submission" if is_submission else "voting"
-            recipients = await _warning_recipients(db, league, round_, phase)
+            recipients = await _warning_recipients(db, club, mix_, phase)
             if is_submission:
-                round_.submission_warning_sent_at = now
+                mix_.submission_warning_sent_at = now
             else:
-                round_.voting_warning_sent_at = now
+                mix_.voting_warning_sent_at = now
             await db.commit()
-            send_deadline_warning(sender, settings, recipients, league, round_, phase)
+            send_deadline_warning(sender, settings, recipients, club, mix_, phase)
             report.warned += 1
         return
 
     # Deadline has passed (deadline <= now).
     if is_submission:
         submission_count = await db.scalar(
-            select(func.count()).select_from(Submission).where(Submission.round_id == round_.id)
+            select(func.count()).select_from(Submission).where(Submission.mix_id == mix_.id)
         )
-        # Branch 3: nobody submitted — never auto-advance an empty round; nudge the
-        # organizer once and leave the round open indefinitely.
+        # Branch 3: nobody submitted — never auto-advance an empty mix; nudge the
+        # organizer once and leave the mix open indefinitely.
         if (submission_count or 0) == 0:
-            if round_.empty_round_notice_sent_at is None:
-                recipients = await _organizer_recipient(db, league)
-                round_.empty_round_notice_sent_at = now
+            if mix_.empty_round_notice_sent_at is None:
+                recipients = await _organizer_recipient(db, club)
+                mix_.empty_round_notice_sent_at = now
                 await db.commit()
-                send_empty_round_notice(sender, settings, recipients, league, round_)
+                send_empty_mix_notice(sender, settings, recipients, club, mix_)
                 report.empty_notices += 1
             else:
                 report.skipped += 1
             return
         # Branch 4: submissions are in — advance to voting.
-        events = await advance_round_state(round_, league, "open_voting", db)
-        recipients = await gather_recipients(db, league.id)
+        events = await advance_mix_state(mix_, club, "open_voting", db)
+        recipients = await gather_recipients(db, club.id)
         await db.commit()
-        for event_round, event in events:
-            send_round_event(sender, settings, recipients, league, event_round, event)
+        for event_mix, event in events:
+            send_mix_event(sender, settings, recipients, club, event_mix, event)
         # Auto-generate the shared-account Spotify playlist the moment voting
         # opens (MYS-176) — no admin click needed. Best-effort: never raises.
         if any(event == "voting_open" for _, event in events):
-            await try_auto_generate_playlist(round_id, round_, league, db, client, settings)
+            await try_auto_generate_playlist(mix_id, mix_, club, db, client, settings)
         report.advanced_to_voting += 1
         return
 
-    # Branch 5: voting deadline passed — close the round (zero votes still closes).
-    events = await advance_round_state(round_, league, "closed", db)
-    recipients = await gather_recipients(db, league.id)
+    # Branch 5: voting deadline passed — close the mix (zero votes still closes).
+    events = await advance_mix_state(mix_, club, "closed", db)
+    recipients = await gather_recipients(db, club.id)
     await db.commit()
-    for event_round, event in events:
-        send_round_event(sender, settings, recipients, league, event_round, event)
+    for event_mix, event in events:
+        send_mix_event(sender, settings, recipients, club, event_mix, event)
     report.closed += 1
 
 
-async def advance_due_rounds(
+async def advance_due_mixes(
     *,
     now: datetime | None = None,
     settings: Settings | None = None,
     sender: EmailSender | None = None,
     client: SpotifyClient | None = None,
 ) -> AdvanceReport:
-    """Scan live rounds and process each in its own locked transaction.
+    """Scan live mixes and process each in its own locked transaction.
 
-    Returns an :class:`AdvanceReport`. A single round's failure is logged and
+    Returns an :class:`AdvanceReport`. A single mix's failure is logged and
     counted, never fatal; only a failure of the initial scan propagates."""
     settings = settings or get_settings()
     sender = sender or build_email_sender(settings)
     client = client or get_spotify_client()
     now = now or datetime.now(timezone.utc)
 
-    # Read-only scan in its own short-lived session; each round is then locked and
-    # processed in a fresh transaction so one round's rollback can't touch another.
+    # Read-only scan in its own short-lived session; each mix is then locked and
+    # processed in a fresh transaction so one mix's rollback can't touch another.
     async with async_session_factory() as db:
-        round_ids = list(await db.scalars(select(Round.id).where(Round.state.in_(_LIVE_STATES))))
+        mix_ids = list(await db.scalars(select(Mix.id).where(Mix.state.in_(_LIVE_STATES))))
 
     report = AdvanceReport()
-    for round_id in round_ids:
+    for mix_id in mix_ids:
         try:
             async with async_session_factory() as db:
-                await _process_round(db, round_id, now, settings, sender, client, report)
-        except Exception:  # noqa: BLE001 — isolate one round's failure from the rest
-            logger.exception("advance_rounds: failed processing round %s", round_id)
+                await _process_mix(db, mix_id, now, settings, sender, client, report)
+        except Exception:  # noqa: BLE001 — isolate one mix's failure from the rest
+            logger.exception("advance_mixes: failed processing mix %s", mix_id)
             report.errors += 1
     return report
 
 
 async def _run() -> None:
-    report = await advance_due_rounds()
+    report = await advance_due_mixes()
     logger.info(
-        "advance_rounds: stamped=%d warned=%d empty_notices=%d advanced=%d closed=%d "
+        "advance_mixes: stamped=%d warned=%d empty_notices=%d advanced=%d closed=%d "
         "skipped=%d errors=%d",
         report.stamped,
         report.warned,
@@ -275,7 +275,7 @@ async def _run() -> None:
         report.errors,
     )
     print(
-        f"advance_rounds: stamped={report.stamped} warned={report.warned} "
+        f"advance_mixes: stamped={report.stamped} warned={report.warned} "
         f"empty_notices={report.empty_notices} advanced={report.advanced_to_voting} "
         f"closed={report.closed} skipped={report.skipped} errors={report.errors}"
     )

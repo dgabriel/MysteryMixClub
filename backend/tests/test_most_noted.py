@@ -9,10 +9,10 @@ Gotcha guarded: ORM primary keys are captured into locals BEFORE the service is
 invoked, since the service runs queries on the same session.
 """
 
-from app.models.league import League
-from app.models.league_member import LeagueMember
+from app.models.club import Club
+from app.models.club_member import ClubMember
 from app.models.note import Note
-from app.models.round import Round
+from app.models.mix import Mix
 from app.models.submission import Submission
 from app.models.user import User
 from app.services.most_noted import (
@@ -36,12 +36,12 @@ async def _seed_user(db_session, email: str, name: str = "User") -> User:
     return user
 
 
-async def _seed_round(db_session, organizer: User, *, state: str = "open_voting") -> Round:
-    league = League(name="L", organizer_id=organizer.id, total_rounds=3, votes_per_player=3)
+async def _seed_round(db_session, organizer: User, *, state: str = "open_voting") -> Mix:
+    league = Club(name="L", organizer_id=organizer.id, total_mixes=3, votes_per_player=3)
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id))
-    round_ = Round(league_id=league.id, round_number=1, theme="t", state=state)
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id))
+    round_ = Mix(club_id=league.id, mix_number=1, theme="t", state=state)
     db_session.add(round_)
     await db_session.commit()
     await db_session.refresh(round_)
@@ -50,7 +50,7 @@ async def _seed_round(db_session, organizer: User, *, state: str = "open_voting"
 
 async def _seed_submission(
     db_session,
-    round_: Round,
+    round_: Mix,
     user: User,
     *,
     title: str,
@@ -58,7 +58,7 @@ async def _seed_submission(
     mode: str = "playing",
 ) -> Submission:
     sub = Submission(
-        round_id=round_.id,
+        mix_id=round_.id,
         user_id=user.id,
         isrc="USABC1234567",
         title=title,
@@ -73,7 +73,7 @@ async def _seed_submission(
 
 async def _add_note(db_session, round_id, submission_id, author_id, body: str) -> None:
     db_session.add(
-        Note(round_id=round_id, submission_id=submission_id, author_id=author_id, body=body)
+        Note(mix_id=round_id, submission_id=submission_id, author_id=author_id, body=body)
     )
     await db_session.commit()
 
@@ -91,7 +91,7 @@ async def test_empty_round_has_no_winners(db_session):
 
     result = await compute_most_noted(round_id, db_session)
     assert isinstance(result, MostNoted)
-    assert result.round_id == round_id
+    assert result.mix_id == round_id
     assert result.note_count == 0
     assert result.winners == []
 

@@ -1,4 +1,4 @@
-"""Apple Music routes — developer token + per-player round playlists (MYS-108).
+"""Apple Music routes — developer token + per-player mix playlists (MYS-108).
 
 Three endpoints:
 
@@ -7,8 +7,8 @@ Three endpoints:
   user, and Apple's own web embeds ship it client-side, so exposing it to an
   authenticated caller is by design — unlike the ``.p8`` private key, which never
   leaves the server.
-* ``GET  /rounds/{id}/apple-playlist`` — the caller's own playlist for a round.
-* ``POST /rounds/{id}/apple-playlist`` — generate it, using a Music User Token
+* ``GET  /mixes/{id}/apple-playlist`` — the caller's own playlist for a mix.
+* ``POST /mixes/{id}/apple-playlist`` — generate it, using a Music User Token
   supplied per request and never stored.
 
 Every playlist here is personal: MYS-107 established that Apple library playlists
@@ -26,8 +26,8 @@ from pydantic import Field
 from app.api.wire import WireModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.routes.leagues import _load_league_as_member
-from app.api.routes.rounds import _load_round
+from app.api.routes.clubs import _load_club_as_member
+from app.api.routes.mixes import _load_mix
 from app.auth.deps import get_current_user
 from app.db.session import get_db
 from app.models.user import User
@@ -40,7 +40,7 @@ from app.services.apple_music_client import (
 )
 from app.services.apple_music_token import AppleMusicTokenError
 from app.services.apple_playlist_generation import (
-    generate_round_playlist,
+    generate_mix_playlist,
     get_existing_playlist,
 )
 
@@ -111,18 +111,18 @@ async def get_developer_token(
 
 
 @router.get("/mixes/{round_id}/apple-playlist", response_model=ApplePlaylistLinkResponse)
-async def get_round_apple_playlist(
+async def get_mix_apple_playlist(
     round_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ApplePlaylistLinkResponse:
-    """The caller's own Apple playlist link for this round, or null.
+    """The caller's own Apple playlist link for this mix, or null.
 
     Scoped to the caller by construction — one member never sees another's
     playlist, and the link wouldn't open for them anyway.
     """
-    round_ = await _load_round(round_id, db)
-    await _load_league_as_member(round_.league_id, current_user, db)
+    mix_ = await _load_mix(round_id, db)
+    await _load_club_as_member(mix_.club_id, current_user, db)
 
     stored = await get_existing_playlist(db, round_id, current_user.id)
     if stored is None:
@@ -131,27 +131,27 @@ async def get_round_apple_playlist(
 
 
 @router.post("/mixes/{round_id}/apple-playlist", response_model=GeneratePlaylistResponse)
-async def create_round_apple_playlist(
+async def create_mix_apple_playlist(
     round_id: uuid.UUID,
     payload: GeneratePlaylistRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     client: AppleMusicClient = Depends(get_apple_music_client),
 ) -> GeneratePlaylistResponse:
-    """Generate this round's playlist in the caller's Apple Music library."""
+    """Generate this mix's playlist in the caller's Apple Music library."""
     if not client.is_configured:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="apple music is not configured",
         )
-    round_ = await _load_round(round_id, db)
-    league = await _load_league_as_member(round_.league_id, current_user, db)
+    mix_ = await _load_mix(round_id, db)
+    club = await _load_club_as_member(mix_.club_id, current_user, db)
 
     try:
-        result = await generate_round_playlist(
+        result = await generate_mix_playlist(
             round_id,
-            round_,
-            league,
+            mix_,
+            club,
             current_user.id,
             payload.music_user_token,
             db,

@@ -15,9 +15,9 @@ from sqlalchemy import select
 
 from app.auth.jwt import create_access_token
 from app.models.invite import Invite
-from app.models.league import League
-from app.models.league_member import LeagueMember
-from app.models.round import Round
+from app.models.club import Club
+from app.models.club_member import ClubMember
+from app.models.mix import Mix
 from app.models.user import User
 
 # --------------------------------------------------------------------------- #
@@ -39,7 +39,7 @@ async def _seed_user(db_session, **overrides) -> User:
     return user
 
 
-async def _seed_league(db_session, organizer: User, **overrides) -> League:
+async def _seed_league(db_session, organizer: User, **overrides) -> Club:
     defaults = {
         "name": "Summer Bangers",
         "description": "A league for hot tracks",
@@ -50,19 +50,19 @@ async def _seed_league(db_session, organizer: User, **overrides) -> League:
         "state": "active",
     }
     defaults.update(overrides)
-    league = League(**defaults)
+    league = Club(**defaults)
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id))
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id))
     await db_session.commit()
     await db_session.refresh(league)
     return league
 
 
-async def _seed_member(db_session, league: League, user: User, **overrides) -> LeagueMember:
+async def _seed_member(db_session, league: Club, user: User, **overrides) -> ClubMember:
     defaults = {"club_id": league.id, "user_id": user.id}
     defaults.update(overrides)
-    member = LeagueMember(**defaults)
+    member = ClubMember(**defaults)
     db_session.add(member)
     await db_session.commit()
     await db_session.refresh(member)
@@ -98,7 +98,7 @@ def _revoke_invite_url(league_id, invite_id) -> str:
 
 
 # ========================================================================== #
-# League update (PATCH /leagues/:id)
+# Club update (PATCH /leagues/:id)
 # ========================================================================== #
 
 
@@ -119,13 +119,13 @@ async def test_co_organizer_can_update_league(client, db_session):
 
 
 # ========================================================================== #
-# Round creation (POST /leagues/:id/rounds)
+# Mix creation (POST /leagues/:id/rounds)
 # ========================================================================== #
 
 
 async def test_co_organizer_can_create_a_round(client, db_session):
     organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
-    league = await _seed_league(db_session, organizer, total_rounds=3, current_round=0)
+    league = await _seed_league(db_session, organizer, total_mixes=3, current_mix=0)
     co_organizer = await _seed_user(db_session, email="co@example.com", display_name="Co")
     await _seed_member(db_session, league, co_organizer, role="admin")
 
@@ -140,16 +140,16 @@ async def test_co_organizer_can_create_a_round(client, db_session):
 
 
 # ========================================================================== #
-# Round update (PATCH /rounds/:id)
+# Mix update (PATCH /rounds/:id)
 # ========================================================================== #
 
 
 async def test_co_organizer_can_update_a_round(client, db_session):
     organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
-    league = await _seed_league(db_session, organizer, total_rounds=3, current_round=1)
+    league = await _seed_league(db_session, organizer, total_mixes=3, current_mix=1)
     co_organizer = await _seed_user(db_session, email="co@example.com", display_name="Co")
     await _seed_member(db_session, league, co_organizer, role="admin")
-    round_ = Round(league_id=league.id, round_number=1, state="pending")
+    round_ = Mix(club_id=league.id, mix_number=1, state="pending")
     db_session.add(round_)
     await db_session.commit()
     await db_session.refresh(round_)
@@ -188,9 +188,7 @@ async def test_co_organizer_can_remove_another_member(client, db_session):
     target_id = target.id
     db_session.expire_all()
     membership = await db_session.scalar(
-        select(LeagueMember).where(
-            LeagueMember.league_id == league_id, LeagueMember.user_id == target_id
-        )
+        select(ClubMember).where(ClubMember.club_id == league_id, ClubMember.user_id == target_id)
     )
     assert membership is not None
     assert membership.removed_at is not None
@@ -208,7 +206,7 @@ async def test_co_organizer_can_revoke_an_invite(client, db_session):
     await _seed_member(db_session, league, co_organizer, role="admin")
 
     invite = Invite(
-        league_id=league.id,
+        club_id=league.id,
         created_by=organizer.id,
         token="co-organizer-revoke-token",
         expires_at=None,
@@ -230,7 +228,7 @@ async def test_co_organizer_can_revoke_an_invite(client, db_session):
 
 
 # ========================================================================== #
-# League deletion (DELETE /leagues/:id)
+# Club deletion (DELETE /leagues/:id)
 # ========================================================================== #
 
 
@@ -246,7 +244,7 @@ async def test_co_organizer_can_delete_the_league(client, db_session):
 
     assert resp.status_code == 204, resp.text
     db_session.expire_all()
-    assert await db_session.scalar(select(League).where(League.id == league_id)) is None
+    assert await db_session.scalar(select(Club).where(Club.id == league_id)) is None
 
 
 # ========================================================================== #
@@ -256,13 +254,13 @@ async def test_co_organizer_can_delete_the_league(client, db_session):
 
 async def test_fixed_organizer_retains_full_access_alongside_a_co_organizer(client, db_session):
     organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
-    league = await _seed_league(db_session, organizer, name="Old Name", total_rounds=3)
+    league = await _seed_league(db_session, organizer, name="Old Name", total_mixes=3)
     co_organizer = await _seed_user(db_session, email="co@example.com", display_name="Co")
     await _seed_member(db_session, league, co_organizer, role="admin")
     target = await _seed_user(db_session, email="target@example.com", display_name="Target")
     await _seed_member(db_session, league, target)
 
-    # League update.
+    # Club update.
     patch_resp = await client.patch(
         _league_url(league.id),
         headers=_auth_header(organizer.id),
@@ -270,7 +268,7 @@ async def test_fixed_organizer_retains_full_access_alongside_a_co_organizer(clie
     )
     assert patch_resp.status_code == 200, patch_resp.text
 
-    # Round creation.
+    # Mix creation.
     create_resp = await client.post(
         _rounds_url(league.id),
         headers=_auth_header(organizer.id),
@@ -279,7 +277,7 @@ async def test_fixed_organizer_retains_full_access_alongside_a_co_organizer(clie
     assert create_resp.status_code == 201, create_resp.text
     round_id = create_resp.json()["id"]
 
-    # Round update. A freshly created round opens for submissions immediately
+    # Mix update. A freshly created round opens for submissions immediately
     # (theme/description lock once open — see rounds.py); deadlines stay
     # editable, so exercise the update via a deadline field instead.
     update_resp = await client.patch(
@@ -296,6 +294,6 @@ async def test_fixed_organizer_retains_full_access_alongside_a_co_organizer(clie
     )
     assert remove_resp.status_code == 204, remove_resp.text
 
-    # League deletion.
+    # Club deletion.
     delete_resp = await client.delete(_league_url(league.id), headers=_auth_header(organizer.id))
     assert delete_resp.status_code == 204, delete_resp.text

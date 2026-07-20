@@ -10,8 +10,8 @@ import uuid
 from sqlalchemy import select
 
 from app.auth.jwt import create_access_token
-from app.models.league import League
-from app.models.league_member import LeagueMember
+from app.models.club import Club
+from app.models.club_member import ClubMember
 from app.models.user import User
 
 
@@ -27,29 +27,25 @@ async def _seed_user(db_session, email: str) -> User:
     return user
 
 
-async def _seed_league(db_session, organizer: User, *, default_vibe_mode: bool = False) -> League:
-    league = League(
+async def _seed_league(db_session, organizer: User, *, default_vibe_mode: bool = False) -> Club:
+    league = Club(
         name="L",
         organizer_id=organizer.id,
-        total_rounds=3,
+        total_mixes=3,
         votes_per_player=3,
         default_vibe_mode=default_vibe_mode,
     )
     db_session.add(league)
     await db_session.flush()
-    db_session.add(
-        LeagueMember(league_id=league.id, user_id=organizer.id, vibe_mode=default_vibe_mode)
-    )
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id, vibe_mode=default_vibe_mode))
     await db_session.commit()
     await db_session.refresh(league)
     return league
 
 
-async def _membership(db_session, league_id, user_id) -> LeagueMember:
+async def _membership(db_session, league_id, user_id) -> ClubMember:
     return await db_session.scalar(
-        select(LeagueMember).where(
-            LeagueMember.league_id == league_id, LeagueMember.user_id == user_id
-        )
+        select(ClubMember).where(ClubMember.club_id == league_id, ClubMember.user_id == user_id)
     )
 
 

@@ -1,4 +1,4 @@
-"""Spotify connect + per-round playlist creation (MYS-83, MYS-169).
+"""Spotify connect + per-mix playlist creation (MYS-83, MYS-169).
 
 * ``GET  /spotify/connect``  — (auth) start OAuth; returns the consent URL.
 * ``GET  /spotify/callback`` — (no auth) Spotify redirects here; we exchange the
@@ -7,8 +7,8 @@
 * ``GET  /spotify/status``   — (auth) is the app configured / is the shared
   playlist account connected.
 * ``DELETE /spotify/connection`` — (auth) disconnect (own connection only).
-* ``GET  /rounds/:id/spotify-playlist`` — (auth, any league member) read-only:
-  the round's existing playlist link, or null if none has been generated yet.
+* ``GET  /mixes/:id/spotify-playlist`` — (auth, any club member) read-only:
+  the mix's existing playlist link, or null if none has been generated yet.
 
 Token exchange/refresh is server-side; the client secret and refresh token never
 reach the browser.
@@ -40,14 +40,14 @@ from app.api.wire import WireModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.routes.leagues import _load_league_as_member
-from app.api.routes.rounds import _load_round
+from app.api.routes.clubs import _load_club_as_member
+from app.api.routes.mixes import _load_mix
 from app.auth.deps import get_current_user
 from app.auth.jwt import JWTError, create_oauth_state, decode_oauth_state
 from app.config import Settings, get_settings
 from app.db.session import get_db
 from app.models.spotify_connection import SpotifyConnection
-from app.models.spotify_round_playlist import SpotifyRoundPlaylist
+from app.models.spotify_mix_playlist import SpotifyMixPlaylist
 from app.models.submission import Submission
 from app.models.user import User
 from app.services.spotify_client import (
@@ -244,27 +244,27 @@ async def spotify_disconnect(
 
 
 @router.get("/mixes/{round_id}/spotify-playlist", response_model=SpotifyPlaylistLinkResponse)
-async def get_round_spotify_playlist_link(
+async def get_mix_spotify_playlist_link(
     round_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> SpotifyPlaylistLinkResponse:
-    """The round page's read-only view (MYS-169): any league member can read the
+    """The mix page's read-only view (MYS-169): any club member can read the
     link an admin already generated, but never trigger generation themselves.
     Null (not an error) whenever nothing's been generated yet, the shared
-    account isn't configured, or this member simply isn't in the league."""
-    round_ = await _load_round(round_id, db)
-    await _load_league_as_member(round_.league_id, current_user, db)
+    account isn't configured, or this member simply isn't in the club."""
+    mix_ = await _load_mix(round_id, db)
+    await _load_club_as_member(mix_.club_id, current_user, db)
 
     account_id = playlist_account_user_id(settings)
     if account_id is None:
         return SpotifyPlaylistLinkResponse(playlist_url=None)
 
     stored = await db.scalar(
-        select(SpotifyRoundPlaylist).where(
-            SpotifyRoundPlaylist.round_id == round_id,
-            SpotifyRoundPlaylist.user_id == account_id,
+        select(SpotifyMixPlaylist).where(
+            SpotifyMixPlaylist.mix_id == round_id,
+            SpotifyMixPlaylist.user_id == account_id,
         )
     )
     if stored is None:
@@ -276,9 +276,9 @@ async def get_round_spotify_playlist_link(
     # skipped. The reason mirrors the generator — no ISRC means a source-only
     # (Bandcamp/YouTube) track that can never match, otherwise the catalog simply
     # doesn't carry it. No Spotify call needed: the classification is the same one
-    # generate_round_playlist made when it built the playlist.
+    # generate_mix_playlist made when it built the playlist.
     submissions = await db.scalars(
-        select(Submission).where(Submission.round_id == round_id).order_by(Submission.id)
+        select(Submission).where(Submission.mix_id == round_id).order_by(Submission.id)
     )
     unmatched = [
         UnmatchedTrack(

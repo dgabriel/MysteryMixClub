@@ -16,8 +16,8 @@ from sqlalchemy import select
 
 from app.auth.jwt import create_access_token
 from app.jobs.purge_accounts import hard_delete_users
-from app.models.league import League
-from app.models.league_member import LeagueMember
+from app.models.club import Club
+from app.models.club_member import ClubMember
 from app.models.user import User
 
 # --------------------------------------------------------------------------- #
@@ -40,8 +40,8 @@ async def _seed_user(db_session, **overrides) -> User:
     return user
 
 
-async def _seed_league(db_session, organizer: User, **overrides) -> League:
-    """Insert and commit a League with the organizer as an active member."""
+async def _seed_league(db_session, organizer: User, **overrides) -> Club:
+    """Insert and commit a Club with the organizer as an active member."""
     defaults = {
         "name": "Summer Bangers",
         "description": "A league for hot tracks",
@@ -52,20 +52,20 @@ async def _seed_league(db_session, organizer: User, **overrides) -> League:
         "state": "active",
     }
     defaults.update(overrides)
-    league = League(**defaults)
+    league = Club(**defaults)
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id))
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id))
     await db_session.commit()
     await db_session.refresh(league)
     return league
 
 
-async def _seed_member(db_session, league: League, user: User, **overrides) -> LeagueMember:
-    """Insert and commit a LeagueMember row, returning it."""
+async def _seed_member(db_session, league: Club, user: User, **overrides) -> ClubMember:
+    """Insert and commit a ClubMember row, returning it."""
     defaults = {"club_id": league.id, "user_id": user.id}
     defaults.update(overrides)
-    member = LeagueMember(**defaults)
+    member = ClubMember(**defaults)
     db_session.add(member)
     await db_session.commit()
     await db_session.refresh(member)
@@ -351,7 +351,7 @@ async def test_demoting_last_admin_with_purged_organizer_returns_409(client, db_
     await hard_delete_users(db_session, [organizer.id], [organizer.email])
     await db_session.commit()
 
-    league = await db_session.scalar(select(League).where(League.id == league_id))
+    league = await db_session.scalar(select(Club).where(Club.id == league_id))
     assert league is not None
     assert league.organizer_id is None, "purge must null organizer_id for the guard to apply"
 
@@ -389,7 +389,7 @@ async def test_demoting_an_admin_with_purged_organizer_and_another_admin_succeed
     await hard_delete_users(db_session, [organizer.id], [organizer.email])
     await db_session.commit()
 
-    league = await db_session.scalar(select(League).where(League.id == league_id))
+    league = await db_session.scalar(select(Club).where(Club.id == league_id))
     assert league is not None
     assert league.organizer_id is None, "purge must null organizer_id for this to be a fair test"
 
@@ -429,7 +429,7 @@ async def test_demoting_last_admin_when_other_admin_is_soft_deleted_returns_409(
     await hard_delete_users(db_session, [organizer.id], [organizer.email])
     await db_session.commit()
 
-    league = await db_session.scalar(select(League).where(League.id == league_id))
+    league = await db_session.scalar(select(Club).where(Club.id == league_id))
     assert league is not None
     assert league.organizer_id is None, "purge must null organizer_id for this to be a fair test"
 

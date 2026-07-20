@@ -9,10 +9,10 @@ import uuid
 from datetime import datetime, timezone
 
 from app.auth.jwt import create_access_token
-from app.models.league import League
-from app.models.league_member import LeagueMember
+from app.models.club import Club
+from app.models.club_member import ClubMember
 from app.models.note import Note
-from app.models.round import Round
+from app.models.mix import Mix
 from app.models.submission import Submission
 from app.models.user import User
 from app.models.vote import Vote
@@ -33,20 +33,20 @@ async def _seed_user(db_session, email: str, *, name: str = "User") -> User:
     return user
 
 
-async def _seed_league(db_session, organizer_id, *, name="L") -> League:
-    league = League(name=name, organizer_id=organizer_id, total_rounds=3, votes_per_player=3)
+async def _seed_league(db_session, organizer_id, *, name="L") -> Club:
+    league = Club(name=name, organizer_id=organizer_id, total_mixes=3, votes_per_player=3)
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer_id))
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer_id))
     await db_session.commit()
     await db_session.refresh(league)
     return league
 
 
-async def _seed_round(db_session, league_id, *, number=1) -> Round:
-    round_ = Round(
-        league_id=league_id,
-        round_number=number,
+async def _seed_round(db_session, league_id, *, number=1) -> Mix:
+    round_ = Mix(
+        club_id=league_id,
+        mix_number=number,
         theme="a theme",
         state="closed",
         votes_per_player=3,
@@ -61,7 +61,7 @@ async def _seed_submission(
     db_session, round_id, user_id, *, isrc="USABC1234567", source_key=None
 ) -> Submission:
     sub = Submission(
-        round_id=round_id,
+        mix_id=round_id,
         user_id=user_id,
         isrc=isrc,
         source_key=source_key,
@@ -77,7 +77,7 @@ async def _seed_submission(
 
 
 async def _seed_vote(db_session, round_id, voter_id, submission_id) -> Vote:
-    vote = Vote(round_id=round_id, voter_id=voter_id, submission_id=submission_id)
+    vote = Vote(mix_id=round_id, voter_id=voter_id, submission_id=submission_id)
     db_session.add(vote)
     await db_session.commit()
     await db_session.refresh(vote)
@@ -85,7 +85,7 @@ async def _seed_vote(db_session, round_id, voter_id, submission_id) -> Vote:
 
 
 async def _seed_note(db_session, round_id, author_id, submission_id, body="nice") -> Note:
-    note = Note(round_id=round_id, author_id=author_id, submission_id=submission_id, body=body)
+    note = Note(mix_id=round_id, author_id=author_id, submission_id=submission_id, body=body)
     db_session.add(note)
     await db_session.commit()
     await db_session.refresh(note)
@@ -173,7 +173,7 @@ async def test_export_includes_own_vote_and_note(client, db_session):
     organizer = await _seed_user(db_session, "org2@example.com", name="Org2")
     voter = await _seed_user(db_session, "voter@example.com", name="Voter")
     league = await _seed_league(db_session, organizer.id)
-    db_session.add(LeagueMember(league_id=league.id, user_id=voter.id))
+    db_session.add(ClubMember(club_id=league.id, user_id=voter.id))
     await db_session.commit()
     round_ = await _seed_round(db_session, league.id)
     submission = await _seed_submission(db_session, round_.id, organizer.id)

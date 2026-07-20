@@ -19,10 +19,10 @@ from sqlalchemy import func, select
 
 from app.auth.jwt import create_access_token
 from app.models.invite import Invite
-from app.models.league import League
-from app.models.league_member import LeagueMember
+from app.models.club import Club
+from app.models.club_member import ClubMember
 from app.models.note import Note
-from app.models.round import Round
+from app.models.mix import Mix
 from app.models.submission import Submission
 from app.models.user import User
 from app.models.vote import Vote
@@ -47,7 +47,7 @@ async def _seed_user(db_session, **overrides) -> User:
     return user
 
 
-async def _seed_league(db_session, organizer: User, **overrides) -> League:
+async def _seed_league(db_session, organizer: User, **overrides) -> Club:
     defaults = {
         "name": "Summer Bangers",
         "description": "A league for hot tracks",
@@ -58,19 +58,19 @@ async def _seed_league(db_session, organizer: User, **overrides) -> League:
         "state": "active",
     }
     defaults.update(overrides)
-    league = League(**defaults)
+    league = Club(**defaults)
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id))
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id))
     await db_session.commit()
     await db_session.refresh(league)
     return league
 
 
-async def _seed_member(db_session, league: League, user: User, **overrides) -> LeagueMember:
+async def _seed_member(db_session, league: Club, user: User, **overrides) -> ClubMember:
     defaults = {"club_id": league.id, "user_id": user.id}
     defaults.update(overrides)
-    member = LeagueMember(**defaults)
+    member = ClubMember(**defaults)
     db_session.add(member)
     await db_session.commit()
     await db_session.refresh(member)
@@ -127,7 +127,7 @@ async def test_delete_non_organizer_member_returns_403(client, db_session):
     # The league still exists.
     league_id = league.id
     db_session.expire_all()
-    assert await db_session.scalar(select(League).where(League.id == league_id)) is not None
+    assert await db_session.scalar(select(Club).where(Club.id == league_id)) is not None
 
 
 async def test_delete_outsider_returns_403(client, db_session):
@@ -149,15 +149,15 @@ async def test_delete_in_flight_league_is_allowed_and_cascades(client, db_sessio
     # MYS-137: an in-progress league (state == active AND current_round > 0, with
     # an open round + submission + vote) can be deleted, and everything cascades.
     organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
-    league = await _seed_league(db_session, organizer, state="active", current_round=1)
+    league = await _seed_league(db_session, organizer, state="active", current_mix=1)
     player = await _seed_user(db_session, email="player@example.com", display_name="Player")
     await _seed_member(db_session, league, player)
 
-    round_ = Round(league_id=league.id, round_number=1, state="open_voting")
+    round_ = Mix(club_id=league.id, mix_number=1, state="open_voting")
     db_session.add(round_)
     await db_session.flush()
     submission = Submission(
-        round_id=round_.id,
+        mix_id=round_.id,
         user_id=player.id,
         isrc="USEXAMPLE0009",
         title="Mid-round Song",
@@ -165,7 +165,7 @@ async def test_delete_in_flight_league_is_allowed_and_cascades(client, db_sessio
     )
     db_session.add(submission)
     await db_session.flush()
-    db_session.add(Vote(round_id=round_.id, voter_id=organizer.id, submission_id=submission.id))
+    db_session.add(Vote(mix_id=round_.id, voter_id=organizer.id, submission_id=submission.id))
     await db_session.commit()
 
     league_id = league.id
@@ -176,16 +176,16 @@ async def test_delete_in_flight_league_is_allowed_and_cascades(client, db_sessio
     assert resp.status_code == 204, resp.text
 
     db_session.expire_all()
-    assert await db_session.scalar(select(League).where(League.id == league_id)) is None
-    assert await _count(db_session, Round, league_id=league_id) == 0
-    assert await _count(db_session, Submission, round_id=round_id) == 0
-    assert await _count(db_session, Vote, round_id=round_id) == 0
+    assert await db_session.scalar(select(Club).where(Club.id == league_id)) is None
+    assert await _count(db_session, Mix, club_id=league_id) == 0
+    assert await _count(db_session, Submission, mix_id=round_id) == 0
+    assert await _count(db_session, Vote, mix_id=round_id) == 0
 
 
 async def test_delete_active_but_not_started_league_is_allowed(client, db_session):
     # state == active but current_round == 0 -> not yet started, delete is fine.
     organizer = await _seed_user(db_session)
-    league = await _seed_league(db_session, organizer, state="active", current_round=0)
+    league = await _seed_league(db_session, organizer, state="active", current_mix=0)
 
     resp = await client.delete(_delete_url(league.id), headers=_auth_header(organizer.id))
 
@@ -199,15 +199,15 @@ async def test_delete_active_but_not_started_league_is_allowed(client, db_sessio
 
 async def test_delete_not_started_league_cascades_rounds_invites_members(client, db_session):
     organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
-    league = await _seed_league(db_session, organizer, current_round=0)
+    league = await _seed_league(db_session, organizer, current_mix=0)
     member = await _seed_user(db_session, email="member@example.com", display_name="Member")
     await _seed_member(db_session, league, member)
     # A pending round slate (as auto-generated at creation) + an email invite.
-    db_session.add(Round(league_id=league.id, round_number=1, state="pending"))
-    db_session.add(Round(league_id=league.id, round_number=2, state="pending"))
+    db_session.add(Mix(club_id=league.id, mix_number=1, state="pending"))
+    db_session.add(Mix(club_id=league.id, mix_number=2, state="pending"))
     db_session.add(
         Invite(
-            league_id=league.id,
+            club_id=league.id,
             created_by=organizer.id,
             token="tok_" + uuid.uuid4().hex,
         )
@@ -224,10 +224,10 @@ async def test_delete_not_started_league_cascades_rounds_invites_members(client,
     assert resp.content == b""
 
     db_session.expire_all()
-    assert await db_session.scalar(select(League).where(League.id == league_id)) is None
-    assert await _count(db_session, Round, league_id=league_id) == 0
-    assert await _count(db_session, Invite, league_id=league_id) == 0
-    assert await _count(db_session, LeagueMember, league_id=league_id) == 0
+    assert await db_session.scalar(select(Club).where(Club.id == league_id)) is None
+    assert await _count(db_session, Mix, club_id=league_id) == 0
+    assert await _count(db_session, Invite, club_id=league_id) == 0
+    assert await _count(db_session, ClubMember, club_id=league_id) == 0
     # The user accounts survive the league deletion.
     assert await db_session.scalar(select(User).where(User.id == organizer_id)) is not None
     assert await db_session.scalar(select(User).where(User.id == member_id)) is not None
@@ -240,16 +240,16 @@ async def test_delete_not_started_league_cascades_rounds_invites_members(client,
 
 async def test_delete_complete_league_cascades_submissions_votes_notes(client, db_session):
     organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
-    league = await _seed_league(db_session, organizer, state="complete", current_round=1)
+    league = await _seed_league(db_session, organizer, state="complete", current_mix=1)
     player = await _seed_user(db_session, email="player@example.com", display_name="Player")
     await _seed_member(db_session, league, player)
 
     # A closed round with a submission, a vote, and a note.
-    round_ = Round(league_id=league.id, round_number=1, state="closed")
+    round_ = Mix(club_id=league.id, mix_number=1, state="closed")
     db_session.add(round_)
     await db_session.flush()
     submission = Submission(
-        round_id=round_.id,
+        mix_id=round_.id,
         user_id=player.id,
         isrc="USEXAMPLE0001",
         title="A Song",
@@ -257,10 +257,10 @@ async def test_delete_complete_league_cascades_submissions_votes_notes(client, d
     )
     db_session.add(submission)
     await db_session.flush()
-    db_session.add(Vote(round_id=round_.id, voter_id=organizer.id, submission_id=submission.id))
+    db_session.add(Vote(mix_id=round_.id, voter_id=organizer.id, submission_id=submission.id))
     db_session.add(
         Note(
-            round_id=round_.id,
+            mix_id=round_.id,
             author_id=organizer.id,
             submission_id=submission.id,
             body="great pick",
@@ -268,7 +268,7 @@ async def test_delete_complete_league_cascades_submissions_votes_notes(client, d
     )
     db_session.add(
         Invite(
-            league_id=league.id,
+            club_id=league.id,
             created_by=organizer.id,
             token="tok_" + uuid.uuid4().hex,
         )
@@ -286,13 +286,13 @@ async def test_delete_complete_league_cascades_submissions_votes_notes(client, d
 
     db_session.expire_all()
     # Nothing tied to this league or its round survives.
-    assert await db_session.scalar(select(League).where(League.id == league_id)) is None
-    assert await _count(db_session, Round, league_id=league_id) == 0
-    assert await _count(db_session, Submission, round_id=round_id) == 0
-    assert await _count(db_session, Vote, round_id=round_id) == 0
-    assert await _count(db_session, Note, round_id=round_id) == 0
-    assert await _count(db_session, Invite, league_id=league_id) == 0
-    assert await _count(db_session, LeagueMember, league_id=league_id) == 0
+    assert await db_session.scalar(select(Club).where(Club.id == league_id)) is None
+    assert await _count(db_session, Mix, club_id=league_id) == 0
+    assert await _count(db_session, Submission, mix_id=round_id) == 0
+    assert await _count(db_session, Vote, mix_id=round_id) == 0
+    assert await _count(db_session, Note, mix_id=round_id) == 0
+    assert await _count(db_session, Invite, club_id=league_id) == 0
+    assert await _count(db_session, ClubMember, club_id=league_id) == 0
     # Users are untouched.
     assert await db_session.scalar(select(User).where(User.id == organizer_id)) is not None
     assert await db_session.scalar(select(User).where(User.id == player_id)) is not None
@@ -301,12 +301,12 @@ async def test_delete_complete_league_cascades_submissions_votes_notes(client, d
 async def test_delete_only_targets_its_own_league(client, db_session):
     # A second league's data must be left fully intact.
     organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
-    doomed = await _seed_league(db_session, organizer, name="Doomed", current_round=0)
-    keeper = await _seed_league(db_session, organizer, name="Keeper", current_round=0)
-    db_session.add(Round(league_id=keeper.id, round_number=1, state="pending"))
+    doomed = await _seed_league(db_session, organizer, name="Doomed", current_mix=0)
+    keeper = await _seed_league(db_session, organizer, name="Keeper", current_mix=0)
+    db_session.add(Mix(club_id=keeper.id, mix_number=1, state="pending"))
     db_session.add(
         Invite(
-            league_id=keeper.id,
+            club_id=keeper.id,
             created_by=organizer.id,
             token="tok_" + uuid.uuid4().hex,
         )
@@ -319,8 +319,8 @@ async def test_delete_only_targets_its_own_league(client, db_session):
     assert resp.status_code == 204, resp.text
 
     db_session.expire_all()
-    assert await db_session.scalar(select(League).where(League.id == keeper_id)) is not None
-    assert await _count(db_session, Round, league_id=keeper_id) == 1
-    assert await _count(db_session, Invite, league_id=keeper_id) == 1
+    assert await db_session.scalar(select(Club).where(Club.id == keeper_id)) is not None
+    assert await _count(db_session, Mix, club_id=keeper_id) == 1
+    assert await _count(db_session, Invite, club_id=keeper_id) == 1
     # Keeper's organizer membership row still present.
-    assert await _count(db_session, LeagueMember, league_id=keeper_id) == 1
+    assert await _count(db_session, ClubMember, club_id=keeper_id) == 1

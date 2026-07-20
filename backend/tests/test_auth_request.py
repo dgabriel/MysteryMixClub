@@ -18,8 +18,8 @@ from sqlalchemy import func, select
 from app.auth.tokens import hash_token
 from app.config import get_settings
 from app.models.invite import Invite
-from app.models.league import League
-from app.models.league_member import LeagueMember
+from app.models.club import Club
+from app.models.club_member import ClubMember
 from app.models.magic_link_token import MagicLinkToken
 from app.models.user import User
 
@@ -336,20 +336,20 @@ async def _seed_invite(db_session, *, expires_at: datetime | None) -> str:
     organizer = User(email="org@example.com", display_name="Org")
     db_session.add(organizer)
     await db_session.flush()
-    league = League(
-        name="Invited League",
+    league = Club(
+        name="Invited Club",
         organizer_id=organizer.id,
-        total_rounds=3,
+        total_mixes=3,
         votes_per_player=3,
         state="active",
     )
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id))
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id))
     token = "tok_" + uuid.uuid4().hex
     db_session.add(
         Invite(
-            league_id=league.id,
+            club_id=league.id,
             created_by=organizer.id,
             token=token,
             expires_at=expires_at,

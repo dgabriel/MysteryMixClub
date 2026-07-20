@@ -15,9 +15,9 @@ import uuid
 from sqlalchemy import select
 
 from app.auth.jwt import create_access_token
-from app.models.league import League
-from app.models.league_member import LeagueMember
-from app.models.round import Round
+from app.models.club import Club
+from app.models.club_member import ClubMember
+from app.models.mix import Mix
 from app.models.user import User
 
 LEAGUES_URL = "/api/v1/clubs"
@@ -61,8 +61,8 @@ async def _seed_user(db_session, **overrides) -> User:
     return user
 
 
-async def _seed_league(db_session, organizer: User, **overrides) -> League:
-    """Insert and commit a League with the organizer as an active member."""
+async def _seed_league(db_session, organizer: User, **overrides) -> Club:
+    """Insert and commit a Club with the organizer as an active member."""
     defaults = {
         "name": "Summer Bangers",
         "description": "A league for hot tracks",
@@ -73,20 +73,20 @@ async def _seed_league(db_session, organizer: User, **overrides) -> League:
         "state": "active",
     }
     defaults.update(overrides)
-    league = League(**defaults)
+    league = Club(**defaults)
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id))
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id))
     await db_session.commit()
     await db_session.refresh(league)
     return league
 
 
-async def _seed_member(db_session, league: League, user: User, **overrides) -> LeagueMember:
-    """Insert and commit a LeagueMember row, returning it."""
+async def _seed_member(db_session, league: Club, user: User, **overrides) -> ClubMember:
+    """Insert and commit a ClubMember row, returning it."""
     defaults = {"club_id": league.id, "user_id": user.id}
     defaults.update(overrides)
-    member = LeagueMember(**defaults)
+    member = ClubMember(**defaults)
     db_session.add(member)
     await db_session.commit()
     await db_session.refresh(member)
@@ -101,14 +101,14 @@ def _patch_url(league_id) -> str:
     return f"/api/v1/clubs/{league_id}"
 
 
-async def _create_league_via_api(client, user_id, *, total_rounds=6, votes_per_player=5):
+async def _create_league_via_api(client, user_id, *, total_mixes=6, votes_per_player=5):
     """Create a league through the POST endpoint so its round slate auto-generates."""
     resp = await client.post(
         LEAGUES_URL,
         headers=_auth_header(user_id),
         json={
-            "name": "Reconcile League",
-            "total_mixes": total_rounds,
+            "name": "Reconcile Club",
+            "total_mixes": total_mixes,
             "votes_per_player": votes_per_player,
         },
     )
@@ -119,10 +119,10 @@ async def _create_league_via_api(client, user_id, *, total_rounds=6, votes_per_p
 async def _round_numbers(db_session, league_id):
     rounds = list(
         await db_session.scalars(
-            select(Round).where(Round.league_id == league_id).order_by(Round.round_number.asc())
+            select(Mix).where(Mix.club_id == league_id).order_by(Mix.mix_number.asc())
         )
     )
-    return [r.round_number for r in rounds]
+    return [r.mix_number for r in rounds]
 
 
 # ========================================================================== #
@@ -199,7 +199,7 @@ async def test_non_member_stranger_patch_returns_403(client, db_session):
 async def test_organizer_updates_all_fields_returns_200_full_shape_and_persists(client, db_session):
     organizer = await _seed_user(db_session)
     league = await _seed_league(
-        db_session, organizer, name="Old Name", description="Old desc", total_rounds=6
+        db_session, organizer, name="Old Name", description="Old desc", total_mixes=6
     )
 
     resp = await client.patch(
@@ -218,16 +218,16 @@ async def test_organizer_updates_all_fields_returns_200_full_shape_and_persists(
     league_id = league.id
     db_session.expire_all()
 
-    persisted = await db_session.scalar(select(League).where(League.id == league_id))
+    persisted = await db_session.scalar(select(Club).where(Club.id == league_id))
     assert persisted.name == "Brand New"
     assert persisted.description == "Fresh desc"
-    assert persisted.total_rounds == 8
+    assert persisted.total_mixes == 8
 
 
 async def test_partial_update_only_name_leaves_other_fields_untouched(client, db_session):
     organizer = await _seed_user(db_session)
     league = await _seed_league(
-        db_session, organizer, name="Old Name", description="Keep me", total_rounds=6
+        db_session, organizer, name="Old Name", description="Keep me", total_mixes=6
     )
 
     resp = await client.patch(
@@ -245,15 +245,15 @@ async def test_partial_update_only_name_leaves_other_fields_untouched(client, db
     league_id = league.id
     db_session.expire_all()
 
-    persisted = await db_session.scalar(select(League).where(League.id == league_id))
+    persisted = await db_session.scalar(select(Club).where(Club.id == league_id))
     assert persisted.name == "Renamed"
     assert persisted.description == "Keep me"
-    assert persisted.total_rounds == 6
+    assert persisted.total_mixes == 6
 
 
 async def test_extend_rounds_returns_200(client, db_session):
     organizer = await _seed_user(db_session)
-    league = await _seed_league(db_session, organizer, total_rounds=6, current_round=2)
+    league = await _seed_league(db_session, organizer, total_mixes=6, current_mix=2)
 
     resp = await client.patch(
         _patch_url(league.id),
@@ -267,7 +267,7 @@ async def test_extend_rounds_returns_200(client, db_session):
 
 async def test_shorten_to_equal_current_round_returns_200(client, db_session):
     organizer = await _seed_user(db_session)
-    league = await _seed_league(db_session, organizer, total_rounds=6, current_round=3)
+    league = await _seed_league(db_session, organizer, total_mixes=6, current_mix=3)
 
     resp = await client.patch(
         _patch_url(league.id),
@@ -286,7 +286,7 @@ async def test_shorten_to_equal_current_round_returns_200(client, db_session):
 
 async def test_shorten_below_current_round_returns_409_and_unchanged(client, db_session):
     organizer = await _seed_user(db_session)
-    league = await _seed_league(db_session, organizer, total_rounds=6, current_round=4)
+    league = await _seed_league(db_session, organizer, total_mixes=6, current_mix=4)
 
     resp = await client.patch(
         _patch_url(league.id),
@@ -299,8 +299,8 @@ async def test_shorten_below_current_round_returns_409_and_unchanged(client, db_
     league_id = league.id
     db_session.expire_all()
 
-    persisted = await db_session.scalar(select(League).where(League.id == league_id))
-    assert persisted.total_rounds == 6
+    persisted = await db_session.scalar(select(Club).where(Club.id == league_id))
+    assert persisted.total_mixes == 6
 
 
 async def test_completed_league_edit_returns_409_and_unchanged(client, db_session):
@@ -318,7 +318,7 @@ async def test_completed_league_edit_returns_409_and_unchanged(client, db_sessio
     league_id = league.id
     db_session.expire_all()
 
-    persisted = await db_session.scalar(select(League).where(League.id == league_id))
+    persisted = await db_session.scalar(select(Club).where(Club.id == league_id))
     assert persisted.name == "Old Name"
 
 
@@ -441,19 +441,19 @@ async def test_explicit_null_description_clears_it_returns_200(client, db_sessio
     league_id = league.id
     db_session.expire_all()
 
-    persisted = await db_session.scalar(select(League).where(League.id == league_id))
+    persisted = await db_session.scalar(select(Club).where(Club.id == league_id))
     assert persisted.description is None
 
 
 # ========================================================================== #
-# Round-slate reconciliation on total_rounds change (MYS-62)
+# Mix-slate reconciliation on total_rounds change (MYS-62)
 # ========================================================================== #
 
 
 async def test_grow_total_rounds_appends_pending_rounds(client, db_session):
     # f. N -> N+2 appends two new pending rounds with the next sequential numbers.
     organizer = await _seed_user(db_session)
-    league = await _create_league_via_api(client, organizer.id, total_rounds=4)
+    league = await _create_league_via_api(client, organizer.id, total_mixes=4)
     league_id = uuid.UUID(league["id"])
 
     resp = await client.patch(
@@ -470,12 +470,12 @@ async def test_grow_total_rounds_appends_pending_rounds(client, db_session):
     # the league's votes_per_player.
     appended = list(
         await db_session.scalars(
-            select(Round)
-            .where(Round.league_id == league_id, Round.round_number > 4)
-            .order_by(Round.round_number.asc())
+            select(Mix)
+            .where(Mix.club_id == league_id, Mix.mix_number > 4)
+            .order_by(Mix.mix_number.asc())
         )
     )
-    assert [r.round_number for r in appended] == [5, 6]
+    assert [r.mix_number for r in appended] == [5, 6]
     assert all(r.state == "pending" for r in appended)
     assert all(r.theme is None and r.description is None for r in appended)
     assert all(r.votes_per_player == 5 for r in appended)
@@ -484,7 +484,7 @@ async def test_grow_total_rounds_appends_pending_rounds(client, db_session):
 async def test_shrink_total_rounds_deletes_trailing_pending_rounds(client, db_session):
     # g. N -> N-2 deletes the trailing two (all-pending) rounds.
     organizer = await _seed_user(db_session)
-    league = await _create_league_via_api(client, organizer.id, total_rounds=6)
+    league = await _create_league_via_api(client, organizer.id, total_mixes=6)
     league_id = uuid.UUID(league["id"])
 
     resp = await client.patch(
@@ -507,22 +507,22 @@ async def test_shrink_blocked_when_a_removed_round_has_started(client, db_sessio
     #    intact. All db_session writes happen up front (committed) before any API
     #    call, per the async expire_all/greenlet conventions.
     organizer = await _seed_user(db_session)
-    league = League(
+    league = Club(
         name="Started Trailing",
         organizer_id=organizer.id,
-        total_rounds=4,
+        total_mixes=4,
         votes_per_player=3,
-        current_round=1,
+        current_mix=1,
     )
     db_session.add(league)
     await db_session.flush()
     league_id = league.id
-    db_session.add(LeagueMember(league_id=league_id, user_id=organizer.id))
+    db_session.add(ClubMember(club_id=league_id, user_id=organizer.id))
     # Rounds 1 (open_submission) and 2 (closed) have started; 3 and 4 are pending.
-    db_session.add(Round(league_id=league_id, round_number=1, state="open_submission"))
-    db_session.add(Round(league_id=league_id, round_number=2, state="closed"))
-    db_session.add(Round(league_id=league_id, round_number=3, state="pending"))
-    db_session.add(Round(league_id=league_id, round_number=4, state="pending"))
+    db_session.add(Mix(club_id=league_id, mix_number=1, state="open_submission"))
+    db_session.add(Mix(club_id=league_id, mix_number=2, state="closed"))
+    db_session.add(Mix(club_id=league_id, mix_number=3, state="pending"))
+    db_session.add(Mix(club_id=league_id, mix_number=4, state="pending"))
     await db_session.commit()
 
     # Shrink to 2 keeps current_round (1) satisfied, but rounds > 2 are 3,4 (both
@@ -540,8 +540,8 @@ async def test_shrink_blocked_when_a_removed_round_has_started(client, db_sessio
 
     # Unchanged: total_rounds still 4 and all four rounds remain.
     db_session.expire_all()
-    persisted = await db_session.scalar(select(League).where(League.id == league_id))
-    assert persisted.total_rounds == 4
+    persisted = await db_session.scalar(select(Club).where(Club.id == league_id))
+    assert persisted.total_mixes == 4
     assert await _round_numbers(db_session, league_id) == [1, 2, 3, 4]
 
 
@@ -550,21 +550,21 @@ async def test_total_rounds_below_current_round_returns_409(client, db_session):
     #    on round 2 (round 1 closed, round 2 open) directly, up front, so the only
     #    API call is the failing PATCH.
     organizer = await _seed_user(db_session)
-    league = League(
+    league = Club(
         name="Mid-flight",
         organizer_id=organizer.id,
-        total_rounds=4,
+        total_mixes=4,
         votes_per_player=3,
-        current_round=2,
+        current_mix=2,
     )
     db_session.add(league)
     await db_session.flush()
     league_id = league.id
-    db_session.add(LeagueMember(league_id=league_id, user_id=organizer.id))
-    db_session.add(Round(league_id=league_id, round_number=1, state="closed"))
-    db_session.add(Round(league_id=league_id, round_number=2, state="open_submission"))
-    db_session.add(Round(league_id=league_id, round_number=3, state="pending"))
-    db_session.add(Round(league_id=league_id, round_number=4, state="pending"))
+    db_session.add(ClubMember(club_id=league_id, user_id=organizer.id))
+    db_session.add(Mix(club_id=league_id, mix_number=1, state="closed"))
+    db_session.add(Mix(club_id=league_id, mix_number=2, state="open_submission"))
+    db_session.add(Mix(club_id=league_id, mix_number=3, state="pending"))
+    db_session.add(Mix(club_id=league_id, mix_number=4, state="pending"))
     await db_session.commit()
 
     resp = await client.patch(
@@ -576,6 +576,6 @@ async def test_total_rounds_below_current_round_returns_409(client, db_session):
     assert "below the current mix" in resp.json()["detail"]
 
     db_session.expire_all()
-    persisted = await db_session.scalar(select(League).where(League.id == league_id))
-    assert persisted.total_rounds == 4
+    persisted = await db_session.scalar(select(Club).where(Club.id == league_id))
+    assert persisted.total_mixes == 4
     assert await _round_numbers(db_session, league_id) == [1, 2, 3, 4]

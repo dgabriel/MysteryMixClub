@@ -1,21 +1,21 @@
 """Shared-account playlist generate/refresh engine (MYS-169, MYS-176).
 
 Pulled out of ``app.api.routes.spotify`` so it can be called from a plain
-(non-HTTP) context — the round-state-transition code paths in
-``app.api.routes.rounds`` and ``app.jobs.advance_rounds`` — without those
+(non-HTTP) context — the mix-state-transition code paths in
+``app.api.routes.mixes`` and ``app.jobs.advance_mixes`` — without those
 modules importing the route file (``spotify.py`` already imports from
-``rounds.py`` for ``_load_round``; the reverse import would be circular).
+``mixes.py`` for ``_load_mix``; the reverse import would be circular).
 
 Two entry points:
 
-* :func:`generate_round_playlist` — the core engine. Raises
+* :func:`generate_mix_playlist` — the core engine. Raises
   ``SpotifyTokenCryptoError`` / ``SpotifyAuthError`` / ``SpotifyApiError`` on
   failure; callers decide how to surface that (the HTTP route maps them to
   503/502, the auto-trigger below swallows them).
-* :func:`try_auto_generate_playlist` — best-effort wrapper used when a round
+* :func:`try_auto_generate_playlist` — best-effort wrapper used when a mix
   enters ``open_voting`` (MYS-176): resolves the shared account, no-ops
   silently if it isn't configured/connected, and never raises — a Spotify
-  hiccup must never block a round from opening for voting.
+  hiccup must never block a mix from opening for voting.
 """
 
 from __future__ import annotations
@@ -30,10 +30,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.models.league import League
-from app.models.round import Round
+from app.models.club import Club
+from app.models.mix import Mix
 from app.models.spotify_connection import SpotifyConnection
-from app.models.spotify_round_playlist import SpotifyRoundPlaylist
+from app.models.spotify_mix_playlist import SpotifyMixPlaylist
 from app.models.submission import Submission
 from app.services.spotify_client import (
     SpotifyApiError,
@@ -115,24 +115,24 @@ async def _playlist_account_access_token(
     return tokens.access_token
 
 
-async def generate_round_playlist(
+async def generate_mix_playlist(
     round_id: uuid.UUID,
-    round_: Round,
-    league: League,
+    mix_: Mix,
+    club: Club,
     account_id: uuid.UUID,
     connection: SpotifyConnection,
     db: AsyncSession,
     client: SpotifyClient,
 ) -> GeneratedPlaylist:
-    """Generate/refresh ``round_``'s shared-account playlist.
+    """Generate/refresh ``mix_``'s shared-account playlist.
 
     Raises ``SpotifyTokenCryptoError`` / ``SpotifyAuthError`` / ``SpotifyApiError``
     on failure. Does not raise ``HTTPException`` — this function has no HTTP
     concerns, so it's usable from a plain background/job context too."""
     access_token = await _playlist_account_access_token(client, db, connection)
 
-    submissions = list(await db.scalars(select(Submission).where(Submission.round_id == round_id)))
-    # Same seeded shuffle as get_round_playlist so Spotify and YouTube always agree (MYS-151).
+    submissions = list(await db.scalars(select(Submission).where(Submission.mix_id == round_id)))
+    # Same seeded shuffle as get_mix_playlist so Spotify and YouTube always agree (MYS-151).
     # Sort first for a stable input — Postgres order without ORDER BY is not guaranteed.
     submissions.sort(key=lambda s: s.id)
     random.Random(round_id.int).shuffle(submissions)
@@ -174,15 +174,15 @@ async def generate_round_playlist(
         except Exception:
             await db.rollback()
 
-    name = playlist_name(league.name, round_.round_number, round_.theme)
-    description = playlist_description(league.name, round_.round_number, round_.theme)
+    name = playlist_name(club.name, mix_.mix_number, mix_.theme)
+    description = playlist_description(club.name, mix_.mix_number, mix_.theme)
 
-    # Keyed by (round, shared account) — since the account is the same for every
-    # caller, this is effectively one playlist per round (MYS-169).
+    # Keyed by (mix, shared account) — since the account is the same for every
+    # caller, this is effectively one playlist per mix (MYS-169).
     stored = await db.scalar(
-        select(SpotifyRoundPlaylist).where(
-            SpotifyRoundPlaylist.round_id == round_id,
-            SpotifyRoundPlaylist.user_id == account_id,
+        select(SpotifyMixPlaylist).where(
+            SpotifyMixPlaylist.mix_id == round_id,
+            SpotifyMixPlaylist.user_id == account_id,
         )
     )
 
@@ -208,9 +208,7 @@ async def generate_round_playlist(
                 access_token, name, description, public=True
             )
             await client.add_tracks(access_token, playlist_id, matched_uris)
-            db.add(
-                SpotifyRoundPlaylist(round_id=round_id, user_id=account_id, playlist_id=playlist_id)
-            )
+            db.add(SpotifyMixPlaylist(mix_id=round_id, user_id=account_id, playlist_id=playlist_id))
             await db.commit()
 
     return GeneratedPlaylist(
@@ -223,18 +221,18 @@ async def generate_round_playlist(
 
 async def try_auto_generate_playlist(
     round_id: uuid.UUID,
-    round_: Round,
-    league: League,
+    mix_: Mix,
+    club: Club,
     db: AsyncSession,
     client: SpotifyClient,
     settings: Settings,
 ) -> None:
-    """Best-effort auto-generation when a round opens for voting (MYS-176).
+    """Best-effort auto-generation when a mix opens for voting (MYS-176).
 
     No-ops silently if the shared account isn't configured/connected — this is
     a normal, expected state on any deployment that hasn't set up Spotify
     playlists, not an error. Never raises: a Spotify hiccup must never block
-    the round transition that triggered this."""
+    the mix transition that triggered this."""
     account_id = playlist_account_user_id(settings)
     if account_id is None:
         return
@@ -242,6 +240,6 @@ async def try_auto_generate_playlist(
     if connection is None:
         return
     try:
-        await generate_round_playlist(round_id, round_, league, account_id, connection, db, client)
+        await generate_mix_playlist(round_id, mix_, club, account_id, connection, db, client)
     except (SpotifyTokenCryptoError, SpotifyAuthError, SpotifyApiError):
-        logger.exception("spotify playlist: automatic generation failed for round %s", round_id)
+        logger.exception("spotify playlist: automatic generation failed for mix %s", round_id)

@@ -27,9 +27,9 @@ from dataclasses import dataclass
 import pytest
 
 from app.auth.jwt import create_access_token
-from app.models.league import League
-from app.models.league_member import LeagueMember
-from app.models.round import Round
+from app.models.club import Club
+from app.models.club_member import ClubMember
+from app.models.mix import Mix
 from app.models.submission import Submission
 from app.models.user import User
 
@@ -49,19 +49,19 @@ async def _seed_user(db_session, email: str, name: str = "User") -> User:
 
 async def _seed_league(
     db_session, organizer: User, *, name: str = "L", state: str
-) -> tuple[Round, Submission]:
+) -> tuple[Mix, Submission]:
     """Seed a league (organizer = active member) with one round + one submission.
 
     ``state`` is the round state. The submission is by the organizer so notes /
     submission-scoped endpoints have a real resource to target.
     """
-    league = League(name=name, organizer_id=organizer.id, total_rounds=3, votes_per_player=3)
+    league = Club(name=name, organizer_id=organizer.id, total_mixes=3, votes_per_player=3)
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id))
-    round_ = Round(
-        league_id=league.id,
-        round_number=1,
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id))
+    round_ = Mix(
+        club_id=league.id,
+        mix_number=1,
         theme="late summer feels",
         state=state,
         votes_per_player=3,
@@ -69,7 +69,7 @@ async def _seed_league(
     db_session.add(round_)
     await db_session.flush()
     sub = Submission(
-        round_id=round_.id,
+        mix_id=round_.id,
         user_id=organizer.id,
         isrc="USABC1234567",
         title="song",
@@ -84,7 +84,7 @@ async def _seed_league(
 
 
 async def _add_member(db_session, league_id: uuid.UUID, user: User) -> None:
-    db_session.add(LeagueMember(league_id=league_id, user_id=user.id))
+    db_session.add(ClubMember(club_id=league_id, user_id=user.id))
     await db_session.commit()
 
 
@@ -108,26 +108,24 @@ class _Scenario:
 
 
 async def _build(db_session, *, round_a_state: str) -> _Scenario:
-    """League A (organizer + a second genuine member) plus an intruder who is an
+    """Club A (organizer + a second genuine member) plus an intruder who is an
     ACTIVE member of a *separate* league B and is NOT a member of league A."""
     organizer_a = await _seed_user(db_session, "org-a@example.com", "OrgA")
     member_a = await _seed_user(db_session, "member-a@example.com", "MemberA")
-    round_a, sub_a = await _seed_league(
-        db_session, organizer_a, name="League A", state=round_a_state
-    )
-    await _add_member(db_session, round_a.league_id, member_a)
+    round_a, sub_a = await _seed_league(db_session, organizer_a, name="Club A", state=round_a_state)
+    await _add_member(db_session, round_a.club_id, member_a)
 
-    # League B with the intruder as a real active member — the crux of the test.
+    # Club B with the intruder as a real active member — the crux of the test.
     organizer_b = await _seed_user(db_session, "org-b@example.com", "OrgB")
-    round_b, _ = await _seed_league(db_session, organizer_b, name="League B", state="open_voting")
+    round_b, _ = await _seed_league(db_session, organizer_b, name="Club B", state="open_voting")
     intruder = await _seed_user(db_session, "intruder@example.com", "Intruder")
-    await _add_member(db_session, round_b.league_id, intruder)
+    await _add_member(db_session, round_b.club_id, intruder)
 
     return _Scenario(
         organizer_a_id=organizer_a.id,
         member_a_id=member_a.id,
         intruder_id=intruder.id,
-        league_a_id=round_a.league_id,
+        league_a_id=round_a.club_id,
         round_a_id=round_a.id,
         submission_a_id=sub_a.id,
     )
@@ -151,7 +149,7 @@ def _assert_blocked(resp, *, organizer_gated: bool = False) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# League-scoped endpoints
+# Club-scoped endpoints
 # --------------------------------------------------------------------------- #
 
 
@@ -202,7 +200,7 @@ async def test_intruder_cannot_list_rounds(client, db_session):
 
 
 # --------------------------------------------------------------------------- #
-# Round-scoped endpoints (league derived via the round)
+# Mix-scoped endpoints (league derived via the round)
 # --------------------------------------------------------------------------- #
 
 

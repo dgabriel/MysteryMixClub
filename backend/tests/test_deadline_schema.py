@@ -24,7 +24,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 
 from app.auth.jwt import create_access_token
-from app.models.league import League
+from app.models.club import Club
 from app.models.user import User
 
 LEAGUES_URL = "/api/v1/clubs"
@@ -55,7 +55,7 @@ def _auth(user_id: uuid.UUID) -> dict[str, str]:
 
 async def _create_league(client, user_id: uuid.UUID, **overrides) -> dict:
     """Create a league via the API so its pending round slate auto-generates."""
-    body = {"name": "Deadline League", "total_mixes": 3, "votes_per_player": 3}
+    body = {"name": "Deadline Club", "total_mixes": 3, "votes_per_player": 3}
     body.update(overrides)
     resp = await client.post(LEAGUES_URL, headers=_auth(user_id), json=body)
     assert resp.status_code == 201, resp.text
@@ -90,7 +90,7 @@ def _assert_about_hours(deadline_iso: str | None, expected_hours: int) -> None:
 
 
 # ========================================================================== #
-# League API — deadline-window fields
+# Club API — deadline-window fields
 # ========================================================================== #
 
 
@@ -109,7 +109,7 @@ async def test_create_with_explicit_windows_persisted(client, db_session):
 
     league_id = uuid.UUID(data["id"])
     db_session.expire_all()
-    persisted = await db_session.scalar(select(League).where(League.id == league_id))
+    persisted = await db_session.scalar(select(Club).where(Club.id == league_id))
     assert persisted.submission_window_hours == 6
     assert persisted.voting_window_hours == 100
 
@@ -188,7 +188,7 @@ async def test_patch_windows_updates_and_persists(client, db_session):
     assert body["voting_window_hours"] == 168
 
     db_session.expire_all()
-    persisted = await db_session.scalar(select(League).where(League.id == league_id))
+    persisted = await db_session.scalar(select(Club).where(Club.id == league_id))
     assert persisted.submission_window_hours == 12
     assert persisted.voting_window_hours == 168
 
@@ -333,10 +333,10 @@ async def test_open_voting_does_not_clobber_manual_voting_deadline(client, db_se
 
 
 async def test_closing_nonfinal_round_stamps_next_round_submission_deadline(client, db_session):
-    # total_rounds=2 so round 1 is non-final: closing it auto-opens round 2, which
+    # total_mixes=2 so round 1 is non-final: closing it auto-opens round 2, which
     # must get its own submission_deadline stamped from the league window.
     user = await _seed_user(db_session)
-    data = await _create_league(client, user.id, total_rounds=2)  # default 72h
+    data = await _create_league(client, user.id, total_mixes=2)  # default 72h
     league_id = data["id"]
     r1 = await _round_by_number(client, league_id, user.id, 1)
 
@@ -374,7 +374,7 @@ async def test_next_round_stamp_uses_league_window_not_default(client, db_sessio
     # not a hardcoded default.
     user = await _seed_user(db_session)
     data = await _create_league(
-        client, user.id, total_rounds=2, submission_window_hours=48, voting_window_hours=120
+        client, user.id, total_mixes=2, submission_window_hours=48, voting_window_hours=120
     )
     league_id = data["id"]
     r1 = await _round_by_number(client, league_id, user.id, 1)

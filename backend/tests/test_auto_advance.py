@@ -29,9 +29,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.jwt import create_access_token
 from app.db.session import get_db
 from app.main import create_app
-from app.models.league import League
-from app.models.league_member import LeagueMember
-from app.models.round import Round
+from app.models.club import Club
+from app.models.club_member import ClubMember
+from app.models.mix import Mix
 from app.models.submission import Submission
 from app.models.user import User
 from app.services.email import get_email_sender
@@ -93,7 +93,7 @@ async def _seed_submission(
     db_session, round_id: uuid.UUID, user_id: uuid.UUID, *, mode: str = "playing", title="song"
 ) -> Submission:
     sub = Submission(
-        round_id=round_id,
+        mix_id=round_id,
         user_id=user_id,
         isrc="USABC1234567",
         title=title,
@@ -131,14 +131,14 @@ async def _cast(client, round_id, user_id, target_ids):
     )
 
 
-async def _round(db_session, round_id) -> Round:
+async def _round(db_session, round_id) -> Mix:
     db_session.expire_all()
-    return await db_session.scalar(select(Round).where(Round.id == round_id))
+    return await db_session.scalar(select(Mix).where(Mix.id == round_id))
 
 
-async def _league(db_session, league_id) -> League:
+async def _league(db_session, league_id) -> Club:
     db_session.expire_all()
-    return await db_session.scalar(select(League).where(League.id == league_id))
+    return await db_session.scalar(select(Club).where(Club.id == league_id))
 
 
 def _subjects(email_spy) -> list[str]:
@@ -155,14 +155,14 @@ async def test_last_submit_stays_open_no_auto_advance(session_factory, db_sessio
     # be opened manually; no voting_open email fires on submit.
     organizer = await _seed_user(db_session, "org@example.com")
     member = await _seed_user(db_session, "m@example.com")
-    league = League(name="L", organizer_id=organizer.id, total_rounds=1, votes_per_player=3)
+    league = Club(name="L", organizer_id=organizer.id, total_mixes=1, votes_per_player=3)
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id, joined_at=BEFORE))
-    db_session.add(LeagueMember(league_id=league.id, user_id=member.id, joined_at=BEFORE))
-    round_ = Round(
-        league_id=league.id,
-        round_number=1,
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id, joined_at=BEFORE))
+    db_session.add(ClubMember(club_id=league.id, user_id=member.id, joined_at=BEFORE))
+    round_ = Mix(
+        club_id=league.id,
+        mix_number=1,
         theme="t",
         state="open_submission",
         submission_opened_at=OPEN_TIME,
@@ -186,14 +186,14 @@ async def test_partial_submission_stays_open(session_factory, db_session, email_
     # Scenario 2: with one member still un-submitted, the round stays open.
     organizer = await _seed_user(db_session, "org@example.com")
     member = await _seed_user(db_session, "m@example.com")
-    league = League(name="L", organizer_id=organizer.id, total_rounds=1, votes_per_player=3)
+    league = Club(name="L", organizer_id=organizer.id, total_mixes=1, votes_per_player=3)
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id, joined_at=BEFORE))
-    db_session.add(LeagueMember(league_id=league.id, user_id=member.id, joined_at=BEFORE))
-    round_ = Round(
-        league_id=league.id,
-        round_number=1,
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id, joined_at=BEFORE))
+    db_session.add(ClubMember(club_id=league.id, user_id=member.id, joined_at=BEFORE))
+    round_ = Mix(
+        club_id=league.id,
+        mix_number=1,
         theme="t",
         state="open_submission",
         submission_opened_at=OPEN_TIME,
@@ -217,15 +217,15 @@ async def test_late_joiner_can_submit_round_stays_open(session_factory, db_sessi
     organizer = await _seed_user(db_session, "org@example.com")
     member = await _seed_user(db_session, "m@example.com")
     latecomer = await _seed_user(db_session, "late@example.com")
-    league = League(name="L", organizer_id=organizer.id, total_rounds=1, votes_per_player=3)
+    league = Club(name="L", organizer_id=organizer.id, total_mixes=1, votes_per_player=3)
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id, joined_at=BEFORE))
-    db_session.add(LeagueMember(league_id=league.id, user_id=member.id, joined_at=BEFORE))
-    db_session.add(LeagueMember(league_id=league.id, user_id=latecomer.id, joined_at=AFTER))
-    round_ = Round(
-        league_id=league.id,
-        round_number=1,
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id, joined_at=BEFORE))
+    db_session.add(ClubMember(club_id=league.id, user_id=member.id, joined_at=BEFORE))
+    db_session.add(ClubMember(club_id=league.id, user_id=latecomer.id, joined_at=AFTER))
+    round_ = Mix(
+        club_id=league.id,
+        mix_number=1,
         theme="t",
         state="open_submission",
         submission_opened_at=OPEN_TIME,
@@ -247,17 +247,17 @@ async def test_removed_member_can_submit_round_stays_open(session_factory, db_se
     organizer = await _seed_user(db_session, "org@example.com")
     member = await _seed_user(db_session, "m@example.com")
     gone = await _seed_user(db_session, "gone@example.com")
-    league = League(name="L", organizer_id=organizer.id, total_rounds=1, votes_per_player=3)
+    league = Club(name="L", organizer_id=organizer.id, total_mixes=1, votes_per_player=3)
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id, joined_at=BEFORE))
-    db_session.add(LeagueMember(league_id=league.id, user_id=member.id, joined_at=BEFORE))
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id, joined_at=BEFORE))
+    db_session.add(ClubMember(club_id=league.id, user_id=member.id, joined_at=BEFORE))
     db_session.add(
-        LeagueMember(league_id=league.id, user_id=gone.id, joined_at=BEFORE, removed_at=AFTER)
+        ClubMember(club_id=league.id, user_id=gone.id, joined_at=BEFORE, removed_at=AFTER)
     )
-    round_ = Round(
-        league_id=league.id,
-        round_number=1,
+    round_ = Mix(
+        club_id=league.id,
+        mix_number=1,
         theme="t",
         state="open_submission",
         submission_opened_at=OPEN_TIME,
@@ -278,16 +278,16 @@ async def test_viber_submit_round_stays_open(session_factory, db_session, email_
     # the round stays open_submission regardless.
     organizer = await _seed_user(db_session, "org@example.com")
     viber = await _seed_user(db_session, "v@example.com")
-    league = League(name="L", organizer_id=organizer.id, total_rounds=1, votes_per_player=3)
+    league = Club(name="L", organizer_id=organizer.id, total_mixes=1, votes_per_player=3)
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id, joined_at=BEFORE))
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id, joined_at=BEFORE))
     db_session.add(
-        LeagueMember(league_id=league.id, user_id=viber.id, joined_at=BEFORE, vibe_mode=True)
+        ClubMember(club_id=league.id, user_id=viber.id, joined_at=BEFORE, vibe_mode=True)
     )
-    round_ = Round(
-        league_id=league.id,
-        round_number=1,
+    round_ = Mix(
+        club_id=league.id,
+        mix_number=1,
         theme="t",
         state="open_submission",
         submission_opened_at=OPEN_TIME,
@@ -311,33 +311,31 @@ async def test_viber_submit_round_stays_open(session_factory, db_session, email_
 
 
 async def _seed_voting_round(
-    db_session, *, n_players: int, total_rounds: int, with_next_pending: bool, viber: bool = False
+    db_session, *, n_players: int, total_mixes: int, with_next_pending: bool, viber: bool = False
 ):
     """Seed a league with round 1 in open_voting, ``n_players`` playing submitters
     (+ optionally one vibing submitter), and optionally a pending round 2."""
     organizer = await _seed_user(db_session, "org@example.com")
-    league = League(
-        name="L", organizer_id=organizer.id, total_rounds=total_rounds, votes_per_player=3
-    )
+    league = Club(name="L", organizer_id=organizer.id, total_mixes=total_mixes, votes_per_player=3)
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id, joined_at=BEFORE))
-    round_ = Round(
-        league_id=league.id,
-        round_number=1,
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id, joined_at=BEFORE))
+    round_ = Mix(
+        club_id=league.id,
+        mix_number=1,
         theme="t",
         state="open_voting",
         submission_opened_at=OPEN_TIME,
     )
     db_session.add(round_)
     if with_next_pending:
-        db_session.add(Round(league_id=league.id, round_number=2, theme="t2", state="pending"))
+        db_session.add(Mix(club_id=league.id, mix_number=2, theme="t2", state="pending"))
     await db_session.commit()
 
     players = [organizer]
     for i in range(n_players - 1):
         p = await _seed_user(db_session, f"p{i}@example.com")
-        db_session.add(LeagueMember(league_id=league.id, user_id=p.id, joined_at=BEFORE))
+        db_session.add(ClubMember(club_id=league.id, user_id=p.id, joined_at=BEFORE))
         players.append(p)
     await db_session.commit()
 
@@ -349,7 +347,7 @@ async def _seed_voting_round(
     if viber:
         v = await _seed_user(db_session, "vibe@example.com")
         db_session.add(
-            LeagueMember(league_id=league.id, user_id=v.id, joined_at=BEFORE, vibe_mode=True)
+            ClubMember(club_id=league.id, user_id=v.id, joined_at=BEFORE, vibe_mode=True)
         )
         await db_session.commit()
         vibe_sub_id = (
@@ -367,13 +365,13 @@ async def _seed_voting_round(
 
 async def test_last_vote_closes_and_opens_next_round(session_factory, db_session, email_spy):
     # Scenario 6: all playing submitters vote -> round closes, next pending round
-    # auto-opens, current_round advances, round_closed + submission_open fire.
-    seed = await _seed_voting_round(db_session, n_players=3, total_rounds=2, with_next_pending=True)
+    # auto-opens, current_round advances, mix_closed + submission_open fire.
+    seed = await _seed_voting_round(db_session, n_players=3, total_mixes=2, with_next_pending=True)
     round_id, league_id = seed["mix_id"], seed["club_id"]
     p = seed["player_ids"]
     subs = seed["subs"]
     round2_id = await db_session.scalar(
-        select(Round.id).where(Round.league_id == league_id, Round.round_number == 2)
+        select(Mix.id).where(Mix.club_id == league_id, Mix.mix_number == 2)
     )
 
     async with _build_client(session_factory, email_spy) as client:
@@ -388,7 +386,7 @@ async def test_last_vote_closes_and_opens_next_round(session_factory, db_session
 
     assert (await _round(db_session, round_id)).state == "closed"
     assert (await _round(db_session, round2_id)).state == "open_submission"
-    assert (await _league(db_session, league_id)).current_round == 2
+    assert (await _league(db_session, league_id)).current_mix == 2
     subjects = _subjects(email_spy)
     assert any("results are in" in s for s in subjects)
     assert any("open for submissions" in s for s in subjects)
@@ -396,9 +394,7 @@ async def test_last_vote_closes_and_opens_next_round(session_factory, db_session
 
 async def test_final_round_voting_completes_league(session_factory, db_session, email_spy):
     # Scenario 7: closing the final round via voting quorum completes the league.
-    seed = await _seed_voting_round(
-        db_session, n_players=2, total_rounds=1, with_next_pending=False
-    )
+    seed = await _seed_voting_round(db_session, n_players=2, total_mixes=1, with_next_pending=False)
     round_id, league_id = seed["mix_id"], seed["club_id"]
     p = seed["player_ids"]
     subs = seed["subs"]
@@ -421,7 +417,7 @@ async def test_viber_excluded_from_voting_quorum(session_factory, db_session, em
     # Scenario 8: once all PLAYERS vote, the round closes even though the viber
     # never votes (vibers are excluded from the voting quorum).
     seed = await _seed_voting_round(
-        db_session, n_players=2, total_rounds=1, with_next_pending=False, viber=True
+        db_session, n_players=2, total_mixes=1, with_next_pending=False, viber=True
     )
     round_id, league_id = seed["mix_id"], seed["club_id"]
     p = seed["player_ids"]
@@ -438,9 +434,7 @@ async def test_viber_excluded_from_voting_quorum(session_factory, db_session, em
 
 async def test_partial_votes_stay_open(session_factory, db_session, email_spy):
     # Scenario 9: with one playing submitter still un-voted, the round stays open.
-    seed = await _seed_voting_round(
-        db_session, n_players=3, total_rounds=1, with_next_pending=False
-    )
+    seed = await _seed_voting_round(db_session, n_players=3, total_mixes=1, with_next_pending=False)
     round_id = seed["mix_id"]
     p = seed["player_ids"]
     subs = seed["subs"]
@@ -467,34 +461,34 @@ async def test_all_vibing_round_chains_to_closed(session_factory, db_session, em
     # in cast_votes.
     organizer = await _seed_user(db_session, "org@example.com")
     viber = await _seed_user(db_session, "v@example.com")
-    league = League(
+    league = Club(
         name="L",
         organizer_id=organizer.id,
-        total_rounds=2,
+        total_mixes=2,
         votes_per_player=3,
         default_vibe_mode=True,
     )
     db_session.add(league)
     await db_session.flush()
     db_session.add(
-        LeagueMember(league_id=league.id, user_id=organizer.id, joined_at=BEFORE, vibe_mode=True)
+        ClubMember(club_id=league.id, user_id=organizer.id, joined_at=BEFORE, vibe_mode=True)
     )
     db_session.add(
-        LeagueMember(league_id=league.id, user_id=viber.id, joined_at=BEFORE, vibe_mode=True)
+        ClubMember(club_id=league.id, user_id=viber.id, joined_at=BEFORE, vibe_mode=True)
     )
-    round_ = Round(
-        league_id=league.id,
-        round_number=1,
+    round_ = Mix(
+        club_id=league.id,
+        mix_number=1,
         theme="t",
         state="open_submission",
         submission_opened_at=OPEN_TIME,
     )
     db_session.add(round_)
-    db_session.add(Round(league_id=league.id, round_number=2, theme="t2", state="pending"))
+    db_session.add(Mix(club_id=league.id, mix_number=2, theme="t2", state="pending"))
     await db_session.commit()
     round_id, league_id, org_id, viber_id = round_.id, league.id, organizer.id, viber.id
     round2_id = await db_session.scalar(
-        select(Round.id).where(Round.league_id == league_id, Round.round_number == 2)
+        select(Mix.id).where(Mix.club_id == league_id, Mix.mix_number == 2)
     )
 
     async with _build_client(session_factory, email_spy) as client:
@@ -514,10 +508,10 @@ async def test_all_vibing_round_chains_to_closed(session_factory, db_session, em
 
     assert (await _round(db_session, round_id)).state == "closed"
     assert (await _round(db_session, round2_id)).state == "open_submission"
-    assert (await _league(db_session, league_id)).current_round == 2
+    assert (await _league(db_session, league_id)).current_mix == 2
     subjects = _subjects(email_spy)
     # voting_open is suppressed — the round closed in the same breath as it opened
-    # for voting, so nobody could have voted. Only round_closed + next submission_open.
+    # for voting, so nobody could have voted. Only mix_closed + next submission_open.
     assert not any("voting is open" in s for s in subjects)
     assert any("results are in" in s for s in subjects)
     assert any("open for submissions" in s for s in subjects)
@@ -534,14 +528,14 @@ async def test_manual_advance_still_works_below_quorum(session_factory, db_sessi
     # isn't met (no one submitted).
     organizer = await _seed_user(db_session, "org@example.com")
     member = await _seed_user(db_session, "m@example.com")
-    league = League(name="L", organizer_id=organizer.id, total_rounds=2, votes_per_player=3)
+    league = Club(name="L", organizer_id=organizer.id, total_mixes=2, votes_per_player=3)
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id, joined_at=BEFORE))
-    db_session.add(LeagueMember(league_id=league.id, user_id=member.id, joined_at=BEFORE))
-    round_ = Round(
-        league_id=league.id,
-        round_number=1,
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id, joined_at=BEFORE))
+    db_session.add(ClubMember(club_id=league.id, user_id=member.id, joined_at=BEFORE))
+    round_ = Mix(
+        club_id=league.id,
+        mix_number=1,
         theme="t",
         state="open_submission",
         submission_opened_at=OPEN_TIME,
@@ -563,10 +557,10 @@ async def test_create_stamps_submission_opened_at(session_factory, db_session, e
     # Scenario 12a: creating a round (born open_submission) stamps
     # submission_opened_at.
     organizer = await _seed_user(db_session, "org@example.com")
-    league = League(name="L", organizer_id=organizer.id, total_rounds=2, votes_per_player=3)
+    league = Club(name="L", organizer_id=organizer.id, total_mixes=2, votes_per_player=3)
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id, joined_at=BEFORE))
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id, joined_at=BEFORE))
     await db_session.commit()
     league_id, org_id = league.id, organizer.id
 
@@ -583,11 +577,11 @@ async def test_advance_stamps_submission_opened_at(session_factory, db_session, 
     # Scenario 12b: advancing a pending round to open_submission stamps
     # submission_opened_at (and sets it as the league's current round).
     organizer = await _seed_user(db_session, "org@example.com")
-    league = League(name="L", organizer_id=organizer.id, total_rounds=2, votes_per_player=3)
+    league = Club(name="L", organizer_id=organizer.id, total_mixes=2, votes_per_player=3)
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id, joined_at=BEFORE))
-    round_ = Round(league_id=league.id, round_number=1, theme="t", state="pending")
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id, joined_at=BEFORE))
+    round_ = Mix(club_id=league.id, mix_number=1, theme="t", state="pending")
     db_session.add(round_)
     await db_session.commit()
     round_id, league_id, org_id = round_.id, league.id, organizer.id
@@ -602,7 +596,7 @@ async def test_advance_stamps_submission_opened_at(session_factory, db_session, 
         )
     assert resp.status_code == 200, resp.text
     assert (await _round(db_session, round_id)).submission_opened_at is not None
-    assert (await _league(db_session, league_id)).current_round == 1
+    assert (await _league(db_session, league_id)).current_mix == 1
 
 
 async def test_migration_backfill_stamps_non_pending_rounds(db_session):
@@ -611,20 +605,20 @@ async def test_migration_backfill_stamps_non_pending_rounds(db_session):
     # time, which predates when members joined and would leave an open round with an
     # empty active-at-open set), and leaves pending rounds NULL.
     organizer = await _seed_user(db_session, "org@example.com")
-    league = League(name="L", organizer_id=organizer.id, total_rounds=2, votes_per_player=3)
+    league = Club(name="L", organizer_id=organizer.id, total_mixes=2, votes_per_player=3)
     db_session.add(league)
     await db_session.flush()
     # An in-flight (non-pending) round with a NULL stamp, as if it predated the
     # column, plus a pending round that should stay NULL.
-    open_round = Round(
-        league_id=league.id,
-        round_number=1,
+    open_round = Mix(
+        club_id=league.id,
+        mix_number=1,
         theme="t",
         state="open_voting",
         submission_opened_at=None,
     )
-    pending_round = Round(
-        league_id=league.id, round_number=2, theme="t2", state="pending", submission_opened_at=None
+    pending_round = Mix(
+        club_id=league.id, mix_number=2, theme="t2", state="pending", submission_opened_at=None
     )
     db_session.add(open_round)
     db_session.add(pending_round)

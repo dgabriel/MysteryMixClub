@@ -1,15 +1,15 @@
-"""Round-lifecycle email notifications (MYS-109) and league-join welcome email (MYS-148).
+"""Mix-lifecycle email notifications (MYS-109) and club-join welcome email (MYS-148).
 
 Generalizes the magic-link mailer into per-event notifications fired when a
-round changes state. Recipients are the league's current members who have email
+mix changes state. Recipients are the club's current members who have email
 notifications enabled; sending is best-effort so a slow or failing mail provider
 never blocks (or fails) the caller.
 
 Two dispatch paths share the same body-building code:
-- the API path (:func:`queue_round_event` / :func:`queue_league_joined`) runs each
+- the API path (:func:`queue_mix_event` / :func:`queue_club_joined`) runs each
   send in a FastAPI background task, off the request; and
-- the job path (:func:`send_round_event` / :func:`send_deadline_warning` /
-  :func:`send_empty_round_notice`) sends synchronously, for the deadline
+- the job path (:func:`send_mix_event` / :func:`send_deadline_warning` /
+  :func:`send_empty_mix_notice`) sends synchronously, for the deadline
   force-advance job (MYS-145/162), which has no request or ``BackgroundTasks``.
 """
 
@@ -27,22 +27,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.jwt import create_unsubscribe_token
 from app.config import Settings
-from app.models.league import League
-from app.models.league_member import LeagueMember
-from app.models.round import Round
+from app.models.club import Club
+from app.models.club_member import ClubMember
+from app.models.mix import Mix
 from app.models.user import User
 from app.services.email import EmailSender
 
 logger = logging.getLogger("app.services.notifications")
 
-# The lifecycle moments worth an email. Kept distinct from the raw round states
-# so "the next round auto-opened" and "this round opened" can both map to a
-# submission_open notification for their respective rounds.
-RoundEvent = Literal[
-    "submission_open", "voting_open", "round_closed", "league_complete", "voting_extended"
+# The lifecycle moments worth an email. Kept distinct from the raw mix states
+# so "the next mix auto-opened" and "this mix opened" can both map to a
+# submission_open notification for their respective mixes.
+MixEvent = Literal[
+    "submission_open", "voting_open", "mix_closed", "club_complete", "voting_extended"
 ]
 
-# The two deadline phases a round can be warned about (MYS-162).
+# The two deadline phases a mix can be warned about (MYS-162).
 DeadlinePhase = Literal["submission", "voting"]
 
 
@@ -54,15 +54,15 @@ class Recipient:
 
 
 async def gather_recipients(db: AsyncSession, league_id: uuid.UUID) -> list[Recipient]:
-    """Current members of the league eligible for email: still a member
+    """Current members of the club eligible for email: still a member
     (``removed_at`` null), account live (``deleted_at`` null), and notifications
     enabled. Returns plain data so callers can dispatch outside the DB session."""
     rows = await db.execute(
         select(User.id, User.email, User.display_name)
-        .join(LeagueMember, LeagueMember.user_id == User.id)
+        .join(ClubMember, ClubMember.user_id == User.id)
         .where(
-            LeagueMember.league_id == league_id,
-            LeagueMember.removed_at.is_(None),
+            ClubMember.club_id == league_id,
+            ClubMember.removed_at.is_(None),
             User.deleted_at.is_(None),
             User.email_notifications.is_(True),
         )
@@ -70,11 +70,11 @@ async def gather_recipients(db: AsyncSession, league_id: uuid.UUID) -> list[Reci
     return [Recipient(user_id=r[0], email=r[1], display_name=r[2]) for r in rows.all()]
 
 
-def _round_label(round_: Round) -> str:
+def _mix_label(mix_: Mix) -> str:
     """A human label for the mystery mix: theme if set, else 'Mystery Mix N'."""
-    if round_.theme:
-        return f"Mystery Mix {round_.round_number}: {round_.theme}"
-    return f"Mystery Mix {round_.round_number}"
+    if mix_.theme:
+        return f"Mystery Mix {mix_.mix_number}: {mix_.theme}"
+    return f"Mystery Mix {mix_.mix_number}"
 
 
 def _format_deadline(deadline: datetime) -> str:
@@ -84,62 +84,60 @@ def _format_deadline(deadline: datetime) -> str:
     return f"{d.strftime('%b')} {d.day}, {d.strftime('%H:%M')} UTC"
 
 
-def _subject_and_body(
-    event: RoundEvent, league: League, round_: Round, league_url: str
-) -> tuple[str, str]:
+def _subject_and_body(event: MixEvent, club: Club, mix_: Mix, club_url: str) -> tuple[str, str]:
     """Return (subject, body_html_fragment) for an event, sans the unsubscribe
     footer (added per-recipient)."""
-    label = _round_label(round_)
-    link = f'<a href="{league_url}">Go to {league.name} →</a>'
+    label = _mix_label(mix_)
+    link = f'<a href="{club_url}">Go to {club.name} →</a>'
     if event == "submission_open":
-        # MYS-162: include the concrete deadline when the round has one stamped.
+        # MYS-162: include the concrete deadline when the mix has one stamped.
         by = (
-            f" Submit by {_format_deadline(round_.submission_deadline)}."
-            if round_.submission_deadline is not None
+            f" Submit by {_format_deadline(mix_.submission_deadline)}."
+            if mix_.submission_deadline is not None
             else ""
         )
         return (
-            f"{league.name} — {label} is open for submissions",
-            f"<p><strong>{label}</strong> is open in <strong>{league.name}</strong>. "
+            f"{club.name} — {label} is open for submissions",
+            f"<p><strong>{label}</strong> is open in <strong>{club.name}</strong>. "
             f"Pick your song and get it in.{by} {link}</p>",
         )
     if event == "voting_open":
         # MYS-162: include the concrete voting deadline when stamped.
         by = (
-            f" Vote by {_format_deadline(round_.voting_deadline)}."
-            if round_.voting_deadline is not None
+            f" Vote by {_format_deadline(mix_.voting_deadline)}."
+            if mix_.voting_deadline is not None
             else ""
         )
         return (
-            f"{league.name} — voting is open for {label}",
+            f"{club.name} — voting is open for {label}",
             f"<p>Submissions are in for <strong>{label}</strong> in "
-            f"<strong>{league.name}</strong>. Listen to the mix and cast your votes.{by} "
+            f"<strong>{club.name}</strong>. Listen to the mix and cast your votes.{by} "
             f"{link}</p>",
         )
-    if event == "round_closed":
+    if event == "mix_closed":
         return (
-            f"{league.name} — {label} results are in",
-            f"<p><strong>{label}</strong> in <strong>{league.name}</strong> has closed. "
+            f"{club.name} — {label} results are in",
+            f"<p><strong>{label}</strong> in <strong>{club.name}</strong> has closed. "
             f"The results and reveal are ready — see who picked what. {link}</p>",
         )
     if event == "voting_extended":
-        # MYS-180: round_.voting_deadline is always set by the time this fires —
-        # the caller only reaches here from an already-open_voting round.
-        by = _format_deadline(round_.voting_deadline) if round_.voting_deadline else ""
+        # MYS-180: mix_.voting_deadline is always set by the time this fires —
+        # the caller only reaches here from an already-open_voting mix.
+        by = _format_deadline(mix_.voting_deadline) if mix_.voting_deadline else ""
         return (
-            f"{league.name} — voting extended for {label}",
-            f"<p>Voting for <strong>{label}</strong> in <strong>{league.name}</strong> has been "
+            f"{club.name} — voting extended for {label}",
+            f"<p>Voting for <strong>{label}</strong> in <strong>{club.name}</strong> has been "
             f"extended. New deadline: {by}. {link}</p>",
         )
-    # league_complete
+    # club_complete
     return (
-        f"{league.name} — that's a wrap",
-        f"<p><strong>{league.name}</strong> has wrapped after its final mystery mix. "
+        f"{club.name} — that's a wrap",
+        f"<p><strong>{club.name}</strong> has wrapped after its final mystery mix. "
         f"Check the standings for the final results. {link}</p>",
     )
 
 
-def _league_url(settings: Settings, league_id: uuid.UUID) -> str:
+def _club_url(settings: Settings, league_id: uuid.UUID) -> str:
     return f"{settings.app_base_url.rstrip('/')}/clubs/{league_id}"
 
 
@@ -191,14 +189,14 @@ def _send_direct(
         _safe_send(sender, r.email, subject, html, headers)
 
 
-def queue_round_event(
+def queue_mix_event(
     background_tasks: BackgroundTasks,
     sender: EmailSender,
     settings: Settings,
     recipients: list[Recipient],
-    league: League,
-    round_: Round,
-    event: RoundEvent,
+    club: Club,
+    mix_: Mix,
+    event: MixEvent,
 ) -> None:
     """Schedule one notification email per recipient for ``event``.
 
@@ -207,29 +205,29 @@ def queue_round_event(
     recipients (e.g. everyone unsubscribed)."""
     if not recipients:
         return
-    league_url = _league_url(settings, league.id)
-    subject, body = _subject_and_body(event, league, round_, league_url)
+    club_url = _club_url(settings, club.id)
+    subject, body = _subject_and_body(event, club, mix_, club_url)
     for r in recipients:
         html, headers = _html_and_headers(settings, r.user_id, body)
         background_tasks.add_task(_safe_send, sender, r.email, subject, html, headers)
 
 
-def send_round_event(
+def send_mix_event(
     sender: EmailSender,
     settings: Settings,
     recipients: list[Recipient],
-    league: League,
-    round_: Round,
-    event: RoundEvent,
+    club: Club,
+    mix_: Mix,
+    event: MixEvent,
 ) -> None:
-    """Synchronous twin of :func:`queue_round_event` for the deadline job.
+    """Synchronous twin of :func:`queue_mix_event` for the deadline job.
 
     Same subject/body as the API path; sends inline instead of via a background
     task. No-ops when there are no recipients."""
     if not recipients:
         return
-    league_url = _league_url(settings, league.id)
-    subject, body = _subject_and_body(event, league, round_, league_url)
+    club_url = _club_url(settings, club.id)
+    subject, body = _subject_and_body(event, club, mix_, club_url)
     _send_direct(sender, settings, recipients, subject, body)
 
 
@@ -237,8 +235,8 @@ def send_deadline_warning(
     sender: EmailSender,
     settings: Settings,
     recipients: list[Recipient],
-    league: League,
-    round_: Round,
+    club: Club,
+    mix_: Mix,
     phase: DeadlinePhase,
 ) -> None:
     """Send the "about 12 hours left" warning to the outstanding actors (MYS-162).
@@ -247,50 +245,50 @@ def send_deadline_warning(
     who still need to act this phase. No-ops on an empty list."""
     if not recipients:
         return
-    league_url = _league_url(settings, league.id)
-    label = _round_label(round_)
-    link = f'<a href="{league_url}">Go to {league.name} →</a>'
+    club_url = _club_url(settings, club.id)
+    label = _mix_label(mix_)
+    link = f'<a href="{club_url}">Go to {club.name} →</a>'
     if phase == "submission":
-        subject = f"{league.name} — about 12 hours left to submit"
+        subject = f"{club.name} — about 12 hours left to submit"
         action = f"submit to <strong>{label}</strong>"
     else:
-        subject = f"{league.name} — about 12 hours left to vote"
+        subject = f"{club.name} — about 12 hours left to vote"
         action = f"vote in <strong>{label}</strong>"
     body = (
-        f"<p>You have about 12 hours to {action} in <strong>{league.name}</strong>. "
+        f"<p>You have about 12 hours to {action} in <strong>{club.name}</strong>. "
         f"Whatever is in by the deadline counts. {link}</p>"
     )
     _send_direct(sender, settings, recipients, subject, body)
 
 
-def send_empty_round_notice(
+def send_empty_mix_notice(
     sender: EmailSender,
     settings: Settings,
     recipients: list[Recipient],
-    league: League,
-    round_: Round,
+    club: Club,
+    mix_: Mix,
 ) -> None:
     """Tell the organizer a submission deadline passed with zero songs (MYS-145).
 
-    The round is left open (it never auto-advances empty); the organizer can
+    The mix is left open (it never auto-advances empty); the organizer can
     extend the deadline or advance it manually. ``recipients`` is the organizer
     only, already filtered for the email-notifications preference. No-ops when the
     organizer has notifications off (empty list)."""
     if not recipients:
         return
-    league_url = _league_url(settings, league.id)
-    label = _round_label(round_)
-    link = f'<a href="{league_url}">Go to {league.name} →</a>'
-    subject = f"{league.name} — {label} closed with no submissions"
+    club_url = _club_url(settings, club.id)
+    label = _mix_label(mix_)
+    link = f'<a href="{club_url}">Go to {club.name} →</a>'
+    subject = f"{club.name} — {label} closed with no submissions"
     body = (
         f"<p>The submission deadline for <strong>{label}</strong> in "
-        f"<strong>{league.name}</strong> passed with no songs submitted. You can extend the "
+        f"<strong>{club.name}</strong> passed with no songs submitted. You can extend the "
         f"deadline or advance the mix manually. {link}</p>"
     )
     _send_direct(sender, settings, recipients, subject, body)
 
 
-def queue_league_joined(
+def queue_club_joined(
     background_tasks: BackgroundTasks,
     sender: EmailSender,
     settings: Settings,
@@ -299,8 +297,8 @@ def queue_league_joined(
     league_id: uuid.UUID,
     league_name: str,
 ) -> None:
-    """Schedule a welcome email for a user who just joined (or rejoined) a league."""
-    url = _league_url(settings, league_id)
+    """Schedule a welcome email for a user who just joined (or rejoined) a club."""
+    url = _club_url(settings, league_id)
     subject = f"You've joined {league_name}"
     body = (
         f"<p>You're in! You've joined <strong>{league_name}</strong>. "

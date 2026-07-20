@@ -724,6 +724,20 @@ describe("MixDetailRoute", () => {
     expect(screen.queryByRole("button", { name: /yes, close mix/i })).not.toBeInTheDocument();
   });
 
+  it("a themeless pending mix can't be opened — the button is disabled with an explanatory note (MYS-211)", async () => {
+    mockGetMix.mockResolvedValue(mix({ state: "pending", theme: null }));
+    const user = userEvent.setup();
+    renderMix();
+    const btn = await screen.findByRole("button", { name: "open mix" });
+    expect(btn).toBeDisabled();
+    expect(
+      screen.getByText(/set a theme below before opening this mystery mix/i),
+    ).toBeInTheDocument();
+    // Belt and suspenders: even a forced click must never reach the API.
+    await user.click(btn);
+    expect(mockUpdateMix).not.toHaveBeenCalled();
+  });
+
   describe("closing a mix — confirm step (MYS-170)", () => {
     beforeEach(() => {
       mockGetMix.mockResolvedValue(mix({ state: "open_voting" }));

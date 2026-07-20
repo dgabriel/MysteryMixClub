@@ -574,6 +574,7 @@ export function MixDetailRoute() {
           <>
             <OrganizerControls
               state={mix.state}
+              hasTheme={!!mix.theme}
               advancing={advancing}
               onAdvance={handleAdvance}
               isFinalMix={!!club && mix.mix_number >= club.total_mixes}
@@ -678,6 +679,7 @@ export function MixDetailRoute() {
 
 function OrganizerControls({
   state,
+  hasTheme,
   advancing,
   onAdvance,
   isFinalMix,
@@ -689,6 +691,7 @@ function OrganizerControls({
   totalVotes,
 }: {
   state: MixState;
+  hasTheme: boolean;
   advancing: boolean;
   onAdvance: (next: MixState) => void;
   isFinalMix: boolean;
@@ -843,29 +846,42 @@ function OrganizerControls({
     );
   }
 
+  // A mix can't open without a theme (MYS-211) — block the click rather than
+  // let the organizer hit the server's 409. Only applies to "open mix" itself;
+  // once a mix is open its theme is already locked in, so nothing later in
+  // the lifecycle needs this check.
+  const blockedByMissingTheme = state === "pending" && !hasTheme;
+
   return (
-    <div className="mt-6 flex items-center gap-4 border-t border-border pt-6">
-      <Button
-        type="button"
-        onClick={() => (next === "closed" ? setConfirmingClose(true) : onAdvance(next))}
-        disabled={busy}
-      >
-        {advancing ? busyLabel : label}
-      </Button>
-      {state === "open_voting" ? (
-        <Button variant="ghost" type="button" onClick={openExtendPicker} disabled={busy}>
-          extend voting
-        </Button>
-      ) : null}
-      {state === "open_voting" ? (
+    <div className="mt-6 border-t border-border pt-6">
+      <div className="flex items-center gap-4">
         <Button
-          variant="ghost"
           type="button"
-          onClick={() => setConfirmingRollback(true)}
-          disabled={busy}
+          onClick={() => (next === "closed" ? setConfirmingClose(true) : onAdvance(next))}
+          disabled={busy || blockedByMissingTheme}
         >
-          reopen submissions
+          {advancing ? busyLabel : label}
         </Button>
+        {state === "open_voting" ? (
+          <Button variant="ghost" type="button" onClick={openExtendPicker} disabled={busy}>
+            extend voting
+          </Button>
+        ) : null}
+        {state === "open_voting" ? (
+          <Button
+            variant="ghost"
+            type="button"
+            onClick={() => setConfirmingRollback(true)}
+            disabled={busy}
+          >
+            reopen submissions
+          </Button>
+        ) : null}
+      </div>
+      {blockedByMissingTheme ? (
+        <p className="mt-3 font-mono text-[13px] font-light text-muted">
+          set a theme below before opening this mystery mix.
+        </p>
       ) : null}
     </div>
   );

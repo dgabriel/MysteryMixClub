@@ -49,6 +49,7 @@ from app.services.notifications import (
     DeadlinePhase,
     Recipient,
     gather_recipients,
+    organizer_recipient,
     send_deadline_warning,
     send_empty_mix_notice,
     send_mix_event,
@@ -111,15 +112,6 @@ async def _warning_recipients(
     )
     outstanding = playing_ids - voter_ids
     return [r for r in recipients if r.user_id in outstanding]
-
-
-async def _organizer_recipient(db: AsyncSession, club: Club) -> list[Recipient]:
-    """The organizer as a recipient, or empty if the club has no organizer
-    (hard-purged) or the organizer has email notifications off."""
-    if club.organizer_id is None:
-        return []
-    recipients = await gather_recipients(db, club.id)
-    return [r for r in recipients if r.user_id == club.organizer_id]
 
 
 async def _process_mix(
@@ -199,7 +191,7 @@ async def _process_mix(
         # organizer once and leave the mix open indefinitely.
         if (submission_count or 0) == 0:
             if mix_.empty_round_notice_sent_at is None:
-                recipients = await _organizer_recipient(db, club)
+                recipients = await organizer_recipient(db, club)
                 mix_.empty_round_notice_sent_at = now
                 await db.commit()
                 send_empty_mix_notice(sender, settings, recipients, club, mix_)
@@ -223,9 +215,18 @@ async def _process_mix(
     # Branch 5: voting deadline passed — close the mix (zero votes still closes).
     events = await advance_mix_state(mix_, club, "closed", db)
     recipients = await gather_recipients(db, club.id)
+    # needs_theme (MYS-211) is organizer-only, never the whole club.
+    theme_notice_recipients = (
+        await organizer_recipient(db, club)
+        if any(event == "needs_theme" for _, event in events)
+        else []
+    )
     await db.commit()
     for event_mix, event in events:
-        send_mix_event(sender, settings, recipients, club, event_mix, event)
+        if event == "needs_theme":
+            send_mix_event(sender, settings, theme_notice_recipients, club, event_mix, event)
+        else:
+            send_mix_event(sender, settings, recipients, club, event_mix, event)
     report.closed += 1
 
 

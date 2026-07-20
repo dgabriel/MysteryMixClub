@@ -78,6 +78,26 @@ async def _advance(client, mix_id, organizer_id, state):
     )
 
 
+async def _seed_pending_mix(
+    db_session, club: Club, *, mix_number: int = 1, theme: str | None = None
+) -> Mix:
+    """A genuinely pending, un-themed mix — the single-create endpoint
+    (``_create_mix``) is born ``open_submission`` and can't produce one; only
+    the club-autogen slate (``POST /clubs``) does. Seeded directly to test the
+    theme-before-opening guard (MYS-211) without exercising club creation."""
+    mix_ = Mix(
+        club_id=club.id,
+        mix_number=mix_number,
+        theme=theme,
+        state="pending",
+        votes_per_player=club.votes_per_player,
+    )
+    db_session.add(mix_)
+    await db_session.commit()
+    await db_session.refresh(mix_)
+    return mix_
+
+
 # --------------------------------------------------------------------------- #
 # Create — auth / authorization
 # --------------------------------------------------------------------------- #
@@ -280,6 +300,44 @@ async def test_open_voting_to_pending_is_rejected(client, db_session):
 
     resp = await _advance(client, rid, organizer.id, "pending")
     assert resp.status_code == 409
+
+
+async def test_opening_themeless_mix_is_rejected(client, db_session):
+    # MYS-211: a mix can't open without a theme. The single-create endpoint
+    # always sets one, so this needs a genuinely pending, un-themed mix.
+    organizer = await _seed_user(db_session, "org@example.com")
+    club = await _seed_club(db_session, organizer)
+    mix_ = await _seed_pending_mix(db_session, club)
+
+    resp = await _advance(client, str(mix_.id), organizer.id, "open_submission")
+    assert resp.status_code == 409, resp.text
+    assert "theme" in resp.json()["detail"]
+
+
+async def test_setting_theme_and_opening_together_succeeds(client, db_session):
+    # The theme-before-opening guard runs after field updates apply, so
+    # setting the theme and opening in the same request works.
+    organizer = await _seed_user(db_session, "org@example.com")
+    club = await _seed_club(db_session, organizer)
+    mix_ = await _seed_pending_mix(db_session, club)
+
+    resp = await client.patch(
+        f"/api/v1/mixes/{mix_.id}",
+        json={"theme": "late summer feels", "state": "open_submission"},
+        headers=_auth(organizer.id),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["state"] == "open_submission"
+
+
+async def test_opening_already_themed_pending_mix_succeeds(client, db_session):
+    organizer = await _seed_user(db_session, "org@example.com")
+    club = await _seed_club(db_session, organizer)
+    mix_ = await _seed_pending_mix(db_session, club, theme="late summer feels")
+
+    resp = await _advance(client, str(mix_.id), organizer.id, "open_submission")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["state"] == "open_submission"
 
 
 async def test_editing_closed_mix_is_rejected(client, db_session):

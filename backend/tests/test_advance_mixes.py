@@ -95,11 +95,14 @@ async def _seed_mix(
     submission_deadline: datetime | None = None,
     voting_deadline: datetime | None = None,
     submission_opened_at: datetime | None = None,
+    themeless: bool = False,
 ) -> Mix:
+    # Themed by default; pass themeless=True to seed a mix with no theme
+    # (MYS-211), e.g. to test that it can't auto-open.
     mix_ = Mix(
         club_id=club_id,
         mix_number=number,
-        theme=f"mix {number}",
+        theme=None if themeless else f"mix {number}",
         state=state,
         submission_deadline=submission_deadline,
         voting_deadline=voting_deadline,
@@ -589,6 +592,46 @@ async def test_branch5_close_partial_votes_autoopens_next(run_job, db_session, e
     subjects = [subj for (_to, subj, _h) in email_spy.sends]
     assert sum("results are in" in s for s in subjects) == 2  # mix_closed × 2 members
     assert sum("open for submissions" in s for s in subjects) == 2  # submission_open × 2
+
+
+async def test_branch5_close_skips_autoopen_when_next_has_no_theme(run_job, db_session, email_spy):
+    """MYS-211: the deadline job closes mix 1 as usual, but leaves a themeless
+    mix 2 pending instead of auto-opening it, and nudges the organizer only."""
+    now = datetime.now(timezone.utc)
+    org = await _seed_user(db_session, "o@e.com")
+    m = await _seed_user(db_session, "m@e.com")
+    club = await _seed_club(db_session, org, total_mixes=2, submission_window_hours=72)
+    await _add_member(db_session, club.id, m)
+    r1 = await _seed_mix(
+        db_session,
+        club.id,
+        1,
+        state="open_voting",
+        voting_deadline=now - timedelta(hours=1),
+    )
+    r2 = await _seed_mix(db_session, club.id, 2, state="pending", themeless=True)
+    r1_id, r2_id, club_id = r1.id, r2.id, club.id
+    m_sub = await _seed_submission(db_session, r1_id, m, title="m")
+    await _seed_vote(db_session, r1_id, org, m_sub.id)
+
+    report = await run_job(now)
+    assert report.closed == 1
+
+    db_session.expire_all()
+    closed = await db_session.get(Mix, r1_id)
+    still_pending = await db_session.get(Mix, r2_id)
+    club_after = await db_session.get(Club, club_id)
+    assert closed.state == "closed"
+    assert still_pending.state == "pending"  # never auto-opened
+    assert still_pending.submission_deadline is None
+    assert club_after.current_mix != 2  # never advanced onto the themeless mix
+
+    subjects_by_recipient = [(to, subj) for (to, subj, _h) in email_spy.sends]
+    # mix_closed to both members, plus exactly one needs_theme — organizer only.
+    assert sum("results are in" in s for _to, s in subjects_by_recipient) == 2
+    theme_notices = [(to, s) for to, s in subjects_by_recipient if "needs a theme" in s]
+    assert len(theme_notices) == 1
+    assert theme_notices[0][0] == "o@e.com"
 
 
 async def test_branch5_zero_votes_still_closes(run_job, db_session, email_spy):

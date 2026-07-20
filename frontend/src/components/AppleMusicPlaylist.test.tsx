@@ -31,7 +31,7 @@ const mockAuthorize = vi.mocked(authorizeAppleMusic);
 beforeEach(() => {
   vi.clearAllMocks();
   mockToken.mockResolvedValue({ token: "dev-token" });
-  mockLink.mockResolvedValue({ playlist_url: null, playlist_name: null });
+  mockLink.mockResolvedValue({ playlist_url: null, direct_playlist_url: null, playlist_name: null });
   mockAuthorize.mockResolvedValue("mut-123");
 });
 
@@ -45,9 +45,12 @@ describe("AppleMusicPlaylist", () => {
     expect(screen.getByText(/requires apple music subscription/i)).toBeInTheDocument();
   });
 
-  it("shows the personal link when one was already generated", async () => {
+  it("shows the personal link when one was already generated (no direct url)", async () => {
+    // No direct_playlist_url (e.g. a pre-MYS-214 row): falls back to the
+    // library link and "look for it by name" prompt on every platform.
     mockLink.mockResolvedValue({
       playlist_url: "https://music.apple.com/library",
+      direct_playlist_url: null,
       playlist_name: "Mix: Mix 1",
     });
 
@@ -69,6 +72,7 @@ describe("AppleMusicPlaylist", () => {
     // Rows predating MYS-190 have no stored name; the library link must still work.
     mockLink.mockResolvedValue({
       playlist_url: "https://music.apple.com/library",
+      direct_playlist_url: null,
       playlist_name: null,
     });
 
@@ -80,9 +84,48 @@ describe("AppleMusicPlaylist", () => {
     expect(screen.getByText(/go to your Apple Music playlists to find it/i)).toBeInTheDocument();
   });
 
+  it("on desktop, links straight to the exact playlist (MYS-214)", async () => {
+    // jsdom's default user-agent has no mobile/iPad markers, so the component
+    // treats the test environment as desktop.
+    mockLink.mockResolvedValue({
+      playlist_url: "https://music.apple.com/library",
+      direct_playlist_url: "https://music.apple.com/library/playlist/p.ABC",
+      playlist_name: "Mix: Mix 1",
+    });
+
+    render(<AppleMusicPlaylist mixId="r1" />);
+
+    const link = await screen.findByRole("link", { name: /open in apple music/i });
+    expect(link).toHaveAttribute("href", "https://music.apple.com/library/playlist/p.ABC");
+    // No "find it yourself" prompt needed — the link goes straight there.
+    expect(screen.queryByText(/go to your Apple Music playlists/i)).not.toBeInTheDocument();
+  });
+
+  it("on mobile, ignores the direct link and prompts to find it by name", async () => {
+    const uaSpy = vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15",
+    );
+    mockLink.mockResolvedValue({
+      playlist_url: "https://music.apple.com/library",
+      direct_playlist_url: "https://music.apple.com/library/playlist/p.ABC",
+      playlist_name: "Mix: Mix 1",
+    });
+
+    render(<AppleMusicPlaylist mixId="r1" />);
+
+    const link = await screen.findByRole("link", { name: /open apple music library/i });
+    expect(link).toHaveAttribute("href", "https://music.apple.com/library");
+    expect(
+      screen.getByText(/go to your Apple Music playlists and look for/i),
+    ).toBeInTheDocument();
+
+    uaSpy.mockRestore();
+  });
+
   it("authorizes then generates, and surfaces the resulting link", async () => {
     mockCreate.mockResolvedValue({
       playlist_url: "https://music.apple.com/library",
+      direct_playlist_url: "https://music.apple.com/library/playlist/p.NEW",
       playlist_name: "Mix: Mix 1",
       track_count: 5,
       total_count: 5,
@@ -96,9 +139,10 @@ describe("AppleMusicPlaylist", () => {
 
     await waitFor(() => expect(mockAuthorize).toHaveBeenCalledWith("dev-token"));
     expect(mockCreate).toHaveBeenCalledWith("r1", "mut-123");
+    // Desktop (jsdom default) gets the exact-playlist link straight away.
     expect(
-      await screen.findByRole("link", { name: /open apple music library/i }),
-    ).toHaveAttribute("href", "https://music.apple.com/library");
+      await screen.findByRole("link", { name: /open in apple music/i }),
+    ).toHaveAttribute("href", "https://music.apple.com/library/playlist/p.NEW");
     expect(screen.getByText(/Mix: Mix 1/)).toBeInTheDocument();
   });
 

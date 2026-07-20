@@ -30,13 +30,34 @@ const BUTTON_CLASS =
   "inline-flex items-center gap-1.5 font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink disabled:cursor-default disabled:text-muted disabled:no-underline";
 const NOTE_CLASS = "font-mono text-[11px] font-light text-muted";
 
+/**
+ * True on a mobile OS with a native Apple Music app — where a direct
+ * library-playlist link dead-ends with "Item Not Available" (MYS-190). The
+ * desktop web player resolves that same link fine (MYS-214), so this is the
+ * one thing that decides which URL {@link AppleMusicPlaylist} renders.
+ *
+ * iPadOS's Safari reports as "Macintosh" in its user-agent string (Apple
+ * dropped the iPad identifier to unify with desktop Safari around iOS 13),
+ * so a multi-touch "Mac" is treated as an iPad, not a real desktop.
+ */
+function isAppleMobileOS(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent;
+  const isKnownMobile = /iPhone|iPad|iPod|Android/.test(ua);
+  const isIPadReportingAsMac = /Macintosh/.test(ua) && navigator.maxTouchPoints > 1;
+  return isKnownMobile || isIPadReportingAsMac;
+}
+
 export function AppleMusicPlaylist({ mixId }: { mixId: string }) {
   // undefined = still loading, null = not configured / unavailable
   const [developerToken, setDeveloperToken] = useState<string | null | undefined>(undefined);
   const [playlistUrl, setPlaylistUrl] = useState<string | null | undefined>(undefined);
+  const [directPlaylistUrl, setDirectPlaylistUrl] = useState<string | null>(null);
   const [playlistName, setPlaylistName] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Computed once — the OS doesn't change mid-session.
+  const [isMobile] = useState(isAppleMobileOS);
 
   useEffect(() => {
     let active = true;
@@ -58,6 +79,7 @@ export function AppleMusicPlaylist({ mixId }: { mixId: string }) {
       .then((r) => {
         if (!active) return;
         setPlaylistUrl(r.playlist_url);
+        setDirectPlaylistUrl(r.direct_playlist_url);
         setPlaylistName(r.playlist_name);
       })
       .catch(() => {
@@ -78,6 +100,7 @@ export function AppleMusicPlaylist({ mixId }: { mixId: string }) {
       const musicUserToken = await authorizeAppleMusic(developerToken);
       const result = await createApplePlaylist(mixId, musicUserToken);
       setPlaylistUrl(result.playlist_url);
+      setDirectPlaylistUrl(result.direct_playlist_url);
       setPlaylistName(result.playlist_name);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
@@ -97,29 +120,39 @@ export function AppleMusicPlaylist({ mixId }: { mixId: string }) {
   if (developerToken === undefined || playlistUrl === undefined) return null;
   if (developerToken === null) return null;
 
+  // Desktop's web player resolves a direct playlist link; iOS/Android's native
+  // app dead-ends on the same URL with "Item Not Available" (MYS-190), so
+  // mobile gets the Library root instead and has to make the last hop itself —
+  // the playlist name is how they find it (MYS-214).
+  const opensExactPlaylist = !isMobile && !!directPlaylistUrl;
+  const targetUrl = opensExactPlaylist ? directPlaylistUrl : playlistUrl;
+
   return (
     <div className="mb-8">
-      {playlistUrl ? (
+      {targetUrl ? (
         <>
-          <a href={playlistUrl} target="_blank" rel="noopener noreferrer" className={LINK_CLASS}>
+          <a href={targetUrl} target="_blank" rel="noopener noreferrer" className={LINK_CLASS}>
             <MusicNoteIcon />
-            open apple music library
+            {opensExactPlaylist ? "open in apple music" : "open apple music library"}
           </a>
-          {/* Navigation instructions, not a link: Apple exposes no deep link to a
-              library playlist, and /library is as deep as iOS will go — confirmed
-              on-device, including the playlists section (MYS-190). So the member
-              has to make the last hop themselves, and the title is how they find
-              it. Older rows have no recorded name; fall back to a plain note. */}
-          <p className={NOTE_CLASS}>
-            {playlistName ? (
-              <>
-                go to your Apple Music playlists and look for{" "}
-                <span className="text-ink">“{playlistName}”</span>
-              </>
-            ) : (
-              "go to your Apple Music playlists to find it"
-            )}
-          </p>
+          {opensExactPlaylist ? (
+            playlistName ? (
+              <p className={NOTE_CLASS}>
+                opens <span className="text-ink">“{playlistName}”</span> directly
+              </p>
+            ) : null
+          ) : (
+            <p className={NOTE_CLASS}>
+              {playlistName ? (
+                <>
+                  go to your Apple Music playlists and look for{" "}
+                  <span className="text-ink">“{playlistName}”</span>
+                </>
+              ) : (
+                "go to your Apple Music playlists to find it"
+              )}
+            </p>
+          )}
         </>
       ) : (
         <>

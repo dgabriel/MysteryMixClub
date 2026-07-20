@@ -37,6 +37,7 @@ from app.services.apple_music_client import (
     AppleMusicAuthError,
     AppleMusicClient,
     get_apple_music_client,
+    library_playlist_url,
 )
 from app.services.apple_music_token import AppleMusicTokenError
 from app.services.apple_playlist_generation import (
@@ -56,6 +57,9 @@ class ApplePlaylistLinkResponse(WireModel):
     # playlist (MYS-190). playlist_name is how the member finds it. The name is
     # null for rows created before MYS-190 started recording it.
     playlist_url: str | None = None
+    # The exact playlist — desktop only (MYS-214); see library_playlist_url()'s
+    # docstring for why mobile can't use this.
+    direct_playlist_url: str | None = None
     playlist_name: str | None = None
 
 
@@ -84,6 +88,8 @@ class GeneratePlaylistRequest(WireModel):
 
 class GeneratePlaylistResponse(WireModel):
     playlist_url: str
+    # The exact playlist — desktop only (MYS-214).
+    direct_playlist_url: str
     playlist_name: str
     track_count: int
     total_count: int
@@ -127,7 +133,11 @@ async def get_mix_apple_playlist(
     stored = await get_existing_playlist(db, round_id, current_user.id)
     if stored is None:
         return ApplePlaylistLinkResponse(playlist_url=None)
-    return ApplePlaylistLinkResponse(playlist_url=LIBRARY_URL, playlist_name=stored.playlist_name)
+    return ApplePlaylistLinkResponse(
+        playlist_url=LIBRARY_URL,
+        direct_playlist_url=library_playlist_url(stored.playlist_id),
+        playlist_name=stored.playlist_name,
+    )
 
 
 @router.post("/mixes/{round_id}/apple-playlist", response_model=GeneratePlaylistResponse)
@@ -172,6 +182,7 @@ async def create_mix_apple_playlist(
 
     return GeneratePlaylistResponse(
         playlist_url=result.playlist_url,
+        direct_playlist_url=result.direct_playlist_url,
         playlist_name=result.playlist_name,
         track_count=result.track_count,
         total_count=result.total_count,

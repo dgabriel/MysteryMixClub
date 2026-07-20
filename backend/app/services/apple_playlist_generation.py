@@ -26,7 +26,7 @@ from app.models.apple_mix_playlist import AppleMixPlaylist
 from app.models.club import Club
 from app.models.mix import Mix
 from app.models.submission import Submission
-from app.services.apple_music_client import LIBRARY_URL, AppleMusicClient
+from app.services.apple_music_client import LIBRARY_URL, AppleMusicClient, library_playlist_url
 from app.services.source_tracks import Source, source_fields
 from app.services.spotify_playlist import playlist_description, playlist_name
 
@@ -55,6 +55,9 @@ class GeneratedApplePlaylist:
     # Apple Music's Library, not the playlist itself — iOS can't deep-link to a
     # library playlist (MYS-190). `playlist_name` is what lets the member find it.
     playlist_url: str
+    # The exact playlist — desktop only (MYS-214); undocumented Apple behavior,
+    # see library_playlist_url()'s docstring.
+    direct_playlist_url: str
     playlist_name: str
     track_count: int
     total_count: int
@@ -187,6 +190,7 @@ async def generate_mix_playlist(
 
     return GeneratedApplePlaylist(
         playlist_url=LIBRARY_URL,
+        direct_playlist_url=library_playlist_url(playlist_id),
         playlist_name=name,
         track_count=len(track_ids),
         total_count=len(submissions),

@@ -981,8 +981,12 @@ export type UnmatchedTrack = {
 
 export type ApplePlaylistResult = {
   /** Apple Music's Library, not the playlist itself — iOS can't deep-link to a
-   *  library playlist (MYS-190). `playlist_name` is what locates it. */
+   *  library playlist (MYS-190). `playlist_name` is what locates it. Used on
+   *  mobile; desktop prefers `direct_playlist_url`. */
   playlist_url: string;
+  /** The exact playlist — desktop only (MYS-214). Relies on undocumented Apple
+   *  web-player URL resolution that dead-ends in the native iOS app. */
+  direct_playlist_url: string;
   playlist_name: string;
   track_count: number;
   total_count: number;
@@ -1003,14 +1007,20 @@ export async function getAppleDeveloperToken(): Promise<{ token: string | null }
 /** The caller's OWN Apple playlist link for a mix, or null (MYS-108).
  *  Apple library playlists can't be made public (MYS-107), so this is personal:
  *  it opens only for the user who generated it. */
-export async function getApplePlaylistLink(
-  mixId: string,
-): Promise<{ playlist_url: string | null; playlist_name: string | null }> {
+export async function getApplePlaylistLink(mixId: string): Promise<{
+  playlist_url: string | null;
+  direct_playlist_url: string | null;
+  playlist_name: string | null;
+}> {
   const res = await authenticatedRequest(`/api/v1/mixes/${mixId}/apple-playlist`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
-  return (await res.json()) as { playlist_url: string | null; playlist_name: string | null };
+  return (await res.json()) as {
+    playlist_url: string | null;
+    direct_playlist_url: string | null;
+    playlist_name: string | null;
+  };
 }
 
 /** Generate the mix's playlist in the caller's Apple Music library (MYS-108).

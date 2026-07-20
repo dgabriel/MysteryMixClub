@@ -449,6 +449,14 @@ async def create_mix(
             status_code=status.HTTP_409_CONFLICT,
             detail="all mixes for this club have already been created",
         )
+    # This mix is born open_submission (below) — same theme-before-open rule
+    # as the PATCH-driven transition (MYS-211), since a mix can't open
+    # without a theme by any route.
+    if not payload.theme:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="set a theme before opening this mystery mix",
+        )
 
     mix_ = Mix(
         club_id=league_id,

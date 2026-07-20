@@ -120,13 +120,16 @@ async def test_create_non_organizer_member_forbidden(client, db_session):
     assert resp.status_code == 403
 
 
-async def test_create_missing_theme_is_allowed(client, db_session):
-    # theme is now optional (MYS-62): a mix may be created without one.
+async def test_create_missing_theme_is_rejected(client, db_session):
+    # Superseded by MYS-211: this endpoint births a mix straight into
+    # open_submission (no pending stop, unlike the autogen slate), so it's
+    # subject to the same theme-before-open rule as the PATCH transition —
+    # optional-at-create (MYS-62) no longer means optional-while-live.
     organizer = await _seed_user(db_session, "org@example.com")
     club = await _seed_club(db_session, organizer)
     resp = await client.post(_mixes_url(club.id), json={}, headers=_auth(organizer.id))
-    assert resp.status_code == 201, resp.text
-    assert resp.json()["theme"] is None
+    assert resp.status_code == 409, resp.text
+    assert "theme" in resp.json()["detail"]
 
 
 # --------------------------------------------------------------------------- #

@@ -227,7 +227,8 @@ league.
 id                  UUID PRIMARY KEY
 round_id            UUID REFERENCES rounds(id)
 user_id             UUID REFERENCES users(id)
-isrc                TEXT NOT NULL
+isrc                TEXT (nullable since MYS-201 — see source_key)
+source_key          TEXT (nullable; source-only identity: youtube:<video id> | bandcamp:<artist>/<track> — MYS-201)
 title               TEXT NOT NULL
 artist              TEXT NOT NULL
 album               TEXT
@@ -236,7 +237,17 @@ odesli_data         JSONB (full Odesli response, for platform resolution at play
 note                TEXT (max 280 chars)
 participation_mode  TEXT (playing | vibing) — per-round mode; defaults at submit from league_members.vibe_mode, overridable per round (MYS-112)
 created_at          TIMESTAMP
+CHECK (isrc IS NOT NULL OR source_key IS NOT NULL) — ck_submissions_isrc_or_source
 ```
+> *A submission is identified by **exactly one** of `isrc` or `source_key`
+> (MYS-201). Catalog tracks carry an ISRC as before; **source-only** tracks —
+> ones that exist only on Bandcamp or YouTube, with no ISRC on the indexed
+> catalogs — carry a `source_key` instead. The DB CHECK guarantees at least one
+> is present; the submit endpoint's validator enforces exactly one. A source_key
+> is an **exact** reference (the video id / Bandcamp track page the submitter
+> chose) and is **never fuzzy-matched** — a gap (a platform with no link) is
+> acceptable, a wrong song is not. Duplicate detection matches on whichever
+> identity the submission carries.*
 
 ### votes
 ```
@@ -377,6 +388,45 @@ GET https://api.song.link/v1-alpha.1/links?url=<encoded_platform_url>
 - Odesli free tier rate limits must be validated against expected usage before launch
 - Failed Odesli lookups must surface a clear error to the user, not a silent failure
 - Consider caching resolved track data in the database to reduce repeat API calls
+
+### Source-only resolution (MYS-201)
+The keyless resolver funnels YouTube/Bandcamp links through a Deezer search to
+recover a canonical ISRC. When that search returns **no** catalog match (a
+genuine miss — upstream errors still raise), the link is treated as a
+**source-only** track: `POST /songs/resolve` with `allow_source_only: true`
+returns the song with a `source`/`source_key`/`source_url` and no ISRC, and its
+cross-service links are assembled **without any fuzzy lookup** (the exact
+YouTube video id or Bandcamp track page only — every other platform degrades to
+a search deep link). `allow_source_only` defaults to `false`, so existing
+clients are unaffected: a source-only link still resolves to a 404 exactly as
+before. The submitted `source_key` is stored on `submissions.source_key` (see
+§6) and is the track's identity for duplicate detection and playlist building.
+
+The read surfaces carry that identity through so clients can badge source-only
+tracks and explain playlist gaps (MYS-201):
+
+- The voting-playlist entry (`GET /mixes/{id}/playlist`) and the results/reveal
+  track shapes (`GET /mixes/{id}/results`) expose `isrc` (null for source-only)
+  plus `source` (`"youtube"`/`"bandcamp"`) and `source_url` — null on a normal
+  catalog track — so a source-only pick renders a "YouTube only"/"Bandcamp only"
+  badge with a working link.
+- The Apple generation response (`POST /mixes/{id}/apple-playlist`) reports each
+  skipped track in `unmatched` with `title`, `artist`, a `reason` of
+  `"source_only"` (no ISRC — a Bandcamp/YouTube track that can never match a
+  catalog) or `"no_catalog_match"` (an ISRC-backed track this storefront doesn't
+  carry), plus `source` (`"youtube"`/`"bandcamp"`) and `source_url` — populated
+  for a `"source_only"` entry so the frontend can link it out to its page, null
+  for a `"no_catalog_match"` entry (it has an ISRC, not a source_key). So the gap
+  summary can say *why* rather than only *how many*.
+- The shared Spotify playlist is auto-generated on voting-open (no HTTP
+  generation call), so its read route `GET /mixes/{id}/spotify-playlist` carries
+  the same gap summary: alongside `playlist_url` it returns `unmatched` (a list
+  of `{submission_id, title, artist, reason, source, source_url}` with the
+  identical `reason`/`source`/`source_url` semantics). The list is recomputed at
+  read time from persisted state — generation caches each matched track's
+  `spotify_track_uri` on its submission, so a submission with no cached URI is
+  exactly one the playlist skipped — and is empty when no playlist exists yet
+  (nothing generated, or nothing matched).
 
 ---
 

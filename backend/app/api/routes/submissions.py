@@ -22,10 +22,10 @@ per-song one: it is kept uniform across all of a player's songs (MYS-112/116).
 
 import uuid
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import StringConstraints
+from pydantic import StringConstraints, model_validator
 
 from app.api.wire import WireModel
 from sqlalchemy import exists, select, text
@@ -39,29 +39,57 @@ from app.models.league_member import LeagueMember
 from app.models.round import Round
 from app.models.submission import Submission
 from app.models.user import User
-from app.services.song_links import SongLinkAssembler, get_link_assembler
+from app.services.song_links import (
+    SongLinkAssembler,
+    assemble_source_links,
+    get_link_assembler,
+)
+from app.services.source_tracks import SOURCE_KEY_PATTERN, source_fields
 from app.services.youtube_resolver import YouTubeResolver, get_youtube_resolver
 
 router = APIRouter(tags=["submissions"])
 
 ShortText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
 Isrc = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)]
+SourceKey = Annotated[
+    str, StringConstraints(strip_whitespace=True, max_length=200, pattern=SOURCE_KEY_PATTERN)
+]
 Note = Annotated[str, StringConstraints(strip_whitespace=True, max_length=280)]
 Album = Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)]
 AlbumArtUrl = Annotated[str, StringConstraints(max_length=2048)]
+BandcampTrackId = Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^\d{1,20}$")]
+
+# Reserved, non-URL key under which the Bandcamp numeric track id rides along in
+# the platform_links JSONB (MYS-201, for the MYS-204 embedded player). Namespaced
+# so it can't collide with a platform URL key; consumers read links by fixed
+# platform keys, so it's inert to them.
+BANDCAMP_TRACK_ID_KEY = "bandcampTrackId"
 
 
 class SubmissionCreate(WireModel):
     # Canonical identity + display fields from the search/resolve result. The
-    # cross-service links are assembled server-side from title/artist/isrc. Used
-    # for both adding a song (POST) and replacing one wholesale (PATCH).
-    isrc: Isrc
+    # cross-service links are assembled server-side. A submission carries EITHER
+    # an isrc (catalog track) or a source_key (source-only Bandcamp/YouTube track
+    # — MYS-201), never both and never neither. Used for both adding a song (POST)
+    # and replacing one wholesale (PATCH).
+    isrc: Isrc | None = None
+    source_key: SourceKey | None = None
     title: ShortText
     artist: ShortText
     album: Album | None = None
     album_art_url: AlbumArtUrl | None = None
+    # Bandcamp's numeric track id from the resolve step, echoed back on submit for
+    # any Bandcamp-sourced track (catalog-hit or source-only), for the embedded
+    # player (MYS-204). Persisted into platform_links; None for everything else.
+    bandcamp_track_id: BandcampTrackId | None = None
     note: Note | None = None
     participation_mode: Literal["playing", "vibing"] | None = None
+
+    @model_validator(mode="after")
+    def _exactly_one_identity(self) -> "SubmissionCreate":
+        if bool(self.isrc) == bool(self.source_key):
+            raise ValueError("provide exactly one of isrc or source_key")
+        return self
 
 
 class NoteUpdate(WireModel):
@@ -74,7 +102,10 @@ class SubmissionResponse(WireModel):
     id: str
     round_id: str
     user_id: str
-    isrc: str
+    # None for a source-only track; source/source_url are set instead (MYS-201).
+    isrc: str | None
+    source: Literal["youtube", "bandcamp"] | None = None
+    source_url: str | None = None
     title: str
     artist: str
     album: str | None
@@ -86,11 +117,14 @@ class SubmissionResponse(WireModel):
 
 
 def _to_response(s: Submission, *, league_previously_submitted: bool = False) -> SubmissionResponse:
+    source, source_url = source_fields(s.source_key)
     return SubmissionResponse(
         id=str(s.id),
         round_id=str(s.round_id),
         user_id=str(s.user_id),
         isrc=s.isrc,
+        source=source,
+        source_url=source_url,
         title=s.title,
         artist=s.artist,
         album=s.album,
@@ -113,7 +147,14 @@ async def _assemble_track(
     YouTube resolve is None on any failure, so neither blocks a submission.
     The video id is resolved once here and handed to the assembler so it
     doesn't make its own redundant YouTube Data API call (MYS-175).
+
+    Source-only tracks (MYS-201) bypass every fuzzy lookup: the source_key's
+    exact video id (or Bandcamp page) drives the links — never a guessed match.
     """
+    if payload.source_key is not None:
+        return await assemble_source_links(
+            assembler, payload.title, payload.artist, payload.source_key
+        )
     youtube_video_id = await youtube.video_id_for(payload.title, payload.artist)
     platform_links = await assembler.assemble(
         payload.title, payload.artist, payload.isrc, youtube_video_id=youtube_video_id
@@ -126,30 +167,46 @@ def _apply_track(
 ) -> None:
     """Write a resolved track onto a submission row (shared by add + replace)."""
     s.isrc = payload.isrc
+    s.source_key = payload.source_key
     s.title = payload.title
     s.artist = payload.artist
     s.album = payload.album
     s.album_art_url = payload.album_art_url
+    # Ride the Bandcamp track id along in the platform_links JSONB under a
+    # reserved, non-URL key so it persists per submission for MYS-204 without a
+    # migration; a re-submit without one drops it (replace is wholesale).
+    if payload.bandcamp_track_id:
+        links = {**links, BANDCAMP_TRACK_ID_KEY: payload.bandcamp_track_id}
     s.platform_links = links
     s.youtube_video_id = yt
     s.note = payload.note
 
 
-async def _isrc_in_round(
-    isrc: str,
+def _identity_clause(payload: SubmissionCreate) -> Any:
+    """The duplicate-detection column match for a payload: on ISRC for a catalog
+    track, on source_key for a source-only one (MYS-201). Two source-only tracks
+    collide only when they point at the exact same page — the intended semantics,
+    since source_key is exact and is never fuzzy-matched."""
+    if payload.source_key is not None:
+        return Submission.source_key == payload.source_key
+    return Submission.isrc == payload.isrc
+
+
+async def _duplicate_in_round(
+    payload: SubmissionCreate,
     round_id: uuid.UUID,
     db: AsyncSession,
     *,
     exclude_submission_id: uuid.UUID | None = None,
 ) -> bool:
-    clause = [Submission.isrc == isrc, Submission.round_id == round_id]
+    clause = [_identity_clause(payload), Submission.round_id == round_id]
     if exclude_submission_id is not None:
         clause.append(Submission.id != exclude_submission_id)
     return bool(await db.scalar(select(exists().where(*clause))))
 
 
-async def _isrc_in_prior_league_rounds(
-    isrc: str,
+async def _duplicate_in_prior_league_rounds(
+    payload: SubmissionCreate,
     league_id: uuid.UUID,
     round_id: uuid.UUID,
     db: AsyncSession,
@@ -158,7 +215,7 @@ async def _isrc_in_prior_league_rounds(
         await db.scalar(
             select(
                 exists().where(
-                    Submission.isrc == isrc,
+                    _identity_clause(payload),
                     Submission.round_id == Round.id,
                     Round.league_id == league_id,
                     Round.id != round_id,
@@ -237,12 +294,12 @@ async def submit_song(
             detail=f"you've submitted the maximum of {league.songs_per_submission} song(s)",
         )
 
-    if await _isrc_in_round(payload.isrc, round_id, db):
+    if await _duplicate_in_round(payload, round_id, db):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="oops, someone else has great taste too — this track is already in this mystery mix",
         )
-    league_repeat = await _isrc_in_prior_league_rounds(payload.isrc, round_.league_id, round_id, db)
+    league_repeat = await _duplicate_in_prior_league_rounds(payload, round_.league_id, round_id, db)
 
     platform_links, youtube_video_id = await _assemble_track(payload, assembler, youtube)
     mode = await _resolve_mode(
@@ -291,12 +348,12 @@ async def edit_song(
             status_code=status.HTTP_403_FORBIDDEN, detail="that submission isn't yours"
         )
 
-    if await _isrc_in_round(payload.isrc, round_id, db, exclude_submission_id=submission_id):
+    if await _duplicate_in_round(payload, round_id, db, exclude_submission_id=submission_id):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="oops, someone else has great taste too — this track is already in this mystery mix",
         )
-    league_repeat = await _isrc_in_prior_league_rounds(payload.isrc, round_.league_id, round_id, db)
+    league_repeat = await _duplicate_in_prior_league_rounds(payload, round_.league_id, round_id, db)
 
     platform_links, youtube_video_id = await _assemble_track(payload, assembler, youtube)
     _apply_track(submission, payload, platform_links, youtube_video_id)

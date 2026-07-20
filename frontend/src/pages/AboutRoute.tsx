@@ -21,14 +21,15 @@ export function AboutRoute() {
           <h1 className="mt-8 text-center font-serif text-[34px] leading-tight">about</h1>
 
           <p className="mt-6 font-mono text-[13px] font-light leading-relaxed text-ink">
-            mysterymixclub is a place for close friends to trade songs, discover what everyone's
+            mysterymixclub is a place for friends to trade songs, discover what everyone's
             been listening to, and put their taste on the line. no algorithm, no popularity
             contest, just people who love music, sharing it with people they love.
           </p>
           <p className="mt-4 font-mono text-[13px] font-light leading-relaxed text-ink">
-            you can search and verify songs across spotify, apple music, youtube, and deezer.
-            auto-generated playlists are more limited for now (spotify and youtube), with more
-            platforms coming.
+            you can search and verify songs across spotify, apple music, deezer, youtube, youtube
+            music, and bandcamp. we auto-generate playlists for spotify, apple music, and youtube; a
+            track that lives only on bandcamp comes through as a link everyone can open, rather than
+            on those playlists.
           </p>
 
           <div className="mt-10 border-t border-border pt-6">
@@ -36,9 +37,10 @@ export function AboutRoute() {
               who built this
             </p>
             <p className="mt-3 font-mono text-[13px] font-light leading-relaxed text-ink">
-              dawn gabriel, a software engineer who'd rather be making mixtapes. i design and
+              dawn gabriel, a software engineer who loves art and poems and rock and roll. i design and
               build mysterymixclub end to end: the backend, the interface, the concentric rings
-              on this page.
+              on this page.  please reach out if you have questions, feedback, or want to contribute! 
+              d gabriel at gmail dot com.
             </p>
             <a
               href="https://github.com/dgabriel"
@@ -46,7 +48,7 @@ export function AboutRoute() {
               rel="noopener noreferrer"
               className={`mt-3 inline-block ${LINK_CLASS}`}
             >
-              see my code on github
+              see the code on github
             </a>
             <p className="mt-4 font-mono text-[11px] font-light text-muted">
               built with{" "}
@@ -76,8 +78,14 @@ export function AboutRoute() {
               support
             </p>
             <p className="mt-3 font-mono text-[13px] font-light leading-relaxed text-ink">
-              if mysterymixclub made your group chat a little more musical, you can buy me a
-              coffee.
+              i will never make you look at an ad.  i won't use ai to scrape your data and sell it.
+              for most people, the app is free, but it does cost me a lil money to run.  the
+              total cost for developing this app was about $220 including hosting on digital ocean,
+               domain registration, apple developer program, apple music, and extra claude usage tokens.
+               monthly ongoing cost is just hosting and claude tokens, which is about $30-$40.  annual costs
+               include apple developer program and domain renewal, which is about $120.  
+               if you want to help me keep this app running, or if you just want to say thanks,
+              you can tip me on venmo.  any amount is appreciated <span className="text-rust">&lt;3</span>
             </p>
             <a
               href="https://www.venmo.com/u/dgbklyn"
@@ -94,7 +102,7 @@ export function AboutRoute() {
               thanks
             </p>
             <p className="mt-3 font-mono text-[13px] font-light leading-relaxed text-ink">
-              thanks to my old slam family pals, and my lovely family here in brooklyn.
+              thanks to my dear slam family pals, and my lovely family here in brooklyn.
             </p>
             <a
               href="https://youtu.be/kfV0WHgHQhI"

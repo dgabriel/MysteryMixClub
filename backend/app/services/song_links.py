@@ -49,6 +49,7 @@ from app.services.apple_music_token import (
     get_apple_music_token_service,
 )
 from app.services.search_relevance import best_match
+from app.services.source_tracks import source_url_for, youtube_video_id_from_key
 from app.services.youtube_resolver import YouTubeResolver, get_youtube_resolver
 
 _DEEZER_SEARCH = "https://api.deezer.com/search"
@@ -217,6 +218,7 @@ class SongLinkAssembler:
         isrc: str | None = None,
         *,
         youtube_video_id: str | None | _Unresolved = _UNRESOLVED,
+        fuzzy: bool = True,
     ) -> dict[str, str]:
         """Return a ``{platform: url}`` map covering spotify/appleMusic/deezer/
         youtube/youtubeMusic/bandcamp. Exact links where a keyless lookup
@@ -225,15 +227,21 @@ class SongLinkAssembler:
         ``youtube_video_id``, when passed, is used as-is instead of resolving it
         again — callers that also need the bare video id (e.g. to persist it
         alongside the links, MYS-78/MYS-175) should resolve it once themselves
-        and pass it through here to avoid a second YouTube Data API call."""
+        and pass it through here to avoid a second YouTube Data API call.
+
+        ``fuzzy=False`` disables every free-text search lookup (Deezer, iTunes,
+        YouTube Data), so a source-only track (MYS-201) can never be linked to a
+        *guessed* wrong song: Deezer/Apple drop to deep links and YouTube uses
+        only an explicitly passed ``youtube_video_id`` (or a deep link)."""
         q = _query(title, artist)
-        deezer = await self._deezer_exact(title, artist, isrc)
-        apple = await self._apple_exact(title, artist, isrc)
-        video_id = (
-            await self._youtube_video_id(title, artist)
-            if youtube_video_id is _UNRESOLVED
-            else youtube_video_id
-        )
+        deezer = await self._deezer_exact(title, artist, isrc) if fuzzy else None
+        apple = await self._apple_exact(title, artist, isrc) if fuzzy else None
+        if youtube_video_id is not _UNRESOLVED:
+            video_id = youtube_video_id
+        elif fuzzy:
+            video_id = await self._youtube_video_id(title, artist)
+        else:
+            video_id = None
         return {
             "spotify": _spotify_deeplink(q),
             "appleMusic": apple or _apple_deeplink(q),
@@ -252,6 +260,33 @@ class SongLinkAssembler:
             # up against (MYS-200).
             "bandcamp": _bandcamp_deeplink(q),
         }
+
+
+async def assemble_source_links(
+    assembler: SongLinkAssembler, title: str, artist: str | None, source_key: str
+) -> tuple[dict[str, str], str | None]:
+    """Cross-service links for a source-only track (MYS-201), with NO fuzzy
+    lookups. Returns ``(links, youtube_video_id)`` so callers can persist the id.
+
+    * ``youtube:<id>`` — the exact video id drives the YouTube/YouTube Music
+      links (no search); the id is returned for caching.
+    * ``bandcamp:<artist>/<track>`` — no YouTube video (a bandcamp track must
+      never get a *guessed* video), and the exact reconstructed track page
+      replaces the Bandcamp search deep link.
+
+    Deezer/Apple/Spotify always come back as deep links here — a source-only
+    track by definition has no catalog match to link exactly.
+    """
+    source, source_url = source_url_for(source_key)
+    if source == "youtube":
+        video_id = youtube_video_id_from_key(source_key)
+        links = await assembler.assemble(
+            title, artist, None, youtube_video_id=video_id, fuzzy=False
+        )
+        return links, video_id
+    links = await assembler.assemble(title, artist, None, youtube_video_id=None, fuzzy=False)
+    links["bandcamp"] = source_url
+    return links, None
 
 
 @lru_cache

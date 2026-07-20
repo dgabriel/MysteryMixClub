@@ -64,9 +64,10 @@ class _FakeAssembler:
         self._platforms = platforms
 
     async def assemble(
-        self, title, artist=None, isrc=None, *, youtube_video_id=None
+        self, title, artist=None, isrc=None, *, youtube_video_id=None, fuzzy=True
     ) -> dict[str, str]:
-        return self._platforms
+        # Return a copy: assemble_source_links mutates the dict (bandcamp override).
+        return dict(self._platforms)
 
 
 class _FakeDeezer:
@@ -203,6 +204,86 @@ async def test_resolve_maps_service_errors(session_factory, db_session, error, e
     async with _build_client(session_factory, resolver=_FakeResolver(error=error)) as client:
         resp = await client.post(
             RESOLVE_URL, json={"url": "https://x/y"}, headers=_auth_header(user.id)
+        )
+    assert resp.status_code == expected
+
+
+# --------------------------------------------------------------------------- #
+# POST /api/v1/songs/resolve — source-only opt-in (MYS-201)
+# --------------------------------------------------------------------------- #
+
+_SOURCE_SONG = SongIdentity(
+    title="Bedroom Demo",
+    artist="Cool Band",
+    album=None,
+    thumbnail_url="https://img/bc.jpg",
+    isrc=None,
+    source="bandcamp",
+    source_key="bandcamp:coolband/bedroom-demo",
+    source_url="https://coolband.bandcamp.com/track/bedroom-demo",
+)
+
+
+async def test_resolve_source_only_without_flag_is_404(session_factory, db_session):
+    # Back-compat: an existing client (no allow_source_only) gets the same 404 a
+    # catalog miss always produced, so nothing about the old contract changes.
+    user = await _seed_user(db_session)
+    async with _build_client(
+        session_factory,
+        resolver=_FakeResolver(result=_SOURCE_SONG),
+        assembler=_FakeAssembler(_ASSEMBLED),
+    ) as client:
+        resp = await client.post(
+            RESOLVE_URL,
+            json={"url": "https://coolband.bandcamp.com/track/bedroom-demo"},
+            headers=_auth_header(user.id),
+        )
+    assert resp.status_code == 404, resp.text
+
+
+async def test_resolve_source_only_with_flag_returns_source_metadata(session_factory, db_session):
+    user = await _seed_user(db_session)
+    async with _build_client(
+        session_factory,
+        resolver=_FakeResolver(result=_SOURCE_SONG),
+        assembler=_FakeAssembler(_ASSEMBLED),
+    ) as client:
+        resp = await client.post(
+            RESOLVE_URL,
+            json={
+                "url": "https://coolband.bandcamp.com/track/bedroom-demo",
+                "allow_source_only": True,
+            },
+            headers=_auth_header(user.id),
+        )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["isrc"] is None
+    assert body["source"] == "bandcamp"
+    assert body["source_key"] == "bandcamp:coolband/bedroom-demo"
+    assert body["source_url"] == "https://coolband.bandcamp.com/track/bedroom-demo"
+    assert body["platforms"]  # cross-service links are assembled
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (ResolverRateLimitError(), 429),
+        (ResolverTimeoutError(), 504),
+        (ResolverUnavailableError(), 502),
+    ],
+)
+async def test_resolve_upstream_errors_map_even_with_source_flag(
+    session_factory, db_session, error, expected
+):
+    # The flag only affects a genuine catalog miss; an upstream failure still maps
+    # to the same status regardless of allow_source_only.
+    user = await _seed_user(db_session)
+    async with _build_client(session_factory, resolver=_FakeResolver(error=error)) as client:
+        resp = await client.post(
+            RESOLVE_URL,
+            json={"url": "https://x/y", "allow_source_only": True},
+            headers=_auth_header(user.id),
         )
     assert resp.status_code == expected
 

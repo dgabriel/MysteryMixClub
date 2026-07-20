@@ -20,6 +20,10 @@ const SONG: ResolvedSong = {
   album: "When We All Fall Asleep",
   thumbnail_url: "https://img/x.jpg",
   isrc: "USUM71900764",
+  source: null,
+  source_key: null,
+  source_url: null,
+  bandcamp_track_id: null,
   platforms: {
     spotify: "https://open.spotify.com/track/2",
     youtube: "https://youtube.com/watch?v=z",
@@ -94,6 +98,41 @@ describe("SongSearchCard", () => {
     expect(screen.getByRole("link", { name: /on YouTube/i })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /on Deezer/i })).not.toBeInTheDocument();
     expect(mockResolve).toHaveBeenCalledWith({ url: "https://open.spotify.com/track/2" });
+  });
+
+  it("hides phantom platform buttons for a source-only track (MYS-201)", async () => {
+    mockResolve.mockResolvedValue({
+      ...SONG,
+      source: "bandcamp",
+      source_key: "bandcamp:artist/track",
+      source_url: "https://artist.bandcamp.com/track/track",
+      platforms: {
+        spotify: "https://open.spotify.com/search/bad%20guy",
+        appleMusic: "https://music.apple.com/search?term=bad%20guy",
+        deezer: "https://www.deezer.com/search/bad%20guy",
+        youtube: "https://www.youtube.com/results?search_query=bad%20guy",
+        bandcamp: "https://artist.bandcamp.com/track/track",
+      },
+    });
+    const user = userEvent.setup();
+    render(<SongSearchCard />);
+
+    await user.click(screen.getByRole("tab", { name: /paste a link/i }));
+    await user.type(
+      screen.getByLabelText(/paste a link/i),
+      "https://artist.bandcamp.com/track/track",
+    );
+    await user.click(screen.getByRole("button", { name: /^resolve$/i }));
+
+    expect(await screen.findByRole("heading", { name: "bad guy" })).toBeInTheDocument();
+    // Bandcamp is the only real link; the other four are search deep-links that
+    // look broken if clicked, so they must not render even though they're
+    // present (truthy) in the response.
+    expect(screen.getByRole("link", { name: /on Bandcamp/i })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /on Spotify/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /on Apple Music/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /on Deezer/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /on YouTube/i })).not.toBeInTheDocument();
   });
 
   it("shows a calm inline error when a pasted link can't be resolved", async () => {

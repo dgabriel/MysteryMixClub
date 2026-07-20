@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import RedirectResponse
@@ -47,6 +48,7 @@ from app.config import Settings, get_settings
 from app.db.session import get_db
 from app.models.spotify_connection import SpotifyConnection
 from app.models.spotify_round_playlist import SpotifyRoundPlaylist
+from app.models.submission import Submission
 from app.models.user import User
 from app.services.spotify_client import (
     SpotifyApiError,
@@ -58,6 +60,7 @@ from app.services.spotify_playlist_generation import (
     get_shared_connection,
     playlist_account_user_id,
 )
+from app.services.source_tracks import source_fields
 from app.services.spotify_token_crypto import encrypt_refresh_token
 
 router = APIRouter(tags=["spotify"])
@@ -94,11 +97,31 @@ class StatusResponse(WireModel):
     connected: bool
 
 
+class UnmatchedTrack(WireModel):
+    submission_id: uuid.UUID
+    title: str
+    artist: str
+    # Why it was skipped (MYS-201): "source_only" — a Bandcamp/YouTube track with
+    # no ISRC that can never match Spotify's catalog — vs "no_catalog_match", an
+    # ISRC-backed track Spotify's catalog just doesn't carry. Lets the gap summary
+    # say why rather than only how many.
+    reason: Literal["source_only", "no_catalog_match"]
+    # For a "source_only" track, the Bandcamp/YouTube page to link out to
+    # (MYS-201); both None for "no_catalog_match" (it has an ISRC, no source_key).
+    source: Literal["youtube", "bandcamp"] | None = None
+    source_url: str | None = None
+
+
 class SpotifyPlaylistLinkResponse(WireModel):
     """The round page's read-only view (MYS-169/MYS-176): just the link, or null
-    if generation hasn't run (or hasn't matched anything) yet."""
+    if generation hasn't run (or hasn't matched anything) yet.
+
+    ``unmatched`` (MYS-201) accompanies an existing playlist and lists the round's
+    submissions that didn't make it, with a reason — empty when there's no
+    playlist yet (nothing generated, or nothing matched)."""
 
     playlist_url: str | None
+    unmatched: list[UnmatchedTrack] = []
 
 
 # --------------------------------------------------------------------------- #
@@ -246,8 +269,32 @@ async def get_round_spotify_playlist_link(
     )
     if stored is None:
         return SpotifyPlaylistLinkResponse(playlist_url=None)
+
+    # The gap summary (MYS-201) is recomputed from persisted state, not stored:
+    # auto-generation caches each matched track's spotify_track_uri on the
+    # submission, so a submission with no cached uri is exactly one the playlist
+    # skipped. The reason mirrors the generator — no ISRC means a source-only
+    # (Bandcamp/YouTube) track that can never match, otherwise the catalog simply
+    # doesn't carry it. No Spotify call needed: the classification is the same one
+    # generate_round_playlist made when it built the playlist.
+    submissions = await db.scalars(
+        select(Submission).where(Submission.round_id == round_id).order_by(Submission.id)
+    )
+    unmatched = [
+        UnmatchedTrack(
+            submission_id=s.id,
+            title=s.title,
+            artist=s.artist,
+            reason="source_only" if not s.isrc else "no_catalog_match",
+            source=source_fields(s.source_key)[0],
+            source_url=source_fields(s.source_key)[1],
+        )
+        for s in submissions
+        if not s.spotify_track_uri
+    ]
     return SpotifyPlaylistLinkResponse(
-        playlist_url=f"https://open.spotify.com/playlist/{stored.playlist_id}"
+        playlist_url=f"https://open.spotify.com/playlist/{stored.playlist_id}",
+        unmatched=unmatched,
     )
 
 

@@ -76,11 +76,14 @@ async def _seed_submission(
     artist: str = "Artist",
     mode: str = "playing",
     note: str | None = None,
+    isrc: str | None = "USABC1234567",
+    source_key: str | None = None,
 ) -> Submission:
     sub = Submission(
         round_id=round_.id,
         user_id=user.id,
-        isrc="USABC1234567",
+        isrc=isrc,
+        source_key=source_key,
         title=title,
         artist=artist,
         album="An Album",
@@ -597,3 +600,81 @@ async def test_results_playing_viewer_gets_full_reveal(client, db_session):
     assert {s["title"] for s in body["submissions"]} == {"Org-song", "A-song"}
     assert all("platforms" in s for s in body["submissions"])
     assert len(body["leaderboard"]) == 2
+
+
+# --------------------------------------------------------------------------- #
+# MYS-201: source-only submissions in the reveal
+# --------------------------------------------------------------------------- #
+
+
+async def test_results_full_reveal_carries_source_fields(client, db_session):
+    # A playing viewer's full reveal surfaces a source-only submission with a null
+    # ISRC plus source/source_url, so the UI can badge it "YouTube/Bandcamp only".
+    organizer = await _seed_user(db_session, "o@example.com", "Org")
+    alice = await _seed_user(db_session, "a@example.com", "Alice")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    await _add_member(db_session, round_.league_id, alice)
+
+    await _seed_submission(db_session, round_, organizer, title="Catalog", mode="playing")
+    await _seed_submission(
+        db_session,
+        round_,
+        alice,
+        title="Source Only",
+        isrc=None,
+        source_key="youtube:PRpiBpDy7MQ",
+    )
+
+    resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+    assert resp.status_code == 200, resp.text
+    by_title = {s["title"]: s for s in resp.json()["submissions"]}
+    assert by_title["Catalog"]["isrc"] == "USABC1234567"
+    assert by_title["Catalog"]["source"] is None
+    assert by_title["Source Only"]["isrc"] is None
+    assert by_title["Source Only"]["source"] == "youtube"
+    assert by_title["Source Only"]["source_url"] == "https://www.youtube.com/watch?v=PRpiBpDy7MQ"
+
+
+async def test_results_vibe_reveal_picks_carry_source_fields(client, db_session):
+    # The vibe-safe reveal (picks / RevealPick) mirrors the same source identity.
+    organizer = await _seed_user(db_session, "o@example.com", "Org")
+    alice = await _seed_user(db_session, "a@example.com", "Alice")
+    viber = await _seed_user(db_session, "v@example.com", "Vera")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    for u in (alice, viber):
+        await _add_member(db_session, round_.league_id, u)
+
+    await _seed_submission(db_session, round_, alice, title="Winner")
+    await _seed_submission(
+        db_session,
+        round_,
+        viber,
+        title="Bandcamp Pick",
+        mode="vibing",
+        isrc=None,
+        source_key="bandcamp:coolband/song-title",
+    )
+
+    resp = await client.get(_url(round_.id), headers=_auth(viber.id))
+    assert resp.status_code == 200, resp.text
+    picks = {p["title"]: p for p in resp.json()["picks"]}
+    assert picks["Bandcamp Pick"]["isrc"] is None
+    assert picks["Bandcamp Pick"]["source"] == "bandcamp"
+    assert picks["Bandcamp Pick"]["source_url"] == "https://coolband.bandcamp.com/track/song-title"
+
+
+async def test_results_platforms_carry_bandcamp_track_id_key(client, db_session):
+    # The reveal exposes each pick's platform_links as `platforms`; the reserved
+    # non-URL bandcampTrackId key (MYS-201/204) rides along well-formed next to the
+    # real links, without disturbing them.
+    organizer = await _seed_user(db_session, "o@example.com", "Org")
+    round_ = await _seed_league_with_round(db_session, organizer)
+    sub = await _seed_submission(db_session, round_, organizer, title="bc")
+    sub.platform_links = {"deezer": "https://deezer/x", "bandcampTrackId": "12345"}
+    await db_session.commit()
+
+    resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
+    assert resp.status_code == 200, resp.text
+    pick = resp.json()["submissions"][0]
+    assert pick["platforms"]["bandcampTrackId"] == "12345"
+    assert pick["platforms"]["deezer"] == "https://deezer/x"

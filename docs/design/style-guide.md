@@ -199,9 +199,10 @@ The rings use the Sage color family (Sage Pale → Sage Light → Sage → Sage)
 
 - Short, confident, lowercase where possible
 - No exclamation marks
-- Round names can be poetic — *Late Summer Feels*, *The One That Got Away*
+- No em dashes in UI copy — use a period, comma, or parentheses instead
+- Round names can be poetic, e.g. *Late Summer Feels*, *The One That Got Away*
 - Status labels are plain: `open`, `voting`, `closed`, `reveal`
-- Error messages: direct and calm — "That link didn't work. Try another." not "Oops!"
+- Error messages: direct and calm, e.g. "That link didn't work. Try another." not "Oops!"
 
 ---
 

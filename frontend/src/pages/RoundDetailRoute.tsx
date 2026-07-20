@@ -34,6 +34,7 @@ import {
   type RoundResults,
   type RevealPick,
   type RoundState,
+  type SubmissionInput,
   type SubmissionResult,
   type VoteCountEntry,
   type WinnerReveal,
@@ -46,8 +47,10 @@ import { Card } from "../components/Card";
 import { TextField } from "../components/TextField";
 import { ConcentricRings } from "../components/ConcentricRings";
 import { SongSearchCard } from "../components/songs/SongSearchCard";
+import { SourceBadge } from "../components/SourceBadge";
 import { AppleMusicPlaylist } from "../components/AppleMusicPlaylist";
 import { SpotifyPlaylist } from "../components/SpotifyPlaylist";
+import { SourceOnlyTracks, type SourceOnlyTrack } from "../components/SourceOnlyTracks";
 import { CheckmarkIcon } from "../components/CheckmarkIcon";
 import { CrownIcon } from "../components/CrownIcon";
 import { MedalIcon } from "../components/MedalIcon";
@@ -264,20 +267,24 @@ export function RoundDetailRoute() {
     }
   }, [id]);
 
-  function trackPayload(song: ResolvedSong) {
+  function trackPayload(song: ResolvedSong): SubmissionInput {
     return {
       title: song.title,
       artist: song.artist ?? "",
-      isrc: song.isrc!,
+      // Exactly one identity: a catalog isrc, or a source-only key (+ Bandcamp
+      // track id when present) for a Bandcamp/YouTube pick (MYS-201).
+      ...(song.source_key
+        ? { source_key: song.source_key, bandcamp_track_id: song.bandcamp_track_id }
+        : { isrc: song.isrc }),
       album: song.album,
       album_art_url: song.thumbnail_url,
       // The stance is uniform across all your songs; the backend propagates it.
-      participation_mode: (roundVibe ? "vibing" : "playing") as "vibing" | "playing",
+      participation_mode: roundVibe ? "vibing" : "playing",
     };
   }
 
   async function handleAddSong(song: ResolvedSong, note: string | null): Promise<boolean> {
-    if (!id || !song.isrc) {
+    if (!id || (!song.isrc && !song.source_key)) {
       setActionError("this song is missing an ID and can't be submitted.");
       return false;
     }
@@ -309,7 +316,7 @@ export function RoundDetailRoute() {
     song: ResolvedSong,
     note: string | null,
   ): Promise<boolean> {
-    if (!id || !song.isrc) {
+    if (!id || (!song.isrc && !song.source_key)) {
       setActionError("this song is missing an ID and can't be submitted.");
       return false;
     }
@@ -654,6 +661,11 @@ export function RoundDetailRoute() {
                 youtubePlaylistUrl={youtubePlaylistUrl}
                 youtubeTrackCount={youtubeTrackCount}
                 entryCount={playlist.length}
+                sourceOnly={
+                  results
+                    ? toSourceOnly(results.viewer_is_vibing ? results.picks : results.submissions)
+                    : []
+                }
               />
               <ResultsSection results={results} userId={userId} />
             </>
@@ -1281,14 +1293,28 @@ function SubmissionManager({
   );
 }
 
+// A source-only track (MYS-201) has a real track page on exactly one service
+// family; every other platform's link is only a title/artist search that looks
+// broken. Restrict the buttons to the platforms that are genuinely that track.
+const SOURCE_PLATFORMS: Record<"youtube" | "bandcamp", PlatformKey[]> = {
+  youtube: ["youtube", "youtubeMusic"],
+  bandcamp: ["bandcamp"],
+};
+
 function PlatformLinks({
   platforms,
   title,
+  source,
 }: {
   platforms: Partial<Record<PlatformKey, string>>;
   title: string;
+  source?: "youtube" | "bandcamp" | null;
 }) {
-  const available = PLATFORM_LABELS.filter((p) => platforms[p.key as PlatformKey]);
+  const available = PLATFORM_LABELS.filter((p) => {
+    if (!platforms[p.key as PlatformKey]) return false;
+    if (source) return SOURCE_PLATFORMS[source].includes(p.key as PlatformKey);
+    return true;
+  });
   if (available.length === 0) return null;
   return (
     <ul className="mt-3 flex flex-wrap gap-2">
@@ -1368,6 +1394,29 @@ function VotingProgress({
   );
 }
 
+/** Pull the Bandcamp/YouTube-only picks out of a mix's tracklist for the unified
+ *  source-only list, keyed off each track's own `source` (known at submission
+ *  time, independent of whether any playlist has been generated). */
+function toSourceOnly(
+  items: {
+    submission_id: string;
+    title: string;
+    artist: string;
+    source: "youtube" | "bandcamp" | null;
+    source_url: string | null;
+  }[],
+): SourceOnlyTrack[] {
+  return items
+    .filter((i) => i.source != null && i.source_url != null)
+    .map((i) => ({
+      submission_id: i.submission_id,
+      title: i.title,
+      artist: i.artist,
+      source: i.source as "youtube" | "bandcamp",
+      source_url: i.source_url as string,
+    }));
+}
+
 /**
  * Listen affordance for a closed round (MYS-133): the whole-mix YouTube +
  * Spotify links, so members can still play the round after it closes. Reuses the
@@ -1380,11 +1429,13 @@ function ClosedListen({
   youtubePlaylistUrl,
   youtubeTrackCount,
   entryCount,
+  sourceOnly,
 }: {
   roundId: string;
   youtubePlaylistUrl: string | null;
   youtubeTrackCount: number;
   entryCount: number;
+  sourceOnly: SourceOnlyTrack[];
 }) {
   if (entryCount === 0) return null;
   return (
@@ -1395,6 +1446,7 @@ function ClosedListen({
         youtubeTrackCount={youtubeTrackCount}
         entryCount={entryCount}
       />
+      <SourceOnlyTracks tracks={sourceOnly} />
       <SpotifyPlaylist roundId={roundId} />
       <AppleMusicPlaylist roundId={roundId} />
     </div>
@@ -1481,6 +1533,7 @@ function VotingSection({
             youtubeTrackCount={youtubeTrackCount}
             entryCount={entries.length}
           />
+          <SourceOnlyTracks tracks={toSourceOnly(entries)} />
           <SpotifyPlaylist roundId={roundId} />
           <AppleMusicPlaylist roundId={roundId} />
         </div>
@@ -1492,12 +1545,21 @@ function VotingSection({
                 {entry.artist ? (
                   <p className="mt-1 font-mono text-[11px] font-light text-muted">{entry.artist}</p>
                 ) : null}
+                {entry.source ? (
+                  <div className="mt-2">
+                    <SourceBadge source={entry.source} />
+                  </div>
+                ) : null}
                 {entry.submitter_note ? (
                   <p className="mt-3 border-l-2 border-sage pl-3 font-mono text-[12px] font-light text-ink">
                     &ldquo;{entry.submitter_note}&rdquo;
                   </p>
                 ) : null}
-                <PlatformLinks platforms={entry.platforms} title={entry.title} />
+                <PlatformLinks
+                  platforms={entry.platforms}
+                  title={entry.title}
+                  source={entry.source}
+                />
                 {/* Vibers don't vote, but they can still leave notes — it's how
                     they take part (MYS-132). */}
                 <SongNotes submissionId={entry.submission_id} onActionError={onActionError} />
@@ -1517,6 +1579,7 @@ function VotingSection({
         youtubeTrackCount={youtubeTrackCount}
         entryCount={entries.length}
       />
+      <SourceOnlyTracks tracks={toSourceOnly(entries)} />
       <SpotifyPlaylist roundId={roundId} />
       <AppleMusicPlaylist roundId={roundId} />
       <div className="flex items-baseline justify-between gap-4">
@@ -1553,6 +1616,11 @@ function VotingSection({
                       {entry.artist}
                     </p>
                   ) : null}
+                  {entry.source ? (
+                    <div className="mt-2">
+                      <SourceBadge source={entry.source} />
+                    </div>
+                  ) : null}
                   {entry.submitter_note ? (
                     <p className="mt-3 border-l-2 border-sage pl-3 font-mono text-[12px] font-light text-ink">
                       &ldquo;{entry.submitter_note}&rdquo;
@@ -1561,7 +1629,11 @@ function VotingSection({
                   <p className="mt-2 font-mono text-[11px] font-light text-muted">
                     you can&apos;t vote for your own song
                   </p>
-                  <PlatformLinks platforms={entry.platforms} title={entry.title} />
+                  <PlatformLinks
+                  platforms={entry.platforms}
+                  title={entry.title}
+                  source={entry.source}
+                />
                 </div>
               </li>
             );
@@ -1602,6 +1674,11 @@ function VotingSection({
                       {entry.artist}
                     </p>
                   ) : null}
+                  {entry.source ? (
+                    <div className="mt-2">
+                      <SourceBadge source={entry.source} />
+                    </div>
+                  ) : null}
                   {entry.submitter_note ? (
                     <p className="mt-3 border-l-2 border-sage pl-3 font-mono text-[12px] font-light text-ink">
                       &ldquo;{entry.submitter_note}&rdquo;
@@ -1610,7 +1687,11 @@ function VotingSection({
                 </button>
                 {/* Platform links + notes live inside the card, below the vote area. */}
                 <div className="px-6 pb-5">
-                  <PlatformLinks platforms={entry.platforms} title={entry.title} />
+                  <PlatformLinks
+                  platforms={entry.platforms}
+                  title={entry.title}
+                  source={entry.source}
+                />
                   <SongNotes submissionId={entry.submission_id} onActionError={onActionError} />
                 </div>
               </div>
@@ -2058,12 +2139,17 @@ function ResultsSection({
                           {s.artist}
                         </p>
                       ) : null}
+                      {s.source ? (
+                        <div className="mt-2">
+                          <SourceBadge source={s.source} />
+                        </div>
+                      ) : null}
                       {s.submitter_note ? (
                         <p className="mt-2 font-mono text-[11px] font-light text-ink">
                           “{s.submitter_note}”
                         </p>
                       ) : null}
-                      <PlatformLinks platforms={s.platforms} title={s.title} />
+                      <PlatformLinks platforms={s.platforms} title={s.title} source={s.source} />
                       {s.voters.length > 0 ? (
                         <p className="mt-2 font-mono text-[11px] font-light text-muted">
                           voted by {s.voters.map((v) => v.display_name).join(", ")}
@@ -2188,12 +2274,17 @@ function VibePicksSection({ picks }: { picks: RevealPick[] }) {
               {p.artist ? (
                 <p className="mt-1 font-mono text-[11px] font-light text-muted">{p.artist}</p>
               ) : null}
+              {p.source ? (
+                <div className="mt-2">
+                  <SourceBadge source={p.source} />
+                </div>
+              ) : null}
               {p.submitter_note ? (
                 <p className="mt-2 font-mono text-[11px] font-light text-ink">
                   “{p.submitter_note}”
                 </p>
               ) : null}
-              <PlatformLinks platforms={p.platforms} title={p.title} />
+              <PlatformLinks platforms={p.platforms} title={p.title} source={p.source} />
               {p.notes.length > 0 ? <CollapsibleNotes notes={p.notes} /> : null}
             </Card>
           </li>

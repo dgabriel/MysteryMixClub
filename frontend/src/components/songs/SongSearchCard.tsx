@@ -1,5 +1,6 @@
 import { useId, useState } from "react";
 import {
+  ApiError,
   resolveSong,
   searchSongs,
   type PlatformKey,
@@ -10,6 +11,7 @@ import { Card } from "../Card";
 import { Button } from "../Button";
 import { TextField } from "../TextField";
 import { ConcentricRings } from "../ConcentricRings";
+import { SourceBadge } from "../SourceBadge";
 
 /**
  * SongSearchCard (MYS-45) — a permanent home-screen utility with two modes:
@@ -49,6 +51,14 @@ const SERVICES: { key: PasteSourceKey; label: string; placeholder: string }[] = 
   { key: "appleMusic", label: "Apple Music", placeholder: "https://music.apple.com/…?i=…" },
   { key: "bandcamp", label: "Bandcamp", placeholder: "https://artist.bandcamp.com/track/…" },
 ];
+
+// A source-only track (MYS-201) has a real track page on exactly one service
+// family; every other platform's link is only a title/artist search that looks
+// broken. Restrict the buttons to the platforms that are genuinely that track.
+const SOURCE_PLATFORMS: Record<"youtube" | "bandcamp", PlatformKey[]> = {
+  youtube: ["youtube", "youtubeMusic"],
+  bandcamp: ["bandcamp"],
+};
 
 function serviceFromPref(pref: string | null | undefined): ServiceKey {
   if (pref === "youtube") return "youtube";
@@ -149,6 +159,10 @@ export function SongSearchCard({
   const [loadingLabel, setLoadingLabel] = useState("loading");
   const [error, setError] = useState<string | null>(null);
   const [resolved, setResolved] = useState<ResolvedSong | null>(null);
+  // A source-only match (MYS-201) awaiting the submitter's confirmation before it
+  // becomes the resolved song — a Bandcamp/YouTube track that won't be on the
+  // auto-generated Spotify/Apple playlists, so we say so first.
+  const [pendingSourceOnly, setPendingSourceOnly] = useState<ResolvedSong | null>(null);
 
   function switchMode(next: Mode) {
     if (next === mode) return;
@@ -157,6 +171,7 @@ export function SongSearchCard({
     setResults(null);
     setTooMany(false);
     setResolved(null);
+    setPendingSourceOnly(null);
   }
 
   function reset() {
@@ -167,6 +182,7 @@ export function SongSearchCard({
     setTooMany(false);
     setError(null);
     setResolved(null);
+    setPendingSourceOnly(null);
   }
 
   function handleUrlChange(next: string) {
@@ -177,15 +193,37 @@ export function SongSearchCard({
 
   async function handleResolveLink(event: React.FormEvent) {
     event.preventDefault();
-    if (!url.trim() || loading) return;
+    const trimmed = url.trim();
+    if (!trimmed || loading) return;
     setLoading(true);
     setLoadingLabel("resolving song");
     setError(null);
     try {
-      setResolved(await resolveSong({ url: url.trim() }));
-    } catch {
-      // Any failure here is the same calm, actionable message to the user.
-      setError(LINK_ERROR);
+      setResolved(await resolveSong({ url: trimmed }));
+    } catch (err) {
+      // A source-only Bandcamp/YouTube track 404s by default (MYS-201). Only for
+      // those two sources, retry opting in — if it resolves to a source-only
+      // match, route it through the confirm step instead of the dead-end error.
+      const detected = detectService(trimmed);
+      if (
+        err instanceof ApiError &&
+        err.status === 404 &&
+        (detected === "bandcamp" || detected === "youtube")
+      ) {
+        try {
+          const song = await resolveSong({ url: trimmed, allow_source_only: true });
+          if (song.source) {
+            setPendingSourceOnly(song);
+          } else {
+            setResolved(song);
+          }
+        } catch {
+          setError(LINK_ERROR);
+        }
+      } else {
+        // Any other failure is the same calm, actionable message to the user.
+        setError(LINK_ERROR);
+      }
     } finally {
       setLoading(false);
     }
@@ -238,7 +276,17 @@ export function SongSearchCard({
       <span className="font-mono uppercase tracking-label text-[9px] text-muted">{eyebrow}</span>
       <h2 className="mt-1 font-serif text-[20px] leading-tight text-ink">{heading}</h2>
 
-      {resolved ? (
+      {pendingSourceOnly && pendingSourceOnly.source ? (
+        <SourceOnlyConfirm
+          song={pendingSourceOnly}
+          source={pendingSourceOnly.source}
+          onConfirm={() => {
+            setResolved(pendingSourceOnly);
+            setPendingSourceOnly(null);
+          }}
+          onCancel={reset}
+        />
+      ) : resolved ? (
         <ResultView
           song={resolved}
           onReset={reset}
@@ -417,6 +465,52 @@ function ResultRow({ track, onSelect }: { track: SongSearchTrack; onSelect: () =
   );
 }
 
+/**
+ * Confirmation step for a source-only pick (MYS-201). A Bandcamp/YouTube track
+ * with no catalog ISRC resolved, but it won't land on the auto-generated
+ * Spotify/Apple playlists — so we say so plainly before it's submitted. Sage Pale
+ * panel, Default (Sage) source badge; no Rust — this is calm information, not the
+ * screen's signal.
+ */
+function SourceOnlyConfirm({
+  song,
+  source,
+  onConfirm,
+  onCancel,
+}: {
+  song: ResolvedSong;
+  source: "youtube" | "bandcamp";
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const sourceLabel = source === "bandcamp" ? "Bandcamp" : "YouTube";
+  return (
+    <div className="mt-5 rounded-[3px] bg-sage-pale/60 px-6 py-5">
+      <SourceBadge source={source} />
+      <h3 className="mt-3 font-serif text-[18px] leading-tight text-ink">{song.title}</h3>
+      {song.artist ? (
+        <p className="mt-1 font-mono text-[11px] font-light text-muted">{song.artist}</p>
+      ) : null}
+      <p className="mt-4 font-mono text-[12px] font-light leading-relaxed text-ink">
+        this one lives on {sourceLabel} only, so it won&apos;t be on the auto-generated Spotify or
+        Apple Music playlists. everyone can still play it from its link.
+      </p>
+      <div className="mt-5 flex items-center gap-5">
+        <Button type="button" onClick={onConfirm}>
+          add it anyway
+        </Button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink"
+        >
+          search again
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ResultView({
   song,
   onReset,
@@ -432,7 +526,11 @@ function ResultView({
   noteText?: string;
   onNoteChange?: (text: string) => void;
 }) {
-  const available = PLATFORMS.filter((p) => song.platforms[p.key]);
+  const available = PLATFORMS.filter((p) => {
+    if (!song.platforms[p.key]) return false;
+    if (song.source) return SOURCE_PLATFORMS[song.source].includes(p.key);
+    return true;
+  });
   const noteId = useId();
   return (
     <div className="mt-5">
@@ -444,6 +542,11 @@ function ResultView({
             <p className="mt-1 truncate font-mono text-[11px] font-light text-muted">
               {song.artist}
             </p>
+          ) : null}
+          {song.source ? (
+            <span className="mt-2 inline-block">
+              <SourceBadge source={song.source} />
+            </span>
           ) : null}
           {song.album ? (
             <p className="mt-0.5 truncate font-mono text-[11px] font-light text-muted">

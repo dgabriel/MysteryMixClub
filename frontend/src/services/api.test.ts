@@ -1250,6 +1250,8 @@ describe("api.ts", () => {
           user_id: "user-2",
           submitter_display_name: "Bo",
           isrc: "I1",
+          source: null,
+          source_url: null,
           title: "Debaser",
           artist: "Pixies",
           album: null,

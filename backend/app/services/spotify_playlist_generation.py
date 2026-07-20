@@ -24,6 +24,7 @@ import logging
 import random
 import uuid
 from dataclasses import dataclass, field
+from typing import Literal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,6 +41,7 @@ from app.services.spotify_client import (
     SpotifyClient,
     SpotifyNotFoundError,
 )
+from app.services.source_tracks import Source, source_fields
 from app.services.spotify_playlist import playlist_description, playlist_name
 from app.services.spotify_token_crypto import (
     SpotifyTokenCryptoError,
@@ -50,11 +52,23 @@ from app.services.spotify_token_crypto import (
 logger = logging.getLogger("app.services.spotify_playlist_generation")
 
 
+# Why a submission didn't make the generated playlist (MYS-201): a source-only
+# track (no ISRC — Bandcamp/YouTube) can never match a catalog, versus an
+# ISRC-backed track this catalog simply doesn't carry.
+UnmatchedReason = Literal["source_only", "no_catalog_match"]
+
+
 @dataclass
 class UnmatchedSubmission:
     submission_id: uuid.UUID
     title: str
     artist: str
+    reason: UnmatchedReason
+    # For a "source_only" entry, the Bandcamp/YouTube page it can be linked out to
+    # (MYS-201); both None for a "no_catalog_match" entry, which has an ISRC rather
+    # than a source_key.
+    source: Source | None = None
+    source_url: str | None = None
 
 
 @dataclass
@@ -130,7 +144,9 @@ async def generate_round_playlist(
 
     for s in submissions:
         uri = s.spotify_track_uri
-        if not uri and app_token:
+        # Source-only tracks (MYS-201) have no ISRC to search by — they simply go
+        # unmatched, like any other track Spotify's catalog doesn't carry.
+        if not uri and app_token and s.isrc:
             uri = await client.search_track_uri_by_isrc(s.isrc, app_token)
             if uri:
                 s.spotify_track_uri = uri
@@ -138,8 +154,16 @@ async def generate_round_playlist(
         if uri:
             matched_uris.append(uri)
         else:
+            source, source_url = source_fields(s.source_key)
             unmatched.append(
-                UnmatchedSubmission(submission_id=s.id, title=s.title, artist=s.artist)
+                UnmatchedSubmission(
+                    submission_id=s.id,
+                    title=s.title,
+                    artist=s.artist,
+                    reason="source_only" if not s.isrc else "no_catalog_match",
+                    source=source,
+                    source_url=source_url,
+                )
             )
 
     # Best-effort: persist newly resolved URIs, but never fail on the cache write

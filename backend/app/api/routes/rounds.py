@@ -41,6 +41,7 @@ from app.models.note import Note
 from app.models.round import Round
 from app.models.submission import Submission
 from app.models.user import User
+from app.services.source_tracks import source_fields
 from app.services.spotify_client import SpotifyClient, get_spotify_client
 from app.services.spotify_playlist_generation import try_auto_generate_playlist
 from app.models.vote import Vote
@@ -573,6 +574,7 @@ async def update_round(
     # Lifecycle emails to fire once the transition commits (MYS-109). Collected as
     # (round, event) so an auto-opened next round notifies for *its* opening.
     events: list[tuple[Round, RoundEvent]] = []
+    voting_opened = False
 
     # Field edits (theme, deadlines) are frozen once the round is closed.
     if updates and round_.state == "closed":
@@ -638,10 +640,14 @@ async def update_round(
             # "submissions reopened" email. `events` stays empty.
         else:
             events = await advance_round_state(round_, league, new_state, db)
+            voting_opened = any(event == "voting_open" for _, event in events)
             # All-vibing edge: if voting just opened but every participant is vibing,
             # nobody will ever call cast_votes, so voting quorum is immediately met.
             # Close in the same transaction and suppress the voting_open notification
-            # (nobody could vote in a round that closes in the same breath).
+            # (nobody could vote in a round that closes in the same breath) — but
+            # `voting_opened` stays true so the playlist still generates below; vibers
+            # still get a listen-along playlist even though the round never really
+            # waits for votes.
             if round_.state == "open_voting" and await voting_quorum_met(round_, db):
                 events = [e for e in events if e != (round_, "voting_open")]
                 events += await advance_round_state(round_, league, "closed", db)
@@ -659,8 +665,10 @@ async def update_round(
 
     # Auto-generate the shared-account Spotify playlist the moment voting opens
     # (MYS-176) — no admin click needed. Best-effort: never raises, so a Spotify
-    # hiccup can't block this transition (see try_auto_generate_playlist).
-    if any(event == "voting_open" for _, event in events):
+    # hiccup can't block this transition (see try_auto_generate_playlist). Uses
+    # `voting_opened` (captured before the all-vibing rollup above may have
+    # stripped the voting_open event from `events`), not the events list itself.
+    if voting_opened:
         await try_auto_generate_playlist(round_id, round_, league, db, spotify_client, settings)
 
     await db.commit()
@@ -765,7 +773,13 @@ async def extend_voting_deadline(
 
 class PlaylistEntry(WireModel):
     submission_id: str
-    isrc: str
+    # None for a source-only track (Bandcamp/YouTube, no catalog ISRC — MYS-201).
+    isrc: str | None
+    # source/source_url identify a source-only track and let the voting playlist
+    # badge it "YouTube only"/"Bandcamp only" (MYS-201); both None for a normal
+    # ISRC-backed catalog submission. Mirrors ResultSubmission/RevealPick.
+    source: Literal["youtube", "bandcamp"] | None = None
+    source_url: str | None = None
     title: str
     artist: str
     album: str | None
@@ -864,6 +878,8 @@ async def get_round_playlist(
             PlaylistEntry(
                 submission_id=str(s.id),
                 isrc=s.isrc,
+                source=source_fields(s.source_key)[0],
+                source_url=source_fields(s.source_key)[1],
                 title=s.title,
                 artist=s.artist,
                 album=s.album,
@@ -877,8 +893,11 @@ async def get_round_playlist(
         # YouTube ids are resolved at submit time. Lazily backfill any submission
         # that predates that (or whose submit-time resolve failed) so existing
         # rounds light up; cache it back so it's a one-time cost per submission.
+        # Source-only tracks (MYS-201) are never fuzzy-resolved: a youtube: row
+        # already carries its exact id from submit time, and a bandcamp: row must
+        # never be linked to a *guessed* video, so it simply sits out the playlist.
         video_id = s.youtube_video_id
-        if not video_id:
+        if not video_id and not s.source_key:
             video_id = await youtube.video_id_for(s.title, s.artist)
             if video_id:
                 s.youtube_video_id = video_id
@@ -932,7 +951,11 @@ class ResultSubmission(WireModel):
     submission_id: str
     user_id: str
     submitter_display_name: str
-    isrc: str
+    # None for a source-only track; source/source_url identify it instead, and
+    # let the reveal render a "Bandcamp"/"YouTube only" badge (MYS-201).
+    isrc: str | None
+    source: Literal["youtube", "bandcamp"] | None = None
+    source_url: str | None = None
     title: str
     artist: str
     album: str | None
@@ -993,6 +1016,11 @@ class RevealPick(WireModel):
     submitter_display_name: str
     title: str
     artist: str
+    # Track identity, mirroring ResultSubmission — None isrc + source/source_url
+    # for a source-only track (MYS-201). No vote data, so it stays vibe-safe.
+    isrc: str | None = None
+    source: Literal["youtube", "bandcamp"] | None = None
+    source_url: str | None = None
     # Playback links so the tiles are playable, same as the player reveal.
     platforms: dict[str, str]
     submitter_note: str | None
@@ -1098,6 +1126,8 @@ async def get_round_results(
             user_id=str(s.user_id),
             submitter_display_name=display_name,
             isrc=s.isrc,
+            source=source_fields(s.source_key)[0],
+            source_url=source_fields(s.source_key)[1],
             title=s.title,
             artist=s.artist,
             album=s.album,
@@ -1201,6 +1231,9 @@ async def get_round_results(
             submitter_display_name=s.submitter_display_name,
             title=s.title,
             artist=s.artist,
+            isrc=s.isrc,
+            source=s.source,
+            source_url=s.source_url,
             platforms=s.platforms,
             submitter_note=s.submitter_note,
             notes=s.notes,

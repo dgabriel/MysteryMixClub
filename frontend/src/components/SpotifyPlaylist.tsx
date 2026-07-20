@@ -27,7 +27,8 @@ export function SpotifyPlaylist({ roundId }: { roundId: string }) {
     let active = true;
     getSpotifyPlaylistLink(roundId)
       .then((r) => {
-        if (active) setPlaylistUrl(r.playlist_url);
+        if (!active) return;
+        setPlaylistUrl(r.playlist_url);
       })
       .catch(() => {
         if (active) setPlaylistUrl(null);

@@ -169,6 +169,8 @@ function entry(overrides: Partial<PlaylistEntry> = {}): PlaylistEntry {
   return {
     submission_id: "p1",
     isrc: "I1",
+    source: null,
+    source_url: null,
     title: "Debaser",
     artist: "Pixies",
     album: null,
@@ -187,6 +189,8 @@ function mine(overrides: Partial<SubmissionResult> = {}): SubmissionResult {
     mix_id: "r1",
     user_id: ORGANIZER,
     isrc: "IM",
+    source: null,
+    source_url: null,
     title: "My Song",
     artist: "Me",
     album: null,
@@ -348,6 +352,8 @@ describe("RoundDetailRoute", () => {
             user_id: OTHER,
             submitter_display_name: "Bob",
             isrc: "I1",
+            source: null,
+            source_url: null,
             title: "Bad Guy",
             artist: "Billie Eilish",
             album: null,
@@ -400,6 +406,8 @@ describe("RoundDetailRoute", () => {
       mix_id: "r1",
       user_id: ORGANIZER,
       isrc: "I1",
+      source: null,
+      source_url: null,
       title: "Debaser",
       artist: "Pixies",
       album: null,
@@ -1002,6 +1010,8 @@ describe("RoundDetailRoute", () => {
       {
         submission_id: "p1",
         isrc: "I1",
+        source: null,
+        source_url: null,
         title: "Debaser",
         artist: "Pixies",
         album: null,
@@ -1030,6 +1040,63 @@ describe("RoundDetailRoute", () => {
     expect(screen.getByRole("button", { name: /close mix/i })).toBeInTheDocument();
   });
 
+  it("open_voting: lists bandcamp/youtube-only tracks above the playlist links", async () => {
+    mockGetRound.mockResolvedValue(round({ state: "open_voting" }));
+    mockGetPlaylist.mockResolvedValue({
+      mix_id: "r1",
+      mix_number: 1,
+      theme: "t",
+      state: "open_voting",
+      entries: [
+        entry({ submission_id: "p1", title: "Debaser", artist: "Pixies" }),
+        entry({
+          submission_id: "p2",
+          isrc: null,
+          source: "bandcamp",
+          source_url: "https://artist.bandcamp.com/track/only",
+          title: "Only Here",
+          artist: "Cassette Kid",
+        }),
+      ],
+      youtube_playlist_url: null,
+      youtube_track_count: 0,
+      voting_eligible: 0,
+      voting_acted: 0,
+      vibing_count: 0,
+    });
+    renderRound();
+    expect(
+      await screen.findByText(
+        "bandcamp or YouTube only tracks that may not appear on your playlists",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Only Here" })).toHaveAttribute(
+      "href",
+      "https://artist.bandcamp.com/track/only",
+    );
+  });
+
+  it("open_voting: omits the source-only list when every track is a catalog track", async () => {
+    mockGetRound.mockResolvedValue(round({ state: "open_voting" }));
+    mockGetPlaylist.mockResolvedValue({
+      mix_id: "r1",
+      mix_number: 1,
+      theme: "t",
+      state: "open_voting",
+      entries: [entry({ submission_id: "p1", title: "Debaser", artist: "Pixies" })],
+      youtube_playlist_url: null,
+      youtube_track_count: 0,
+      voting_eligible: 0,
+      voting_acted: 0,
+      vibing_count: 0,
+    });
+    renderRound();
+    expect(await screen.findByText("Debaser")).toBeInTheDocument();
+    expect(
+      screen.queryByText("bandcamp or YouTube only tracks that may not appear on your playlists"),
+    ).not.toBeInTheDocument();
+  });
+
   it("closed: reveals submissions with submitter names", async () => {
     mockGetRound.mockResolvedValue(round({ state: "closed" }));
     mockGetResults.mockResolvedValue(
@@ -1040,6 +1107,8 @@ describe("RoundDetailRoute", () => {
             user_id: OTHER,
             submitter_display_name: "Bob",
             isrc: "I1",
+            source: null,
+            source_url: null,
             title: "Bad Guy",
             artist: "Billie Eilish",
             album: null,
@@ -1071,6 +1140,8 @@ describe("RoundDetailRoute", () => {
             user_id: OTHER,
             submitter_display_name: "Bob",
             isrc: "I1",
+            source: null,
+            source_url: null,
             title: "Bad Guy",
             artist: "Billie Eilish",
             album: null,
@@ -1097,6 +1168,8 @@ describe("RoundDetailRoute", () => {
       user_id: OTHER,
       submitter_display_name: "Bob",
       isrc: id,
+      source: null,
+      source_url: null,
       title,
       artist: "",
       album: null,
@@ -1134,6 +1207,8 @@ describe("RoundDetailRoute", () => {
       user_id: OTHER,
       submitter_display_name: "Bob",
       isrc: id,
+      source: null,
+      source_url: null,
       title,
       artist: "",
       album: null,
@@ -1976,6 +2051,8 @@ describe("RoundDetailRoute", () => {
               user_id: OTHER,
               submitter_display_name: "Bob",
               isrc: "I1",
+              source: null,
+              source_url: null,
               title: "Bad Guy",
               artist: "Billie Eilish",
               album: null,
@@ -2008,6 +2085,8 @@ describe("RoundDetailRoute", () => {
         user_id: OTHER,
         submitter_display_name: "Bob",
         isrc: "I1",
+        source: null,
+        source_url: null,
         title: "Bad Guy",
         artist: "Billie Eilish",
         album: null,
@@ -2067,6 +2146,8 @@ describe("RoundDetailRoute", () => {
             submitter_display_name: "Wren",
             title: "Winning Song",
             artist: "The Champs",
+            source: null,
+            source_url: null,
             platforms: {},
             submitter_note: null,
             notes: [],
@@ -2076,6 +2157,8 @@ describe("RoundDetailRoute", () => {
             submitter_display_name: "Vera",
             title: "My Quiet Pick",
             artist: "Me",
+            source: null,
+            source_url: null,
             platforms: { spotify: "https://open.spotify.com/track/x" },
             submitter_note: null,
             notes: [{ body: "this one got me", author_display_name: "Ada", created_at: "x" }],

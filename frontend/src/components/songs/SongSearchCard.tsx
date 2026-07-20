@@ -33,6 +33,17 @@ type PasteSourceKey = ServiceKey | "bandcamp";
 
 const LINK_ERROR = "We couldn't find that song. Check the link and try again.";
 const SEARCH_ERROR = "Something went wrong with that search. Try again.";
+// A label using Bandcamp Pro's custom-domain feature redirects off
+// bandcamp.com; we don't follow that redirect (MYS-200 SSRF guard), and
+// MYS-212 tracks properly supporting it. The backend tags this specific
+// case (see the "custom domain" substring check below) so we can give an
+// accurate reason instead of the generic LINK_ERROR.
+const BANDCAMP_CUSTOM_DOMAIN_ERROR =
+  "This Bandcamp link redirects to a custom domain, which we don't support yet. Try a link that stays on bandcamp.com.";
+
+function isBandcampCustomDomainError(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 404 && err.message.includes("custom domain");
+}
 const TOO_MANY = "Too many matches — try adding the artist name";
 
 // Display order + labels for the platform link row. Keys match ResolvedSong.platforms.
@@ -201,6 +212,12 @@ export function SongSearchCard({
     try {
       setResolved(await resolveSong({ url: trimmed }));
     } catch (err) {
+      if (isBandcampCustomDomainError(err)) {
+        // Same failure either way (the redirect guard raises before the
+        // source-only funnel ever runs), so skip the pointless retry below.
+        setError(BANDCAMP_CUSTOM_DOMAIN_ERROR);
+        return;
+      }
       // A source-only Bandcamp/YouTube track 404s by default (MYS-201). Only for
       // those two sources, retry opting in — if it resolves to a source-only
       // match, route it through the confirm step instead of the dead-end error.

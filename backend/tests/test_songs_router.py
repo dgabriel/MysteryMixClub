@@ -208,6 +208,37 @@ async def test_resolve_maps_service_errors(session_factory, db_session, error, e
     assert resp.status_code == expected
 
 
+async def test_resolve_bandcamp_custom_domain_gets_specific_detail(session_factory, db_session):
+    # A tagged SongNotFoundError (MYS-212) surfaces its own message instead of
+    # the generic "song not found", so the frontend can show an accurate reason.
+    user = await _seed_user(db_session)
+    error = SongNotFoundError(
+        "this bandcamp link redirects to a custom domain, which isn't supported "
+        "yet. try a link that stays on bandcamp.com",
+        code="bandcamp_custom_domain",
+    )
+    async with _build_client(session_factory, resolver=_FakeResolver(error=error)) as client:
+        resp = await client.post(
+            RESOLVE_URL,
+            json={"url": "https://wrwtfww.bandcamp.com/track/1224-live"},
+            headers=_auth_header(user.id),
+        )
+    assert resp.status_code == 404
+    assert "custom domain" in resp.json()["detail"]
+
+
+async def test_resolve_untagged_not_found_stays_generic(session_factory, db_session):
+    user = await _seed_user(db_session)
+    async with _build_client(
+        session_factory, resolver=_FakeResolver(error=SongNotFoundError("no match"))
+    ) as client:
+        resp = await client.post(
+            RESOLVE_URL, json={"url": "https://x/y"}, headers=_auth_header(user.id)
+        )
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "song not found"
+
+
 # --------------------------------------------------------------------------- #
 # POST /api/v1/songs/resolve — source-only opt-in (MYS-201)
 # --------------------------------------------------------------------------- #

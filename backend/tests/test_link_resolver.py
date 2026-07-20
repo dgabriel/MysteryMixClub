@@ -482,6 +482,23 @@ async def test_bandcamp_hostile_redirect_is_rejected_and_never_fetched(location)
     assert [c.url.host for c in calls] == ["coolband.bandcamp.com"]
 
 
+async def test_bandcamp_custom_domain_redirect_is_tagged_and_never_fetched():
+    # A legitimate Bandcamp Pro custom domain (e.g. a label's own site) is,
+    # at the code level, indistinguishable from a hostile off-family
+    # redirect — still refused (MYS-200 SSRF guard), but tagged with a code
+    # (MYS-212) so the caller can give an accurate reason instead of the
+    # generic "not found".
+    def route(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(301, headers={"Location": "https://wrwtfww.com/track/1224-live"})
+
+    handler, calls = _recording_handler(route)
+    with pytest.raises(SongNotFoundError) as exc_info:
+        await _resolver(handler).resolve("https://wrwtfww.bandcamp.com/track/1224-live")
+    assert exc_info.value.code == "bandcamp_custom_domain"
+    assert "custom domain" in str(exc_info.value)
+    assert [c.url.host for c in calls] == ["wrwtfww.bandcamp.com"]
+
+
 async def test_bandcamp_redirect_without_location_is_not_found():
     handler, calls = _recording_handler(lambda r: httpx.Response(301))
     with pytest.raises(SongNotFoundError):

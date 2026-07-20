@@ -97,9 +97,12 @@ async def resolve_song(
         except InvalidSongURLError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         except SongNotFoundError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="song not found"
-            ) from exc
+            # A tagged exception (e.g. "bandcamp_custom_domain") carries an
+            # accurate, user-facing reason worth surfacing; the ordinary "no
+            # match" case stays a generic detail so it doesn't leak resolver
+            # internals.
+            detail = str(exc) if exc.code else "song not found"
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail) from exc
         except ResolverRateLimitError as exc:
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,

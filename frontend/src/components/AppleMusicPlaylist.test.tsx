@@ -37,7 +37,7 @@ beforeEach(() => {
 
 describe("AppleMusicPlaylist", () => {
   it("offers to build the playlist, noting the subscription requirement", async () => {
-    render(<AppleMusicPlaylist roundId="r1" />);
+    render(<AppleMusicPlaylist mixId="r1" />);
 
     expect(
       await screen.findByRole("button", { name: /build this mystery mix in apple music/i }),
@@ -48,10 +48,10 @@ describe("AppleMusicPlaylist", () => {
   it("shows the personal link when one was already generated", async () => {
     mockLink.mockResolvedValue({
       playlist_url: "https://music.apple.com/library",
-      playlist_name: "Mix: Round 1",
+      playlist_name: "Mix: Mix 1",
     });
 
-    render(<AppleMusicPlaylist roundId="r1" />);
+    render(<AppleMusicPlaylist mixId="r1" />);
 
     // Links the LIBRARY, never the playlist: iOS dead-ends on a library-playlist
     // deep link with "Item Not Available" (MYS-190).
@@ -62,7 +62,7 @@ describe("AppleMusicPlaylist", () => {
     expect(
       screen.getByText(/go to your Apple Music playlists and look for/i),
     ).toBeInTheDocument();
-    expect(screen.getByText(/Mix: Round 1/)).toBeInTheDocument();
+    expect(screen.getByText(/Mix: Mix 1/)).toBeInTheDocument();
   });
 
   it("still shows a usable link when the name was never recorded", async () => {
@@ -72,7 +72,7 @@ describe("AppleMusicPlaylist", () => {
       playlist_name: null,
     });
 
-    render(<AppleMusicPlaylist roundId="r1" />);
+    render(<AppleMusicPlaylist mixId="r1" />);
 
     expect(
       await screen.findByRole("link", { name: /open apple music library/i }),
@@ -83,13 +83,13 @@ describe("AppleMusicPlaylist", () => {
   it("authorizes then generates, and surfaces the resulting link", async () => {
     mockCreate.mockResolvedValue({
       playlist_url: "https://music.apple.com/library",
-      playlist_name: "Mix: Round 1",
+      playlist_name: "Mix: Mix 1",
       track_count: 5,
       total_count: 5,
       unmatched: [],
     });
 
-    render(<AppleMusicPlaylist roundId="r1" />);
+    render(<AppleMusicPlaylist mixId="r1" />);
     await userEvent.click(
       await screen.findByRole("button", { name: /build this mystery mix in apple music/i }),
     );
@@ -99,13 +99,13 @@ describe("AppleMusicPlaylist", () => {
     expect(
       await screen.findByRole("link", { name: /open apple music library/i }),
     ).toHaveAttribute("href", "https://music.apple.com/library");
-    expect(screen.getByText(/Mix: Round 1/)).toBeInTheDocument();
+    expect(screen.getByText(/Mix: Mix 1/)).toBeInTheDocument();
   });
 
   it("asks the user to retry when the apple connection expired", async () => {
     mockCreate.mockRejectedValue(new ApiError(401, "expired"));
 
-    render(<AppleMusicPlaylist roundId="r1" />);
+    render(<AppleMusicPlaylist mixId="r1" />);
     await userEvent.click(
       await screen.findByRole("button", { name: /build this mystery mix in apple music/i }),
     );
@@ -120,7 +120,7 @@ describe("AppleMusicPlaylist", () => {
   it("shows a calm error when generation fails", async () => {
     mockCreate.mockRejectedValue(new Error("boom"));
 
-    render(<AppleMusicPlaylist roundId="r1" />);
+    render(<AppleMusicPlaylist mixId="r1" />);
     await userEvent.click(
       await screen.findByRole("button", { name: /build this mystery mix in apple music/i }),
     );
@@ -131,7 +131,7 @@ describe("AppleMusicPlaylist", () => {
   it("renders nothing when apple music is not configured", async () => {
     mockToken.mockResolvedValue({ token: null });
 
-    const { container } = render(<AppleMusicPlaylist roundId="r1" />);
+    const { container } = render(<AppleMusicPlaylist mixId="r1" />);
 
     await waitFor(() => expect(mockToken).toHaveBeenCalled());
     expect(container).toBeEmptyDOMElement();
@@ -140,7 +140,7 @@ describe("AppleMusicPlaylist", () => {
   it("renders nothing while still loading", () => {
     mockToken.mockReturnValue(new Promise(() => {}));
 
-    const { container } = render(<AppleMusicPlaylist roundId="r1" />);
+    const { container } = render(<AppleMusicPlaylist mixId="r1" />);
 
     expect(container).toBeEmptyDOMElement();
   });

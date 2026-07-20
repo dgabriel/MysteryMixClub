@@ -293,7 +293,7 @@ describe("AuthProvider / useAuth", () => {
 
   // --- userId capture (MYS-15) -------------------------------------------
   // The same profile fetch that populates display_name also captures the user's
-  // id, so league routes can compare it against league.organizer_id to decide
+  // id, so club routes can compare it against club.organizer_id to decide
   // organizer controls. It is null before the profile loads and is reset to null
   // by clear() (logout / logout-all).
 

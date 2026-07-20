@@ -65,7 +65,7 @@ function renderNav(ui = <TopNav />, at = "/start") {
         <Route path="/about" element={<div>ABOUT CONTENT</div>} />
         <Route path="/admin" element={<div>ADMIN CONTENT</div>} />
         <Route path="/login" element={<div>LOGIN CONTENT</div>} />
-        <Route path="/leagues/:id" element={<div>LEAGUE CONTENT</div>} />
+        <Route path="/clubs/:id" element={<div>CLUB CONTENT</div>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -136,16 +136,16 @@ describe("TopNav", () => {
 
   it("back affordance, when provided, routes to its target", async () => {
     const user = userEvent.setup();
-    renderNav(<TopNav back={{ label: "league", to: "/leagues/lg-1" }} />);
+    renderNav(<TopNav back={{ label: "club", to: "/clubs/lg-1" }} />);
 
     // The back-arrow is a line icon (aria-hidden); the control's name is its label.
-    await user.click(screen.getByRole("button", { name: /^league$/i }));
-    expect(await screen.findByText("LEAGUE CONTENT")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^club$/i }));
+    expect(await screen.findByText("CLUB CONTENT")).toBeInTheDocument();
   });
 
   it("no back affordance is rendered when none is provided", () => {
     renderNav();
-    expect(screen.queryByRole("button", { name: /^league$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^club$/i })).not.toBeInTheDocument();
   });
 
   describe("signed-out visitor (MYS-155: nav on the public /about page)", () => {

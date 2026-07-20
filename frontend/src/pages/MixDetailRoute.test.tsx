@@ -2,34 +2,34 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
-import { RoundDetailRoute } from "./RoundDetailRoute";
+import { MixDetailRoute } from "./MixDetailRoute";
 import {
   addNote,
   castVotes,
   deleteSubmission,
   editSubmission,
   extendVotingDeadline,
-  getLeague,
-  getLeagueMembers,
+  getClub,
+  getClubMembers,
   getMyMembership,
   getMySubmissions,
   getMyVotes,
   getNotes,
   getPlaylist,
   getResults,
-  getRound,
+  getMix,
   getSpotifyStatus,
   getVoteCounts,
   resolveSong,
   submitSong,
-  updateRound,
+  updateMix,
 } from "../services/api";
 import type {
-  League,
-  LeagueMember,
+  Club,
+  ClubMember,
   PlaylistEntry,
-  Round,
-  RoundResults,
+  Mix,
+  MixResults,
   SubmissionResult,
 } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
@@ -38,14 +38,14 @@ vi.mock("../services/api", async () => {
   const actual = await vi.importActual<typeof import("../services/api")>("../services/api");
   return {
     ...actual,
-    getRound: vi.fn(),
-    getLeague: vi.fn(),
-    getLeagueMembers: vi.fn(),
+    getMix: vi.fn(),
+    getClub: vi.fn(),
+    getClubMembers: vi.fn(),
     getMyMembership: vi.fn(),
     getMySubmissions: vi.fn(),
     getPlaylist: vi.fn(),
     getResults: vi.fn(),
-    updateRound: vi.fn(),
+    updateMix: vi.fn(),
     extendVotingDeadline: vi.fn(),
     submitSong: vi.fn(),
     editSubmission: vi.fn(),
@@ -61,16 +61,16 @@ vi.mock("../services/api", async () => {
 });
 vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
 
-const mockGetRound = vi.mocked(getRound);
-const mockGetLeague = vi.mocked(getLeague);
-const mockGetLeagueMembers = vi.mocked(getLeagueMembers);
+const mockGetMix = vi.mocked(getMix);
+const mockGetClub = vi.mocked(getClub);
+const mockGetClubMembers = vi.mocked(getClubMembers);
 const mockGetMyMembership = vi.mocked(getMyMembership);
 const mockGetMine = vi.mocked(getMySubmissions);
 const mockEditSubmission = vi.mocked(editSubmission);
 const mockDeleteSubmission = vi.mocked(deleteSubmission);
 const mockGetPlaylist = vi.mocked(getPlaylist);
 const mockGetResults = vi.mocked(getResults);
-const mockUpdateRound = vi.mocked(updateRound);
+const mockUpdateMix = vi.mocked(updateMix);
 const mockExtendVotingDeadline = vi.mocked(extendVotingDeadline);
 const mockGetMyVotes = vi.mocked(getMyVotes);
 const mockCastVotes = vi.mocked(castVotes);
@@ -86,7 +86,7 @@ const ORGANIZER = "org-1";
 const OTHER = "user-2";
 const CO_ORGANIZER = "co-3";
 
-function round(overrides: Partial<Round> = {}): Round {
+function mix(overrides: Partial<Mix> = {}): Mix {
   return {
     id: "r1",
     club_id: "lg1",
@@ -109,7 +109,7 @@ function round(overrides: Partial<Round> = {}): Round {
   };
 }
 
-function league(): League {
+function club(): Club {
   return {
     id: "lg1",
     name: "Friday Mixtape",
@@ -128,9 +128,9 @@ function league(): League {
   };
 }
 
-// League membership (MYS-99) — the fixed organizer's row carries is_admin;
+// Club membership (MYS-99) — the fixed organizer's row carries is_admin;
 // OTHER defaults to a plain member.
-function members(): LeagueMember[] {
+function members(): ClubMember[] {
   return [
     {
       user_id: ORGANIZER,
@@ -150,9 +150,9 @@ function members(): LeagueMember[] {
 }
 
 // A roster with a promoted co-organizer (MYS-99), for parity coverage: same
-// full round-management access as the fixed organizer without being the
+// full mix-management access as the fixed organizer without being the
 // organizer themselves.
-function membersWithCoOrganizer(): LeagueMember[] {
+function membersWithCoOrganizer(): ClubMember[] {
   return [
     ...members(),
     {
@@ -203,7 +203,7 @@ function mine(overrides: Partial<SubmissionResult> = {}): SubmissionResult {
   };
 }
 
-function results(overrides: Partial<RoundResults> = {}): RoundResults {
+function results(overrides: Partial<MixResults> = {}): MixResults {
   return {
     mix_id: "r1",
     mix_number: 1,
@@ -240,23 +240,23 @@ function setAuth(userId: string) {
   } as unknown as ReturnType<typeof useAuth>);
 }
 
-function renderRound() {
+function renderMix() {
   const router = createMemoryRouter(
     [
-      { path: "/mixes/:id", element: <RoundDetailRoute /> },
-      { path: "/clubs/:id", element: <div>LEAGUE PAGE</div> },
+      { path: "/mixes/:id", element: <MixDetailRoute /> },
+      { path: "/clubs/:id", element: <div>CLUB PAGE</div> },
     ],
     { initialEntries: ["/mixes/r1"] },
   );
   return render(<RouterProvider router={router} />);
 }
 
-describe("RoundDetailRoute", () => {
+describe("MixDetailRoute", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetRound.mockResolvedValue(round());
-    mockGetLeague.mockResolvedValue(league());
-    mockGetLeagueMembers.mockResolvedValue(members());
+    mockGetMix.mockResolvedValue(mix());
+    mockGetClub.mockResolvedValue(club());
+    mockGetClubMembers.mockResolvedValue(members());
     mockGetMyMembership.mockResolvedValue({
       club_id: "lg1",
       user_id: ORGANIZER,
@@ -308,20 +308,20 @@ describe("RoundDetailRoute", () => {
   });
 
   it("open_submission, no submission: shows the submit-a-song card", async () => {
-    renderRound();
+    renderMix();
     expect(await screen.findByText("late summer feels")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /submit a song/i })).toBeInTheDocument();
   });
 
   it("open_submission: shows submission progress (X of Y submitted) — MYS-101", async () => {
-    mockGetRound.mockResolvedValue(round({ submission_count: 2, member_count: 5 }));
-    renderRound();
+    mockGetMix.mockResolvedValue(mix({ submission_count: 2, member_count: 5 }));
+    renderMix();
     expect(await screen.findByText("2 of 5 submitted")).toBeInTheDocument();
   });
 
   it("open_submission: hides progress until the member count is known — MYS-101", async () => {
-    mockGetRound.mockResolvedValue(round({ submission_count: 0, member_count: 0 }));
-    renderRound();
+    mockGetMix.mockResolvedValue(mix({ submission_count: 0, member_count: 0 }));
+    renderMix();
     // Wait for the screen to settle on the submit card, then assert no progress.
     expect(await screen.findByRole("heading", { name: /submit a song/i })).toBeInTheDocument();
     expect(screen.queryByText(/submitted$/i)).not.toBeInTheDocument();
@@ -329,16 +329,16 @@ describe("RoundDetailRoute", () => {
 
   it("open_submission: renders the static deadline line when a deadline is set — MYS-161", async () => {
     // The action area shows "closes …" (lowercase in the DOM; uppercase is CSS).
-    mockGetRound.mockResolvedValue(
-      round({ state: "open_submission", submission_deadline: "2026-07-05T12:00:00Z" }),
+    mockGetMix.mockResolvedValue(
+      mix({ state: "open_submission", submission_deadline: "2026-07-05T12:00:00Z" }),
     );
-    renderRound();
+    renderMix();
     expect(await screen.findByText(/^closes /i)).toBeInTheDocument();
   });
 
   it("closed: does not render the static deadline line — MYS-161", async () => {
-    mockGetRound.mockResolvedValue(
-      round({
+    mockGetMix.mockResolvedValue(
+      mix({
         state: "closed",
         submission_deadline: "2026-07-05T12:00:00Z",
         voting_deadline: "2026-07-05T12:00:00Z",
@@ -367,7 +367,7 @@ describe("RoundDetailRoute", () => {
         ],
       }),
     );
-    renderRound();
+    renderMix();
     await screen.findByRole("heading", { name: /the picks/i });
     expect(screen.queryByText(/^closes /i)).not.toBeInTheDocument();
   });
@@ -377,10 +377,10 @@ describe("RoundDetailRoute", () => {
     // "just vibes" toggle, and a submitted song must not show a playing/vibing
     // badge. (Backend mode handling is untouched; this is a UI-only hide.)
     mockGetMine.mockResolvedValue([mine({ participation_mode: "playing" })]);
-    renderRound();
+    renderMix();
 
     expect(await screen.findByText("My Song")).toBeInTheDocument();
-    expect(screen.queryByLabelText(/just vibes for this round/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/just vibes for this mix/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/just vibes/i)).not.toBeInTheDocument();
     expect(screen.queryByText("playing")).not.toBeInTheDocument();
     expect(screen.queryByText("vibing")).not.toBeInTheDocument();
@@ -388,11 +388,11 @@ describe("RoundDetailRoute", () => {
 
   it("open_submission: submitting a song refreshes the X of Y count — MYS-101", async () => {
     const user = userEvent.setup();
-    // The round is refetched after a successful submit: first load shows 0, the
+    // The mix is refetched after a successful submit: first load shows 0, the
     // post-submit refetch shows 1.
-    mockGetRound
-      .mockResolvedValueOnce(round({ submission_count: 0, member_count: 5 }))
-      .mockResolvedValue(round({ submission_count: 1, member_count: 5 }));
+    mockGetMix
+      .mockResolvedValueOnce(mix({ submission_count: 0, member_count: 5 }))
+      .mockResolvedValue(mix({ submission_count: 1, member_count: 5 }));
     mockResolveSong.mockResolvedValue({
       title: "Debaser",
       artist: "Pixies",
@@ -418,7 +418,7 @@ describe("RoundDetailRoute", () => {
       league_previously_submitted: false,
     });
 
-    renderRound();
+    renderMix();
     expect(await screen.findByText("0 of 5 submitted")).toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: /paste a link/i }));
@@ -432,7 +432,7 @@ describe("RoundDetailRoute", () => {
 
   it("open_submission with an existing submission: shows it + change affordance", async () => {
     mockGetMine.mockResolvedValue([mine({ id: "s1", title: "Take on Me", artist: "a-ha" })]);
-    renderRound();
+    renderMix();
     expect(await screen.findByText("Take on Me")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /change song/i })).toBeInTheDocument();
   });
@@ -472,7 +472,7 @@ describe("RoundDetailRoute", () => {
 
     it("cap 1: at the cap shows only the song with change/remove — no add affordance", async () => {
       mockGetMine.mockResolvedValue([mine({ id: "s1", title: "Take on Me" })]);
-      renderRound();
+      renderMix();
 
       expect(await screen.findByText("Take on Me")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /change song/i })).toBeInTheDocument();
@@ -485,9 +485,9 @@ describe("RoundDetailRoute", () => {
     });
 
     it("cap > 1: shows only the next empty submit slot, with an N-of-M header", async () => {
-      mockGetLeague.mockResolvedValue({ ...league(), songs_per_submission: 3 });
+      mockGetClub.mockResolvedValue({ ...club(), songs_per_submission: 3 });
       mockGetMine.mockResolvedValue([mine({ id: "s1", title: "Song One" })]);
-      renderRound();
+      renderMix();
 
       expect(await screen.findByText("Song One")).toBeInTheDocument();
       expect(screen.getByText("your songs · 1 of 3")).toBeInTheDocument();
@@ -498,9 +498,9 @@ describe("RoundDetailRoute", () => {
     });
 
     it("cap > 1 with no songs: shows only the first empty submit slot", async () => {
-      mockGetLeague.mockResolvedValue({ ...league(), songs_per_submission: 2 });
+      mockGetClub.mockResolvedValue({ ...club(), songs_per_submission: 2 });
       mockGetMine.mockResolvedValue([]);
-      renderRound();
+      renderMix();
 
       // only song 1 slot shown — song 2 appears only after song 1 is submitted
       await waitFor(() =>
@@ -510,9 +510,9 @@ describe("RoundDetailRoute", () => {
     });
 
     it("cap > 1: slots are numbered (Submit Song N; a filled slot reads Song N)", async () => {
-      mockGetLeague.mockResolvedValue({ ...league(), songs_per_submission: 2 });
+      mockGetClub.mockResolvedValue({ ...club(), songs_per_submission: 2 });
       mockGetMine.mockResolvedValue([mine({ id: "s1", title: "Song One" })]);
-      renderRound();
+      renderMix();
 
       await screen.findByText("Song One");
       // filled slot 1 carries its number; the empty slot 2 prompts "submit song 2"
@@ -520,24 +520,24 @@ describe("RoundDetailRoute", () => {
       expect(screen.getByRole("heading", { name: /^submit song 2$/i })).toBeInTheDocument();
     });
 
-    it("cap > 1: confirm appears once every slot is filled and returns to the league", async () => {
+    it("cap > 1: confirm appears once every slot is filled and returns to the club", async () => {
       const user = userEvent.setup();
-      mockGetLeague.mockResolvedValue({ ...league(), songs_per_submission: 2 });
+      mockGetClub.mockResolvedValue({ ...club(), songs_per_submission: 2 });
       mockGetMine.mockResolvedValue([
         mine({ id: "s1", title: "Song One" }),
         mine({ id: "s2", title: "Song Two" }),
       ]);
-      renderRound();
+      renderMix();
 
       await screen.findByText("Song One");
       await user.click(screen.getByRole("button", { name: /^confirm$/i }));
-      expect(await screen.findByText("LEAGUE PAGE")).toBeInTheDocument();
+      expect(await screen.findByText("CLUB PAGE")).toBeInTheDocument();
     });
 
     it("cap > 1: confirm stays hidden until every slot is filled", async () => {
-      mockGetLeague.mockResolvedValue({ ...league(), songs_per_submission: 2 });
+      mockGetClub.mockResolvedValue({ ...club(), songs_per_submission: 2 });
       mockGetMine.mockResolvedValue([mine({ id: "s1", title: "Song One" })]);
-      renderRound();
+      renderMix();
 
       await screen.findByText("Song One");
       expect(screen.queryByRole("button", { name: /^confirm$/i })).not.toBeInTheDocument();
@@ -545,7 +545,7 @@ describe("RoundDetailRoute", () => {
 
     it("cap 1: no confirm button and no slot numbering (single-song parity)", async () => {
       mockGetMine.mockResolvedValue([mine({ id: "s1", title: "Only Song" })]);
-      renderRound();
+      renderMix();
 
       await screen.findByText("Only Song");
       expect(screen.queryByRole("button", { name: /^confirm$/i })).not.toBeInTheDocument();
@@ -554,12 +554,12 @@ describe("RoundDetailRoute", () => {
     });
 
     it("cap > 1: at the cap, the add affordance is gone", async () => {
-      mockGetLeague.mockResolvedValue({ ...league(), songs_per_submission: 2 });
+      mockGetClub.mockResolvedValue({ ...club(), songs_per_submission: 2 });
       mockGetMine.mockResolvedValue([
         mine({ id: "s1", title: "Song One" }),
         mine({ id: "s2", title: "Song Two" }),
       ]);
-      renderRound();
+      renderMix();
 
       expect(await screen.findByText("Song One")).toBeInTheDocument();
       expect(screen.getByText("your songs · 2 of 2")).toBeInTheDocument();
@@ -568,11 +568,11 @@ describe("RoundDetailRoute", () => {
 
     it("cap > 1: submitting an empty slot calls submitSong and fills it", async () => {
       const user = userEvent.setup();
-      mockGetLeague.mockResolvedValue({ ...league(), songs_per_submission: 3 });
+      mockGetClub.mockResolvedValue({ ...club(), songs_per_submission: 3 });
       mockGetMine.mockResolvedValue([mine({ id: "s1", title: "Song One" })]);
       mockResolveSong.mockResolvedValue(resolved("I2", "Song Two"));
       mockSubmitSong.mockResolvedValue(mine({ id: "s2", title: "Song Two" }));
-      renderRound();
+      renderMix();
 
       await screen.findByText("Song One");
       await composeAndSubmit(user, firstComposerSlot());
@@ -588,7 +588,7 @@ describe("RoundDetailRoute", () => {
       mockGetMine.mockResolvedValue([mine({ id: "s1", title: "Old Song" })]);
       mockResolveSong.mockResolvedValue(resolved("I9", "New Song"));
       mockEditSubmission.mockResolvedValue(mine({ id: "s1", title: "New Song" }));
-      renderRound();
+      renderMix();
 
       await screen.findByText("Old Song");
       await user.click(screen.getByRole("button", { name: /change song/i }));
@@ -605,13 +605,13 @@ describe("RoundDetailRoute", () => {
 
     it("remove deletes the song via deleteSubmission and drops it from the list", async () => {
       const user = userEvent.setup();
-      mockGetLeague.mockResolvedValue({ ...league(), songs_per_submission: 2 });
+      mockGetClub.mockResolvedValue({ ...club(), songs_per_submission: 2 });
       mockGetMine.mockResolvedValue([
         mine({ id: "s1", title: "Song One" }),
         mine({ id: "s2", title: "Song Two" }),
       ]);
       mockDeleteSubmission.mockResolvedValue(undefined);
-      renderRound();
+      renderMix();
 
       await screen.findByText("Song One");
       const firstCard = screen.getByText("Song One").closest("li") as HTMLElement;
@@ -626,7 +626,7 @@ describe("RoundDetailRoute", () => {
       const user = userEvent.setup();
       mockGetMine.mockResolvedValue([mine({ id: "s1", title: "Lonely Song" })]);
       mockDeleteSubmission.mockResolvedValue(undefined);
-      renderRound();
+      renderMix();
 
       await screen.findByText("Lonely Song");
       await user.click(screen.getByRole("button", { name: /^remove$/i }));
@@ -639,13 +639,13 @@ describe("RoundDetailRoute", () => {
       const user = userEvent.setup();
       const { ApiError } =
         await vi.importActual<typeof import("../services/api")>("../services/api");
-      mockGetLeague.mockResolvedValue({ ...league(), songs_per_submission: 2 });
+      mockGetClub.mockResolvedValue({ ...club(), songs_per_submission: 2 });
       mockGetMine.mockResolvedValue([mine({ id: "s1", title: "Song One" })]);
       mockResolveSong.mockResolvedValue(resolved("I2", "Song Two"));
       mockSubmitSong.mockRejectedValue(
         new ApiError(409, "you've submitted the maximum of 2 song(s)"),
       );
-      renderRound();
+      renderMix();
 
       await screen.findByText("Song One");
       await composeAndSubmit(user, firstComposerSlot());
@@ -655,19 +655,19 @@ describe("RoundDetailRoute", () => {
     });
   });
 
-  it("organizer can open voting; advancing calls updateRound", async () => {
+  it("organizer can open voting; advancing calls updateMix", async () => {
     const user = userEvent.setup();
-    renderRound();
+    renderMix();
     const btn = await screen.findByRole("button", { name: /open voting/i });
     await user.click(btn);
-    expect(mockUpdateRound).toHaveBeenCalledWith("r1", { state: "open_voting" });
+    expect(mockUpdateMix).toHaveBeenCalledWith("r1", { state: "open_voting" });
   });
 
   it("advance button resets after a successful open (not stuck on 'opening…') — MYS-95", async () => {
     const user = userEvent.setup();
-    renderRound();
+    renderMix();
     await user.click(await screen.findByRole("button", { name: /open voting/i }));
-    expect(mockUpdateRound).toHaveBeenCalled();
+    expect(mockUpdateMix).toHaveBeenCalled();
     // After success the button returns to its label; it must not stay "opening…".
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /open voting/i })).toBeInTheDocument(),
@@ -677,75 +677,75 @@ describe("RoundDetailRoute", () => {
 
   it("non-organizer sees no advance control", async () => {
     setAuth(OTHER);
-    renderRound();
+    renderMix();
     await screen.findByText("late summer feels");
     expect(screen.queryByRole("button", { name: /open voting/i })).not.toBeInTheDocument();
   });
 
   // --- Co-organizer parity (MYS-99): isAdmin (isOrganizer OR own row's
-  // is_admin) gates OrganizerControls/EditRoundForm, same as the fixed
+  // is_admin) gates OrganizerControls/EditMixForm, same as the fixed
   // organizer. ---
 
   it("co-organizer viewer: sees OrganizerControls (advance control) though they are not the fixed organizer", async () => {
-    mockGetLeagueMembers.mockResolvedValue(membersWithCoOrganizer());
+    mockGetClubMembers.mockResolvedValue(membersWithCoOrganizer());
     setAuth(CO_ORGANIZER);
-    renderRound();
+    renderMix();
     await screen.findByText("late summer feels");
     expect(await screen.findByRole("button", { name: /open voting/i })).toBeInTheDocument();
   });
 
-  it("co-organizer viewer: sees EditRoundForm (edit mix) on a pending round", async () => {
-    mockGetRound.mockResolvedValue(round({ state: "pending" }));
-    mockGetLeagueMembers.mockResolvedValue(membersWithCoOrganizer());
+  it("co-organizer viewer: sees EditMixForm (edit mix) on a pending mix", async () => {
+    mockGetMix.mockResolvedValue(mix({ state: "pending" }));
+    mockGetClubMembers.mockResolvedValue(membersWithCoOrganizer());
     setAuth(CO_ORGANIZER);
-    renderRound();
+    renderMix();
     await screen.findByText("late summer feels");
     expect(await screen.findByRole("button", { name: /^edit mix$/i })).toBeInTheDocument();
   });
 
-  it("plain member viewer: sees neither OrganizerControls nor EditRoundForm on a pending round", async () => {
-    mockGetRound.mockResolvedValue(round({ state: "pending" }));
-    mockGetLeagueMembers.mockResolvedValue(membersWithCoOrganizer());
+  it("plain member viewer: sees neither OrganizerControls nor EditMixForm on a pending mix", async () => {
+    mockGetMix.mockResolvedValue(mix({ state: "pending" }));
+    mockGetClubMembers.mockResolvedValue(membersWithCoOrganizer());
     setAuth(OTHER);
-    renderRound();
+    renderMix();
     await screen.findByText("late summer feels");
     expect(screen.queryByRole("button", { name: /open mix/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^edit mix$/i })).not.toBeInTheDocument();
   });
 
-  it("organizer can open a pending round; advancing calls updateRound directly, no confirm step — MYS-170", async () => {
-    mockGetRound.mockResolvedValue(round({ state: "pending" }));
+  it("organizer can open a pending mix; advancing calls updateMix directly, no confirm step — MYS-170", async () => {
+    mockGetMix.mockResolvedValue(mix({ state: "pending" }));
     const user = userEvent.setup();
-    renderRound();
+    renderMix();
     const btn = await screen.findByRole("button", { name: "open mix" });
     await user.click(btn);
-    expect(mockUpdateRound).toHaveBeenCalledWith("r1", { state: "open_submission" });
+    expect(mockUpdateMix).toHaveBeenCalledWith("r1", { state: "open_submission" });
     // No confirm affordance should ever appear for this transition.
     expect(screen.queryByRole("button", { name: /yes, close mix/i })).not.toBeInTheDocument();
   });
 
-  describe("closing a round — confirm step (MYS-170)", () => {
+  describe("closing a mix — confirm step (MYS-170)", () => {
     beforeEach(() => {
-      mockGetRound.mockResolvedValue(round({ state: "open_voting" }));
+      mockGetMix.mockResolvedValue(mix({ state: "open_voting" }));
     });
 
-    it("clicking 'close mix' shows a confirm panel instead of calling updateRound immediately", async () => {
+    it("clicking 'close mix' shows a confirm panel instead of calling updateMix immediately", async () => {
       const user = userEvent.setup();
-      renderRound();
+      renderMix();
       const closeBtn = await screen.findByRole("button", { name: "close mix" });
       await user.click(closeBtn);
 
-      expect(mockUpdateRound).not.toHaveBeenCalled();
+      expect(mockUpdateMix).not.toHaveBeenCalled();
       expect(await screen.findByRole("button", { name: "yes, close mix" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "cancel" })).toBeInTheDocument();
       // The plain one-click button is gone while confirming.
       expect(screen.queryByRole("button", { name: "close mix" })).not.toBeInTheDocument();
     });
 
-    it("confirm panel shows the non-final-round copy when more rounds remain", async () => {
-      // default league() has total_mixes: 6; round() defaults mix_number: 1.
+    it("confirm panel shows the non-final-mix copy when more mixes remain", async () => {
+      // default club() has total_mixes: 6; mix() defaults mix_number: 1.
       const user = userEvent.setup();
-      renderRound();
+      renderMix();
       await user.click(await screen.findByRole("button", { name: "close mix" }));
 
       expect(
@@ -756,11 +756,11 @@ describe("RoundDetailRoute", () => {
       expect(screen.queryByText(/completes the club/i)).not.toBeInTheDocument();
     });
 
-    it("confirm panel shows the final-round copy when mix_number >= league.total_mixes", async () => {
-      mockGetRound.mockResolvedValue(round({ state: "open_voting", mix_number: 6 }));
-      mockGetLeague.mockResolvedValue({ ...league(), total_mixes: 6 });
+    it("confirm panel shows the final-mix copy when mix_number >= club.total_mixes", async () => {
+      mockGetMix.mockResolvedValue(mix({ state: "open_voting", mix_number: 6 }));
+      mockGetClub.mockResolvedValue({ ...club(), total_mixes: 6 });
       const user = userEvent.setup();
-      renderRound();
+      renderMix();
       await user.click(await screen.findByRole("button", { name: "close mix" }));
 
       expect(
@@ -771,22 +771,22 @@ describe("RoundDetailRoute", () => {
       expect(screen.queryByText(/opens the next one/i)).not.toBeInTheDocument();
     });
 
-    it("clicking 'yes, close mix' in the confirm panel calls updateRound with state: closed", async () => {
+    it("clicking 'yes, close mix' in the confirm panel calls updateMix with state: closed", async () => {
       const user = userEvent.setup();
-      renderRound();
+      renderMix();
       await user.click(await screen.findByRole("button", { name: "close mix" }));
       await user.click(await screen.findByRole("button", { name: "yes, close mix" }));
 
-      expect(mockUpdateRound).toHaveBeenCalledWith("r1", { state: "closed" });
+      expect(mockUpdateMix).toHaveBeenCalledWith("r1", { state: "closed" });
     });
 
-    it("clicking 'cancel' dismisses the confirm panel without calling updateRound", async () => {
+    it("clicking 'cancel' dismisses the confirm panel without calling updateMix", async () => {
       const user = userEvent.setup();
-      renderRound();
+      renderMix();
       await user.click(await screen.findByRole("button", { name: "close mix" }));
       await user.click(await screen.findByRole("button", { name: "cancel" }));
 
-      expect(mockUpdateRound).not.toHaveBeenCalled();
+      expect(mockUpdateMix).not.toHaveBeenCalled();
       // Back to the plain button; the confirm panel's controls are gone.
       expect(await screen.findByRole("button", { name: "close mix" })).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "yes, close mix" })).not.toBeInTheDocument();
@@ -796,22 +796,22 @@ describe("RoundDetailRoute", () => {
 
   describe("reopening submissions — organizer rollback (MYS-168)", () => {
     beforeEach(() => {
-      mockGetRound.mockResolvedValue(round({ state: "open_voting" }));
+      mockGetMix.mockResolvedValue(mix({ state: "open_voting" }));
     });
 
     it("shows both 'close mix' and 'reopen submissions' buttons while open_voting", async () => {
-      renderRound();
+      renderMix();
       expect(await screen.findByRole("button", { name: "close mix" })).toBeInTheDocument();
       expect(await screen.findByRole("button", { name: "reopen submissions" })).toBeInTheDocument();
     });
 
-    it("clicking 'reopen submissions' shows a confirm panel instead of calling updateRound immediately", async () => {
+    it("clicking 'reopen submissions' shows a confirm panel instead of calling updateMix immediately", async () => {
       const user = userEvent.setup();
-      renderRound();
+      renderMix();
       const reopenBtn = await screen.findByRole("button", { name: "reopen submissions" });
       await user.click(reopenBtn);
 
-      expect(mockUpdateRound).not.toHaveBeenCalled();
+      expect(mockUpdateMix).not.toHaveBeenCalled();
       expect(
         await screen.findByRole("button", { name: "yes, reopen submissions" }),
       ).toBeInTheDocument();
@@ -830,7 +830,7 @@ describe("RoundDetailRoute", () => {
         ],
       });
       const user = userEvent.setup();
-      renderRound();
+      renderMix();
       await user.click(await screen.findByRole("button", { name: "reopen submissions" }));
 
       expect(
@@ -846,7 +846,7 @@ describe("RoundDetailRoute", () => {
         entries: [{ submission_id: "p1", title: "Debaser", artist: "Pixies", vote_count: 1 }],
       });
       const user = userEvent.setup();
-      renderRound();
+      renderMix();
       await user.click(await screen.findByRole("button", { name: "reopen submissions" }));
 
       expect(
@@ -859,7 +859,7 @@ describe("RoundDetailRoute", () => {
     it("confirm copy omits the vote count when no votes have been cast", async () => {
       // beforeEach default mockGetVoteCounts resolves to an empty entries list.
       const user = userEvent.setup();
-      renderRound();
+      renderMix();
       await user.click(await screen.findByRole("button", { name: "reopen submissions" }));
 
       expect(
@@ -870,13 +870,13 @@ describe("RoundDetailRoute", () => {
       expect(screen.queryByText(/discards/i)).not.toBeInTheDocument();
     });
 
-    it("clicking 'cancel' dismisses the confirm panel without calling updateRound", async () => {
+    it("clicking 'cancel' dismisses the confirm panel without calling updateMix", async () => {
       const user = userEvent.setup();
-      renderRound();
+      renderMix();
       await user.click(await screen.findByRole("button", { name: "reopen submissions" }));
       await user.click(await screen.findByRole("button", { name: "cancel" }));
 
-      expect(mockUpdateRound).not.toHaveBeenCalled();
+      expect(mockUpdateMix).not.toHaveBeenCalled();
       // Back to the plain two-button row; the confirm panel's controls are gone.
       expect(await screen.findByRole("button", { name: "reopen submissions" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "close mix" })).toBeInTheDocument();
@@ -885,18 +885,18 @@ describe("RoundDetailRoute", () => {
       ).not.toBeInTheDocument();
     });
 
-    it("clicking 'yes, reopen submissions' calls updateRound(roundId, { state: 'open_submission' })", async () => {
+    it("clicking 'yes, reopen submissions' calls updateMix(mixId, { state: 'open_submission' })", async () => {
       const user = userEvent.setup();
-      renderRound();
+      renderMix();
       await user.click(await screen.findByRole("button", { name: "reopen submissions" }));
       await user.click(await screen.findByRole("button", { name: "yes, reopen submissions" }));
 
-      expect(mockUpdateRound).toHaveBeenCalledWith("r1", { state: "open_submission" });
+      expect(mockUpdateMix).toHaveBeenCalledWith("r1", { state: "open_submission" });
     });
 
-    it("the two confirm flows don't interfere: canceling 'reopen submissions' returns to the plain row, not a broken close-round state", async () => {
+    it("the two confirm flows don't interfere: canceling 'reopen submissions' returns to the plain row, not a broken close-mix state", async () => {
       const user = userEvent.setup();
-      renderRound();
+      renderMix();
       await user.click(await screen.findByRole("button", { name: "reopen submissions" }));
       await user.click(await screen.findByRole("button", { name: "cancel" }));
 
@@ -911,7 +911,7 @@ describe("RoundDetailRoute", () => {
 
     it("the two confirm flows don't interfere: canceling 'close mix' returns to the plain row, not a broken reopen state", async () => {
       const user = userEvent.setup();
-      renderRound();
+      renderMix();
       await user.click(await screen.findByRole("button", { name: "close mix" }));
       await user.click(await screen.findByRole("button", { name: "cancel" }));
 
@@ -925,19 +925,19 @@ describe("RoundDetailRoute", () => {
 
   describe("extending the voting deadline (MYS-180)", () => {
     beforeEach(() => {
-      mockGetRound.mockResolvedValue(
-        round({ state: "open_voting", voting_deadline: "2026-07-20T12:00:00Z" }),
+      mockGetMix.mockResolvedValue(
+        mix({ state: "open_voting", voting_deadline: "2026-07-20T12:00:00Z" }),
       );
     });
 
     it("shows an 'extend voting' button while open_voting", async () => {
-      renderRound();
+      renderMix();
       expect(await screen.findByRole("button", { name: "extend voting" })).toBeInTheDocument();
     });
 
     it("clicking it opens a datetime picker, prefilled and bounded off the current deadline", async () => {
       const user = userEvent.setup();
-      renderRound();
+      renderMix();
       await user.click(await screen.findByRole("button", { name: "extend voting" }));
 
       const input = await screen.findByLabelText(/new voting deadline/i);
@@ -953,10 +953,10 @@ describe("RoundDetailRoute", () => {
 
     it("saving calls extendVotingDeadline with the chosen time as an ISO UTC string", async () => {
       mockExtendVotingDeadline.mockResolvedValue(
-        round({ state: "open_voting", voting_deadline: "2026-07-22T12:00:00.000Z" }),
+        mix({ state: "open_voting", voting_deadline: "2026-07-22T12:00:00.000Z" }),
       );
       const user = userEvent.setup();
-      renderRound();
+      renderMix();
       await user.click(await screen.findByRole("button", { name: "extend voting" }));
 
       const input = await screen.findByLabelText(/new voting deadline/i);
@@ -974,7 +974,7 @@ describe("RoundDetailRoute", () => {
 
     it("clicking 'cancel' dismisses the picker without calling extendVotingDeadline", async () => {
       const user = userEvent.setup();
-      renderRound();
+      renderMix();
       await user.click(await screen.findByRole("button", { name: "extend voting" }));
       await user.click(await screen.findByRole("button", { name: "cancel" }));
 
@@ -983,29 +983,29 @@ describe("RoundDetailRoute", () => {
       expect(screen.queryByLabelText(/new voting deadline/i)).not.toBeInTheDocument();
     });
 
-    it("is not rendered once the round is closed", async () => {
-      mockGetRound.mockResolvedValue(round({ state: "closed" }));
-      renderRound();
+    it("is not rendered once the mix is closed", async () => {
+      mockGetMix.mockResolvedValue(mix({ state: "closed" }));
+      renderMix();
       await screen.findByText(/closed/i);
       expect(screen.queryByRole("button", { name: "extend voting" })).not.toBeInTheDocument();
     });
   });
 
-  it("'reopen submissions' is never rendered while the round is pending", async () => {
-    mockGetRound.mockResolvedValue(round({ state: "pending" }));
-    renderRound();
+  it("'reopen submissions' is never rendered while the mix is pending", async () => {
+    mockGetMix.mockResolvedValue(mix({ state: "pending" }));
+    renderMix();
     await screen.findByRole("button", { name: "open mix" });
     expect(screen.queryByRole("button", { name: "reopen submissions" })).not.toBeInTheDocument();
   });
 
-  it("'reopen submissions' is never rendered while the round is open_submission", async () => {
-    renderRound(); // default round() state is open_submission
+  it("'reopen submissions' is never rendered while the mix is open_submission", async () => {
+    renderMix(); // default mix() state is open_submission
     await screen.findByRole("button", { name: "open voting" });
     expect(screen.queryByRole("button", { name: "reopen submissions" })).not.toBeInTheDocument();
   });
 
   it("open_voting: renders the playlist with platform links", async () => {
-    mockGetRound.mockResolvedValue(round({ state: "open_voting" }));
+    mockGetMix.mockResolvedValue(mix({ state: "open_voting" }));
     const entries: PlaylistEntry[] = [
       {
         submission_id: "p1",
@@ -1034,14 +1034,14 @@ describe("RoundDetailRoute", () => {
       voting_acted: 0,
       vibing_count: 0,
     });
-    renderRound();
+    renderMix();
     expect(await screen.findByText("Debaser")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /on Spotify/i })).toHaveAttribute("href", "https://s");
     expect(screen.getByRole("button", { name: /close mix/i })).toBeInTheDocument();
   });
 
   it("open_voting: lists bandcamp/youtube-only tracks above the playlist links", async () => {
-    mockGetRound.mockResolvedValue(round({ state: "open_voting" }));
+    mockGetMix.mockResolvedValue(mix({ state: "open_voting" }));
     mockGetPlaylist.mockResolvedValue({
       mix_id: "r1",
       mix_number: 1,
@@ -1064,7 +1064,7 @@ describe("RoundDetailRoute", () => {
       voting_acted: 0,
       vibing_count: 0,
     });
-    renderRound();
+    renderMix();
     expect(
       await screen.findByText(
         "bandcamp or YouTube only tracks that may not appear on your playlists",
@@ -1077,7 +1077,7 @@ describe("RoundDetailRoute", () => {
   });
 
   it("open_voting: omits the source-only list when every track is a catalog track", async () => {
-    mockGetRound.mockResolvedValue(round({ state: "open_voting" }));
+    mockGetMix.mockResolvedValue(mix({ state: "open_voting" }));
     mockGetPlaylist.mockResolvedValue({
       mix_id: "r1",
       mix_number: 1,
@@ -1090,7 +1090,7 @@ describe("RoundDetailRoute", () => {
       voting_acted: 0,
       vibing_count: 0,
     });
-    renderRound();
+    renderMix();
     expect(await screen.findByText("Debaser")).toBeInTheDocument();
     expect(
       screen.queryByText("bandcamp or YouTube only tracks that may not appear on your playlists"),
@@ -1098,7 +1098,7 @@ describe("RoundDetailRoute", () => {
   });
 
   it("closed: reveals submissions with submitter names", async () => {
-    mockGetRound.mockResolvedValue(round({ state: "closed" }));
+    mockGetMix.mockResolvedValue(mix({ state: "closed" }));
     mockGetResults.mockResolvedValue(
       results({
         submissions: [
@@ -1122,7 +1122,7 @@ describe("RoundDetailRoute", () => {
         ],
       }),
     );
-    renderRound();
+    renderMix();
     expect(await screen.findByText("Bad Guy")).toBeInTheDocument();
     expect(screen.getByText("Bob")).toBeInTheDocument();
     expect(screen.getByText(/a banger/)).toBeInTheDocument();
@@ -1131,7 +1131,7 @@ describe("RoundDetailRoute", () => {
   });
 
   it("closed: names who voted for a song (MYS-173)", async () => {
-    mockGetRound.mockResolvedValue(round({ state: "closed" }));
+    mockGetMix.mockResolvedValue(mix({ state: "closed" }));
     mockGetResults.mockResolvedValue(
       results({
         submissions: [
@@ -1158,7 +1158,7 @@ describe("RoundDetailRoute", () => {
         ],
       }),
     );
-    renderRound();
+    renderMix();
     expect(await screen.findByText("voted by Ada, Cal")).toBeInTheDocument();
   });
 
@@ -1180,13 +1180,13 @@ describe("RoundDetailRoute", () => {
       notes: [],
       voters: [],
     });
-    mockGetRound.mockResolvedValue(round({ state: "closed" }));
+    mockGetMix.mockResolvedValue(mix({ state: "closed" }));
     mockGetResults.mockResolvedValue(
       results({
         submissions: [sub("a", "Alpha", 7), sub("b", "Bravo", 7), sub("c", "Charlie", 4)],
       }),
     );
-    renderRound();
+    renderMix();
     const heading = await screen.findByText("the picks (3)");
     const section = heading.closest("section") as HTMLElement;
     const picks = within(section);
@@ -1219,7 +1219,7 @@ describe("RoundDetailRoute", () => {
       notes: [],
       voters: [],
     });
-    mockGetRound.mockResolvedValue(round({ state: "closed" }));
+    mockGetMix.mockResolvedValue(mix({ state: "closed" }));
     mockGetResults.mockResolvedValue(
       results({
         submissions: [
@@ -1230,7 +1230,7 @@ describe("RoundDetailRoute", () => {
         ],
       }),
     );
-    renderRound();
+    renderMix();
     const heading = await screen.findByText("the picks (4)");
     const section = heading.closest("section") as HTMLElement;
     const picks = within(section);
@@ -1242,7 +1242,7 @@ describe("RoundDetailRoute", () => {
   });
 
   describe("open_voting voting UX (MYS-20)", () => {
-    /** Put the round into open_voting with the given playlist entries, and a
+    /** Put the mix into open_voting with the given playlist entries, and a
      *  caller submission (so participation_mode is known) defaulting to playing. */
     function setupVoting(opts: {
       entries: PlaylistEntry[];
@@ -1256,7 +1256,7 @@ describe("RoundDetailRoute", () => {
       vibingCount?: number;
     }) {
       const vpp = opts.votesPerPlayer ?? 3;
-      mockGetRound.mockResolvedValue(round({ state: "open_voting", votes_per_player: vpp }));
+      mockGetMix.mockResolvedValue(mix({ state: "open_voting", votes_per_player: vpp }));
       mockGetPlaylist.mockResolvedValue({
         mix_id: "r1",
         mix_number: 1,
@@ -1291,7 +1291,7 @@ describe("RoundDetailRoute", () => {
         youtubePlaylistUrl: "https://www.youtube.com/watch_videos?video_ids=a,b",
         youtubeTrackCount: 1,
       });
-      renderRound();
+      renderMix();
 
       const link = await screen.findByRole("link", { name: /open playlist in youtube/i });
       expect(link).toHaveAttribute("href", "https://www.youtube.com/watch_videos?video_ids=a,b");
@@ -1306,7 +1306,7 @@ describe("RoundDetailRoute", () => {
         myVotes: [],
         youtubePlaylistUrl: null,
       });
-      renderRound();
+      renderMix();
 
       await screen.findByRole("button", { name: /Debaser/i });
       expect(
@@ -1323,7 +1323,7 @@ describe("RoundDetailRoute", () => {
         votingActed: 2,
         vibingCount: 1,
       });
-      renderRound();
+      renderMix();
 
       expect(await screen.findByText("2 of 4 voted or noted · 1 just vibing")).toBeInTheDocument();
     });
@@ -1336,7 +1336,7 @@ describe("RoundDetailRoute", () => {
         votingActed: 1,
         vibingCount: 0,
       });
-      renderRound();
+      renderMix();
 
       expect(await screen.findByText("1 of 3 voted or noted")).toBeInTheDocument();
       expect(screen.queryByText(/just vibing/i)).not.toBeInTheDocument();
@@ -1387,7 +1387,7 @@ describe("RoundDetailRoute", () => {
         voting_acted: casted ? 2 : 1,
         vibing_count: 0,
       }));
-      renderRound();
+      renderMix();
 
       expect(await screen.findByText("1 of 4 voted or noted")).toBeInTheDocument();
       await user.click(await screen.findByRole("button", { name: /Debaser/i }));
@@ -1407,7 +1407,7 @@ describe("RoundDetailRoute", () => {
         ],
         myVotes: [], // User hasn't voted yet - voting controls shown
       });
-      renderRound();
+      renderMix();
 
       const debaser = await screen.findByRole("button", { name: /Debaser/i });
       const hey = screen.getByRole("button", { name: /Hey/i });
@@ -1426,7 +1426,7 @@ describe("RoundDetailRoute", () => {
         ],
         myVotes: [],
       });
-      renderRound();
+      renderMix();
 
       await screen.findByText("My Track");
       // clearly marked as yours, with the no-self-vote explanation
@@ -1459,7 +1459,7 @@ describe("RoundDetailRoute", () => {
         ],
         myVotes: [],
       });
-      renderRound();
+      renderMix();
 
       const debaser = await screen.findByRole("button", { name: /Debaser/i });
       expect(screen.getByText("0 / 3 selected")).toBeInTheDocument();
@@ -1483,7 +1483,7 @@ describe("RoundDetailRoute", () => {
         votesPerPlayer: 1,
         myVotes: [], // User hasn't voted yet
       });
-      renderRound();
+      renderMix();
 
       const debaser = await screen.findByRole("button", { name: /Debaser/i });
       const hey = screen.getByRole("button", { name: /Hey/i });
@@ -1521,7 +1521,7 @@ describe("RoundDetailRoute", () => {
         count: 1,
         votes_per_player: 3,
       });
-      renderRound();
+      renderMix();
 
       const debaser = await screen.findByRole("button", { name: /Debaser/i });
       await user.click(debaser);
@@ -1547,7 +1547,7 @@ describe("RoundDetailRoute", () => {
               resolve({ mix_id: "r1", submission_ids: ["p1"], count: 1, votes_per_player: 3 });
           }),
       );
-      renderRound();
+      renderMix();
 
       await user.click(await screen.findByRole("button", { name: /Debaser/i }));
       await user.click(screen.getByRole("button", { name: /cast votes/i }));
@@ -1567,7 +1567,7 @@ describe("RoundDetailRoute", () => {
         entries: [entry({ submission_id: "p1", title: "Debaser" })],
         myVotes: [],
       });
-      renderRound();
+      renderMix();
 
       await screen.findByRole("button", { name: /Debaser/i });
       expect(screen.getByRole("button", { name: /cast votes/i })).toBeDisabled();
@@ -1581,7 +1581,7 @@ describe("RoundDetailRoute", () => {
         ],
         myVotes: [],
       });
-      renderRound();
+      renderMix();
 
       // Every song is a votable toggle now — vibing is private during voting.
       expect(await screen.findByRole("button", { name: /Debaser/i })).toBeInTheDocument();
@@ -1597,7 +1597,7 @@ describe("RoundDetailRoute", () => {
         myVotes: [],
         mine: mine({ participation_mode: "vibing" }),
       });
-      renderRound();
+      renderMix();
 
       expect(await screen.findByText(/you sit voting out/i)).toBeInTheDocument();
       // no vote controls
@@ -1607,9 +1607,9 @@ describe("RoundDetailRoute", () => {
       expect(screen.getByText("Debaser")).toBeInTheDocument();
     });
 
-    it("a non-submitter whose league membership is vibing sits voting out (MYS-167)", async () => {
-      // No submission this round, so the vibe stance falls back to the caller's
-      // per-league membership: vibe_mode true → they sit voting out, matching the
+    it("a non-submitter whose club membership is vibing sits voting out (MYS-167)", async () => {
+      // No submission this mix, so the vibe stance falls back to the caller's
+      // per-club membership: vibe_mode true → they sit voting out, matching the
       // backend which rejects such a ballot.
       mockGetMyMembership.mockResolvedValue({
         club_id: "lg1",
@@ -1621,7 +1621,7 @@ describe("RoundDetailRoute", () => {
         myVotes: [],
         mine: null, // no submission — stance comes from membership vibe_mode
       });
-      renderRound();
+      renderMix();
 
       expect(await screen.findByText(/you sit voting out/i)).toBeInTheDocument();
       // no vote controls
@@ -1631,7 +1631,7 @@ describe("RoundDetailRoute", () => {
       expect(screen.getByText("Debaser")).toBeInTheDocument();
     });
 
-    it("a non-submitter whose league membership is playing can vote (MYS-167)", async () => {
+    it("a non-submitter whose club membership is playing can vote (MYS-167)", async () => {
       // Playing membership + no submission → the ballot is available, matching the
       // backend which now accepts non-submitter votes from playing members.
       mockGetMyMembership.mockResolvedValue({
@@ -1644,7 +1644,7 @@ describe("RoundDetailRoute", () => {
         myVotes: [],
         mine: null, // no submission — stance comes from membership vibe_mode
       });
-      renderRound();
+      renderMix();
 
       // The song is a votable toggle and there's no sit-out message.
       expect(await screen.findByRole("button", { name: /Debaser/i })).toBeInTheDocument();
@@ -1657,7 +1657,7 @@ describe("RoundDetailRoute", () => {
         myVotes: [],
         mine: mine({ participation_mode: "vibing" }),
       });
-      renderRound();
+      renderMix();
 
       // Vibers don't vote, but they can still leave notes — the affordance is
       // present on the playlist card.
@@ -1674,7 +1674,7 @@ describe("RoundDetailRoute", () => {
         myVotes: [],
       });
       mockCastVotes.mockRejectedValue(new ApiError(403, "you can't vote for your own song"));
-      renderRound();
+      renderMix();
 
       const debaser = await screen.findByRole("button", { name: /Debaser/i });
       await user.click(debaser);
@@ -1686,7 +1686,7 @@ describe("RoundDetailRoute", () => {
   });
 
   describe("locked vote tally — VotingTally (MYS-171)", () => {
-    /** Puts the round straight into the locked-tally view: getMyVotes already
+    /** Puts the mix straight into the locked-tally view: getMyVotes already
      *  returns a non-empty submission_ids, so isVotesLocked is true from load()
      *  without needing to drive the cast-votes UI flow. */
     function setupLockedTally(opts: {
@@ -1695,7 +1695,7 @@ describe("RoundDetailRoute", () => {
       votesPerPlayer?: number;
     }) {
       const vpp = opts.votesPerPlayer ?? 3;
-      mockGetRound.mockResolvedValue(round({ state: "open_voting", votes_per_player: vpp }));
+      mockGetMix.mockResolvedValue(mix({ state: "open_voting", votes_per_player: vpp }));
       mockGetPlaylist.mockResolvedValue({
         mix_id: "r1",
         mix_number: 1,
@@ -1741,7 +1741,7 @@ describe("RoundDetailRoute", () => {
         myVotes: ["p3"],
         votesPerPlayer: 1,
       });
-      renderRound();
+      renderMix();
 
       await screen.findByText(/vote tally/i);
 
@@ -1769,7 +1769,7 @@ describe("RoundDetailRoute", () => {
         ],
         myVotes: ["p1"],
       });
-      renderRound();
+      renderMix();
 
       await screen.findByText(/vote tally/i);
 
@@ -1787,7 +1787,7 @@ describe("RoundDetailRoute", () => {
         ],
         myVotes: ["p1"],
       });
-      const { container } = renderRound();
+      const { container } = renderMix();
 
       await screen.findByText(/vote tally/i);
 
@@ -1823,7 +1823,7 @@ describe("RoundDetailRoute", () => {
         count: 0,
         votes_per_player: 3,
       });
-      renderRound();
+      renderMix();
 
       await user.click(await screen.findByRole("button", { name: /Debaser/i }));
       await user.click(screen.getByRole("button", { name: /cast votes/i }));
@@ -1843,7 +1843,7 @@ describe("RoundDetailRoute", () => {
         myVotes: ["p1", "p3"],
         votesPerPlayer: 2,
       });
-      renderRound();
+      renderMix();
 
       await screen.findByText(/vote tally/i);
 
@@ -1864,7 +1864,7 @@ describe("RoundDetailRoute", () => {
         voteCounts: [{ submission_id: "p1", title: "Debaser", artist: "Pixies", vote_count: 1 }],
         myVotes: ["p1"],
       });
-      renderRound();
+      renderMix();
 
       expect(
         await screen.findByText(
@@ -1876,7 +1876,7 @@ describe("RoundDetailRoute", () => {
 
   describe("open_voting notes UX (MYS-21)", () => {
     function setupVoting(opts: { entries: PlaylistEntry[]; mine?: SubmissionResult | null }) {
-      mockGetRound.mockResolvedValue(round({ state: "open_voting" }));
+      mockGetMix.mockResolvedValue(mix({ state: "open_voting" }));
       mockGetPlaylist.mockResolvedValue({
         mix_id: "r1",
         mix_number: 1,
@@ -1915,7 +1915,7 @@ describe("RoundDetailRoute", () => {
           entry({ submission_id: "p2", title: "Ambient Drift" }),
         ],
       });
-      renderRound();
+      renderMix();
 
       // It's a votable toggle like any other, and the old vibing-only
       // "can't vote on this one — leave a note instead" hint is gone entirely.
@@ -1937,7 +1937,7 @@ describe("RoundDetailRoute", () => {
           created_at: "2026-01-01T00:00:00Z",
         },
       ]);
-      renderRound();
+      renderMix();
 
       await screen.findByRole("button", { name: /Debaser/i });
       const card = cardFor("Debaser");
@@ -1952,7 +1952,7 @@ describe("RoundDetailRoute", () => {
       const user = userEvent.setup();
       setupVoting({ entries: [entry({ submission_id: "p1", title: "Debaser" })] });
       mockGetNotes.mockResolvedValue([]);
-      renderRound();
+      renderMix();
 
       await screen.findByRole("button", { name: /Debaser/i });
       const card = cardFor("Debaser");
@@ -1975,7 +1975,7 @@ describe("RoundDetailRoute", () => {
         body: "great taste",
         created_at: "2026-01-01T00:00:00Z",
       });
-      renderRound();
+      renderMix();
 
       await screen.findByRole("button", { name: /Debaser/i });
       const card = cardFor("Debaser");
@@ -2011,7 +2011,7 @@ describe("RoundDetailRoute", () => {
       mockAddNote.mockRejectedValue(
         new ApiError(409, "notes are only allowed while voting is open"),
       );
-      renderRound();
+      renderMix();
 
       await screen.findByRole("button", { name: /Debaser/i });
       const card = cardFor("Debaser");
@@ -2027,7 +2027,7 @@ describe("RoundDetailRoute", () => {
       const user = userEvent.setup();
       setupVoting({ entries: [entry({ submission_id: "p1", title: "Debaser" })] });
       mockGetNotes.mockResolvedValue([]);
-      renderRound();
+      renderMix();
 
       // the vote toggle still works
       const toggle = await screen.findByRole("button", { name: /Debaser/i });
@@ -2042,7 +2042,7 @@ describe("RoundDetailRoute", () => {
     });
 
     it("notes affordances do NOT appear in the closed/reveal view", async () => {
-      mockGetRound.mockResolvedValue(round({ state: "closed" }));
+      mockGetMix.mockResolvedValue(mix({ state: "closed" }));
       mockGetResults.mockResolvedValue(
         results({
           submissions: [
@@ -2066,7 +2066,7 @@ describe("RoundDetailRoute", () => {
           ],
         }),
       );
-      renderRound();
+      renderMix();
 
       await screen.findByRole("heading", { name: /the picks/i });
       expect(screen.queryByRole("button", { name: /leave a note/i })).not.toBeInTheDocument();
@@ -2078,8 +2078,8 @@ describe("RoundDetailRoute", () => {
   describe("closed reveal / results (MYS-24)", () => {
     /** A revealed submission fixture. */
     function sub(
-      overrides: Partial<RoundResults["submissions"][number]> = {},
-    ): RoundResults["submissions"][number] {
+      overrides: Partial<MixResults["submissions"][number]> = {},
+    ): MixResults["submissions"][number] {
       return {
         submission_id: "s1",
         user_id: OTHER,
@@ -2100,9 +2100,9 @@ describe("RoundDetailRoute", () => {
       };
     }
 
-    /** Put the round into closed state with the given results payload. */
-    function setupClosed(overrides: Partial<RoundResults> = {}) {
-      mockGetRound.mockResolvedValue(round({ state: "closed" }));
+    /** Put the mix into closed state with the given results payload. */
+    function setupClosed(overrides: Partial<MixResults> = {}) {
+      mockGetMix.mockResolvedValue(mix({ state: "closed" }));
       mockGetResults.mockResolvedValue(results(overrides));
     }
 
@@ -2165,7 +2165,7 @@ describe("RoundDetailRoute", () => {
           },
         ],
       });
-      renderRound();
+      renderMix();
 
       // Winner named (no count) and the full tracklist is visible, with notes
       // behind the collapsible toggle. "Winning Song" shows in both the winner
@@ -2204,7 +2204,7 @@ describe("RoundDetailRoute", () => {
           ],
         },
       });
-      renderRound();
+      renderMix();
 
       await screen.findByRole("heading", { name: /most noted/i });
       const section = sectionFor(/most noted/i);
@@ -2246,7 +2246,7 @@ describe("RoundDetailRoute", () => {
           ],
         },
       });
-      renderRound();
+      renderMix();
 
       await screen.findByRole("heading", { name: /most noted/i });
       const section = sectionFor(/most noted/i);
@@ -2264,7 +2264,7 @@ describe("RoundDetailRoute", () => {
         submissions: [sub({ vote_count: 0 })],
         most_noted: { note_count: 0, winners: [] },
       });
-      renderRound();
+      renderMix();
 
       // wait for the page to render the picks
       await screen.findByRole("heading", { name: /the picks/i });
@@ -2294,7 +2294,7 @@ describe("RoundDetailRoute", () => {
           }),
         ],
       });
-      renderRound();
+      renderMix();
 
       await screen.findByRole("heading", { name: /^winner$/i });
       const section = sectionFor(/^winner$/i);
@@ -2333,7 +2333,7 @@ describe("RoundDetailRoute", () => {
           }),
         ],
       });
-      renderRound();
+      renderMix();
 
       await screen.findByRole("heading", { name: /^winners$/i });
       const section = sectionFor(/^winners$/i);
@@ -2346,7 +2346,7 @@ describe("RoundDetailRoute", () => {
 
     it("Winner: section is omitted when no song drew a vote", async () => {
       setupClosed({ submissions: [sub({ title: "Bad Guy", vote_count: 0 })] });
-      renderRound();
+      renderMix();
 
       await screen.findByRole("heading", { name: /the picks/i });
       expect(screen.queryByRole("heading", { name: /^winner$/i })).not.toBeInTheDocument();
@@ -2386,7 +2386,7 @@ describe("RoundDetailRoute", () => {
           { user_id: "u-bo", display_name: "Bo", vote_count: 1, rank: 2 },
         ],
       });
-      renderRound();
+      renderMix();
 
       await screen.findByRole("heading", { name: /the picks/i });
       // Every song is its own pick tile (3 songs → 3 tiles), each with its votes.
@@ -2431,7 +2431,7 @@ describe("RoundDetailRoute", () => {
           { user_id: "u-bo", display_name: "Bo", vote_count: 5, rank: 2 },
         ],
       });
-      renderRound();
+      renderMix();
 
       await screen.findByRole("heading", { name: /^winner$/i });
       const section = sectionFor(/^winner$/i);
@@ -2464,7 +2464,7 @@ describe("RoundDetailRoute", () => {
           { user_id: "u-cal", display_name: "Cal", vote_count: 1, rank: 2 },
         ],
       });
-      renderRound();
+      renderMix();
 
       await screen.findByRole("heading", { name: /leaderboard/i });
       const section = sectionFor(/leaderboard/i);
@@ -2494,7 +2494,7 @@ describe("RoundDetailRoute", () => {
         ],
         leaderboard: [{ user_id: "u-bo", display_name: "Bo", vote_count: 2, rank: 1 }],
       });
-      renderRound();
+      renderMix();
 
       await screen.findByRole("heading", { name: /leaderboard/i });
       const section = sectionFor(/leaderboard/i);
@@ -2509,7 +2509,7 @@ describe("RoundDetailRoute", () => {
         submissions: [sub({ vote_count: 0 })],
         leaderboard: [],
       });
-      renderRound();
+      renderMix();
 
       await screen.findByRole("heading", { name: /the picks/i });
       expect(screen.queryByRole("heading", { name: /leaderboard/i })).not.toBeInTheDocument();
@@ -2532,7 +2532,7 @@ describe("RoundDetailRoute", () => {
           }),
         ],
       });
-      renderRound();
+      renderMix();
 
       const user = userEvent.setup();
       await screen.findByRole("heading", { name: /the picks/i });
@@ -2562,7 +2562,7 @@ describe("RoundDetailRoute", () => {
           }),
         ],
       });
-      renderRound();
+      renderMix();
 
       await screen.findByRole("heading", { name: /the picks/i });
       const card = cardFor("Bad Guy");
@@ -2594,7 +2594,7 @@ describe("RoundDetailRoute", () => {
           }),
         ],
       });
-      renderRound();
+      renderMix();
 
       await screen.findByRole("heading", { name: /the picks/i });
       const card = cardFor("Bad Guy");
@@ -2607,7 +2607,7 @@ describe("RoundDetailRoute", () => {
       setupClosed({
         submissions: [sub({ title: "Bad Guy", vote_count: 1 })],
       });
-      renderRound();
+      renderMix();
 
       await screen.findByRole("heading", { name: /the picks/i });
       const card = cardFor("Bad Guy");
@@ -2623,7 +2623,7 @@ describe("RoundDetailRoute", () => {
           }),
         ],
       });
-      renderRound();
+      renderMix();
 
       await screen.findByRole("heading", { name: /the picks/i });
       const card = cardFor("Bad Guy");
@@ -2638,7 +2638,7 @@ describe("RoundDetailRoute", () => {
           sub({ submission_id: "v1", title: "Ambient Drift", artist: "Brian Eno", vote_count: 1 }),
         ],
       });
-      renderRound();
+      renderMix();
 
       await screen.findByRole("heading", { name: /the picks/i });
       // "Ambient Drift" isn't the winner, so it only appears in the picks list.
@@ -2652,7 +2652,7 @@ describe("RoundDetailRoute", () => {
       setupClosed({
         submissions: [sub({ title: "Bad Guy", submitter_note: null, notes: [], vote_count: 4 })],
       });
-      renderRound();
+      renderMix();
 
       await screen.findByRole("heading", { name: /the picks/i });
       const card = cardFor("Bad Guy");
@@ -2663,7 +2663,7 @@ describe("RoundDetailRoute", () => {
 
     it("empty results (no submissions) shows the empty state", async () => {
       setupClosed({ submissions: [], leaderboard: [], most_noted: { note_count: 0, winners: [] } });
-      renderRound();
+      renderMix();
 
       expect(await screen.findByText(/no submissions/i)).toBeInTheDocument();
       expect(screen.queryByRole("heading", { name: /the picks/i })).not.toBeInTheDocument();
@@ -2671,7 +2671,7 @@ describe("RoundDetailRoute", () => {
 
     // ----- Data loading ---------------------------------------------------- //
 
-    it("closed round shows a 'listen back' affordance when there are tracks (MYS-133)", async () => {
+    it("closed mix shows a 'listen back' affordance when there are tracks (MYS-133)", async () => {
       mockGetPlaylist.mockResolvedValue({
         mix_id: "r1",
         mix_number: 1,
@@ -2685,15 +2685,15 @@ describe("RoundDetailRoute", () => {
         vibing_count: 0,
       });
       setupClosed({ submissions: [sub({ title: "Debaser" })] });
-      renderRound();
+      renderMix();
 
       expect(await screen.findByRole("heading", { name: /listen back/i })).toBeInTheDocument();
       expect(screen.getByRole("link", { name: /open playlist in youtube/i })).toBeInTheDocument();
     });
 
-    it("calls getResults + getPlaylist for a closed round, and not getMine", async () => {
+    it("calls getResults + getPlaylist for a closed mix, and not getMine", async () => {
       setupClosed({ submissions: [sub({ title: "Bad Guy" })] });
-      renderRound();
+      renderMix();
 
       await screen.findByRole("heading", { name: /the picks/i });
       expect(mockGetResults).toHaveBeenCalledWith("r1");
@@ -2706,9 +2706,9 @@ describe("RoundDetailRoute", () => {
     it("when getResults rejects with an ApiError, the page shows its error state", async () => {
       const { ApiError } =
         await vi.importActual<typeof import("../services/api")>("../services/api");
-      mockGetRound.mockResolvedValue(round({ state: "closed" }));
+      mockGetMix.mockResolvedValue(mix({ state: "closed" }));
       mockGetResults.mockRejectedValue(new ApiError(409, "results are available once it closes"));
-      renderRound();
+      renderMix();
 
       expect(await screen.findByText(/results are available once it closes/i)).toBeInTheDocument();
       // nothing rendered for the picks

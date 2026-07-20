@@ -4,8 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { ProfileRoute } from "./ProfileRoute";
 import { AuthedLayout } from "../components/AuthedLayout";
-import { ApiError, exportMyData, getLeagues, getMe, updateDisplayName } from "../services/api";
-import type { League, UserProfile } from "../services/api";
+import { ApiError, exportMyData, getClubs, getMe, updateDisplayName } from "../services/api";
+import type { Club, UserProfile } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 
 // Mock the API module (no network). Keep ApiError real.
@@ -13,7 +13,7 @@ vi.mock("../services/api", async () => {
   const actual = await vi.importActual<typeof import("../services/api")>("../services/api");
   return {
     ...actual,
-    getLeagues: vi.fn(),
+    getClubs: vi.fn(),
     getMe: vi.fn(),
     updateDisplayName: vi.fn(),
     exportMyData: vi.fn(),
@@ -22,7 +22,7 @@ vi.mock("../services/api", async () => {
 
 vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
 
-const mockGetLeagues = vi.mocked(getLeagues);
+const mockGetClubs = vi.mocked(getClubs);
 const mockGetMe = vi.mocked(getMe);
 const mockUpdateDisplayName = vi.mocked(updateDisplayName);
 const mockExportMyData = vi.mocked(exportMyData);
@@ -51,9 +51,9 @@ function setAuth(displayName: string | null = "Ada") {
   });
 }
 
-function leagueWith(overrides: Partial<League> = {}): League {
+function clubWith(overrides: Partial<Club> = {}): Club {
   return {
-    id: "league-1",
+    id: "club-1",
     name: "Friday Mixtape",
     description: null,
     organizer_id: "org-1",
@@ -92,7 +92,7 @@ function renderProfile() {
           <Route path="/profile" element={<ProfileRoute />} />
         </Route>
         <Route path="/home" element={<div>HOME CONTENT</div>} />
-        <Route path="/clubs/:id" element={<div>LEAGUE DETAIL CONTENT</div>} />
+        <Route path="/clubs/:id" element={<div>CLUB DETAIL CONTENT</div>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -102,20 +102,20 @@ describe("ProfileRoute", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     setAuth("Ada");
-    mockGetLeagues.mockResolvedValue([]);
+    mockGetClubs.mockResolvedValue([]);
     mockGetMe.mockResolvedValue(profileWith("Ada"));
   });
 
-  it("renders the current display name and only the completed leagues, newest first", async () => {
-    mockGetLeagues.mockResolvedValue([
-      leagueWith({ id: "active-1", name: "In Progress", state: "active", completed_at: null }),
-      leagueWith({ id: "old", name: "Old Mix", completed_at: "2026-01-15T00:00:00Z" }),
-      leagueWith({ id: "new", name: "New Mix", completed_at: "2026-03-15T00:00:00Z" }),
+  it("renders the current display name and only the completed clubs, newest first", async () => {
+    mockGetClubs.mockResolvedValue([
+      clubWith({ id: "active-1", name: "In Progress", state: "active", completed_at: null }),
+      clubWith({ id: "old", name: "Old Mix", completed_at: "2026-01-15T00:00:00Z" }),
+      clubWith({ id: "new", name: "New Mix", completed_at: "2026-03-15T00:00:00Z" }),
     ]);
 
     renderProfile();
 
-    // Active league is excluded from the archive.
+    // Active club is excluded from the archive.
     expect(await screen.findByText("archived (2)")).toBeInTheDocument();
     expect(screen.queryByText("In Progress")).not.toBeInTheDocument();
 
@@ -132,8 +132,8 @@ describe("ProfileRoute", () => {
   });
 
   it("empty archive: shows a calm note", async () => {
-    mockGetLeagues.mockResolvedValue([
-      leagueWith({ state: "active", completed_at: null }),
+    mockGetClubs.mockResolvedValue([
+      clubWith({ state: "active", completed_at: null }),
     ]);
 
     renderProfile();
@@ -184,8 +184,8 @@ describe("ProfileRoute", () => {
     expect(await screen.findByText(/name taken/i)).toBeInTheDocument();
   });
 
-  it("archived league is linkable to its league home", async () => {
-    mockGetLeagues.mockResolvedValue([leagueWith({ id: "league-9", name: "Click Me" })]);
+  it("archived club is linkable to its club home", async () => {
+    mockGetClubs.mockResolvedValue([clubWith({ id: "club-9", name: "Click Me" })]);
     const user = userEvent.setup();
 
     renderProfile();
@@ -193,11 +193,11 @@ describe("ProfileRoute", () => {
 
     await user.click(screen.getByText("Click Me"));
 
-    expect(await screen.findByText("LEAGUE DETAIL CONTENT")).toBeInTheDocument();
+    expect(await screen.findByText("CLUB DETAIL CONTENT")).toBeInTheDocument();
   });
 
   it("load failure: shows a calm error", async () => {
-    mockGetLeagues.mockRejectedValue(new ApiError(500, "boom"));
+    mockGetClubs.mockRejectedValue(new ApiError(500, "boom"));
 
     renderProfile();
 

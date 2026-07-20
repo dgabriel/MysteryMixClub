@@ -52,6 +52,14 @@ const SERVICES: { key: PasteSourceKey; label: string; placeholder: string }[] = 
   { key: "bandcamp", label: "Bandcamp", placeholder: "https://artist.bandcamp.com/track/…" },
 ];
 
+// A source-only track (MYS-201) has a real track page on exactly one service
+// family; every other platform's link is only a title/artist search that looks
+// broken. Restrict the buttons to the platforms that are genuinely that track.
+const SOURCE_PLATFORMS: Record<"youtube" | "bandcamp", PlatformKey[]> = {
+  youtube: ["youtube", "youtubeMusic"],
+  bandcamp: ["bandcamp"],
+};
+
 function serviceFromPref(pref: string | null | undefined): ServiceKey {
   if (pref === "youtube") return "youtube";
   if (pref === "appleMusic") return "appleMusic";
@@ -518,7 +526,11 @@ function ResultView({
   noteText?: string;
   onNoteChange?: (text: string) => void;
 }) {
-  const available = PLATFORMS.filter((p) => song.platforms[p.key]);
+  const available = PLATFORMS.filter((p) => {
+    if (!song.platforms[p.key]) return false;
+    if (song.source) return SOURCE_PLATFORMS[song.source].includes(p.key);
+    return true;
+  });
   const noteId = useId();
   return (
     <div className="mt-5">

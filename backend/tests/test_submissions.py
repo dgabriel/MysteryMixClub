@@ -22,9 +22,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.jwt import create_access_token
 from app.db.session import get_db
 from app.main import create_app
-from app.models.league import League
-from app.models.league_member import LeagueMember
-from app.models.round import Round
+from app.models.club import Club
+from app.models.club_member import ClubMember
+from app.models.mix import Mix
 from app.models.submission import Submission
 from app.models.user import User
 from app.services.song_links import SongLinkAssembler, get_link_assembler
@@ -92,21 +92,21 @@ async def _seed_league_with_round(
     state: str = "open_submission",
     vibe: bool = False,
     songs: int = 1,
-) -> Round:
+) -> Mix:
     # `vibe` seeds the organizer's per-league vibe_mode, so their submission
     # defaults to that mode (MYS-112). `songs` is the per-league songs_per_submission
     # cap (MYS-116; default 1 = classic one-song behaviour).
-    league = League(
+    league = Club(
         name="L",
         organizer_id=organizer.id,
-        total_rounds=3,
+        total_mixes=3,
         votes_per_player=3,
         songs_per_submission=songs,
     )
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id, vibe_mode=vibe))
-    round_ = Round(league_id=league.id, round_number=1, theme="late summer", state=state)
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id, vibe_mode=vibe))
+    round_ = Mix(club_id=league.id, mix_number=1, theme="late summer", state=state)
     db_session.add(round_)
     await db_session.commit()
     await db_session.refresh(round_)
@@ -114,7 +114,7 @@ async def _seed_league_with_round(
 
 
 async def _add_member(db_session, league_id: uuid.UUID, user: User) -> None:
-    db_session.add(LeagueMember(league_id=league_id, user_id=user.id))
+    db_session.add(ClubMember(club_id=league_id, user_id=user.id))
     await db_session.commit()
 
 
@@ -217,7 +217,7 @@ async def test_submit_happy_path_persists_platform_links(session_factory, db_ses
     # platform_links are stored server-side (not exposed in the response).
     assert "platform_links" not in body
     db_session.expire_all()
-    stored = await db_session.scalar(select(Submission).where(Submission.round_id == round_id))
+    stored = await db_session.scalar(select(Submission).where(Submission.mix_id == round_id))
     assert stored.platform_links == _LINKS
 
 
@@ -230,7 +230,7 @@ async def test_submit_resolves_and_persists_youtube_video_id(session_factory, db
         resp = await client.post(_sub_url(round_id), json=_body(), headers=_auth(organizer.id))
     assert resp.status_code == 201, resp.text
     db_session.expire_all()
-    stored = await db_session.scalar(select(Submission).where(Submission.round_id == round_id))
+    stored = await db_session.scalar(select(Submission).where(Submission.mix_id == round_id))
     assert stored.youtube_video_id == "PRpiBpDy7MQ"
 
 
@@ -244,7 +244,7 @@ async def test_submit_succeeds_when_youtube_resolution_yields_none(session_facto
         resp = await client.post(_sub_url(round_id), json=_body(), headers=_auth(organizer.id))
     assert resp.status_code == 201, resp.text
     db_session.expire_all()
-    stored = await db_session.scalar(select(Submission).where(Submission.round_id == round_id))
+    stored = await db_session.scalar(select(Submission).where(Submission.mix_id == round_id))
     assert stored.youtube_video_id is None
 
 
@@ -263,7 +263,7 @@ async def test_edit_updates_youtube_video_id(session_factory, db_session):
     assert edited.status_code == 200, edited.text
     assert edited.json()["title"] == "new pick"
     db_session.expire_all()
-    stored = await db_session.scalar(select(Submission).where(Submission.round_id == round_id))
+    stored = await db_session.scalar(select(Submission).where(Submission.mix_id == round_id))
     assert stored.youtube_video_id == "SECOND"
 
 
@@ -299,7 +299,7 @@ async def test_submit_succeeds_with_degraded_links(session_factory, db_session):
         resp = await client.post(_sub_url(round_id), json=_body(), headers=_auth(organizer.id))
     assert resp.status_code == 201, resp.text
     db_session.expire_all()
-    stored = await db_session.scalar(select(Submission).where(Submission.round_id == round_id))
+    stored = await db_session.scalar(select(Submission).where(Submission.mix_id == round_id))
     assert stored.platform_links == {"deezer": "https://www.deezer.com/search/x"}
 
 
@@ -341,7 +341,7 @@ async def test_submit_multiple_up_to_cap(session_factory, db_session):
     assert over.status_code == 409, over.text
     db_session.expire_all()
     count = await db_session.scalar(
-        select(func.count()).select_from(Submission).where(Submission.round_id == round_id)
+        select(func.count()).select_from(Submission).where(Submission.mix_id == round_id)
     )
     assert count == 3
 
@@ -374,7 +374,7 @@ async def test_edit_not_your_submission_403(session_factory, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
     member = await _seed_user(db_session, "m@example.com")
     round_ = await _seed_league_with_round(db_session, organizer)
-    await _add_member(db_session, round_.league_id, member)
+    await _add_member(db_session, round_.club_id, member)
     async with _build_client(session_factory) as client:
         mine = await client.post(_sub_url(round_.id), json=_body(), headers=_auth(organizer.id))
         sid = mine.json()["id"]
@@ -401,7 +401,7 @@ async def test_edit_when_not_open_409(session_factory, db_session):
     async with _build_client(session_factory) as client:
         first = await client.post(_sub_url(round_id), json=_body(), headers=_auth(organizer.id))
         sid = first.json()["id"]
-        db_round = await db_session.scalar(select(Round).where(Round.id == round_id))
+        db_round = await db_session.scalar(select(Mix).where(Mix.id == round_id))
         db_round.state = "open_voting"
         await db_session.commit()
         resp = await client.patch(
@@ -435,7 +435,7 @@ async def test_delete_not_your_submission_403(session_factory, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
     member = await _seed_user(db_session, "m@example.com")
     round_ = await _seed_league_with_round(db_session, organizer)
-    await _add_member(db_session, round_.league_id, member)
+    await _add_member(db_session, round_.club_id, member)
     async with _build_client(session_factory) as client:
         mine = await client.post(_sub_url(round_.id), json=_body(), headers=_auth(organizer.id))
         resp = await client.delete(
@@ -478,7 +478,7 @@ async def test_update_note_not_your_submission_403(session_factory, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
     member = await _seed_user(db_session, "m@example.com")
     round_ = await _seed_league_with_round(db_session, organizer)
-    await _add_member(db_session, round_.league_id, member)
+    await _add_member(db_session, round_.club_id, member)
     async with _build_client(session_factory) as client:
         sub = await client.post(_sub_url(round_.id), json=_body(), headers=_auth(organizer.id))
         resp = await client.patch(
@@ -586,7 +586,7 @@ async def test_list_visible_after_close(session_factory, db_session):
     member = await _seed_user(db_session, "m@example.com")
     # Seed an open round, submit, then flip to closed directly in the DB.
     round_ = await _seed_league_with_round(db_session, organizer)
-    await _add_member(db_session, round_.league_id, member)
+    await _add_member(db_session, round_.club_id, member)
     round_id = round_.id
     async with _build_client(session_factory) as client:
         await client.post(_sub_url(round_id), json=_body(), headers=_auth(organizer.id))
@@ -594,7 +594,7 @@ async def test_list_visible_after_close(session_factory, db_session):
             _sub_url(round_id), json=_body(title="member pick"), headers=_auth(member.id)
         )
         # Close the round (membership read still allowed).
-        db_round = await db_session.scalar(select(Round).where(Round.id == round_id))
+        db_round = await db_session.scalar(select(Mix).where(Mix.id == round_id))
         db_round.state = "closed"
         await db_session.commit()
         resp = await client.get(_sub_url(round_id), headers=_auth(member.id))
@@ -643,8 +643,8 @@ def _source_body(source_key: str, **over) -> dict:
     return body
 
 
-async def _seed_second_round(db_session, league_id: uuid.UUID, *, number: int = 2) -> Round:
-    round_ = Round(league_id=league_id, round_number=number, theme="t2", state="open_submission")
+async def _seed_second_round(db_session, league_id: uuid.UUID, *, number: int = 2) -> Mix:
+    round_ = Mix(club_id=league_id, mix_number=number, theme="t2", state="open_submission")
     db_session.add(round_)
     await db_session.commit()
     await db_session.refresh(round_)
@@ -710,7 +710,7 @@ async def test_submit_bandcamp_source_only_happy_path(session_factory, db_sessio
     assert body["source"] == "bandcamp"
     assert body["source_url"] == "https://coolband.bandcamp.com/track/song-title"
     db_session.expire_all()
-    stored = await db_session.scalar(select(Submission).where(Submission.round_id == round_id))
+    stored = await db_session.scalar(select(Submission).where(Submission.mix_id == round_id))
     assert stored.source_key == "bandcamp:coolband/song-title"
     assert stored.isrc is None
     # The stored Bandcamp link is the exact reconstructed track page, and YouTube
@@ -738,7 +738,7 @@ async def test_submit_youtube_source_only_uses_exact_video_id(session_factory, d
     assert body["source"] == "youtube"
     assert body["source_url"] == "https://www.youtube.com/watch?v=PRpiBpDy7MQ"
     db_session.expire_all()
-    stored = await db_session.scalar(select(Submission).where(Submission.round_id == round_id))
+    stored = await db_session.scalar(select(Submission).where(Submission.mix_id == round_id))
     assert stored.source_key == "youtube:PRpiBpDy7MQ"
     # The exact submitted video id drives the watch links and is cached — no search.
     assert stored.youtube_video_id == "PRpiBpDy7MQ"
@@ -750,7 +750,7 @@ async def test_duplicate_source_key_within_mix_409(session_factory, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
     member = await _seed_user(db_session, "m@example.com")
     round_ = await _seed_league_with_round(db_session, organizer)
-    await _add_member(db_session, round_.league_id, member)
+    await _add_member(db_session, round_.club_id, member)
     key = "bandcamp:coolband/song-title"
     async with _build_client(
         session_factory, assembler=_no_http_assembler(), youtube=_BoomYouTube()
@@ -770,7 +770,7 @@ async def test_distinct_source_keys_do_not_collide(session_factory, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
     member = await _seed_user(db_session, "m@example.com")
     round_ = await _seed_league_with_round(db_session, organizer)
-    await _add_member(db_session, round_.league_id, member)
+    await _add_member(db_session, round_.club_id, member)
     async with _build_client(
         session_factory, assembler=_no_http_assembler(), youtube=_BoomYouTube()
     ) as client:
@@ -791,7 +791,7 @@ async def test_distinct_source_keys_do_not_collide(session_factory, db_session):
 async def test_source_key_repeat_across_prior_mix_flags_but_allows(session_factory, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
     round1 = await _seed_league_with_round(db_session, organizer)
-    round2 = await _seed_second_round(db_session, round1.league_id)
+    round2 = await _seed_second_round(db_session, round1.club_id)
     key = "youtube:PRpiBpDy7MQ"
     async with _build_client(
         session_factory, assembler=_no_http_assembler(), youtube=_BoomYouTube()
@@ -826,7 +826,7 @@ async def test_submit_persists_bandcamp_track_id_under_reserved_key(session_fact
         )
     assert resp.status_code == 201, resp.text
     db_session.expire_all()
-    stored = await db_session.scalar(select(Submission).where(Submission.round_id == round_id))
+    stored = await db_session.scalar(select(Submission).where(Submission.mix_id == round_id))
     assert stored.platform_links == {**_LINKS, "bandcampTrackId": "12345"}
 
 
@@ -845,7 +845,7 @@ async def test_submit_source_only_bandcamp_track_id_rides_along(session_factory,
         )
     assert resp.status_code == 201, resp.text
     db_session.expire_all()
-    stored = await db_session.scalar(select(Submission).where(Submission.round_id == round_id))
+    stored = await db_session.scalar(select(Submission).where(Submission.mix_id == round_id))
     assert stored.platform_links["bandcampTrackId"] == "98765"
     # The real exact links are untouched by the extra key.
     assert stored.platform_links["bandcamp"] == "https://coolband.bandcamp.com/track/song-title"
@@ -859,7 +859,7 @@ async def test_submit_without_bandcamp_track_id_adds_no_key(session_factory, db_
         resp = await client.post(_sub_url(round_id), json=_body(), headers=_auth(organizer.id))
     assert resp.status_code == 201, resp.text
     db_session.expire_all()
-    stored = await db_session.scalar(select(Submission).where(Submission.round_id == round_id))
+    stored = await db_session.scalar(select(Submission).where(Submission.mix_id == round_id))
     assert "bandcampTrackId" not in stored.platform_links
     assert stored.platform_links == _LINKS
 
@@ -911,6 +911,6 @@ async def test_concurrent_submit_at_cap_1_produces_exactly_one_submission(
 
     db_session.expire_all()
     count = await db_session.scalar(
-        select(func.count()).select_from(Submission).where(Submission.round_id == round_id)
+        select(func.count()).select_from(Submission).where(Submission.mix_id == round_id)
     )
     assert count == 1, "concurrent submissions must not exceed the cap"

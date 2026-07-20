@@ -23,11 +23,11 @@ from sqlalchemy import func, select
 
 from app.jobs.purge_accounts import purge_deleted_accounts
 from app.models.invite import Invite
-from app.models.league import League
-from app.models.league_member import LeagueMember
+from app.models.club import Club
+from app.models.club_member import ClubMember
 from app.models.magic_link_token import MagicLinkToken
 from app.models.note import Note
-from app.models.round import Round
+from app.models.mix import Mix
 from app.models.session import Session
 from app.models.submission import Submission
 from app.models.user import User
@@ -50,22 +50,22 @@ async def _seed_user(db_session, email: str, *, deleted_at=None, name: str = "Us
     return user
 
 
-async def _seed_league(db_session, organizer_id, *, name="L", state="active") -> League:
-    league = League(
-        name=name, organizer_id=organizer_id, total_rounds=3, votes_per_player=3, state=state
+async def _seed_league(db_session, organizer_id, *, name="L", state="active") -> Club:
+    league = Club(
+        name=name, organizer_id=organizer_id, total_mixes=3, votes_per_player=3, state=state
     )
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer_id))
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer_id))
     await db_session.commit()
     await db_session.refresh(league)
     return league
 
 
-async def _seed_round(db_session, league_id, *, number=1, state="closed") -> Round:
-    round_ = Round(
-        league_id=league_id,
-        round_number=number,
+async def _seed_round(db_session, league_id, *, number=1, state="closed") -> Mix:
+    round_ = Mix(
+        club_id=league_id,
+        mix_number=number,
         theme="a theme",
         state=state,
         votes_per_player=3,
@@ -78,7 +78,7 @@ async def _seed_round(db_session, league_id, *, number=1, state="closed") -> Rou
 
 async def _seed_submission(db_session, round_id, user_id, *, isrc="USABC1234567") -> Submission:
     sub = Submission(
-        round_id=round_id,
+        mix_id=round_id,
         user_id=user_id,
         isrc=isrc,
         title="song",
@@ -92,7 +92,7 @@ async def _seed_submission(db_session, round_id, user_id, *, isrc="USABC1234567"
 
 
 async def _seed_vote(db_session, round_id, voter_id, submission_id) -> Vote:
-    vote = Vote(round_id=round_id, voter_id=voter_id, submission_id=submission_id)
+    vote = Vote(mix_id=round_id, voter_id=voter_id, submission_id=submission_id)
     db_session.add(vote)
     await db_session.commit()
     await db_session.refresh(vote)
@@ -100,7 +100,7 @@ async def _seed_vote(db_session, round_id, voter_id, submission_id) -> Vote:
 
 
 async def _seed_note(db_session, round_id, author_id, submission_id, body="nice") -> Note:
-    note = Note(round_id=round_id, author_id=author_id, submission_id=submission_id, body=body)
+    note = Note(mix_id=round_id, author_id=author_id, submission_id=submission_id, body=body)
     db_session.add(note)
     await db_session.commit()
     await db_session.refresh(note)
@@ -109,7 +109,7 @@ async def _seed_note(db_session, round_id, author_id, submission_id, body="nice"
 
 async def _seed_invite(db_session, league_id, created_by) -> Invite:
     invite = Invite(
-        league_id=league_id,
+        club_id=league_id,
         created_by=created_by,
         token="tok-" + uuid.uuid4().hex,
         expires_at=None,
@@ -120,8 +120,8 @@ async def _seed_invite(db_session, league_id, created_by) -> Invite:
     return invite
 
 
-async def _seed_membership(db_session, league_id, user_id) -> LeagueMember:
-    member = LeagueMember(league_id=league_id, user_id=user_id)
+async def _seed_membership(db_session, league_id, user_id) -> ClubMember:
+    member = ClubMember(club_id=league_id, user_id=user_id)
     db_session.add(member)
     await db_session.commit()
     await db_session.refresh(member)
@@ -205,7 +205,7 @@ async def test_eligible_user_fully_cascaded(client, db_session):
     assert await _count(db_session, Submission, user_id=user_id) == 0
     assert await _count(db_session, Vote, voter_id=user_id) == 0
     assert await _count(db_session, Note, author_id=user_id) == 0
-    assert await _count(db_session, LeagueMember, user_id=user_id) == 0
+    assert await _count(db_session, ClubMember, user_id=user_id) == 0
     assert await _count(db_session, Session, user_id=user_id) == 0
     assert await _count(db_session, MagicLinkToken, email=tombstone) == 0
     assert await _count(db_session, Invite, created_by=user_id) == 0
@@ -336,15 +336,15 @@ async def test_purged_organizer_nulls_league_and_preserves_others(client, db_ses
     assert count == 1
 
     db_session.expire_all()
-    # League still exists, organizer FK nulled.
-    league_row = await db_session.scalar(select(League).where(League.id == league_id))
+    # Club still exists, organizer FK nulled.
+    league_row = await db_session.scalar(select(Club).where(Club.id == league_id))
     assert league_row is not None
     assert league_row.organizer_id is None
 
     # Co-member and their data intact.
     assert await _count(db_session, User, id=member_id) == 1
     assert await _count(db_session, Submission, id=member_sub_id) == 1
-    assert await _count(db_session, LeagueMember, user_id=member_id) == 1
+    assert await _count(db_session, ClubMember, user_id=member_id) == 1
 
     # Purged organizer's own submission and account are gone.
     assert await _count(db_session, Submission, id=org_sub_id) == 0

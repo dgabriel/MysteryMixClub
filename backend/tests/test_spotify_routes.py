@@ -11,7 +11,7 @@ connection. ``_SHARED_ACCOUNT_ID`` is a fixed test UUID for that shared
 account's app-user id. Generation itself is automatic — triggered on the
 ``voting_open`` event (MYS-176) — with no manual/admin HTTP trigger; the
 generation-engine tests below call
-:func:`app.services.spotify_playlist_generation.generate_round_playlist`
+:func:`app.services.spotify_playlist_generation.generate_mix_playlist`
 directly rather than through a route. Regular members only ever read the
 resulting link via ``GET /rounds/:id/spotify-playlist``.
 """
@@ -29,15 +29,15 @@ from app.auth.jwt import create_access_token, create_oauth_state
 from app.config import Settings, get_settings
 from app.db.session import get_db
 from app.main import create_app
-from app.models.league import League
-from app.models.league_member import LeagueMember
-from app.models.round import Round
+from app.models.club import Club
+from app.models.club_member import ClubMember
+from app.models.mix import Mix
 from app.models.spotify_connection import SpotifyConnection
-from app.models.spotify_round_playlist import SpotifyRoundPlaylist
+from app.models.spotify_mix_playlist import SpotifyMixPlaylist
 from app.models.submission import Submission
 from app.models.user import User
 from app.services.spotify_client import SpotifyNotFoundError, SpotifyTokens, get_spotify_client
-from app.services.spotify_playlist_generation import generate_round_playlist
+from app.services.spotify_playlist_generation import generate_mix_playlist
 from app.services.spotify_token_crypto import encrypt_refresh_token
 from app.services.youtube_resolver import get_youtube_resolver
 
@@ -68,22 +68,22 @@ async def _seed_shared_account(db_session, *, connected: bool = True) -> User:
     return user
 
 
-async def _seed_round(db_session, organizer: User, *, state: str = "open_voting") -> Round:
-    league = League(name="L", organizer_id=organizer.id, total_rounds=3, votes_per_player=3)
+async def _seed_round(db_session, organizer: User, *, state: str = "open_voting") -> Mix:
+    league = Club(name="L", organizer_id=organizer.id, total_mixes=3, votes_per_player=3)
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id))
-    round_ = Round(league_id=league.id, round_number=1, theme="Late Summer", state=state)
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id))
+    round_ = Mix(club_id=league.id, mix_number=1, theme="Late Summer", state=state)
     db_session.add(round_)
     await db_session.commit()
     await db_session.refresh(round_)
     return round_
 
 
-async def _seed_member(db_session, round_: Round, email: str) -> User:
+async def _seed_member(db_session, round_: Mix, email: str) -> User:
     """A second league member (submissions are unique per round+user)."""
     user = await _seed_user(db_session, email)
-    db_session.add(LeagueMember(league_id=round_.league_id, user_id=user.id))
+    db_session.add(ClubMember(club_id=round_.club_id, user_id=user.id))
     await db_session.commit()
     return user
 
@@ -100,7 +100,7 @@ async def _add_submission(
     participation_mode="playing",
 ):
     submission = Submission(
-        round_id=round_id,
+        mix_id=round_id,
         user_id=user_id,
         isrc=isrc,
         source_key=source_key,
@@ -394,7 +394,7 @@ async def test_callback_success_persists_connection_and_redirects_connected(
 
 
 # --------------------------------------------------------------------------- #
-# generate_round_playlist — the generation engine (MYS-89, MYS-151, MYS-169)
+# generate_mix_playlist — the generation engine (MYS-89, MYS-151, MYS-169)
 #
 # No HTTP route exercises this directly anymore (admin-triggered generation
 # was removed; MYS-176's auto-trigger, tested at the bottom of this file, is
@@ -402,12 +402,12 @@ async def test_callback_success_persists_connection_and_redirects_connected(
 # --------------------------------------------------------------------------- #
 
 
-async def _generate(db_session, round_: Round, client: FakeSpotifyClient):
-    league = await db_session.scalar(select(League).where(League.id == round_.league_id))
+async def _generate(db_session, round_: Mix, client: FakeSpotifyClient):
+    league = await db_session.scalar(select(Club).where(Club.id == round_.club_id))
     connection = await db_session.scalar(
         select(SpotifyConnection).where(SpotifyConnection.user_id == _SHARED_ACCOUNT_ID)
     )
-    return await generate_round_playlist(
+    return await generate_mix_playlist(
         round_.id, round_, league, _SHARED_ACCOUNT_ID, connection, db_session, client
     )
 
@@ -475,7 +475,7 @@ async def test_generate_caches_resolved_uri_on_submission(db_session, fake_spoti
     await _generate(db_session, round_, fake_spotify)
 
     # The resolved uri should now be cached on the submission row.
-    sub = await db_session.scalar(select(Submission).where(Submission.round_id == round_.id))
+    sub = await db_session.scalar(select(Submission).where(Submission.mix_id == round_.id))
     assert sub.spotify_track_uri == "spotify:track:matched"
 
 
@@ -492,7 +492,7 @@ async def test_generate_no_matches_returns_no_playlist(db_session, fake_spotify)
 
 
 async def test_first_generate_stores_playlist_id_in_db(db_session, fake_spotify):
-    # First generate: creates the playlist and writes a SpotifyRoundPlaylist row (MYS-89).
+    # First generate: creates the playlist and writes a SpotifyMixPlaylist row (MYS-89).
     organizer = await _seed_user(db_session, "o@example.com")
     round_ = await _seed_round(db_session, organizer)
     await _seed_shared_account(db_session)
@@ -505,9 +505,9 @@ async def test_first_generate_stores_playlist_id_in_db(db_session, fake_spotify)
 
     # Stored against the shared account (MYS-169).
     stored = await db_session.scalar(
-        select(SpotifyRoundPlaylist).where(
-            SpotifyRoundPlaylist.round_id == round_id,
-            SpotifyRoundPlaylist.user_id == _SHARED_ACCOUNT_ID,
+        select(SpotifyMixPlaylist).where(
+            SpotifyMixPlaylist.mix_id == round_id,
+            SpotifyMixPlaylist.user_id == _SHARED_ACCOUNT_ID,
         )
     )
     assert stored is not None
@@ -523,9 +523,7 @@ async def test_second_generate_reuses_stored_id_without_creating(db_session):
     await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
     # Seed the stored playlist ID directly, keyed to the shared account (MYS-169).
     db_session.add(
-        SpotifyRoundPlaylist(
-            round_id=round_.id, user_id=_SHARED_ACCOUNT_ID, playlist_id="pl-stored"
-        )
+        SpotifyMixPlaylist(mix_id=round_.id, user_id=_SHARED_ACCOUNT_ID, playlist_id="pl-stored")
     )
     await db_session.commit()
 
@@ -545,9 +543,7 @@ async def test_generate_recreates_when_stored_playlist_deleted_in_spotify(db_ses
     await _seed_shared_account(db_session)
     await _add_submission(db_session, round_.id, organizer.id, isrc="I-MATCH", title="hit")
     db_session.add(
-        SpotifyRoundPlaylist(
-            round_id=round_.id, user_id=_SHARED_ACCOUNT_ID, playlist_id="pl-deleted"
-        )
+        SpotifyMixPlaylist(mix_id=round_.id, user_id=_SHARED_ACCOUNT_ID, playlist_id="pl-deleted")
     )
     await db_session.commit()
 
@@ -560,9 +556,9 @@ async def test_generate_recreates_when_stored_playlist_deleted_in_spotify(db_ses
 
     db_session.expire_all()
     stored = await db_session.scalar(
-        select(SpotifyRoundPlaylist).where(
-            SpotifyRoundPlaylist.round_id == round_id,
-            SpotifyRoundPlaylist.user_id == _SHARED_ACCOUNT_ID,
+        select(SpotifyMixPlaylist).where(
+            SpotifyMixPlaylist.mix_id == round_id,
+            SpotifyMixPlaylist.user_id == _SHARED_ACCOUNT_ID,
         )
     )
     # Stored ID updated to the new playlist, not the deleted one.
@@ -589,7 +585,7 @@ async def test_playlist_track_order_matches_seeded_shuffle(db_session):
     db_session.add(
         Submission(
             id=id_b,
-            round_id=round_.id,
+            mix_id=round_.id,
             user_id=other.id,
             isrc=isrc_b,
             title="B",
@@ -600,7 +596,7 @@ async def test_playlist_track_order_matches_seeded_shuffle(db_session):
     db_session.add(
         Submission(
             id=id_a,
-            round_id=round_.id,
+            mix_id=round_.id,
             user_id=organizer.id,
             isrc=isrc_a,
             title="A",

@@ -4,7 +4,7 @@ from app.services.spotify_playlist import playlist_description, playlist_name
 
 
 def test_name_includes_league_and_theme():
-    # League name (MYS-86) makes the title unique per league so playlists can be
+    # Club name (MYS-86) makes the title unique per league so playlists can be
     # reused rather than duplicated (MYS-87).
     assert (
         playlist_name("Friday Mixtape", 3, "Late Summer Feels")

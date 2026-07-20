@@ -9,9 +9,9 @@ import uuid
 from datetime import datetime, timezone
 
 from app.auth.jwt import create_access_token
-from app.models.league import League
-from app.models.league_member import LeagueMember
-from app.models.round import Round
+from app.models.club import Club
+from app.models.club_member import ClubMember
+from app.models.mix import Mix
 from app.models.submission import Submission
 from app.models.user import User
 from app.models.vote import Vote
@@ -30,21 +30,19 @@ async def _seed_user(db_session, email: str, name: str) -> User:
     return user
 
 
-async def _seed_league(db_session, organizer: User) -> League:
-    league = League(
-        name="Test League", organizer_id=organizer.id, total_rounds=6, votes_per_player=3
-    )
+async def _seed_league(db_session, organizer: User) -> Club:
+    league = Club(name="Test Club", organizer_id=organizer.id, total_mixes=6, votes_per_player=3)
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id))
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id))
     await db_session.commit()
     await db_session.refresh(league)
     return league
 
 
-async def _add_member(db_session, league: League, user: User, *, removed: bool = False) -> None:
-    m = LeagueMember(
-        league_id=league.id,
+async def _add_member(db_session, league: Club, user: User, *, removed: bool = False) -> None:
+    m = ClubMember(
+        club_id=league.id,
         user_id=user.id,
         removed_at=datetime.now(timezone.utc) if removed else None,
     )
@@ -52,17 +50,17 @@ async def _add_member(db_session, league: League, user: User, *, removed: bool =
     await db_session.commit()
 
 
-async def _seed_round(db_session, league: League, *, state: str = "closed") -> Round:
-    r = Round(league_id=league.id, round_number=1, theme="theme", state=state)
+async def _seed_round(db_session, league: Club, *, state: str = "closed") -> Mix:
+    r = Mix(club_id=league.id, mix_number=1, theme="theme", state=state)
     db_session.add(r)
     await db_session.commit()
     await db_session.refresh(r)
     return r
 
 
-async def _seed_submission(db_session, round_: Round, user: User) -> Submission:
+async def _seed_submission(db_session, round_: Mix, user: User) -> Submission:
     sub = Submission(
-        round_id=round_.id,
+        mix_id=round_.id,
         user_id=user.id,
         isrc="USABC1234567",
         title="Song",
@@ -75,8 +73,8 @@ async def _seed_submission(db_session, round_: Round, user: User) -> Submission:
     return sub
 
 
-async def _seed_vote(db_session, round_: Round, voter: User, submission: Submission) -> None:
-    db_session.add(Vote(round_id=round_.id, voter_id=voter.id, submission_id=submission.id))
+async def _seed_vote(db_session, round_: Mix, voter: User, submission: Submission) -> None:
+    db_session.add(Vote(mix_id=round_.id, voter_id=voter.id, submission_id=submission.id))
     await db_session.commit()
 
 
@@ -250,7 +248,7 @@ async def test_votes_aggregate_across_multiple_closed_rounds(client, db_session)
     await _add_member(db_session, league, alice)
 
     r1 = await _seed_round(db_session, league, state="closed")
-    r2 = Round(league_id=league.id, round_number=2, theme="r2", state="closed")
+    r2 = Mix(club_id=league.id, mix_number=2, theme="r2", state="closed")
     db_session.add(r2)
     await db_session.commit()
     await db_session.refresh(r2)

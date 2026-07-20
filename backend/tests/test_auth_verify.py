@@ -26,8 +26,8 @@ from sqlalchemy import func, select
 from app.auth.tokens import hash_token
 from app.config import get_settings
 from app.models.invite import Invite
-from app.models.league import League
-from app.models.league_member import LeagueMember
+from app.models.club import Club
+from app.models.club_member import ClubMember
 from app.models.magic_link_token import MagicLinkToken
 from app.models.session import Session
 from app.models.user import User
@@ -65,18 +65,18 @@ async def _seed_league_with_invite(db_session, *, expires_at: datetime | None = 
     organizer = User(email="org@example.com", display_name="Org")
     db_session.add(organizer)
     await db_session.flush()
-    league = League(
-        name="Invited League",
+    league = Club(
+        name="Invited Club",
         organizer_id=organizer.id,
-        total_rounds=3,
+        total_mixes=3,
         votes_per_player=3,
         state="active",
     )
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id))
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id))
     invite = Invite(
-        league_id=league.id,
+        club_id=league.id,
         created_by=organizer.id,
         token="tok_" + uuid.uuid4().hex,
         expires_at=expires_at,
@@ -94,7 +94,7 @@ async def _seed_platform_invite(db_session, *, expires_at: datetime | None = Non
     db_session.add(admin)
     await db_session.flush()
     invite = Invite(
-        league_id=None,
+        club_id=None,
         created_by=admin.id,
         token="tok_" + uuid.uuid4().hex,
         expires_at=expires_at,
@@ -126,10 +126,10 @@ async def _count(db_session, model, **filters) -> int:
 async def _active_member_count(db_session, league_id, user_id) -> int:
     rows = (
         await db_session.scalars(
-            select(LeagueMember).where(
-                LeagueMember.league_id == league_id,
-                LeagueMember.user_id == user_id,
-                LeagueMember.removed_at.is_(None),
+            select(ClubMember).where(
+                ClubMember.club_id == league_id,
+                ClubMember.user_id == user_id,
+                ClubMember.removed_at.is_(None),
             )
         )
     ).all()
@@ -242,7 +242,7 @@ async def test_first_login_with_invite_creates_user_with_empty_name_and_vibe_fal
 async def test_first_login_with_invite_joins_the_league(client, email_spy, db_session):
     invite = await _seed_league_with_invite(db_session)
     token = invite.token
-    league_id = invite.league_id
+    league_id = invite.club_id
 
     raw = await _request_link(client, email_spy, "newbie@example.com", invite_token=token)
     resp = await client.get(VERIFY_URL, params={"token": raw, "invite": token})
@@ -269,7 +269,7 @@ async def test_first_login_with_platform_invite_creates_account_without_joining_
     new_user = await db_session.scalar(select(User).where(User.email == "newbie@example.com"))
     assert new_user is not None
     assert new_user.display_name == ""
-    assert await _count(db_session, LeagueMember, user_id=new_user.id) == 0
+    assert await _count(db_session, ClubMember, user_id=new_user.id) == 0
 
 
 async def test_platform_invite_is_stamped_used_after_first_signup(client, email_spy, db_session):
@@ -341,7 +341,7 @@ async def test_league_invite_stays_multi_use_after_a_new_signup(client, email_sp
     # explicitly does not touch this path).
     invite = await _seed_league_with_invite(db_session)
     token = invite.token
-    league_id = invite.league_id
+    league_id = invite.club_id
     invite_id = invite.id
 
     raw1 = await _request_link(client, email_spy, "first@example.com", invite_token=token)
@@ -458,7 +458,7 @@ class TestExistingUserUnaffectedByCap:
 async def test_existing_user_following_invite_joins_league(client, email_spy, db_session):
     invite = await _seed_league_with_invite(db_session)
     token = invite.token
-    league_id = invite.league_id
+    league_id = invite.club_id
     user = await _seed_user(db_session, "follower@example.com")
     user_id = user.id
 
@@ -473,7 +473,7 @@ async def test_existing_user_following_invite_joins_league(client, email_spy, db
 async def test_invite_join_is_idempotent_on_second_login(client, email_spy, db_session):
     invite = await _seed_league_with_invite(db_session)
     token = invite.token
-    league_id = invite.league_id
+    league_id = invite.club_id
 
     raw1 = await _request_link(client, email_spy, "newbie@example.com", invite_token=token)
     r1 = await client.get(VERIFY_URL, params={"token": raw1, "invite": token})
@@ -490,9 +490,9 @@ async def test_invite_join_is_idempotent_on_second_login(client, email_spy, db_s
     # Exactly one membership row total — no duplicate insert on the second login.
     all_rows = (
         await db_session.scalars(
-            select(LeagueMember).where(
-                LeagueMember.league_id == league_id,
-                LeagueMember.user_id == user_id,
+            select(ClubMember).where(
+                ClubMember.club_id == league_id,
+                ClubMember.user_id == user_id,
             )
         )
     ).all()
@@ -503,14 +503,12 @@ async def test_invite_join_is_idempotent_on_second_login(client, email_spy, db_s
 async def test_invite_reactivates_removed_membership(client, email_spy, db_session):
     invite = await _seed_league_with_invite(db_session)
     token = invite.token
-    league_id = invite.league_id
+    league_id = invite.club_id
 
     # The user existed, joined, and was removed previously.
     user = await _seed_user(db_session, "returning@example.com")
     user_id = user.id
-    removed = LeagueMember(
-        league_id=league_id, user_id=user_id, removed_at=datetime.now(timezone.utc)
-    )
+    removed = ClubMember(club_id=league_id, user_id=user_id, removed_at=datetime.now(timezone.utc))
     db_session.add(removed)
     await db_session.commit()
     await db_session.refresh(removed)
@@ -523,9 +521,9 @@ async def test_invite_reactivates_removed_membership(client, email_spy, db_sessi
     db_session.expire_all()
     rows = (
         await db_session.scalars(
-            select(LeagueMember).where(
-                LeagueMember.league_id == league_id,
-                LeagueMember.user_id == user_id,
+            select(ClubMember).where(
+                ClubMember.club_id == league_id,
+                ClubMember.user_id == user_id,
             )
         )
     ).all()

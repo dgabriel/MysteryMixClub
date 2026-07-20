@@ -16,10 +16,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.jwt import create_access_token
 from app.db.session import get_db
 from app.main import create_app
-from app.models.league import League
-from app.models.league_member import LeagueMember
+from app.models.club import Club
+from app.models.club_member import ClubMember
 from app.models.note import Note
-from app.models.round import Round
+from app.models.mix import Mix
 from app.models.submission import Submission
 from app.models.user import User
 from app.models.vote import Vote
@@ -38,12 +38,12 @@ async def _seed_user(db_session, email: str, *, preferred: str | None = None) ->
     return user
 
 
-async def _seed_round(db_session, organizer: User, *, state: str = "open_voting") -> Round:
-    league = League(name="L", organizer_id=organizer.id, total_rounds=3, votes_per_player=3)
+async def _seed_round(db_session, organizer: User, *, state: str = "open_voting") -> Mix:
+    league = Club(name="L", organizer_id=organizer.id, total_mixes=3, votes_per_player=3)
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id))
-    round_ = Round(league_id=league.id, round_number=1, theme="t", state=state)
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id))
+    round_ = Mix(club_id=league.id, mix_number=1, theme="t", state=state)
     db_session.add(round_)
     await db_session.commit()
     await db_session.refresh(round_)
@@ -64,7 +64,7 @@ async def _add_submission(
 ):
     db_session.add(
         Submission(
-            round_id=round_id,
+            mix_id=round_id,
             user_id=user_id,
             isrc=isrc,
             source_key=source_key,
@@ -151,7 +151,7 @@ async def test_playlist_marks_callers_own_submission(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
     other = await _seed_user(db_session, "x@example.com")
     round_ = await _seed_round(db_session, organizer)
-    db_session.add(LeagueMember(league_id=round_.league_id, user_id=other.id))
+    db_session.add(ClubMember(club_id=round_.club_id, user_id=other.id))
     await db_session.commit()
     await _add_submission(
         db_session,
@@ -270,7 +270,7 @@ async def test_playlist_shuffle_is_deterministic(client, db_session):
     round_ = await _seed_round(db_session, organizer)
     for i in range(6):
         u = await _seed_user(db_session, f"u{i}@example.com")
-        db_session.add(LeagueMember(league_id=round_.league_id, user_id=u.id))
+        db_session.add(ClubMember(club_id=round_.club_id, user_id=u.id))
         await db_session.commit()
         await _add_submission(
             db_session,
@@ -334,7 +334,7 @@ async def test_youtube_playlist_url_includes_only_stored_ids_in_order(session_fa
     round_ = await _seed_round(db_session, organizer)
     for i in range(2):
         u = await _seed_user(db_session, f"m{i}@example.com")
-        db_session.add(LeagueMember(league_id=round_.league_id, user_id=u.id))
+        db_session.add(ClubMember(club_id=round_.club_id, user_id=u.id))
     await db_session.commit()
     members = list(await db_session.scalars(select(User).where(User.email.like("m%@example.com"))))
 
@@ -451,7 +451,7 @@ async def test_lazy_backfill_resolves_and_caches_null_id(session_factory, db_ses
     assert youtube.calls == [("needs backfill", "A")]  # resolved once
 
     # The id is cached back; a fresh read sees it without resolving again.
-    sub = await db_session.scalar(select(Submission).where(Submission.round_id == round_.id))
+    sub = await db_session.scalar(select(Submission).where(Submission.mix_id == round_.id))
     assert sub.youtube_video_id == "NEWVID"
 
     async with _client_with_youtube(session_factory, youtube) as client:
@@ -487,7 +487,7 @@ async def test_track_count_matches_url_when_duplicate_ids_collapse(session_facto
     organizer = await _seed_user(db_session, "o@example.com")
     round_ = await _seed_round(db_session, organizer)
     other = await _seed_user(db_session, "x@example.com")
-    db_session.add(LeagueMember(league_id=round_.league_id, user_id=other.id))
+    db_session.add(ClubMember(club_id=round_.club_id, user_id=other.id))
     await db_session.commit()
     await _add_submission(
         db_session,
@@ -523,7 +523,7 @@ async def test_track_count_matches_url_when_capped_at_fifty(session_factory, db_
     round_ = await _seed_round(db_session, organizer)
     for i in range(51):
         u = await _seed_user(db_session, f"c{i}@example.com")
-        db_session.add(LeagueMember(league_id=round_.league_id, user_id=u.id))
+        db_session.add(ClubMember(club_id=round_.club_id, user_id=u.id))
         await db_session.commit()
         await _add_submission(
             db_session,
@@ -551,7 +551,7 @@ async def test_track_count_matches_url_when_capped_at_fifty(session_factory, db_
 
 async def _submission_id(db_session, round_id, user_id):
     return await db_session.scalar(
-        select(Submission.id).where(Submission.round_id == round_id, Submission.user_id == user_id)
+        select(Submission.id).where(Submission.mix_id == round_id, Submission.user_id == user_id)
     )
 
 
@@ -592,8 +592,8 @@ async def test_playlist_reports_voting_progress(client, db_session):
 
     org_sub = await _submission_id(db_session, round_.id, organizer.id)
     # voter votes for the organizer's song; noter leaves a note on it.
-    db_session.add(Vote(round_id=round_.id, voter_id=voter.id, submission_id=org_sub))
-    db_session.add(Note(round_id=round_.id, author_id=noter.id, submission_id=org_sub, body="nice"))
+    db_session.add(Vote(mix_id=round_.id, voter_id=voter.id, submission_id=org_sub))
+    db_session.add(Note(mix_id=round_.id, author_id=noter.id, submission_id=org_sub, body="nice"))
     await db_session.commit()
 
     resp = await client.get(_url(round_.id), headers=_auth(organizer.id))
@@ -624,9 +624,7 @@ async def test_playlist_vibing_noter_not_counted_as_acted(client, db_session):
     )
     org_sub = await _submission_id(db_session, round_.id, organizer.id)
     # The vibing player notes on the organizer's song — counts as vibing, not acted.
-    db_session.add(
-        Note(round_id=round_.id, author_id=viber.id, submission_id=org_sub, body="vibes")
-    )
+    db_session.add(Note(mix_id=round_.id, author_id=viber.id, submission_id=org_sub, body="vibes"))
     await db_session.commit()
 
     body = (await client.get(_url(round_.id), headers=_auth(organizer.id))).json()

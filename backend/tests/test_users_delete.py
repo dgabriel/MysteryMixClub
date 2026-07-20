@@ -22,8 +22,8 @@ from sqlalchemy import select
 
 from app.auth.jwt import create_access_token
 from app.models.invite import Invite
-from app.models.league import League
-from app.models.league_member import LeagueMember
+from app.models.club import Club
+from app.models.club_member import ClubMember
 from app.models.session import Session
 from app.models.user import User
 
@@ -67,17 +67,17 @@ async def _seed_session(db_session, user_id: uuid.UUID, **overrides) -> Session:
     return session
 
 
-async def _seed_league(db_session, organizer_id: uuid.UUID, *, state: str) -> League:
-    league = League(
-        name="A League",
+async def _seed_league(db_session, organizer_id: uuid.UUID, *, state: str) -> Club:
+    league = Club(
+        name="A Club",
         organizer_id=organizer_id,
-        total_rounds=3,
+        total_mixes=3,
         votes_per_player=3,
         state=state,
     )
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer_id))
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer_id))
     await db_session.commit()
     await db_session.refresh(league)
     return league
@@ -212,7 +212,7 @@ async def test_resignup_after_delete_creates_new_user_same_email(client, db_sess
     organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
     league = await _seed_league(db_session, organizer.id, state="active")
     invite_token = "tok_" + uuid.uuid4().hex
-    db_session.add(Invite(league_id=league.id, created_by=organizer.id, token=invite_token))
+    db_session.add(Invite(club_id=league.id, created_by=organizer.id, token=invite_token))
     await db_session.commit()
 
     # Email is now tombstoned, freeing the original address. Re-run the magic-link

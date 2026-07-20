@@ -23,10 +23,10 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from app.auth.jwt import create_access_token
-from app.models.league import League
-from app.models.league_member import LeagueMember
+from app.models.club import Club
+from app.models.club_member import ClubMember
 from app.models.note import Note
-from app.models.round import Round
+from app.models.mix import Mix
 from app.models.submission import Submission
 from app.models.user import User
 from app.models.vote import Vote
@@ -45,14 +45,14 @@ async def _seed_user(db_session, email: str, name: str) -> User:
     return user
 
 
-async def _seed_league_with_round(db_session, organizer: User, *, state: str = "closed") -> Round:
-    league = League(name="L", organizer_id=organizer.id, total_rounds=3, votes_per_player=3)
+async def _seed_league_with_round(db_session, organizer: User, *, state: str = "closed") -> Mix:
+    league = Club(name="L", organizer_id=organizer.id, total_mixes=3, votes_per_player=3)
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id))
-    round_ = Round(
-        league_id=league.id,
-        round_number=1,
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id))
+    round_ = Mix(
+        club_id=league.id,
+        mix_number=1,
         theme="late summer feels",
         state=state,
     )
@@ -63,13 +63,13 @@ async def _seed_league_with_round(db_session, organizer: User, *, state: str = "
 
 
 async def _add_member(db_session, league_id: uuid.UUID, user: User) -> None:
-    db_session.add(LeagueMember(league_id=league_id, user_id=user.id))
+    db_session.add(ClubMember(club_id=league_id, user_id=user.id))
     await db_session.commit()
 
 
 async def _seed_submission(
     db_session,
-    round_: Round,
+    round_: Mix,
     user: User,
     *,
     title: str = "song",
@@ -80,7 +80,7 @@ async def _seed_submission(
     source_key: str | None = None,
 ) -> Submission:
     sub = Submission(
-        round_id=round_.id,
+        mix_id=round_.id,
         user_id=user.id,
         isrc=isrc,
         source_key=source_key,
@@ -98,7 +98,7 @@ async def _seed_submission(
 
 
 async def _seed_vote(db_session, round_id, voter: User, submission: Submission) -> None:
-    db_session.add(Vote(round_id=round_id, voter_id=voter.id, submission_id=submission.id))
+    db_session.add(Vote(mix_id=round_id, voter_id=voter.id, submission_id=submission.id))
     await db_session.commit()
 
 
@@ -112,7 +112,7 @@ async def _seed_note(
     created_at: datetime | None = None,
 ) -> None:
     note = Note(
-        round_id=round_id,
+        mix_id=round_id,
         author_id=author.id,
         submission_id=submission.id,
         body=body,
@@ -189,7 +189,7 @@ async def test_results_full_submissions_revealed_and_ordered(client, db_session)
     carol = await _seed_user(db_session, "c@example.com", "Carol")
     round_ = await _seed_league_with_round(db_session, organizer)
     round_id = round_.id
-    league_id = round_.league_id
+    league_id = round_.club_id
     for u in (alice, bob, carol):
         await _add_member(db_session, league_id, u)
 
@@ -248,7 +248,7 @@ async def test_results_voters_named_per_submission_and_sorted(client, db_session
     round_ = await _seed_league_with_round(db_session, organizer)
     round_id = round_.id
     for u in (alice, bob, carol):
-        await _add_member(db_session, round_.league_id, u)
+        await _add_member(db_session, round_.club_id, u)
 
     s_alice = await _seed_submission(db_session, round_, alice, title="Banana")
     s_bob = await _seed_submission(db_session, round_, bob, title="Apple")
@@ -279,7 +279,7 @@ async def test_results_submissions_tiebreak_title_asc(client, db_session):
     round_ = await _seed_league_with_round(db_session, organizer)
     round_id = round_.id
     for u in (alice, bob):
-        await _add_member(db_session, round_.league_id, u)
+        await _add_member(db_session, round_.club_id, u)
 
     s_alice = await _seed_submission(db_session, round_, alice, title="Zebra")
     s_bob = await _seed_submission(db_session, round_, bob, title="Antelope")
@@ -308,7 +308,7 @@ async def test_results_per_submission_notes_ordered_and_authored(client, db_sess
     round_ = await _seed_league_with_round(db_session, organizer)
     round_id = round_.id
     for u in (alice, bob):
-        await _add_member(db_session, round_.league_id, u)
+        await _add_member(db_session, round_.club_id, u)
 
     s_alice = await _seed_submission(db_session, round_, alice, title="Song A")
     s_alice_id = s_alice.id
@@ -348,7 +348,7 @@ async def test_results_leaderboard_ranks_all_submitters_including_vibers(client,
     round_ = await _seed_league_with_round(db_session, organizer)
     round_id = round_.id
     for u in (alice, bob, carol, viber):
-        await _add_member(db_session, round_.league_id, u)
+        await _add_member(db_session, round_.club_id, u)
 
     s_alice = await _seed_submission(db_session, round_, alice, title="A-song")
     s_bob = await _seed_submission(db_session, round_, bob, title="B-song")
@@ -394,7 +394,7 @@ async def test_results_leaderboard_sums_votes_per_player_across_songs(client, db
     round_ = await _seed_league_with_round(db_session, organizer)
     round_id = round_.id
     for u in (alice, bob):
-        await _add_member(db_session, round_.league_id, u)
+        await _add_member(db_session, round_.club_id, u)
 
     # Alice submits two songs, Bob one.
     a1 = await _seed_submission(db_session, round_, alice, title="A-one")
@@ -439,7 +439,7 @@ async def test_results_most_noted_clear_winner(client, db_session):
     round_ = await _seed_league_with_round(db_session, organizer)
     round_id = round_.id
     for u in (alice, bob):
-        await _add_member(db_session, round_.league_id, u)
+        await _add_member(db_session, round_.club_id, u)
 
     s_alice = await _seed_submission(db_session, round_, alice, title="Winner", artist="A")
     s_bob = await _seed_submission(db_session, round_, bob, title="Runner", artist="B")
@@ -473,7 +473,7 @@ async def test_results_most_noted_empty_when_no_notes(client, db_session):
     alice = await _seed_user(db_session, "a@example.com", "Alice")
     round_ = await _seed_league_with_round(db_session, organizer)
     round_id = round_.id
-    await _add_member(db_session, round_.league_id, alice)
+    await _add_member(db_session, round_.club_id, alice)
     await _seed_submission(db_session, round_, alice, title="Lonely")
 
     resp = await client.get(_url(round_id), headers=_auth(organizer.id))
@@ -496,7 +496,7 @@ async def test_results_vibing_submission_can_be_most_noted_and_on_leaderboard(cl
     round_ = await _seed_league_with_round(db_session, organizer)
     round_id = round_.id
     for u in (alice, viber):
-        await _add_member(db_session, round_.league_id, u)
+        await _add_member(db_session, round_.club_id, u)
 
     s_alice = await _seed_submission(db_session, round_, alice, title="Played", mode="playing")
     s_viber = await _seed_submission(db_session, round_, viber, title="Vibed", mode="vibing")
@@ -539,7 +539,7 @@ async def test_results_vibing_viewer_gets_trimmed_reveal(client, db_session):
     round_ = await _seed_league_with_round(db_session, organizer)
     round_id = round_.id
     for u in (alice, viber):
-        await _add_member(db_session, round_.league_id, u)
+        await _add_member(db_session, round_.club_id, u)
 
     await _seed_submission(db_session, round_, organizer, title="Org-song")
     s_alice = await _seed_submission(db_session, round_, alice, title="Winner")
@@ -584,7 +584,7 @@ async def test_results_playing_viewer_gets_full_reveal(client, db_session):
     alice = await _seed_user(db_session, "a@example.com", "Alice")
     round_ = await _seed_league_with_round(db_session, organizer)
     round_id = round_.id
-    await _add_member(db_session, round_.league_id, alice)
+    await _add_member(db_session, round_.club_id, alice)
 
     s_org = await _seed_submission(db_session, round_, organizer, title="Org-song", mode="playing")
     await _seed_submission(db_session, round_, alice, title="A-song")
@@ -613,7 +613,7 @@ async def test_results_full_reveal_carries_source_fields(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com", "Org")
     alice = await _seed_user(db_session, "a@example.com", "Alice")
     round_ = await _seed_league_with_round(db_session, organizer)
-    await _add_member(db_session, round_.league_id, alice)
+    await _add_member(db_session, round_.club_id, alice)
 
     await _seed_submission(db_session, round_, organizer, title="Catalog", mode="playing")
     await _seed_submission(
@@ -642,7 +642,7 @@ async def test_results_vibe_reveal_picks_carry_source_fields(client, db_session)
     viber = await _seed_user(db_session, "v@example.com", "Vera")
     round_ = await _seed_league_with_round(db_session, organizer)
     for u in (alice, viber):
-        await _add_member(db_session, round_.league_id, u)
+        await _add_member(db_session, round_.club_id, u)
 
     await _seed_submission(db_session, round_, alice, title="Winner")
     await _seed_submission(

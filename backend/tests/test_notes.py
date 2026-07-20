@@ -14,10 +14,10 @@ import uuid
 from sqlalchemy import select
 
 from app.auth.jwt import create_access_token
-from app.models.league import League
-from app.models.league_member import LeagueMember
+from app.models.club import Club
+from app.models.club_member import ClubMember
 from app.models.note import Note
-from app.models.round import Round
+from app.models.mix import Mix
 from app.models.submission import Submission
 from app.models.user import User
 
@@ -37,12 +37,12 @@ async def _seed_user(db_session, email: str, name: str = "User") -> User:
 
 async def _seed_league_with_round(
     db_session, organizer: User, *, state: str = "open_voting"
-) -> Round:
-    league = League(name="L", organizer_id=organizer.id, total_rounds=3, votes_per_player=3)
+) -> Mix:
+    league = Club(name="L", organizer_id=organizer.id, total_mixes=3, votes_per_player=3)
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id))
-    round_ = Round(league_id=league.id, round_number=1, theme="late summer", state=state)
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id))
+    round_ = Mix(club_id=league.id, mix_number=1, theme="late summer", state=state)
     db_session.add(round_)
     await db_session.commit()
     await db_session.refresh(round_)
@@ -50,10 +50,10 @@ async def _seed_league_with_round(
 
 
 async def _seed_submission(
-    db_session, round_: Round, user: User, *, title: str = "bad guy", mode: str = "playing"
+    db_session, round_: Mix, user: User, *, title: str = "bad guy", mode: str = "playing"
 ) -> Submission:
     sub = Submission(
-        round_id=round_.id,
+        mix_id=round_.id,
         user_id=user.id,
         isrc="USABC1234567",
         title=title,
@@ -67,7 +67,7 @@ async def _seed_submission(
 
 
 async def _add_member(db_session, league_id: uuid.UUID, user: User) -> None:
-    db_session.add(LeagueMember(league_id=league_id, user_id=user.id))
+    db_session.add(ClubMember(club_id=league_id, user_id=user.id))
     await db_session.commit()
 
 
@@ -190,7 +190,7 @@ async def test_post_note_on_other_members_submission(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com", name="Org")
     member = await _seed_user(db_session, "m@example.com", name="Mara")
     round_ = await _seed_league_with_round(db_session, organizer)
-    await _add_member(db_session, round_.league_id, member)
+    await _add_member(db_session, round_.club_id, member)
     sub = await _seed_submission(db_session, round_, organizer)
     resp = await client.post(_url(sub.id), json={"body": "banger"}, headers=_auth(member.id))
     assert resp.status_code == 201, resp.text
@@ -202,7 +202,7 @@ async def test_post_note_on_vibing_submission_allowed(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
     member = await _seed_user(db_session, "m@example.com")
     round_ = await _seed_league_with_round(db_session, organizer)
-    await _add_member(db_session, round_.league_id, member)
+    await _add_member(db_session, round_.club_id, member)
     sub = await _seed_submission(db_session, round_, member, mode="vibing")
     resp = await client.post(_url(sub.id), json={"body": "vibes only"}, headers=_auth(organizer.id))
     assert resp.status_code == 201, resp.text
@@ -277,7 +277,7 @@ async def test_get_returns_notes_ordered_by_created_at_asc(client, db_session):
     member = await _seed_user(db_session, "m@example.com", name="Mara")
     round_ = await _seed_league_with_round(db_session, organizer)
     round_id = round_.id
-    await _add_member(db_session, round_.league_id, member)
+    await _add_member(db_session, round_.club_id, member)
     sub = await _seed_submission(db_session, round_, organizer)
     sub_id = sub.id
     # POST three notes in order; created_at is server-assigned per insert.
@@ -287,7 +287,7 @@ async def test_get_returns_notes_ordered_by_created_at_asc(client, db_session):
 
     # Close the round so the full multi-author set is visible (during voting a
     # member would only see their own — see test_get_hides_others_notes...).
-    db_round = await db_session.scalar(select(Round).where(Round.id == round_id))
+    db_round = await db_session.scalar(select(Mix).where(Mix.id == round_id))
     db_round.state = "closed"
     await db_session.commit()
 
@@ -306,7 +306,7 @@ async def test_get_hides_others_notes_during_voting(client, db_session):
     member = await _seed_user(db_session, "m@example.com", name="Mara")
     round_ = await _seed_league_with_round(db_session, organizer, state="open_voting")
     round_id = round_.id
-    await _add_member(db_session, round_.league_id, member)
+    await _add_member(db_session, round_.club_id, member)
     sub = await _seed_submission(db_session, round_, organizer)
     sub_id = sub.id
     await client.post(
@@ -320,7 +320,7 @@ async def test_get_hides_others_notes_during_voting(client, db_session):
     assert [n["body"] for n in resp.json()] == ["from me"]
 
     # Once closed, the full set is revealed.
-    db_round = await db_session.scalar(select(Round).where(Round.id == round_id))
+    db_round = await db_session.scalar(select(Mix).where(Mix.id == round_id))
     db_round.state = "closed"
     await db_session.commit()
     resp = await client.get(_url(sub_id), headers=_auth(member.id))
@@ -335,7 +335,7 @@ async def test_get_works_when_round_closed(client, db_session):
     sub_id, round_id = sub.id, round_.id
     await client.post(_url(sub_id), json={"body": "frozen in time"}, headers=_auth(organizer.id))
 
-    db_round = await db_session.scalar(select(Round).where(Round.id == round_id))
+    db_round = await db_session.scalar(select(Mix).where(Mix.id == round_id))
     db_round.state = "closed"
     await db_session.commit()
 
@@ -348,7 +348,7 @@ async def test_get_only_returns_notes_for_that_submission(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com")
     member = await _seed_user(db_session, "m@example.com")
     round_ = await _seed_league_with_round(db_session, organizer)
-    await _add_member(db_session, round_.league_id, member)
+    await _add_member(db_session, round_.club_id, member)
     sub_a = await _seed_submission(db_session, round_, organizer, title="A")
     sub_b = await _seed_submission(db_session, round_, member, title="B")
     sub_a_id, sub_b_id = sub_a.id, sub_b.id

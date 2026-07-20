@@ -13,12 +13,12 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 
 from app.auth.jwt import create_access_token
-from app.models.apple_round_playlist import AppleRoundPlaylist
-from app.models.league import League
-from app.models.league_member import LeagueMember
+from app.models.apple_mix_playlist import AppleMixPlaylist
+from app.models.club import Club
+from app.models.club_member import ClubMember
 from app.models.note import Note
-from app.models.round import Round
-from app.models.spotify_round_playlist import SpotifyRoundPlaylist
+from app.models.mix import Mix
+from app.models.spotify_mix_playlist import SpotifyMixPlaylist
 from app.models.submission import Submission
 from app.models.user import User
 from app.models.vote import Vote
@@ -38,24 +38,24 @@ async def _seed_user(db_session, email: str, name: str = "User") -> User:
 
 
 async def _seed_league(
-    db_session, organizer: User, *, total_rounds: int = 3, votes_per_player: int = 3
-) -> League:
-    league = League(
+    db_session, organizer: User, *, total_mixes: int = 3, votes_per_player: int = 3
+) -> Club:
+    league = Club(
         name="Friday Mixtape",
         organizer_id=organizer.id,
-        total_rounds=total_rounds,
+        total_mixes=total_mixes,
         votes_per_player=votes_per_player,
     )
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id))
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id))
     await db_session.commit()
     await db_session.refresh(league)
     return league
 
 
 async def _add_member(db_session, league_id: uuid.UUID, user: User) -> None:
-    db_session.add(LeagueMember(league_id=league_id, user_id=user.id))
+    db_session.add(ClubMember(club_id=league_id, user_id=user.id))
     await db_session.commit()
 
 
@@ -130,8 +130,8 @@ async def test_create_first_round_defaults(client, db_session):
 
     # The new round becomes the league's active round.
     db_session.expire_all()
-    league = await db_session.scalar(select(League).where(League.id == league_id))
-    assert league.current_round == 1
+    league = await db_session.scalar(select(Club).where(Club.id == league_id))
+    assert league.current_mix == 1
 
 
 async def test_create_round_votes_override(client, db_session):
@@ -155,7 +155,7 @@ async def test_cannot_create_second_round_while_first_open(client, db_session):
 
 async def test_sequential_numbering_after_closing(client, db_session):
     organizer = await _seed_user(db_session, "org@example.com")
-    league = await _seed_league(db_session, organizer, total_rounds=3)
+    league = await _seed_league(db_session, organizer, total_mixes=3)
 
     r1 = await _create_round(client, league.id, organizer.id)
     rid1 = r1.json()["id"]
@@ -218,7 +218,7 @@ async def test_get_unknown_round_404(client, db_session):
 
 async def test_full_forward_transitions(client, db_session):
     organizer = await _seed_user(db_session, "org@example.com")
-    league = await _seed_league(db_session, organizer, total_rounds=2)  # not the final round
+    league = await _seed_league(db_session, organizer, total_mixes=2)  # not the final round
     rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
 
     to_voting = await _advance(client, rid, organizer.id, "open_voting")
@@ -247,7 +247,7 @@ async def test_closed_to_open_submission_is_rejected(client, db_session):
     # sanctioned transition (the round isn't in open_voting) and must still 409,
     # preserving the "forward-only except this one exception" invariant.
     organizer = await _seed_user(db_session, "org@example.com")
-    league = await _seed_league(db_session, organizer, total_rounds=2)
+    league = await _seed_league(db_session, organizer, total_mixes=2)
     rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
     await _advance(client, rid, organizer.id, "open_voting")
     await _advance(client, rid, organizer.id, "closed")
@@ -284,7 +284,7 @@ async def test_open_voting_to_pending_is_rejected(client, db_session):
 
 async def test_editing_closed_round_is_rejected(client, db_session):
     organizer = await _seed_user(db_session, "org@example.com")
-    league = await _seed_league(db_session, organizer, total_rounds=2)
+    league = await _seed_league(db_session, organizer, total_mixes=2)
     rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
     await _advance(client, rid, organizer.id, "open_voting")
     await _advance(client, rid, organizer.id, "closed")
@@ -386,9 +386,7 @@ async def test_rollback_happy_path_resets_deadlines_and_deletes_votes(client, db
 
     # The votes cast during the accidental voting phase are gone.
     db_session.expire_all()
-    remaining_votes = (
-        await db_session.scalars(select(Vote).where(Vote.round_id == round_id))
-    ).all()
+    remaining_votes = (await db_session.scalars(select(Vote).where(Vote.mix_id == round_id))).all()
     assert remaining_votes == []
 
 
@@ -414,9 +412,9 @@ async def test_rollback_supersedes_apple_playlists_but_keeps_spotify(client, db_
 
     # Two members each built their own Apple playlist (they're per-user), plus a
     # shared-account Spotify playlist for the same round.
-    db_session.add(AppleRoundPlaylist(round_id=round_id, user_id=organizer.id, playlist_id="p.ORG"))
-    db_session.add(AppleRoundPlaylist(round_id=round_id, user_id=member.id, playlist_id="p.MEM"))
-    db_session.add(SpotifyRoundPlaylist(round_id=round_id, user_id=organizer.id, playlist_id="sp1"))
+    db_session.add(AppleMixPlaylist(mix_id=round_id, user_id=organizer.id, playlist_id="p.ORG"))
+    db_session.add(AppleMixPlaylist(mix_id=round_id, user_id=member.id, playlist_id="p.MEM"))
+    db_session.add(SpotifyMixPlaylist(mix_id=round_id, user_id=organizer.id, playlist_id="sp1"))
     await db_session.commit()
 
     assert (await _advance(client, rid, organizer.id, "open_submission")).status_code == 200
@@ -424,12 +422,12 @@ async def test_rollback_supersedes_apple_playlists_but_keeps_spotify(client, db_
     db_session.expire_all()
     apple_rows = (
         await db_session.scalars(
-            select(AppleRoundPlaylist).where(AppleRoundPlaylist.round_id == round_id)
+            select(AppleMixPlaylist).where(AppleMixPlaylist.mix_id == round_id)
         )
     ).all()
     spotify_rows = (
         await db_session.scalars(
-            select(SpotifyRoundPlaylist).where(SpotifyRoundPlaylist.round_id == round_id)
+            select(SpotifyMixPlaylist).where(SpotifyMixPlaylist.mix_id == round_id)
         )
     ).all()
 
@@ -476,7 +474,7 @@ async def test_rollback_rearms_warning_and_notice_timestamps(client, db_session)
     assert (await _advance(client, rid, organizer_id, "open_voting")).status_code == 200
 
     db_session.expire_all()
-    round_ = await db_session.scalar(select(Round).where(Round.id == round_id))
+    round_ = await db_session.scalar(select(Mix).where(Mix.id == round_id))
     now = datetime.now(timezone.utc)
     round_.submission_warning_sent_at = now
     round_.voting_warning_sent_at = now
@@ -488,7 +486,7 @@ async def test_rollback_rearms_warning_and_notice_timestamps(client, db_session)
     assert resp.status_code == 200, resp.text
 
     db_session.expire_all()
-    after = await db_session.scalar(select(Round).where(Round.id == round_id))
+    after = await db_session.scalar(select(Mix).where(Mix.id == round_id))
     assert after.submission_warning_sent_at is None
     assert after.voting_warning_sent_at is None
     assert after.empty_round_notice_sent_at is None
@@ -496,7 +494,7 @@ async def test_rollback_rearms_warning_and_notice_timestamps(client, db_session)
 
 async def test_rollback_rejected_when_round_is_closed(client, db_session):
     organizer = await _seed_user(db_session, "org@example.com")
-    league = await _seed_league(db_session, organizer, total_rounds=2)
+    league = await _seed_league(db_session, organizer, total_mixes=2)
     rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
     await _advance(client, rid, organizer.id, "open_voting")
     await _advance(client, rid, organizer.id, "closed")
@@ -540,11 +538,11 @@ async def test_rollback_does_not_spuriously_conflict_with_active_round_guard(cli
     # second round were also active in the same league, the rollback of the
     # first is exempt from that guard.
     organizer = await _seed_user(db_session, "org@example.com")
-    league = await _seed_league(db_session, organizer, total_rounds=3)
+    league = await _seed_league(db_session, organizer, total_mixes=3)
     rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
     assert (await _advance(client, rid, organizer.id, "open_voting")).status_code == 200
 
-    other_round = Round(league_id=league.id, round_number=2, state="open_submission")
+    other_round = Mix(club_id=league.id, mix_number=2, state="open_submission")
     db_session.add(other_round)
     await db_session.commit()
 
@@ -554,41 +552,41 @@ async def test_rollback_does_not_spuriously_conflict_with_active_round_guard(cli
 
 
 # --------------------------------------------------------------------------- #
-# League completion
+# Club completion
 # --------------------------------------------------------------------------- #
 
 
 async def test_closing_final_round_completes_league(client, db_session):
     organizer = await _seed_user(db_session, "org@example.com")
-    league = await _seed_league(db_session, organizer, total_rounds=1)
+    league = await _seed_league(db_session, organizer, total_mixes=1)
     league_id = league.id
     rid = (await _create_round(client, league_id, organizer.id)).json()["id"]
     await _advance(client, rid, organizer.id, "open_voting")
     await _advance(client, rid, organizer.id, "closed")
 
     db_session.expire_all()
-    league = await db_session.scalar(select(League).where(League.id == league_id))
+    league = await db_session.scalar(select(Club).where(Club.id == league_id))
     assert league.state == "complete"
     assert league.completed_at is not None
 
 
 async def test_closing_nonfinal_round_does_not_complete_league(client, db_session):
     organizer = await _seed_user(db_session, "org@example.com")
-    league = await _seed_league(db_session, organizer, total_rounds=2)
+    league = await _seed_league(db_session, organizer, total_mixes=2)
     league_id = league.id
     rid = (await _create_round(client, league_id, organizer.id)).json()["id"]
     await _advance(client, rid, organizer.id, "open_voting")
     await _advance(client, rid, organizer.id, "closed")
 
     db_session.expire_all()
-    league = await db_session.scalar(select(League).where(League.id == league_id))
+    league = await db_session.scalar(select(Club).where(Club.id == league_id))
     assert league.state == "active"
     assert league.completed_at is None
 
 
 async def test_cannot_create_round_on_complete_league(client, db_session):
     organizer = await _seed_user(db_session, "org@example.com")
-    league = await _seed_league(db_session, organizer, total_rounds=1)
+    league = await _seed_league(db_session, organizer, total_mixes=1)
     rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
     await _advance(client, rid, organizer.id, "open_voting")
     await _advance(client, rid, organizer.id, "closed")
@@ -606,7 +604,7 @@ async def test_cannot_create_round_on_complete_league(client, db_session):
 async def _add_submission(db_session, round_id: uuid.UUID, user: User) -> None:
     db_session.add(
         Submission(
-            round_id=round_id,
+            mix_id=round_id,
             user_id=user.id,
             isrc=f"ISRC-{user.id}",
             title="A song",
@@ -643,7 +641,7 @@ async def test_round_reports_submission_and_member_counts(client, db_session):
 async def test_list_rounds_includes_per_round_submission_counts(client, db_session):
     organizer = await _seed_user(db_session, "org@example.com")
     member = await _seed_user(db_session, "member@example.com")
-    league = await _seed_league(db_session, organizer, total_rounds=3)
+    league = await _seed_league(db_session, organizer, total_mixes=3)
     await _add_member(db_session, league.id, member)
 
     rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
@@ -682,7 +680,7 @@ async def test_submission_count_is_distinct_submitters(client, db_session):
 
 
 async def _add_vote(db_session, round_id: uuid.UUID, voter: User, submission_id: uuid.UUID) -> None:
-    db_session.add(Vote(round_id=round_id, voter_id=voter.id, submission_id=submission_id))
+    db_session.add(Vote(mix_id=round_id, voter_id=voter.id, submission_id=submission_id))
     await db_session.commit()
 
 
@@ -690,7 +688,7 @@ async def _add_submission_ret(
     db_session, round_id: uuid.UUID, user: User, mode: str = "playing"
 ) -> uuid.UUID:
     sub = Submission(
-        round_id=round_id,
+        mix_id=round_id,
         user_id=user.id,
         isrc=f"ISRC-{uuid.uuid4()}",
         title="A song",
@@ -833,7 +831,7 @@ async def test_extend_voting_wrong_state_409(client, db_session):
     organizer = await _seed_user(db_session, "org@example.com")
     league = await _seed_league(db_session, organizer)
     rid = (await _create_round(client, league.id, organizer.id)).json()["id"]
-    # Round is open_submission, not open_voting yet.
+    # Mix is open_submission, not open_voting yet.
     resp = await client.post(
         _extend_url(rid),
         json=_extend_body(datetime.now(timezone.utc) + timedelta(hours=4)),
@@ -934,7 +932,7 @@ async def test_extend_voting_resets_warning_marker(client, db_session):
     await _advance(client, rid, organizer.id, "open_voting")
     round_id = uuid.UUID(rid)
 
-    round_ = await db_session.get(Round, round_id)
+    round_ = await db_session.get(Mix, round_id)
     round_.voting_warning_sent_at = datetime.now(timezone.utc)
     await db_session.commit()
 
@@ -948,5 +946,5 @@ async def test_extend_voting_resets_warning_marker(client, db_session):
     assert resp.status_code == 200, resp.text
 
     db_session.expire_all()
-    refreshed = await db_session.get(Round, round_id)
+    refreshed = await db_session.get(Mix, round_id)
     assert refreshed.voting_warning_sent_at is None

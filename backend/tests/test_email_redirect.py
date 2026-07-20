@@ -32,13 +32,13 @@ def test_redirect_rewrites_recipient_and_tags_subject():
     spy = _Spy()
     sender = RedirectingEmailSender(spy, "sink@test.dev")
 
-    sender.send("real@user.com", "Round open", "<p>hi</p>", {"List-Unsubscribe": "<u>"})
+    sender.send("real@user.com", "Mix open", "<p>hi</p>", {"List-Unsubscribe": "<u>"})
 
     assert len(spy.sends) == 1
     to, subject, html, headers = spy.sends[0]
     assert to == "sink@test.dev"
     assert "real@user.com" in subject  # who it was meant for
-    assert subject.endswith("Round open")
+    assert subject.endswith("Mix open")
     assert html == "<p>hi</p>"
     assert headers == {"List-Unsubscribe": "<u>"}
 
@@ -87,7 +87,7 @@ def test_resend_uses_per_purpose_from_without_override(monkeypatch):
     sender = ResendEmailSender("key")
 
     sender.send_magic_link("u@x.com", "https://app/verify?token=t")
-    sender.send("u@x.com", "Round open", "<p>hi</p>")
+    sender.send("u@x.com", "Mix open", "<p>hi</p>")
 
     assert captured[0]["from"] == "MysteryMixClub <login@mysterymixclub.com>"
     assert captured[1]["from"] == "MysteryMixClub <notifications@mysterymixclub.com>"
@@ -98,7 +98,7 @@ def test_resend_from_override_applies_to_all_mail(monkeypatch):
     sender = ResendEmailSender("key", from_override="onboarding@resend.dev")
 
     sender.send_magic_link("u@x.com", "https://app/verify?token=t")
-    sender.send("u@x.com", "Round open", "<p>hi</p>")
+    sender.send("u@x.com", "Mix open", "<p>hi</p>")
 
     assert [p["from"] for p in captured] == ["onboarding@resend.dev", "onboarding@resend.dev"]
 

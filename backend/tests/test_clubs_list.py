@@ -14,8 +14,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from app.auth.jwt import create_access_token
-from app.models.league import League
-from app.models.league_member import LeagueMember
+from app.models.club import Club
+from app.models.club_member import ClubMember
 from app.models.user import User
 
 LEAGUES_URL = "/api/v1/clubs"
@@ -59,10 +59,10 @@ async def _seed_user(db_session, **overrides) -> User:
     return user
 
 
-async def _seed_league(db_session, organizer: User, **overrides) -> League:
-    """Insert and commit a League with the organizer as an active member.
+async def _seed_league(db_session, organizer: User, **overrides) -> Club:
+    """Insert and commit a Club with the organizer as an active member.
 
-    Accepts column overrides (e.g. created_at) passed straight to the League
+    Accepts column overrides (e.g. created_at) passed straight to the Club
     constructor.
     """
     defaults = {
@@ -75,23 +75,23 @@ async def _seed_league(db_session, organizer: User, **overrides) -> League:
         "state": "active",
     }
     defaults.update(overrides)
-    league = League(**defaults)
+    league = Club(**defaults)
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id))
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id))
     await db_session.commit()
     await db_session.refresh(league)
     return league
 
 
-async def _seed_member(db_session, league: League, user: User, **overrides) -> LeagueMember:
-    """Insert and commit a LeagueMember row, returning it.
+async def _seed_member(db_session, league: Club, user: User, **overrides) -> ClubMember:
+    """Insert and commit a ClubMember row, returning it.
 
     Accepts column overrides (e.g. joined_at, removed_at).
     """
     defaults = {"club_id": league.id, "user_id": user.id}
     defaults.update(overrides)
-    member = LeagueMember(**defaults)
+    member = ClubMember(**defaults)
     db_session.add(member)
     await db_session.commit()
     await db_session.refresh(member)
@@ -137,9 +137,9 @@ async def test_returns_organized_and_member_leagues_with_full_shape(client, db_s
     caller = await _seed_user(db_session, email="caller@example.com", display_name="Caller")
     other = await _seed_user(db_session, email="other@example.com", display_name="Other")
 
-    # League the caller organizes (organizer is an active member).
+    # Club the caller organizes (organizer is an active member).
     organized = await _seed_league(db_session, caller, name="Organized")
-    # League owned by someone else, where the caller is an active member.
+    # Club owned by someone else, where the caller is an active member.
     joined = await _seed_league(db_session, other, name="Joined")
     await _seed_member(db_session, joined, caller)
 
@@ -158,15 +158,15 @@ async def test_excludes_removed_and_never_joined_leagues(client, db_session):
     caller = await _seed_user(db_session, email="caller@example.com", display_name="Caller")
     other = await _seed_user(db_session, email="other@example.com", display_name="Other")
 
-    # League the caller is an active member of — should appear.
+    # Club the caller is an active member of — should appear.
     member_league = await _seed_league(db_session, other, name="MemberLeague")
     await _seed_member(db_session, member_league, caller)
 
-    # League the caller was removed from — should NOT appear.
+    # Club the caller was removed from — should NOT appear.
     removed_league = await _seed_league(db_session, other, name="RemovedLeague")
     await _seed_member(db_session, removed_league, caller, removed_at=datetime.now(timezone.utc))
 
-    # League the caller never joined — should NOT appear.
+    # Club the caller never joined — should NOT appear.
     stranger_league = await _seed_league(db_session, other, name="StrangerLeague")
 
     resp = await client.get(LEAGUES_URL, headers=_auth_header(caller.id))

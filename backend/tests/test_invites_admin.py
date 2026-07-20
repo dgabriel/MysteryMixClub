@@ -112,7 +112,7 @@ async def test_create_platform_invite_persists_row_with_null_league_id(client, d
 
     invite = await db_session.scalar(select(Invite).where(Invite.token == token))
     assert invite is not None
-    assert invite.league_id is None
+    assert invite.club_id is None
 
 
 async def test_create_platform_invite_expires_at_is_about_48h(client, db_session):

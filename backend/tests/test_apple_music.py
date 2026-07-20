@@ -23,10 +23,10 @@ from sqlalchemy import select
 from app.auth.jwt import create_access_token
 from app.db.session import get_db
 from app.main import create_app
-from app.models.apple_round_playlist import AppleRoundPlaylist
-from app.models.league import League
-from app.models.league_member import LeagueMember
-from app.models.round import Round
+from app.models.apple_mix_playlist import AppleMixPlaylist
+from app.models.club import Club
+from app.models.club_member import ClubMember
+from app.models.mix import Mix
 from app.models.submission import Submission
 from app.models.user import User
 from app.services.apple_playlist_generation import revised_playlist_name
@@ -210,12 +210,12 @@ async def _seed_user(db_session, email: str) -> User:
     return user
 
 
-async def _seed_round(db_session, organizer: User) -> Round:
-    league = League(name="L", organizer_id=organizer.id, total_rounds=3, votes_per_player=3)
+async def _seed_round(db_session, organizer: User) -> Mix:
+    league = Club(name="L", organizer_id=organizer.id, total_mixes=3, votes_per_player=3)
     db_session.add(league)
     await db_session.flush()
-    db_session.add(LeagueMember(league_id=league.id, user_id=organizer.id))
-    round_ = Round(league_id=league.id, round_number=1, theme="Late Summer", state="open_voting")
+    db_session.add(ClubMember(club_id=league.id, user_id=organizer.id))
+    round_ = Mix(club_id=league.id, mix_number=1, theme="Late Summer", state="open_voting")
     db_session.add(round_)
     await db_session.commit()
     await db_session.refresh(round_)
@@ -225,7 +225,7 @@ async def _seed_round(db_session, organizer: User) -> Round:
 async def _add_submission(db_session, round_id, user_id, *, isrc, title, source_key=None):
     db_session.add(
         Submission(
-            round_id=round_id,
+            mix_id=round_id,
             user_id=user_id,
             isrc=isrc,
             source_key=source_key,
@@ -313,17 +313,17 @@ async def test_get_playlist_returns_own_link(apple_app, db_session):
     organizer = await _seed_user(db_session, "o2@example.com")
     round_ = await _seed_round(db_session, organizer)
     db_session.add(
-        AppleRoundPlaylist(
-            round_id=round_.id,
+        AppleMixPlaylist(
+            mix_id=round_.id,
             user_id=organizer.id,
             playlist_id="p.MINE",
-            playlist_name="Mix: Round 1",
+            playlist_name="Mix: Mix 1",
         )
     )
     await db_session.commit()
     r = await apple_app.get(_url(round_.id), headers=_auth(organizer.id))
     assert r.json()["playlist_url"] == "https://music.apple.com/library"
-    assert r.json()["playlist_name"] == "Mix: Round 1"
+    assert r.json()["playlist_name"] == "Mix: Mix 1"
 
 
 async def test_get_playlist_is_per_user_not_shared(apple_app, db_session):
@@ -331,10 +331,8 @@ async def test_get_playlist_is_per_user_not_shared(apple_app, db_session):
     organizer = await _seed_user(db_session, "o3@example.com")
     round_ = await _seed_round(db_session, organizer)
     other = await _seed_user(db_session, "m3@example.com")
-    db_session.add(LeagueMember(league_id=round_.league_id, user_id=other.id))
-    db_session.add(
-        AppleRoundPlaylist(round_id=round_.id, user_id=organizer.id, playlist_id="p.ORG")
-    )
+    db_session.add(ClubMember(club_id=round_.club_id, user_id=other.id))
+    db_session.add(AppleMixPlaylist(mix_id=round_.id, user_id=organizer.id, playlist_id="p.ORG"))
     await db_session.commit()
     r = await apple_app.get(_url(round_.id), headers=_auth(other.id))
     assert r.json()["playlist_url"] is None
@@ -533,8 +531,8 @@ async def test_rebuild_after_supersede_is_named_as_a_revision(apple_app, db_sess
 
     # A superseded playlist from before the round was reopened.
     db_session.add(
-        AppleRoundPlaylist(
-            round_id=round_id,
+        AppleMixPlaylist(
+            mix_id=round_id,
             user_id=organizer.id,
             playlist_id="p.OLD",
             superseded_at=datetime.now(timezone.utc),
@@ -561,7 +559,7 @@ async def test_rebuild_after_supersede_is_named_as_a_revision(apple_app, db_sess
     db_session.expire_all()
     rows = (
         await db_session.scalars(
-            select(AppleRoundPlaylist).where(AppleRoundPlaylist.round_id == round_id)
+            select(AppleMixPlaylist).where(AppleMixPlaylist.mix_id == round_id)
         )
     ).all()
     assert len(rows) == 1
@@ -584,9 +582,7 @@ async def test_get_playlist_name_null_for_pre_mys190_rows(apple_app, db_session)
     """Rows created before names were recorded still return a usable link."""
     organizer = await _seed_user(db_session, "legacy@example.com")
     round_ = await _seed_round(db_session, organizer)
-    db_session.add(
-        AppleRoundPlaylist(round_id=round_.id, user_id=organizer.id, playlist_id="p.OLD")
-    )
+    db_session.add(AppleMixPlaylist(mix_id=round_.id, user_id=organizer.id, playlist_id="p.OLD"))
     await db_session.commit()
 
     r = await apple_app.get(_url(round_.id), headers=_auth(organizer.id))

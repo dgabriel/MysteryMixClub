@@ -24,9 +24,9 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import async_session_factory
+from app.models.club import Club
+from app.models.club_member import ClubMember
 from app.models.invite import Invite
-from app.models.league import League
-from app.models.league_member import LeagueMember
 from app.models.magic_link_token import MagicLinkToken
 from app.models.note import Note
 from app.models.session import Session
@@ -52,20 +52,18 @@ async def hard_delete_users(
     # FK-safe order: children before parents. Notes/votes reference submissions,
     # so they go first; submissions/memberships/sessions/invites reference users
     # next; then magic-link tokens keyed by the tombstoned email; then the
-    # organizer FK on leagues is nulled (purged accounts never organize active
-    # leagues); finally the users themselves. invites.created_by is a NOT NULL FK
+    # organizer FK on clubs is nulled (purged accounts never organize active
+    # clubs); finally the users themselves. invites.created_by is a NOT NULL FK
     # with no ON DELETE, so these must go before the user delete to avoid both an
     # IntegrityError and an orphaned PII record.
     await db.execute(delete(Note).where(Note.author_id.in_(user_ids)))
     await db.execute(delete(Vote).where(Vote.voter_id.in_(user_ids)))
     await db.execute(delete(Submission).where(Submission.user_id.in_(user_ids)))
-    await db.execute(delete(LeagueMember).where(LeagueMember.user_id.in_(user_ids)))
+    await db.execute(delete(ClubMember).where(ClubMember.user_id.in_(user_ids)))
     await db.execute(delete(Invite).where(Invite.created_by.in_(user_ids)))
     await db.execute(delete(Session).where(Session.user_id.in_(user_ids)))
     await db.execute(delete(MagicLinkToken).where(MagicLinkToken.email.in_(emails)))
-    await db.execute(
-        update(League).where(League.organizer_id.in_(user_ids)).values(organizer_id=None)
-    )
+    await db.execute(update(Club).where(Club.organizer_id.in_(user_ids)).values(organizer_id=None))
     await db.execute(delete(User).where(User.id.in_(user_ids)))
 
 

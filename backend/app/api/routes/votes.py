@@ -1,19 +1,19 @@
 """Voting endpoints (MYS-20).
 
-Casting and reading a player's votes for a round:
+Casting and reading a player's votes for a mix:
 
-* ``POST /api/v1/rounds/:id/votes``      — cast (replace) your votes for the round
-* ``GET  /api/v1/rounds/:id/votes/mine`` — your current votes for the round
-* ``GET  /api/v1/rounds/:id/vote-counts`` — vote counts per song (no notes yet)
+* ``POST /api/v1/mixes/:id/votes``      — cast (replace) your votes for the mix
+* ``GET  /api/v1/mixes/:id/votes/mine`` — your current votes for the mix
+* ``GET  /api/v1/mixes/:id/vote-counts`` — vote counts per song (no notes yet)
 
-Voting is open only while the round is in ``open_voting``. Any active league
+Voting is open only while the mix is in ``open_voting``. Any active club
 member may vote whether or not they submitted a song (MYS-167) — but a vibing
 member sits voting out and leaves a note instead. The caller's vibing stance is
-their submission's ``participation_mode`` if they submitted, else their league
+their submission's ``participation_mode`` if they submitted, else their club
 membership's ``vibe_mode``. A player cannot vote for their own song. Every other
 song is votable, including vibing submissions — vibing is private (the voter
 can't tell which songs are vibers'), and a viber's song competes like any other
-(MYS-112). Casting replaces the caller's prior votes for the round wholesale
+(MYS-112). Casting replaces the caller's prior votes for the mix wholesale
 (delete-then-insert), so a re-cast is idempotent — mirroring the submission
 replace-in-place pattern.
 """
@@ -26,19 +26,19 @@ from app.api.wire import WireModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.routes.leagues import _load_league_as_member
-from app.api.routes.rounds import _load_round, advance_round_state, voting_quorum_met
+from app.api.routes.clubs import _load_club_as_member
+from app.api.routes.mixes import _load_mix, advance_mix_state, voting_quorum_met
 from app.auth.deps import get_current_user
 from app.config import Settings, get_settings
 from app.db.session import get_db
-from app.models.league import League
-from app.models.league_member import LeagueMember
-from app.models.round import Round
+from app.models.club import Club
+from app.models.club_member import ClubMember
+from app.models.mix import Mix
 from app.models.submission import Submission
 from app.models.user import User
 from app.models.vote import Vote
 from app.services.email import EmailSender, get_email_sender
-from app.services.notifications import gather_recipients, queue_round_event
+from app.services.notifications import gather_recipients, queue_mix_event
 
 router = APIRouter(tags=["votes"])
 
@@ -64,10 +64,10 @@ async def cast_votes(
     sender: EmailSender = Depends(get_email_sender),
     settings: Settings = Depends(get_settings),
 ) -> VotesResponse:
-    round_ = await _load_round(round_id, db)
-    await _load_league_as_member(round_.league_id, current_user, db)
+    mix_ = await _load_mix(round_id, db)
+    await _load_club_as_member(mix_.club_id, current_user, db)
 
-    if round_.state != "open_voting":
+    if mix_.state != "open_voting":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="voting is not open for this mystery mix"
         )
@@ -76,23 +76,23 @@ async def cast_votes(
     # submitted a song — only vibing members sit voting out. Stance resolves from
     # the caller's own submission if they have one (a player may hold several songs
     # now — MYS-116 — but their stance is uniform, so any one answers it), else
-    # from their league membership's vibe_mode. Vibing -> 409, leave a note instead.
+    # from their club membership's vibe_mode. Vibing -> 409, leave a note instead.
     own_submission = await db.scalar(
         select(Submission)
-        .where(Submission.round_id == round_id, Submission.user_id == current_user.id)
+        .where(Submission.mix_id == round_id, Submission.user_id == current_user.id)
         .limit(1)
     )
     if own_submission is not None:
         is_vibing = own_submission.participation_mode == "vibing"
     else:
         membership = await db.scalar(
-            select(LeagueMember).where(
-                LeagueMember.league_id == round_.league_id,
-                LeagueMember.user_id == current_user.id,
-                LeagueMember.removed_at.is_(None),
+            select(ClubMember).where(
+                ClubMember.club_id == mix_.club_id,
+                ClubMember.user_id == current_user.id,
+                ClubMember.removed_at.is_(None),
             )
         )
-        # _load_league_as_member above already proved an active membership exists.
+        # _load_club_as_member above already proved an active membership exists.
         is_vibing = membership is not None and membership.vibe_mode
     if is_vibing:
         raise HTTPException(
@@ -101,20 +101,20 @@ async def cast_votes(
         )
 
     target_ids = payload.submission_ids
-    if len(target_ids) < 1 or len(target_ids) > round_.votes_per_player:
+    if len(target_ids) < 1 or len(target_ids) > mix_.votes_per_player:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"you may cast up to {round_.votes_per_player} votes",
+            detail=f"you may cast up to {mix_.votes_per_player} votes",
         )
     if len(set(target_ids)) != len(target_ids):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="duplicate votes are not allowed"
         )
 
-    # Resolve targets in one query; every id must belong to this round.
+    # Resolve targets in one query; every id must belong to this mix.
     targets = list(
         await db.scalars(
-            select(Submission).where(Submission.round_id == round_id, Submission.id.in_(target_ids))
+            select(Submission).where(Submission.mix_id == round_id, Submission.id.in_(target_ids))
         )
     )
     targets_by_id = {s.id: s for s in targets}
@@ -132,16 +132,16 @@ async def cast_votes(
         # Vibing songs are votable (MYS-112): a viber's song competes like any
         # other, and the voter can't tell which songs are vibers'.
 
-    # Lock the round row before mutating votes (MYS-168): a concurrent organizer
+    # Lock the mix row before mutating votes (MYS-168): a concurrent organizer
     # rollback, deadline force-advance, or manual close could otherwise land
     # between the open_voting check above and the vote writes below, leaving a
-    # stray vote attached to a round that's no longer accepting them. Re-verify
+    # stray vote attached to a mix that's no longer accepting them. Re-verify
     # state under the lock, then hold it through the rest of this request — the
     # same lock also serializes the auto-advance quorum check further down, so
     # there is only one lock acquisition for the whole endpoint.
     locked = await db.scalar(
-        select(Round)
-        .where(Round.id == round_.id)
+        select(Mix)
+        .where(Mix.id == mix_.id)
         .with_for_update()
         .execution_options(populate_existing=True)
     )
@@ -150,10 +150,10 @@ async def cast_votes(
             status_code=status.HTTP_409_CONFLICT, detail="voting is not open for this mystery mix"
         )
 
-    # Replace the caller's votes for this round wholesale.
+    # Replace the caller's votes for this mix wholesale.
     existing = list(
         await db.scalars(
-            select(Vote).where(Vote.round_id == round_id, Vote.voter_id == current_user.id)
+            select(Vote).where(Vote.mix_id == round_id, Vote.voter_id == current_user.id)
         )
     )
     for vote in existing:
@@ -162,24 +162,24 @@ async def cast_votes(
     # backstop never trips on a re-cast of an overlapping submission set.
     await db.flush()
     for sid in target_ids:
-        db.add(Vote(round_id=round_id, voter_id=current_user.id, submission_id=sid))
+        db.add(Vote(mix_id=round_id, voter_id=current_user.id, submission_id=sid))
     # Flush the inserts so the just-cast votes count toward the voting quorum.
     await db.flush()
 
-    # Auto-advance (MYS-69): once every playing submitter has voted, the round
-    # closes itself — auto-opening the next round or completing the league. The
-    # round has been locked since before the vote mutation above, so two
+    # Auto-advance (MYS-69): once every playing submitter has voted, the mix
+    # closes itself — auto-opening the next mix or completing the club. The
+    # mix has been locked since before the vote mutation above, so two
     # concurrent final votes still serialize correctly: whichever request's
     # quorum check runs second sees the other's now-committed vote plus its own
-    # just-flushed one, and is the one that closes the round.
-    if round_.state == "open_voting" and await voting_quorum_met(round_, db):
-        league = await db.scalar(select(League).where(League.id == round_.league_id))
-        if league is not None:
-            events = await advance_round_state(round_, league, "closed", db)
-            recipients = await gather_recipients(db, round_.league_id)
-            for event_round, event in events:
-                queue_round_event(
-                    background_tasks, sender, settings, recipients, league, event_round, event
+    # just-flushed one, and is the one that closes the mix.
+    if mix_.state == "open_voting" and await voting_quorum_met(mix_, db):
+        club = await db.scalar(select(Club).where(Club.id == mix_.club_id))
+        if club is not None:
+            events = await advance_mix_state(mix_, club, "closed", db)
+            recipients = await gather_recipients(db, mix_.club_id)
+            for event_mix, event in events:
+                queue_mix_event(
+                    background_tasks, sender, settings, recipients, club, event_mix, event
                 )
 
     await db.commit()
@@ -188,7 +188,7 @@ async def cast_votes(
         round_id=str(round_id),
         submission_ids=[str(sid) for sid in target_ids],
         count=len(target_ids),
-        votes_per_player=round_.votes_per_player,
+        votes_per_player=mix_.votes_per_player,
     )
 
 
@@ -198,13 +198,13 @@ async def get_my_votes(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> VotesResponse:
-    round_ = await _load_round(round_id, db)
-    await _load_league_as_member(round_.league_id, current_user, db)
+    mix_ = await _load_mix(round_id, db)
+    await _load_club_as_member(mix_.club_id, current_user, db)
 
     votes = list(
         await db.scalars(
             select(Vote)
-            .where(Vote.round_id == round_id, Vote.voter_id == current_user.id)
+            .where(Vote.mix_id == round_id, Vote.voter_id == current_user.id)
             .order_by(Vote.created_at.asc())
         )
     )
@@ -212,7 +212,7 @@ async def get_my_votes(
         round_id=str(round_id),
         submission_ids=[str(v.submission_id) for v in votes],
         count=len(votes),
-        votes_per_player=round_.votes_per_player,
+        votes_per_player=mix_.votes_per_player,
     )
 
 
@@ -234,28 +234,28 @@ async def get_vote_counts(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> VoteCountsResponse:
-    """Vote counts per song for the round (no notes yet — notes revealed only at close).
+    """Vote counts per song for the mix (no notes yet — notes revealed only at close).
 
-    Available while the round is in ``open_voting``. Shows how many votes each song
+    Available while the mix is in ``open_voting``. Shows how many votes each song
     has received so far, without revealing any notes or the submitter identity.
     This is the "running tally" that players see after they've cast their votes.
     """
-    round_ = await _load_round(round_id, db)
-    await _load_league_as_member(round_.league_id, current_user, db)
+    mix_ = await _load_mix(round_id, db)
+    await _load_club_as_member(mix_.club_id, current_user, db)
 
-    if round_.state != "open_voting":
+    if mix_.state != "open_voting":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="vote counts are available while voting is open",
         )
 
-    # Get all submissions in this round with their vote counts.
+    # Get all submissions in this mix with their vote counts.
     # The vote count is 0 for songs with no votes.
     submission_rows = (
         await db.execute(
             select(Submission, func.count(Vote.id).label("vote_count"))
             .outerjoin(Vote, Vote.submission_id == Submission.id)
-            .where(Submission.round_id == round_id)
+            .where(Submission.mix_id == round_id)
             .group_by(Submission.id)
             .order_by(Submission.created_at.asc())
         )

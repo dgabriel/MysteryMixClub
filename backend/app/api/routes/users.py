@@ -11,8 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.deps import get_current_user
 from app.config import Settings, get_settings
 from app.db.session import get_db
-from app.models.league import League
-from app.models.league_member import LeagueMember
+from app.models.club import Club
+from app.models.club_member import ClubMember
 from app.models.note import Note
 from app.models.session import Session
 from app.models.submission import Submission
@@ -138,7 +138,7 @@ async def export_me(
     """Right of access / data portability (GDPR Art. 15/20, MYS-185).
 
     Returns a JSON dump of everything tied to the caller's own account: profile,
-    submissions, votes, notes, and league memberships. Read-only — mirrors the
+    submissions, votes, notes, and club memberships. Read-only — mirrors the
     same tables the hard-purge cascade touches (app.jobs.purge_accounts) but
     selects rather than deletes.
     """
@@ -146,9 +146,9 @@ async def export_me(
     votes = await db.scalars(select(Vote).where(Vote.voter_id == current_user.id))
     notes = await db.scalars(select(Note).where(Note.author_id == current_user.id))
     memberships = await db.execute(
-        select(LeagueMember, League.name)
-        .join(League, League.id == LeagueMember.league_id)
-        .where(LeagueMember.user_id == current_user.id)
+        select(ClubMember, Club.name)
+        .join(Club, Club.id == ClubMember.club_id)
+        .where(ClubMember.user_id == current_user.id)
     )
 
     return UserDataExportResponse(
@@ -157,7 +157,7 @@ async def export_me(
         submissions=[
             ExportSubmission(
                 id=str(s.id),
-                round_id=str(s.round_id),
+                round_id=str(s.mix_id),
                 isrc=s.isrc,
                 source_key=s.source_key,
                 title=s.title,
@@ -172,7 +172,7 @@ async def export_me(
         votes=[
             ExportVote(
                 id=str(v.id),
-                round_id=str(v.round_id),
+                round_id=str(v.mix_id),
                 submission_id=str(v.submission_id),
                 created_at=v.created_at,
             )
@@ -181,7 +181,7 @@ async def export_me(
         notes=[
             ExportNote(
                 id=str(n.id),
-                round_id=str(n.round_id),
+                round_id=str(n.mix_id),
                 submission_id=str(n.submission_id),
                 body=n.body,
                 created_at=n.created_at,
@@ -190,12 +190,12 @@ async def export_me(
         ],
         league_memberships=[
             ExportLeagueMembership(
-                league_id=str(member.league_id),
-                league_name=league_name,
+                league_id=str(member.club_id),
+                league_name=club_name,
                 role=member.role,
                 joined_at=member.joined_at,
             )
-            for member, league_name in memberships
+            for member, club_name in memberships
         ],
     )
 
@@ -227,17 +227,17 @@ async def delete_me(
 ) -> None:
     """Soft-delete the caller's account (right to be forgotten, TD 10).
 
-    Blocks while the caller organizes an active league. Otherwise it tombstones
+    Blocks while the caller organizes an active club. Otherwise it tombstones
     the email (freeing it for re-signup and dropping the PII), invalidates every
     session, and marks the account deleted. Submissions/votes/notes/memberships
-    are left intact for round integrity and are removed by the scheduled hard
+    are left intact for mix integrity and are removed by the scheduled hard
     purge within 30 days (app.jobs.purge_accounts). The existing deleted_at
     filters in auth already lock the account out of sign-in.
     """
     organizes_active = await db.scalar(
         select(func.count())
-        .select_from(League)
-        .where(League.organizer_id == current_user.id, League.state == "active")
+        .select_from(Club)
+        .where(Club.organizer_id == current_user.id, Club.state == "active")
     )
     if organizes_active:
         raise HTTPException(

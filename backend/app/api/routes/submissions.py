@@ -31,12 +31,12 @@ from app.api.wire import WireModel
 from sqlalchemy import exists, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.routes.leagues import _load_league_as_member
-from app.api.routes.rounds import _load_round
+from app.api.routes.clubs import _load_club_as_member
+from app.api.routes.mixes import _load_mix
 from app.auth.deps import get_current_user
 from app.db.session import get_db
-from app.models.league_member import LeagueMember
-from app.models.round import Round
+from app.models.club_member import ClubMember
+from app.models.mix import Mix
 from app.models.submission import Submission
 from app.models.user import User
 from app.services.song_links import (
@@ -120,7 +120,7 @@ def _to_response(s: Submission, *, league_previously_submitted: bool = False) ->
     source, source_url = source_fields(s.source_key)
     return SubmissionResponse(
         id=str(s.id),
-        round_id=str(s.round_id),
+        round_id=str(s.mix_id),
         user_id=str(s.user_id),
         isrc=s.isrc,
         source=source,
@@ -192,20 +192,20 @@ def _identity_clause(payload: SubmissionCreate) -> Any:
     return Submission.isrc == payload.isrc
 
 
-async def _duplicate_in_round(
+async def _duplicate_in_mix(
     payload: SubmissionCreate,
     round_id: uuid.UUID,
     db: AsyncSession,
     *,
     exclude_submission_id: uuid.UUID | None = None,
 ) -> bool:
-    clause = [_identity_clause(payload), Submission.round_id == round_id]
+    clause = [_identity_clause(payload), Submission.mix_id == round_id]
     if exclude_submission_id is not None:
         clause.append(Submission.id != exclude_submission_id)
     return bool(await db.scalar(select(exists().where(*clause))))
 
 
-async def _duplicate_in_prior_league_rounds(
+async def _duplicate_in_prior_club_mixes(
     payload: SubmissionCreate,
     league_id: uuid.UUID,
     round_id: uuid.UUID,
@@ -216,22 +216,22 @@ async def _duplicate_in_prior_league_rounds(
             select(
                 exists().where(
                     _identity_clause(payload),
-                    Submission.round_id == Round.id,
-                    Round.league_id == league_id,
-                    Round.id != round_id,
+                    Submission.mix_id == Mix.id,
+                    Mix.club_id == league_id,
+                    Mix.id != round_id,
                 )
             )
         )
     )
 
 
-async def _own_round_submissions(
+async def _own_mix_submissions(
     round_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession
 ) -> list[Submission]:
     return list(
         await db.scalars(
             select(Submission)
-            .where(Submission.round_id == round_id, Submission.user_id == user_id)
+            .where(Submission.mix_id == round_id, Submission.user_id == user_id)
             .order_by(Submission.created_at.asc())
         )
     )
@@ -244,17 +244,17 @@ async def _resolve_mode(
     user_id: uuid.UUID,
     db: AsyncSession,
 ) -> str:
-    """The player's vibe stance for the round: explicit override → their current
-    stance (from any existing song) → their per-league default (MYS-112)."""
+    """The player's vibe stance for the mix: explicit override → their current
+    stance (from any existing song) → their per-club default (MYS-112)."""
     if payload_mode is not None:
         return payload_mode
     if existing:
         return existing[0].participation_mode
     member = await db.scalar(
-        select(LeagueMember).where(
-            LeagueMember.league_id == league_id,
-            LeagueMember.user_id == user_id,
-            LeagueMember.removed_at.is_(None),
+        select(ClubMember).where(
+            ClubMember.club_id == league_id,
+            ClubMember.user_id == user_id,
+            ClubMember.removed_at.is_(None),
         )
     )
     return "vibing" if (member is not None and member.vibe_mode) else "playing"
@@ -273,43 +273,43 @@ async def submit_song(
     assembler: SongLinkAssembler = Depends(get_link_assembler),
     youtube: YouTubeResolver = Depends(get_youtube_resolver),
 ) -> SubmissionResponse:
-    round_ = await _load_round(round_id, db)
-    league = await _load_league_as_member(round_.league_id, current_user, db)
-    if round_.state != "open_submission":
+    mix_ = await _load_mix(round_id, db)
+    club = await _load_club_as_member(mix_.club_id, current_user, db)
+    if mix_.state != "open_submission":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="this mystery mix is not accepting submissions",
         )
 
-    # Serialize concurrent submissions for the same (round, user) pair so two
+    # Serialize concurrent submissions for the same (mix, user) pair so two
     # racing requests can't both pass the cap check and both insert (MYS-144).
-    # XOR of the two UUID ints gives a cheap, deterministic per-(round, user) key.
+    # XOR of the two UUID ints gives a cheap, deterministic per-(mix, user) key.
     lock_key = (round_id.int ^ current_user.id.int) & 0x7FFFFFFFFFFFFFFF
     await db.execute(text("SELECT pg_advisory_xact_lock(:k)").bindparams(k=lock_key))
 
-    existing = await _own_round_submissions(round_id, current_user.id, db)
-    if len(existing) >= league.songs_per_submission:
+    existing = await _own_mix_submissions(round_id, current_user.id, db)
+    if len(existing) >= club.songs_per_submission:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"you've submitted the maximum of {league.songs_per_submission} song(s)",
+            detail=f"you've submitted the maximum of {club.songs_per_submission} song(s)",
         )
 
-    if await _duplicate_in_round(payload, round_id, db):
+    if await _duplicate_in_mix(payload, round_id, db):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="oops, someone else has great taste too — this track is already in this mystery mix",
         )
-    league_repeat = await _duplicate_in_prior_league_rounds(payload, round_.league_id, round_id, db)
+    league_repeat = await _duplicate_in_prior_club_mixes(payload, mix_.club_id, round_id, db)
 
     platform_links, youtube_video_id = await _assemble_track(payload, assembler, youtube)
     mode = await _resolve_mode(
-        payload.participation_mode, existing, round_.league_id, current_user.id, db
+        payload.participation_mode, existing, mix_.club_id, current_user.id, db
     )
-    # Keep the player's vibe stance uniform across all their songs this round.
+    # Keep the player's vibe stance uniform across all their songs this mix.
     for s in existing:
         s.participation_mode = mode
 
-    submission = Submission(round_id=round_id, user_id=current_user.id, participation_mode=mode)
+    submission = Submission(mix_id=round_id, user_id=current_user.id, participation_mode=mode)
     _apply_track(submission, payload, platform_links, youtube_video_id)
     db.add(submission)
     await db.flush()
@@ -328,16 +328,16 @@ async def edit_song(
     assembler: SongLinkAssembler = Depends(get_link_assembler),
     youtube: YouTubeResolver = Depends(get_youtube_resolver),
 ) -> SubmissionResponse:
-    round_ = await _load_round(round_id, db)
-    await _load_league_as_member(round_.league_id, current_user, db)
-    if round_.state != "open_submission":
+    mix_ = await _load_mix(round_id, db)
+    await _load_club_as_member(mix_.club_id, current_user, db)
+    if mix_.state != "open_submission":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="this mystery mix is not accepting submissions",
         )
 
     submission = await db.scalar(
-        select(Submission).where(Submission.id == submission_id, Submission.round_id == round_id)
+        select(Submission).where(Submission.id == submission_id, Submission.mix_id == round_id)
     )
     if submission is None:
         raise HTTPException(
@@ -348,18 +348,18 @@ async def edit_song(
             status_code=status.HTTP_403_FORBIDDEN, detail="that submission isn't yours"
         )
 
-    if await _duplicate_in_round(payload, round_id, db, exclude_submission_id=submission_id):
+    if await _duplicate_in_mix(payload, round_id, db, exclude_submission_id=submission_id):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="oops, someone else has great taste too — this track is already in this mystery mix",
         )
-    league_repeat = await _duplicate_in_prior_league_rounds(payload, round_.league_id, round_id, db)
+    league_repeat = await _duplicate_in_prior_club_mixes(payload, mix_.club_id, round_id, db)
 
     platform_links, youtube_video_id = await _assemble_track(payload, assembler, youtube)
     _apply_track(submission, payload, platform_links, youtube_video_id)
     # An explicit mode change applies to all the player's songs (uniform stance).
     if payload.participation_mode is not None:
-        for s in await _own_round_submissions(round_id, current_user.id, db):
+        for s in await _own_mix_submissions(round_id, current_user.id, db):
             s.participation_mode = payload.participation_mode
 
     await db.commit()
@@ -376,16 +376,16 @@ async def delete_song(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    round_ = await _load_round(round_id, db)
-    await _load_league_as_member(round_.league_id, current_user, db)
-    if round_.state != "open_submission":
+    mix_ = await _load_mix(round_id, db)
+    await _load_club_as_member(mix_.club_id, current_user, db)
+    if mix_.state != "open_submission":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="this mystery mix is not accepting submissions",
         )
 
     submission = await db.scalar(
-        select(Submission).where(Submission.id == submission_id, Submission.round_id == round_id)
+        select(Submission).where(Submission.id == submission_id, Submission.mix_id == round_id)
     )
     if submission is None:
         raise HTTPException(
@@ -414,17 +414,17 @@ async def update_submission_note(
 
     Lets a player add, change, or clear the context note on a song they've
     already submitted without re-picking the track. Only the owner may edit, and
-    only while the round is still accepting submissions.
+    only while the mix is still accepting submissions.
     """
-    round_ = await _load_round(round_id, db)
-    await _load_league_as_member(round_.league_id, current_user, db)
-    if round_.state != "open_submission":
+    mix_ = await _load_mix(round_id, db)
+    await _load_club_as_member(mix_.club_id, current_user, db)
+    if mix_.state != "open_submission":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="this mystery mix is not accepting submissions",
         )
     submission = await db.scalar(
-        select(Submission).where(Submission.id == submission_id, Submission.round_id == round_id)
+        select(Submission).where(Submission.id == submission_id, Submission.mix_id == round_id)
     )
     if submission is None:
         raise HTTPException(
@@ -446,9 +446,9 @@ async def get_my_submissions(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[SubmissionResponse]:
-    round_ = await _load_round(round_id, db)
-    await _load_league_as_member(round_.league_id, current_user, db)
-    submissions = await _own_round_submissions(round_id, current_user.id, db)
+    mix_ = await _load_mix(round_id, db)
+    await _load_club_as_member(mix_.club_id, current_user, db)
+    submissions = await _own_mix_submissions(round_id, current_user.id, db)
     return [_to_response(s) for s in submissions]
 
 
@@ -458,17 +458,17 @@ async def list_submissions(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[SubmissionResponse]:
-    round_ = await _load_round(round_id, db)
-    await _load_league_as_member(round_.league_id, current_user, db)
-    # Submissions stay private until the round closes (anonymity during voting).
-    if round_.state != "closed":
+    mix_ = await _load_mix(round_id, db)
+    await _load_club_as_member(mix_.club_id, current_user, db)
+    # Submissions stay private until the mix closes (anonymity during voting).
+    if mix_.state != "closed":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="submissions are revealed after the mystery mix closes",
         )
     submissions = await db.scalars(
         select(Submission)
-        .where(Submission.round_id == round_id)
+        .where(Submission.mix_id == round_id)
         .order_by(Submission.created_at.asc())
     )
     return [_to_response(s) for s in submissions]

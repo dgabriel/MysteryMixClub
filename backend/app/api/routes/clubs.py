@@ -12,53 +12,53 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
 from app.db.session import get_db
+from app.models.club import Club
+from app.models.club_member import ClubMember
 from app.models.invite import Invite
-from app.models.league import League
-from app.models.league_member import LeagueMember
+from app.models.mix import Mix
 from app.models.note import Note
-from app.models.round import Round
 from app.models.submission import Submission
 from app.models.user import User
 from app.models.vote import Vote
 
-router = APIRouter(prefix="/clubs", tags=["leagues"])
+router = APIRouter(prefix="/clubs", tags=["clubs"])
 
-LeagueName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
-LeagueDescription = Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000)]
+ClubName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+ClubDescription = Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000)]
 
 
-class LeagueCreate(WireModel):
-    name: LeagueName
-    # Default 6; the backend auto-generates this many pending rounds at creation.
+class ClubCreate(WireModel):
+    name: ClubName
+    # Default 6; the backend auto-generates this many pending mixes at creation.
     # Upper-bounded to keep slate sizes sane.
     total_rounds: int = Field(default=6, ge=1, le=50)
     votes_per_player: int = Field(default=3, ge=1)
-    # How many songs a player may submit per round (MYS-116). Fixed for the
-    # league at setup; 1 (default) = classic one-song behaviour, capped at 5.
+    # How many songs a player may submit per mix (MYS-116). Fixed for the
+    # club at setup; 1 (default) = classic one-song behaviour, capped at 5.
     songs_per_submission: int = Field(default=1, ge=1, le=5)
-    description: LeagueDescription | None = None
-    # Admin-set default participation mode for the league (MYS-112). Seeds every
+    description: ClubDescription | None = None
+    # Admin-set default participation mode for the club (MYS-112). Seeds every
     # member's vibe_mode at join (including the organizer at creation).
     default_vibe_mode: bool = False
-    # Deadline windows (in hours) for the league's rounds (MYS-159). Seed each
-    # round's submission/voting deadline when it opens; hour-granular, 4..168 (1
+    # Deadline windows (in hours) for the club's mixes (MYS-159). Seed each
+    # mix's submission/voting deadline when it opens; hour-granular, 4..168 (1
     # week), default 72 (3 days).
     submission_window_hours: int = Field(default=72, ge=4, le=168)
     voting_window_hours: int = Field(default=72, ge=4, le=168)
 
 
-class LeagueUpdate(WireModel):
+class ClubUpdate(WireModel):
     # All fields optional: only those explicitly provided are applied.
-    name: LeagueName | None = None
-    description: LeagueDescription | None = None
-    # Same upper bound as create: the reconcile grow path bulk-inserts rounds,
+    name: ClubName | None = None
+    description: ClubDescription | None = None
+    # Same upper bound as create: the reconcile grow path bulk-inserts mixes,
     # so cap it here too to keep slate sizes sane.
     total_rounds: int | None = Field(default=None, ge=1, le=50)
-    # Changing the league default only affects members who join afterward; it does
+    # Changing the club default only affects members who join afterward; it does
     # not re-seed existing members' settings (MYS-112).
     default_vibe_mode: bool | None = None
-    # Deadline windows (in hours) for the league's rounds (MYS-159); 4..168. Only
-    # affects rounds opened after the change — deadlines already stamped stay put.
+    # Deadline windows (in hours) for the club's mixes (MYS-159); 4..168. Only
+    # affects mixes opened after the change — deadlines already stamped stay put.
     submission_window_hours: int | None = Field(default=None, ge=4, le=168)
     voting_window_hours: int | None = Field(default=None, ge=4, le=168)
 
@@ -94,7 +94,7 @@ _INVITE_TTL = timedelta(hours=48)
 
 class InviteResponse(WireModel):
     id: str
-    # Null for a platform (league-less) invite (MYS-182).
+    # Null for a platform (club-less) invite (MYS-182).
     league_id: str | None
     token: str
     created_by: str
@@ -105,7 +105,7 @@ class InviteResponse(WireModel):
 def _to_invite_response(invite: Invite) -> InviteResponse:
     return InviteResponse(
         id=str(invite.id),
-        league_id=str(invite.league_id) if invite.league_id is not None else None,
+        league_id=str(invite.club_id) if invite.club_id is not None else None,
         token=invite.token,
         created_by=str(invite.created_by),
         created_at=invite.created_at,
@@ -113,7 +113,7 @@ def _to_invite_response(invite: Invite) -> InviteResponse:
     )
 
 
-class LeagueResponse(WireModel):
+class ClubResponse(WireModel):
     id: str
     name: str
     description: str | None
@@ -124,32 +124,32 @@ class LeagueResponse(WireModel):
     songs_per_submission: int
     current_round: int
     state: str
-    # Admin-set default participation mode for the league (MYS-112). A member's own
-    # setting lives on their membership (GET /leagues/:id/membership), not here.
+    # Admin-set default participation mode for the club (MYS-112). A member's own
+    # setting lives on their membership (GET /clubs/:id/membership), not here.
     default_vibe_mode: bool
-    # Deadline windows (in hours) for the league's rounds (MYS-159).
+    # Deadline windows (in hours) for the club's mixes (MYS-159).
     submission_window_hours: int
     voting_window_hours: int
     created_at: datetime
     completed_at: datetime | None
 
 
-def _to_response(league: League) -> LeagueResponse:
-    return LeagueResponse(
-        id=str(league.id),
-        name=league.name,
-        description=league.description,
-        organizer_id=str(league.organizer_id) if league.organizer_id is not None else None,
-        total_rounds=league.total_rounds,
-        votes_per_player=league.votes_per_player,
-        songs_per_submission=league.songs_per_submission,
-        current_round=league.current_round,
-        state=league.state,
-        default_vibe_mode=league.default_vibe_mode,
-        submission_window_hours=league.submission_window_hours,
-        voting_window_hours=league.voting_window_hours,
-        created_at=league.created_at,
-        completed_at=league.completed_at,
+def _to_response(club: Club) -> ClubResponse:
+    return ClubResponse(
+        id=str(club.id),
+        name=club.name,
+        description=club.description,
+        organizer_id=str(club.organizer_id) if club.organizer_id is not None else None,
+        total_rounds=club.total_mixes,
+        votes_per_player=club.votes_per_player,
+        songs_per_submission=club.songs_per_submission,
+        current_round=club.current_mix,
+        state=club.state,
+        default_vibe_mode=club.default_vibe_mode,
+        submission_window_hours=club.submission_window_hours,
+        voting_window_hours=club.voting_window_hours,
+        created_at=club.created_at,
+        completed_at=club.completed_at,
     )
 
 
@@ -160,13 +160,13 @@ class MemberResponse(WireModel):
     joined_at: datetime
     is_organizer: bool
     # True if this member is the fixed organizer OR a promoted co-organizer
-    # (league_members.role == "admin", MYS-99). Broader than is_organizer, which
+    # (club_members.role == "admin", MYS-99). Broader than is_organizer, which
     # only ever means "is the original organizer_id".
     is_admin: bool
 
 
 def _to_member_response(
-    member: LeagueMember, user: User, organizer_id: uuid.UUID | None
+    member: ClubMember, user: User, organizer_id: uuid.UUID | None
 ) -> MemberResponse:
     is_organizer = member.user_id == organizer_id
     return MemberResponse(
@@ -178,44 +178,44 @@ def _to_member_response(
     )
 
 
-@router.post("", status_code=201, response_model=LeagueResponse)
-async def create_league(
-    payload: LeagueCreate,
+@router.post("", status_code=201, response_model=ClubResponse)
+async def create_club(
+    payload: ClubCreate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> LeagueResponse:
-    league = League(
+) -> ClubResponse:
+    club = Club(
         name=payload.name,
         description=payload.description,
         organizer_id=current_user.id,
-        total_rounds=payload.total_rounds,
+        total_mixes=payload.total_rounds,
         votes_per_player=payload.votes_per_player,
         songs_per_submission=payload.songs_per_submission,
         default_vibe_mode=payload.default_vibe_mode,
         submission_window_hours=payload.submission_window_hours,
         voting_window_hours=payload.voting_window_hours,
     )
-    db.add(league)
-    # Flush to populate league.id for the membership and round rows below.
+    db.add(club)
+    # Flush to populate club.id for the membership and mix rows below.
     await db.flush()
 
-    # The organizer is the league's first member; seed their vibe_mode from the
-    # league default like any other member (MYS-112).
-    member = LeagueMember(
-        league_id=league.id,
+    # The organizer is the club's first member; seed their vibe_mode from the
+    # club default like any other member (MYS-112).
+    member = ClubMember(
+        club_id=club.id,
         user_id=current_user.id,
         vibe_mode=payload.default_vibe_mode,
     )
     db.add(member)
 
-    # Auto-generate the full slate of pending rounds (MYS-62). Each starts with
-    # no theme/description; the organizer fills those in while the round is
-    # pending. current_round stays 0 until a round is opened.
+    # Auto-generate the full slate of pending mixes (MYS-62). Each starts with
+    # no theme/description; the organizer fills those in while the mix is
+    # pending. current_mix stays 0 until a mix is opened.
     for number in range(1, payload.total_rounds + 1):
         db.add(
-            Round(
-                league_id=league.id,
-                round_number=number,
+            Mix(
+                club_id=club.id,
+                mix_number=number,
                 theme=None,
                 description=None,
                 state="pending",
@@ -224,69 +224,67 @@ async def create_league(
         )
 
     await db.commit()
-    await db.refresh(league)
-    return _to_response(league)
+    await db.refresh(club)
+    return _to_response(club)
 
 
-@router.get("", response_model=list[LeagueResponse])
-async def list_leagues(
+@router.get("", response_model=list[ClubResponse])
+async def list_clubs(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> list[LeagueResponse]:
-    # Every league the caller is an active member of. The organizer holds such
-    # a row from league creation, so organized leagues are included naturally.
-    leagues = await db.scalars(
-        select(League)
-        .join(LeagueMember, LeagueMember.league_id == League.id)
+) -> list[ClubResponse]:
+    # Every club the caller is an active member of. The organizer holds such
+    # a row from club creation, so organized clubs are included naturally.
+    clubs = await db.scalars(
+        select(Club)
+        .join(ClubMember, ClubMember.club_id == Club.id)
         .where(
-            LeagueMember.user_id == current_user.id,
-            LeagueMember.removed_at.is_(None),
+            ClubMember.user_id == current_user.id,
+            ClubMember.removed_at.is_(None),
         )
-        .order_by(League.created_at.desc())
+        .order_by(Club.created_at.desc())
     )
-    return [_to_response(league) for league in leagues]
+    return [_to_response(club) for club in clubs]
 
 
-async def _load_league_as_organizer(
+async def _load_club_as_organizer(
     league_id: uuid.UUID, current_user: User, db: AsyncSession, forbidden_detail: str
-) -> League:
-    """Load a league or 404, then require the caller to be an organizer or 403.
+) -> Club:
+    """Load a club or 404, then require the caller to be an organizer or 403.
 
-    "Organizer" here means either the league's fixed ``organizer_id`` or an
-    active (``removed_at IS NULL``) league member promoted to co-organizer
-    (``league_members.role == "admin"``, MYS-99). Co-organizers get full
+    "Organizer" here means either the club's fixed ``organizer_id`` or an
+    active (``removed_at IS NULL``) club member promoted to co-organizer
+    (``club_members.role == "admin"``, MYS-99). Co-organizers get full
     operational parity with the organizer everywhere this helper gates,
-    including reuse by :mod:`app.api.routes.rounds`.
+    including reuse by :mod:`app.api.routes.mixes`.
     """
-    league = await db.scalar(select(League).where(League.id == league_id))
-    if league is None:
+    club = await db.scalar(select(Club).where(Club.id == league_id))
+    if club is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="club not found")
-    if league.organizer_id != current_user.id:
+    if club.organizer_id != current_user.id:
         is_admin_member = await db.scalar(
-            select(LeagueMember.id).where(
-                LeagueMember.league_id == league_id,
-                LeagueMember.user_id == current_user.id,
-                LeagueMember.removed_at.is_(None),
-                LeagueMember.role == "admin",
+            select(ClubMember.id).where(
+                ClubMember.club_id == league_id,
+                ClubMember.user_id == current_user.id,
+                ClubMember.removed_at.is_(None),
+                ClubMember.role == "admin",
             )
         )
         if is_admin_member is None:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=forbidden_detail)
-    return league
+    return club
 
 
-async def _load_league_as_member(
-    league_id: uuid.UUID, current_user: User, db: AsyncSession
-) -> League:
-    """Load a league or 404, then require the caller to be an active member or 403."""
-    league = await db.scalar(select(League).where(League.id == league_id))
-    if league is None:
+async def _load_club_as_member(league_id: uuid.UUID, current_user: User, db: AsyncSession) -> Club:
+    """Load a club or 404, then require the caller to be an active member or 403."""
+    club = await db.scalar(select(Club).where(Club.id == league_id))
+    if club is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="club not found")
     membership = await db.scalar(
-        select(LeagueMember).where(
-            LeagueMember.league_id == league_id,
-            LeagueMember.user_id == current_user.id,
-            LeagueMember.removed_at.is_(None),
+        select(ClubMember).where(
+            ClubMember.club_id == league_id,
+            ClubMember.user_id == current_user.id,
+            ClubMember.removed_at.is_(None),
         )
     )
     if membership is None:
@@ -294,62 +292,62 @@ async def _load_league_as_member(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="you are not a member of this club",
         )
-    return league
+    return club
 
 
-@router.get("/{league_id}", response_model=LeagueResponse)
-async def get_league(
+@router.get("/{league_id}", response_model=ClubResponse)
+async def get_club(
     league_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> LeagueResponse:
-    league = await _load_league_as_member(league_id, current_user, db)
-    return _to_response(league)
+) -> ClubResponse:
+    club = await _load_club_as_member(league_id, current_user, db)
+    return _to_response(club)
 
 
 @router.get("/{league_id}/members", response_model=list[MemberResponse])
-async def list_league_members(
+async def list_club_members(
     league_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[MemberResponse]:
-    league = await _load_league_as_member(league_id, current_user, db)
+    club = await _load_club_as_member(league_id, current_user, db)
     # Active members joined to their users in one query to avoid an N+1.
     rows = await db.execute(
-        select(LeagueMember, User)
-        .join(User, User.id == LeagueMember.user_id)
+        select(ClubMember, User)
+        .join(User, User.id == ClubMember.user_id)
         .where(
-            LeagueMember.league_id == league_id,
-            LeagueMember.removed_at.is_(None),
+            ClubMember.club_id == league_id,
+            ClubMember.removed_at.is_(None),
         )
-        .order_by(LeagueMember.joined_at.asc())
+        .order_by(ClubMember.joined_at.asc())
     )
-    return [_to_member_response(member, user, league.organizer_id) for member, user in rows.all()]
+    return [_to_member_response(member, user, club.organizer_id) for member, user in rows.all()]
 
 
-class LeagueLeaderboardEntry(WireModel):
+class ClubLeaderboardEntry(WireModel):
     user_id: str
     display_name: str
     vote_count: int
     rank: int
 
 
-@router.get("/{league_id}/leaderboard", response_model=list[LeagueLeaderboardEntry])
-async def get_league_leaderboard(
+@router.get("/{league_id}/leaderboard", response_model=list[ClubLeaderboardEntry])
+async def get_club_leaderboard(
     league_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> list[LeagueLeaderboardEntry]:
-    """All-time vote totals per member, across closed rounds only (MYS-157).
+) -> list[ClubLeaderboardEntry]:
+    """All-time vote totals per member, across closed mixes only (MYS-157).
 
-    Every active member appears — those with no closed-round submissions show 0.
+    Every active member appears — those with no closed-mix submissions show 0.
     Ordered by votes descending, then display_name ascending for stable tie-breaking.
     """
-    await _load_league_as_member(league_id, current_user, db)
+    await _load_club_as_member(league_id, current_user, db)
 
-    closed_round_ids = select(Round.id).where(
-        Round.league_id == league_id,
-        Round.state == "closed",
+    closed_mix_ids = select(Mix.id).where(
+        Mix.club_id == league_id,
+        Mix.state == "closed",
     )
 
     rows = (
@@ -359,26 +357,26 @@ async def get_league_leaderboard(
                 User.display_name,
                 func.count(Vote.id).label("vote_count"),
             )
-            .select_from(LeagueMember)
-            .join(User, User.id == LeagueMember.user_id)
+            .select_from(ClubMember)
+            .join(User, User.id == ClubMember.user_id)
             .outerjoin(
                 Submission,
                 and_(
-                    Submission.user_id == LeagueMember.user_id,
-                    Submission.round_id.in_(closed_round_ids),
+                    Submission.user_id == ClubMember.user_id,
+                    Submission.mix_id.in_(closed_mix_ids),
                 ),
             )
             .outerjoin(Vote, Vote.submission_id == Submission.id)
             .where(
-                LeagueMember.league_id == league_id,
-                LeagueMember.removed_at.is_(None),
+                ClubMember.club_id == league_id,
+                ClubMember.removed_at.is_(None),
             )
             .group_by(User.id, User.display_name)
             .order_by(func.count(Vote.id).desc(), User.display_name.asc())
         )
     ).all()
 
-    entries: list[LeagueLeaderboardEntry] = []
+    entries: list[ClubLeaderboardEntry] = []
     rank = 0
     prev_votes: int | None = None
     for i, row in enumerate(rows):
@@ -386,7 +384,7 @@ async def get_league_leaderboard(
             rank = i + 1
             prev_votes = row.vote_count
         entries.append(
-            LeagueLeaderboardEntry(
+            ClubLeaderboardEntry(
                 user_id=str(row.user_id),
                 display_name=row.display_name,
                 vote_count=row.vote_count,
@@ -397,7 +395,7 @@ async def get_league_leaderboard(
 
 
 class MembershipResponse(WireModel):
-    # The caller's own per-league participation setting (MYS-112). Vibing is
+    # The caller's own per-club participation setting (MYS-112). Vibing is
     # private, so this only ever reports the caller's own setting — never anyone
     # else's (the members list deliberately omits it).
     league_id: str
@@ -411,17 +409,17 @@ class MembershipUpdate(WireModel):
 
 async def _load_active_membership(
     league_id: uuid.UUID, current_user: User, db: AsyncSession
-) -> LeagueMember:
-    """Load the caller's active membership for a league, gating on 404/403 first."""
-    await _load_league_as_member(league_id, current_user, db)
+) -> ClubMember:
+    """Load the caller's active membership for a club, gating on 404/403 first."""
+    await _load_club_as_member(league_id, current_user, db)
     membership = await db.scalar(
-        select(LeagueMember).where(
-            LeagueMember.league_id == league_id,
-            LeagueMember.user_id == current_user.id,
-            LeagueMember.removed_at.is_(None),
+        select(ClubMember).where(
+            ClubMember.club_id == league_id,
+            ClubMember.user_id == current_user.id,
+            ClubMember.removed_at.is_(None),
         )
     )
-    # _load_league_as_member already proved an active membership exists.
+    # _load_club_as_member already proved an active membership exists.
     assert membership is not None
     return membership
 
@@ -457,103 +455,101 @@ async def set_my_membership(
     )
 
 
-@router.patch("/{league_id}", response_model=LeagueResponse)
-async def update_league(
+@router.patch("/{league_id}", response_model=ClubResponse)
+async def update_club(
     league_id: uuid.UUID,
-    payload: LeagueUpdate,
+    payload: ClubUpdate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> LeagueResponse:
-    league = await _load_league_as_organizer(
+) -> ClubResponse:
+    club = await _load_club_as_organizer(
         league_id, current_user, db, "only an organizer or co-organizer can update this club"
     )
-    if league.state == "complete":
+    if club.state == "complete":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="the club has wrapped")
 
     updates = payload.model_dump(exclude_unset=True)
     new_total = updates.pop("total_rounds", None)
 
-    if new_total is not None and new_total != league.total_rounds:
-        await _reconcile_rounds(league, new_total, db)
-        league.total_rounds = new_total
+    if new_total is not None and new_total != club.total_mixes:
+        await _reconcile_mixes(club, new_total, db)
+        club.total_mixes = new_total
 
     for field, value in updates.items():
-        setattr(league, field, value)
+        setattr(club, field, value)
     await db.commit()
-    await db.refresh(league)
-    return _to_response(league)
+    await db.refresh(club)
+    return _to_response(club)
 
 
-async def _reconcile_rounds(league: League, new_total: int, db: AsyncSession) -> None:
-    """Grow or shrink a league's pending round slate to match ``new_total``.
+async def _reconcile_mixes(club: Club, new_total: int, db: AsyncSession) -> None:
+    """Grow or shrink a club's pending mix slate to match ``new_total``.
 
-    INCREASE: append pending rounds numbered (current_max+1 .. new_total).
-    DECREASE: delete rounds numbered above new_total — but only if every one of
-    them is still ``pending``; a started round (open_submission/open_voting/
+    INCREASE: append pending mixes numbered (current_max+1 .. new_total).
+    DECREASE: delete mixes numbered above new_total — but only if every one of
+    them is still ``pending``; a started mix (open_submission/open_voting/
     closed) can never be removed (409).
     """
-    if new_total < league.current_round:
+    if new_total < club.current_mix:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="mystery mixes cannot be set below the current mix",
         )
 
-    rounds = list(
-        await db.scalars(
-            select(Round).where(Round.league_id == league.id).order_by(Round.round_number.asc())
-        )
+    mixes = list(
+        await db.scalars(select(Mix).where(Mix.club_id == club.id).order_by(Mix.mix_number.asc()))
     )
-    current_max = rounds[-1].round_number if rounds else 0
+    current_max = mixes[-1].mix_number if mixes else 0
 
     if new_total > current_max:
-        # Grow: append new pending rounds with no theme/description.
+        # Grow: append new pending mixes with no theme/description.
         for number in range(current_max + 1, new_total + 1):
             db.add(
-                Round(
-                    league_id=league.id,
-                    round_number=number,
+                Mix(
+                    club_id=club.id,
+                    mix_number=number,
                     theme=None,
                     description=None,
                     state="pending",
-                    votes_per_player=league.votes_per_player,
+                    votes_per_player=club.votes_per_player,
                 )
             )
     elif new_total < current_max:
-        # Shrink: the rounds above new_total must all still be pending.
-        to_remove = [r for r in rounds if r.round_number > new_total]
-        if any(r.state != "pending" for r in to_remove):
+        # Shrink: the mixes above new_total must all still be pending.
+        to_remove = [m for m in mixes if m.mix_number > new_total]
+        if any(m.state != "pending" for m in to_remove):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="cannot remove mixes that have already started",
             )
-        for r in to_remove:
-            await db.delete(r)
+        for m in to_remove:
+            await db.delete(m)
 
 
 @router.delete("/{league_id}", status_code=204)
-async def delete_league(
+async def delete_club(
     league_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    await _load_league_as_organizer(
+    await _load_club_as_organizer(
         league_id, current_user, db, "only an organizer or co-organizer can delete this club"
     )
-    # The organizer may delete the league in any state (MYS-137) — including an
-    # in-progress round. The two-step UI confirm guards the destructive intent;
-    # the cascade below removes everything the league owns.
+    # The organizer may delete the club in any state (MYS-137) — including an
+    # in-progress mix. The two-step UI confirm guards the destructive intent;
+    # the cascade below removes everything the club owns.
 
     # Cascade in FK dependency order in one transaction (no ON DELETE CASCADE):
-    # votes/notes/submissions (by this league's rounds) -> rounds -> invites ->
-    # members -> league.
-    round_ids = select(Round.id).where(Round.league_id == league_id)
-    await db.execute(delete(Vote).where(Vote.round_id.in_(round_ids)))
-    await db.execute(delete(Note).where(Note.round_id.in_(round_ids)))
-    await db.execute(delete(Submission).where(Submission.round_id.in_(round_ids)))
-    await db.execute(delete(Round).where(Round.league_id == league_id))
-    await db.execute(delete(Invite).where(Invite.league_id == league_id))
-    await db.execute(delete(LeagueMember).where(LeagueMember.league_id == league_id))
-    await db.execute(delete(League).where(League.id == league_id))
+    # votes/notes/submissions (by this club's mixes) -> mixes -> invites ->
+    # members -> club.
+    mix_ids = select(Mix.id).where(Mix.club_id == league_id)
+    await db.execute(delete(Vote).where(Vote.mix_id.in_(mix_ids)))
+    await db.execute(delete(Note).where(Note.mix_id.in_(mix_ids)))
+    await db.execute(delete(Submission).where(Submission.mix_id.in_(mix_ids)))
+    await db.execute(delete(Mix).where(Mix.club_id == league_id))
+    await db.execute(delete(Invite).where(Invite.club_id == league_id))
+    await db.execute(delete(ClubMember).where(ClubMember.club_id == league_id))
+    await db.execute(delete(Club).where(Club.id == league_id))
     await db.commit()
 
 
@@ -566,27 +562,27 @@ async def remove_member(
 ) -> None:
     if user_id == current_user.id:
         # Self-leave: any active member except the organizer may leave.
-        league = await _load_league_as_member(league_id, current_user, db)
-        if user_id == league.organizer_id:
+        club = await _load_club_as_member(league_id, current_user, db)
+        if user_id == club.organizer_id:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="organizers cannot leave their own club",
             )
     else:
         # Organizer removing another member.
-        league = await _load_league_as_organizer(
+        club = await _load_club_as_organizer(
             league_id, current_user, db, "only an organizer or co-organizer can remove members"
         )
-        if user_id == league.organizer_id:
+        if user_id == club.organizer_id:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT, detail="cannot remove the organizer"
             )
 
     membership = await db.scalar(
-        select(LeagueMember).where(
-            LeagueMember.league_id == league_id,
-            LeagueMember.user_id == user_id,
-            LeagueMember.removed_at.is_(None),
+        select(ClubMember).where(
+            ClubMember.club_id == league_id,
+            ClubMember.user_id == user_id,
+            ClubMember.removed_at.is_(None),
         )
     )
     if membership is None:
@@ -614,20 +610,20 @@ async def set_member_role(
     call this. The organizer's own membership row can't be changed here — its
     admin power comes from ``organizer_id`` itself, not a toggleable role.
     """
-    league = await _load_league_as_organizer(
+    club = await _load_club_as_organizer(
         league_id, current_user, db, "only an organizer or co-organizer can change member roles"
     )
-    if user_id == league.organizer_id:
+    if user_id == club.organizer_id:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="the organizer already has full admin access and can't be changed here",
         )
 
     membership = await db.scalar(
-        select(LeagueMember).where(
-            LeagueMember.league_id == league_id,
-            LeagueMember.user_id == user_id,
-            LeagueMember.removed_at.is_(None),
+        select(ClubMember).where(
+            ClubMember.club_id == league_id,
+            ClubMember.user_id == user_id,
+            ClubMember.removed_at.is_(None),
         )
     )
     if membership is None:
@@ -635,18 +631,18 @@ async def set_member_role(
 
     # Zero-effective-admins lockout guard (MYS-99 follow-up). If the fixed
     # organizer account has been hard-purged (organizer_id nulled — see
-    # jobs/purge_accounts.py), the league's only path to an admin-capable
+    # jobs/purge_accounts.py), the club's only path to an admin-capable
     # caller is a co-organizer with role == "admin". Demoting the last one
-    # would leave the league permanently unadministrable, so block it.
-    if payload.role == "member" and membership.role == "admin" and league.organizer_id is None:
+    # would leave the club permanently unadministrable, so block it.
+    if payload.role == "member" and membership.role == "admin" and club.organizer_id is None:
         other_admin = await db.scalar(
-            select(LeagueMember.id)
-            .join(User, User.id == LeagueMember.user_id)
+            select(ClubMember.id)
+            .join(User, User.id == ClubMember.user_id)
             .where(
-                LeagueMember.league_id == league_id,
-                LeagueMember.user_id != user_id,
-                LeagueMember.removed_at.is_(None),
-                LeagueMember.role == "admin",
+                ClubMember.club_id == league_id,
+                ClubMember.user_id != user_id,
+                ClubMember.removed_at.is_(None),
+                ClubMember.role == "admin",
                 User.deleted_at.is_(None),
             )
         )
@@ -661,7 +657,7 @@ async def set_member_role(
 
     user = await db.scalar(select(User).where(User.id == user_id))
     assert user is not None
-    return _to_member_response(membership, user, league.organizer_id)
+    return _to_member_response(membership, user, club.organizer_id)
 
 
 @router.post("/{league_id}/invites", status_code=201, response_model=InviteResponse)
@@ -670,17 +666,17 @@ async def create_invite(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> InviteResponse:
-    league = await db.scalar(select(League).where(League.id == league_id))
-    if league is None:
+    club = await db.scalar(select(Club).where(Club.id == league_id))
+    if club is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="club not found")
 
     # Only an active member (removed_at IS NULL) may generate invites. The
-    # organizer has such a row from league creation, so the organizer passes.
+    # organizer has such a row from club creation, so the organizer passes.
     membership = await db.scalar(
-        select(LeagueMember).where(
-            LeagueMember.league_id == league_id,
-            LeagueMember.user_id == current_user.id,
-            LeagueMember.removed_at.is_(None),
+        select(ClubMember).where(
+            ClubMember.club_id == league_id,
+            ClubMember.user_id == current_user.id,
+            ClubMember.removed_at.is_(None),
         )
     )
     if membership is None:
@@ -689,7 +685,7 @@ async def create_invite(
     # Shareable-link invite with a 48h expiry (MYS-126); after that the organizer
     # must generate a fresh link.
     invite = Invite(
-        league_id=league_id,
+        club_id=league_id,
         created_by=current_user.id,
         token=secrets.token_urlsafe(_INVITE_TOKEN_BYTES),
         expires_at=datetime.now(timezone.utc) + _INVITE_TTL,
@@ -707,12 +703,12 @@ async def revoke_invite(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    await _load_league_as_organizer(
+    await _load_club_as_organizer(
         league_id, current_user, db, "only an organizer or co-organizer can revoke invites"
     )
 
     invite = await db.scalar(select(Invite).where(Invite.id == invite_id))
-    if invite is None or invite.league_id != league_id:
+    if invite is None or invite.club_id != league_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invite not found")
 
     # Revoke a shareable link: drop the invite row so the link stops working.

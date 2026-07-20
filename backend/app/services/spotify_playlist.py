@@ -1,4 +1,4 @@
-"""Pure helpers for building a Spotify playlist's metadata from a round (MYS-83).
+"""Pure helpers for building a Spotify playlist's metadata from a mix (MYS-83).
 
 No network, no DB — trivially unit-tested, mirroring :mod:`youtube_playlist`.
 """
@@ -10,7 +10,7 @@ _MAX_NAME = 100
 _MAX_DESCRIPTION = 300
 
 
-def playlist_name(league_name: str, round_number: int, theme: str | None) -> str:
+def playlist_name(club_name: str, mix_number: int, theme: str | None) -> str:
     """Human title for the saved playlist, e.g.
     ``MysteryMixClub: Friday Mixtape, Late Summer Feels``.
 
@@ -23,19 +23,19 @@ def playlist_name(league_name: str, round_number: int, theme: str | None) -> str
     human-distinct, not machine-unique. (An earlier name-keyed reuse scheme,
     MYS-87, was replaced; this docstring previously described it.)
     """
-    league = league_name.strip() or "MysteryMixClub"
-    suffix = theme.strip() if theme and theme.strip() else f"Mix {round_number}"
-    return f"MysteryMixClub: {league}, {suffix}"[:_MAX_NAME]
+    club = club_name.strip() or "MysteryMixClub"
+    suffix = theme.strip() if theme and theme.strip() else f"Mix {mix_number}"
+    return f"MysteryMixClub: {club}, {suffix}"[:_MAX_NAME]
 
 
-def playlist_description(league_name: str, round_number: int, theme: str | None) -> str:
+def playlist_description(club_name: str, mix_number: int, theme: str | None) -> str:
     """Short description stored on the playlist."""
-    league = league_name.strip() or "MysteryMixClub"
+    club = club_name.strip() or "MysteryMixClub"
     if theme and theme.strip():
         text = (
-            f"Every song from Mystery Mix {round_number} ({theme.strip()}) "
-            f"of {league} on MysteryMixClub."
+            f"Every song from Mystery Mix {mix_number} ({theme.strip()}) "
+            f"of {club} on MysteryMixClub."
         )
     else:
-        text = f"Every song from Mystery Mix {round_number} of {league} on MysteryMixClub."
+        text = f"Every song from Mystery Mix {mix_number} of {club} on MysteryMixClub."
     return text[:_MAX_DESCRIPTION]

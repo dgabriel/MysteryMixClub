@@ -8,12 +8,12 @@ from app.api.routes import (
     admin,
     apple_music,
     auth,
+    clubs,
     health,
     invites,
-    leagues,
+    mixes,
     notes,
     notifications,
-    rounds,
     spotify,
     submissions,
     users,
@@ -61,9 +61,9 @@ def create_app() -> FastAPI:
     app.include_router(health.router, prefix="/api/v1")
     app.include_router(auth.router, prefix="/api/v1")
     app.include_router(users.router, prefix="/api/v1")
-    app.include_router(leagues.router, prefix="/api/v1")
+    app.include_router(clubs.router, prefix="/api/v1")
     app.include_router(invites.router, prefix="/api/v1")
-    app.include_router(rounds.router, prefix="/api/v1")
+    app.include_router(mixes.router, prefix="/api/v1")
     app.include_router(submissions.router, prefix="/api/v1")
     app.include_router(votes.router, prefix="/api/v1")
     app.include_router(notes.router, prefix="/api/v1")

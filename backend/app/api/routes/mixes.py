@@ -1,21 +1,21 @@
-"""Round flow endpoints (MYS-18).
+"""Mix flow endpoints (MYS-18).
 
-Round lifecycle and the create/read/update surface for a league's rounds:
+Mix lifecycle and the create/read/update surface for a club's mixes:
 
-* ``POST  /api/v1/leagues/:id/rounds``       — organizer (or co-organizer) creates the next round
-* ``GET   /api/v1/leagues/:id/rounds``       — members list a league's rounds
-* ``GET   /api/v1/rounds/:id``               — members read a round
-* ``PATCH /api/v1/rounds/:id``               — organizer (or co-organizer) edits fields / advances state
-* ``GET   /api/v1/rounds/:id/playlist``      — members get the anonymous voting playlist
+* ``POST  /api/v1/clubs/:id/mixes``       — organizer (or co-organizer) creates the next mix
+* ``GET   /api/v1/clubs/:id/mixes``       — members list a club's mixes
+* ``GET   /api/v1/mixes/:id``               — members read a mix
+* ``PATCH /api/v1/mixes/:id``               — organizer (or co-organizer) edits fields / advances state
+* ``GET   /api/v1/mixes/:id/playlist``      — members get the anonymous voting playlist
 
 State machine is forward-only: ``pending -> open_submission -> open_voting ->
-closed``. Rounds are auto-generated as ``pending`` at league creation; only one
-round per league may be active (open_submission/open_voting) at a time, enforced
-when a round opens. The
+closed``. Mixes are auto-generated as ``pending`` at club creation; only one
+mix per club may be active (open_submission/open_voting) at a time, enforced
+when a mix opens. The
 playlist surfaces each submission resolved to the viewer's preferred service (it
 reads the stored ``platform_links``). Membership/organizer checks reuse the helpers
-in :mod:`app.api.routes.leagues` — "organizer" there also admits a promoted
-co-organizer (``league_members.role == "admin"``, MYS-99).
+in :mod:`app.api.routes.clubs` — "organizer" there also admits a promoted
+co-organizer (``club_members.role == "admin"``, MYS-99).
 """
 
 import random
@@ -30,15 +30,15 @@ from app.api.wire import WireModel
 from sqlalchemy import delete, exists, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.routes.leagues import _load_league_as_member, _load_league_as_organizer
+from app.api.routes.clubs import _load_club_as_member, _load_club_as_organizer
 from app.auth.deps import get_current_user
 from app.config import Settings, get_settings
 from app.db.session import get_db
-from app.models.apple_round_playlist import AppleRoundPlaylist
-from app.models.league import League
-from app.models.league_member import LeagueMember
+from app.models.apple_mix_playlist import AppleMixPlaylist
+from app.models.club import Club
+from app.models.club_member import ClubMember
+from app.models.mix import Mix
 from app.models.note import Note
-from app.models.round import Round
 from app.models.submission import Submission
 from app.models.user import User
 from app.services.source_tracks import source_fields
@@ -47,16 +47,16 @@ from app.services.spotify_playlist_generation import try_auto_generate_playlist
 from app.models.vote import Vote
 from app.services.email import EmailSender, get_email_sender
 from app.services.most_noted import compute_most_noted
-from app.services.notifications import RoundEvent, gather_recipients, queue_round_event
+from app.services.notifications import MixEvent, gather_recipients, queue_mix_event
 from app.services.youtube_playlist import build_watch_videos_url, normalize_video_ids
 from app.services.youtube_resolver import YouTubeResolver, get_youtube_resolver
 
-router = APIRouter(tags=["rounds"])
+router = APIRouter(tags=["mixes"])
 
-RoundTheme = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
-# Free-text round blurb. Capped + stripped to match the other text fields
+MixTheme = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+# Free-text mix blurb. Capped + stripped to match the other text fields
 # (theme/note/album) and the §9 input-sanitization contract.
-RoundDescription = Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)]
+MixDescription = Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)]
 
 # Forward-only lifecycle: each state's single permitted successor.
 _NEXT_STATE = {
@@ -65,31 +65,31 @@ _NEXT_STATE = {
     "open_voting": "closed",
 }
 
-# States in which a round is the league's live round (exactly one at a time).
+# States in which a mix is the club's live mix (exactly one at a time).
 _ACTIVE_STATES = ("open_submission", "open_voting")
 
 
-class RoundCreate(WireModel):
-    # Optional: rounds may be created without a theme (filled in while pending).
-    theme: RoundTheme | None = None
-    description: RoundDescription | None = None
+class MixCreate(WireModel):
+    # Optional: mixes may be created without a theme (filled in while pending).
+    theme: MixTheme | None = None
+    description: MixDescription | None = None
     submission_deadline: datetime | None = None
     voting_deadline: datetime | None = None
-    # Defaults to the league's votes_per_player when omitted.
+    # Defaults to the club's votes_per_player when omitted.
     votes_per_player: int | None = Field(default=None, ge=1)
 
 
-class RoundUpdate(WireModel):
+class MixUpdate(WireModel):
     # All optional: only provided fields are applied. `state` advances the machine.
     # theme is nullable and may be cleared (it maps to a nullable column now).
-    theme: RoundTheme | None = None
-    description: RoundDescription | None = None
+    theme: MixTheme | None = None
+    description: MixDescription | None = None
     submission_deadline: datetime | None = None
     voting_deadline: datetime | None = None
     state: Literal["pending", "open_submission", "open_voting", "closed"] | None = None
 
 
-class RoundResponse(WireModel):
+class MixResponse(WireModel):
     id: str
     league_id: str
     round_number: int
@@ -101,14 +101,14 @@ class RoundResponse(WireModel):
     votes_per_player: int
     created_at: datetime
     closed_at: datetime | None
-    # Submission progress (MYS-101): how many songs are in, out of the league's
+    # Submission progress (MYS-101): how many songs are in, out of the club's
     # active members. The client shows "X of Y submitted" while submissions are
-    # open. member_count is a league fact denormalized onto the round so the
-    # round-detail screen needn't also fetch the member list.
+    # open. member_count is a club fact denormalized onto the mix so the
+    # mix-detail screen needn't also fetch the member list.
     submission_count: int
     member_count: int
     # Viewer participation flags: whether the current user has submitted / voted
-    # in this round. Used on the league-home tile to show confirmation indicators.
+    # in this mix. Used on the club-home tile to show confirmation indicators.
     viewer_submitted: bool = False
     viewer_voted: bool = False
     # Voting progress (MYS-110): how many playing submitters have cast a vote,
@@ -120,7 +120,7 @@ class RoundResponse(WireModel):
 
 
 def _to_response(
-    r: Round,
+    m: Mix,
     submission_count: int,
     member_count: int,
     voted_count: int = 0,
@@ -128,19 +128,19 @@ def _to_response(
     *,
     viewer_submitted: bool = False,
     viewer_voted: bool = False,
-) -> RoundResponse:
-    return RoundResponse(
-        id=str(r.id),
-        league_id=str(r.league_id),
-        round_number=r.round_number,
-        theme=r.theme,
-        description=r.description,
-        state=r.state,
-        submission_deadline=r.submission_deadline,
-        voting_deadline=r.voting_deadline,
-        votes_per_player=r.votes_per_player,
-        created_at=r.created_at,
-        closed_at=r.closed_at,
+) -> MixResponse:
+    return MixResponse(
+        id=str(m.id),
+        league_id=str(m.club_id),
+        round_number=m.mix_number,
+        theme=m.theme,
+        description=m.description,
+        state=m.state,
+        submission_deadline=m.submission_deadline,
+        voting_deadline=m.voting_deadline,
+        votes_per_player=m.votes_per_player,
+        created_at=m.created_at,
+        closed_at=m.closed_at,
         submission_count=submission_count,
         member_count=member_count,
         voted_count=voted_count,
@@ -150,177 +150,175 @@ def _to_response(
     )
 
 
-async def _submission_count(round_id: uuid.UUID, db: AsyncSession) -> int:
+async def _submission_count(mix_id: uuid.UUID, db: AsyncSession) -> int:
     # Distinct players who have submitted (a player may hold several songs now —
     # MYS-116), so "X of Y submitted" counts people, not songs.
     return (
         await db.scalar(
-            select(func.count(func.distinct(Submission.user_id))).where(
-                Submission.round_id == round_id
-            )
+            select(func.count(func.distinct(Submission.user_id))).where(Submission.mix_id == mix_id)
         )
     ) or 0
 
 
 async def _member_count(league_id: uuid.UUID, db: AsyncSession) -> int:
-    """Count of a league's active (not-removed) members — the "Y" in X of Y."""
+    """Count of a club's active (not-removed) members — the "Y" in X of Y."""
     return (
         await db.scalar(
             select(func.count())
-            .select_from(LeagueMember)
+            .select_from(ClubMember)
             .where(
-                LeagueMember.league_id == league_id,
-                LeagueMember.removed_at.is_(None),
+                ClubMember.club_id == league_id,
+                ClubMember.removed_at.is_(None),
             )
         )
     ) or 0
 
 
-async def _viewer_submitted(round_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession) -> bool:
+async def _viewer_submitted(mix_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession) -> bool:
     return bool(
         await db.scalar(
-            select(exists().where(Submission.round_id == round_id, Submission.user_id == user_id))
+            select(exists().where(Submission.mix_id == mix_id, Submission.user_id == user_id))
         )
     )
 
 
-async def _viewer_voted(round_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession) -> bool:
+async def _viewer_voted(mix_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession) -> bool:
     return bool(
-        await db.scalar(select(exists().where(Vote.round_id == round_id, Vote.voter_id == user_id)))
+        await db.scalar(select(exists().where(Vote.mix_id == mix_id, Vote.voter_id == user_id)))
     )
 
 
-async def _voted_count(round_id: uuid.UUID, db: AsyncSession) -> int:
-    """Distinct voters in a round — the "X" in X of Y voted."""
+async def _voted_count(mix_id: uuid.UUID, db: AsyncSession) -> int:
+    """Distinct voters in a mix — the "X" in X of Y voted."""
     return (
         await db.scalar(
-            select(func.count(func.distinct(Vote.voter_id))).where(Vote.round_id == round_id)
+            select(func.count(func.distinct(Vote.voter_id))).where(Vote.mix_id == mix_id)
         )
     ) or 0
 
 
-async def _voting_eligible_count(round_id: uuid.UUID, db: AsyncSession) -> int:
-    """Distinct playing submitters in a round — the "Y" in X of Y voted."""
+async def _voting_eligible_count(mix_id: uuid.UUID, db: AsyncSession) -> int:
+    """Distinct playing submitters in a mix — the "Y" in X of Y voted."""
     return (
         await db.scalar(
             select(func.count(func.distinct(Submission.user_id))).where(
-                Submission.round_id == round_id,
+                Submission.mix_id == mix_id,
                 Submission.participation_mode == "playing",
             )
         )
     ) or 0
 
 
-async def _load_round(round_id: uuid.UUID, db: AsyncSession) -> Round:
-    round_ = await db.scalar(select(Round).where(Round.id == round_id))
-    if round_ is None:
+async def _load_mix(mix_id: uuid.UUID, db: AsyncSession) -> Mix:
+    mix_ = await db.scalar(select(Mix).where(Mix.id == mix_id))
+    if mix_ is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="mystery mix not found")
-    return round_
+    return mix_
 
 
-async def advance_round_state(
-    round_: Round, league: League, new_state: str, db: AsyncSession
-) -> list[tuple[Round, RoundEvent]]:
-    """Apply an ALREADY-VALIDATED forward transition of ``round_`` to ``new_state``.
+async def advance_mix_state(
+    mix_: Mix, club: Club, new_state: str, db: AsyncSession
+) -> list[tuple[Mix, MixEvent]]:
+    """Apply an ALREADY-VALIDATED forward transition of ``mix_`` to ``new_state``.
 
-    The caller guarantees ``new_state == _NEXT_STATE[round_.state]`` and owns any
-    higher-level guards (e.g. the "another round is already active" check for the
+    The caller guarantees ``new_state == _NEXT_STATE[mix_.state]`` and owns any
+    higher-level guards (e.g. the "another mix is already active" check for the
     organizer's manual pending->open_submission step). This helper only performs
     the transition and its side effects:
 
     * entering ``open_submission`` — stamp ``submission_opened_at`` and make the
-      round the league's ``current_round``;
-    * ``closed`` — stamp ``closed_at``, then either complete the league (final
-      round) or auto-open the next pending round (stamping *its*
-      ``submission_opened_at`` + ``current_round``).
+      mix the club's ``current_mix``;
+    * ``closed`` — stamp ``closed_at``, then either complete the club (final
+      mix) or auto-open the next pending mix (stamping *its*
+      ``submission_opened_at`` + ``current_mix``).
 
-    Returns the ``(round, event)`` notification tuples to dispatch (including the
-    auto-opened next round's ``submission_open``). It does NOT commit.
+    Returns the ``(mix, event)`` notification tuples to dispatch (including the
+    auto-opened next mix's ``submission_open``). It does NOT commit.
     """
-    events: list[tuple[Round, RoundEvent]] = []
-    round_.state = new_state
+    events: list[tuple[Mix, MixEvent]] = []
+    mix_.state = new_state
     if new_state == "open_submission":
-        round_.submission_opened_at = func.now()
-        # Stamp the submission deadline from the league window (MYS-159), unless the
-        # organizer already set one explicitly at round creation — don't clobber it.
-        if round_.submission_deadline is None:
-            round_.submission_deadline = datetime.now(timezone.utc) + timedelta(
-                hours=league.submission_window_hours
+        mix_.submission_opened_at = func.now()
+        # Stamp the submission deadline from the club window (MYS-159), unless the
+        # organizer already set one explicitly at mix creation — don't clobber it.
+        if mix_.submission_deadline is None:
+            mix_.submission_deadline = datetime.now(timezone.utc) + timedelta(
+                hours=club.submission_window_hours
             )
-        league.current_round = round_.round_number
-        events.append((round_, "submission_open"))
+        club.current_mix = mix_.mix_number
+        events.append((mix_, "submission_open"))
     elif new_state == "open_voting":
-        # Stamp the voting deadline from the league window (MYS-159), unless the
+        # Stamp the voting deadline from the club window (MYS-159), unless the
         # organizer already set one explicitly — don't clobber a manual value.
-        if round_.voting_deadline is None:
-            round_.voting_deadline = datetime.now(timezone.utc) + timedelta(
-                hours=league.voting_window_hours
+        if mix_.voting_deadline is None:
+            mix_.voting_deadline = datetime.now(timezone.utc) + timedelta(
+                hours=club.voting_window_hours
             )
-        events.append((round_, "voting_open"))
+        events.append((mix_, "voting_open"))
     elif new_state == "closed":
-        round_.closed_at = func.now()
-        events.append((round_, "round_closed"))
-        if round_.round_number >= league.total_rounds:
-            # Closing the final round completes the league.
-            league.state = "complete"
-            league.completed_at = func.now()
-            events.append((round_, "league_complete"))
+        mix_.closed_at = func.now()
+        events.append((mix_, "mix_closed"))
+        if mix_.mix_number >= club.total_mixes:
+            # Closing the final mix completes the club.
+            club.state = "complete"
+            club.completed_at = func.now()
+            events.append((mix_, "club_complete"))
         else:
-            # Auto-open the next pending round in sequence, if any.
-            next_round = await db.scalar(
-                select(Round).where(
-                    Round.league_id == round_.league_id,
-                    Round.round_number == round_.round_number + 1,
-                    Round.state == "pending",
+            # Auto-open the next pending mix in sequence, if any.
+            next_mix = await db.scalar(
+                select(Mix).where(
+                    Mix.club_id == mix_.club_id,
+                    Mix.mix_number == mix_.mix_number + 1,
+                    Mix.state == "pending",
                 )
             )
-            if next_round is not None:
-                next_round.state = "open_submission"
-                next_round.submission_opened_at = func.now()
-                # Same league window as the manual open (MYS-159): stamp the next
-                # round's submission deadline unless it was set explicitly.
-                if next_round.submission_deadline is None:
-                    next_round.submission_deadline = datetime.now(timezone.utc) + timedelta(
-                        hours=league.submission_window_hours
+            if next_mix is not None:
+                next_mix.state = "open_submission"
+                next_mix.submission_opened_at = func.now()
+                # Same club window as the manual open (MYS-159): stamp the next
+                # mix's submission deadline unless it was set explicitly.
+                if next_mix.submission_deadline is None:
+                    next_mix.submission_deadline = datetime.now(timezone.utc) + timedelta(
+                        hours=club.submission_window_hours
                     )
-                league.current_round = next_round.round_number
-                events.append((next_round, "submission_open"))
+                club.current_mix = next_mix.mix_number
+                events.append((next_mix, "submission_open"))
     return events
 
 
-async def rollback_round_to_submission(round_: Round, league: League, db: AsyncSession) -> None:
+async def rollback_mix_to_submission(mix_: Mix, club: Club, db: AsyncSession) -> None:
     """Organizer-only reverse transition, ``open_voting -> open_submission``
     (MYS-168) — the single sanctioned backward step in an otherwise forward-only
-    lifecycle. Born from a live incident where a round advanced to voting by
+    lifecycle. Born from a live incident where a mix advanced to voting by
     accident and had to be rolled back by hand-run SQL; this reproduces exactly
     that fix as a supported action.
 
-    Unlike ``advance_round_state``, every stamp here is an unconditional
-    overwrite, not a no-clobber guard — the round already has a stale
+    Unlike ``advance_mix_state``, every stamp here is an unconditional
+    overwrite, not a no-clobber guard — the mix already has a stale
     ``submission_deadline`` from its first pass through ``open_submission``, and
     a rollback must replace it with a fresh full window, not preserve it.
 
     Caller must already hold the row lock (``with_for_update``) and have
-    re-verified ``round_.state == "open_voting"`` under that lock — this
+    re-verified ``mix_.state == "open_voting"`` under that lock — this
     function only applies the transition, it does not itself guard concurrency.
     """
-    round_.state = "open_submission"
-    round_.submission_opened_at = func.now()
-    round_.submission_deadline = datetime.now(timezone.utc) + timedelta(
-        hours=league.submission_window_hours
+    mix_.state = "open_submission"
+    mix_.submission_opened_at = func.now()
+    mix_.submission_deadline = datetime.now(timezone.utc) + timedelta(
+        hours=club.submission_window_hours
     )
     # Re-stamped when voting genuinely reopens; the no-clobber guard in
-    # advance_round_state requires this to be NULL.
-    round_.voting_deadline = None
+    # advance_mix_state requires this to be NULL.
+    mix_.voting_deadline = None
     # Warnings re-arm for the new window/phase.
-    round_.submission_warning_sent_at = None
-    round_.voting_warning_sent_at = None
-    round_.empty_round_notice_sent_at = None
+    mix_.submission_warning_sent_at = None
+    mix_.voting_warning_sent_at = None
+    mix_.empty_round_notice_sent_at = None
     # The ballot set may change under a reopened submission phase; stale votes
     # would poison results and could insta-satisfy the voting quorum on the
     # next pass. Notes are kept — they're appreciation, remain state-gated, and
     # resurface at close.
-    await db.execute(delete(Vote).where(Vote.round_id == round_.id))
+    await db.execute(delete(Vote).where(Vote.mix_id == mix_.id))
 
     # Apple playlists are marked superseded so members can rebuild against the
     # new submissions (MYS-108). Marked, not deleted: Apple has no
@@ -335,61 +333,59 @@ async def rollback_round_to_submission(round_: Round, league: League, db: AsyncS
     # playlist on the shared account and mint a duplicate. YouTube needs nothing
     # — it's computed from submissions at read time.
     await db.execute(
-        update(AppleRoundPlaylist)
+        update(AppleMixPlaylist)
         .where(
-            AppleRoundPlaylist.round_id == round_.id,
-            AppleRoundPlaylist.superseded_at.is_(None),
+            AppleMixPlaylist.mix_id == mix_.id,
+            AppleMixPlaylist.superseded_at.is_(None),
         )
         .values(superseded_at=func.now())
     )
 
 
-async def submission_quorum_met(round_: Round, db: AsyncSession) -> bool:
+async def submission_quorum_met(mix_: Mix, db: AsyncSession) -> bool:
     """True iff every member active when submissions opened has at least one song
-    in the round (MYS-69 auto-advance).
+    in the mix (MYS-69 auto-advance).
 
-    Active-at-open set = league members with ``joined_at <= submission_opened_at``
-    and ``removed_at IS NULL``. Met when that set is a subset of the round's
+    Active-at-open set = club members with ``joined_at <= submission_opened_at``
+    and ``removed_at IS NULL``. Met when that set is a subset of the mix's
     distinct submitters. A NULL ``submission_opened_at`` (shouldn't happen for an
-    open round) is guarded as not met; an empty active-at-open set is treated as
-    NOT met so an empty round is never advanced.
+    open mix) is guarded as not met; an empty active-at-open set is treated as
+    NOT met so an empty mix is never advanced.
     """
-    if round_.submission_opened_at is None:
+    if mix_.submission_opened_at is None:
         return False
     active_ids = set(
         await db.scalars(
-            select(LeagueMember.user_id).where(
-                LeagueMember.league_id == round_.league_id,
-                LeagueMember.joined_at <= round_.submission_opened_at,
-                LeagueMember.removed_at.is_(None),
+            select(ClubMember.user_id).where(
+                ClubMember.club_id == mix_.club_id,
+                ClubMember.joined_at <= mix_.submission_opened_at,
+                ClubMember.removed_at.is_(None),
             )
         )
     )
     if not active_ids:
         return False
     submitter_ids = set(
-        await db.scalars(
-            select(Submission.user_id).where(Submission.round_id == round_.id).distinct()
-        )
+        await db.scalars(select(Submission.user_id).where(Submission.mix_id == mix_.id).distinct())
     )
     return active_ids <= submitter_ids
 
 
-async def voting_quorum_met(round_: Round, db: AsyncSession) -> bool:
-    """True iff every playing submitter in the round has cast a vote.
+async def voting_quorum_met(mix_: Mix, db: AsyncSession) -> bool:
+    """True iff every playing submitter in the mix has cast a vote.
 
     Playing submitter set = distinct submitters whose ``participation_mode`` is
     ``playing`` (vibers are excluded — they can't vote). Met when that set is a
-    subset of the round's distinct voters. An empty playing set is treated as met
+    subset of the mix's distinct voters. An empty playing set is treated as met
     only when there is at least one submission (i.e. everyone submitted as vibing);
-    a round with no submissions at all returns False so an empty round is never
+    a mix with no submissions at all returns False so an empty mix is never
     auto-closed.
     """
     playing_ids = set(
         await db.scalars(
             select(Submission.user_id)
             .where(
-                Submission.round_id == round_.id,
+                Submission.mix_id == mix_.id,
                 Submission.participation_mode == "playing",
             )
             .distinct()
@@ -398,51 +394,51 @@ async def voting_quorum_met(round_: Round, db: AsyncSession) -> bool:
     if not playing_ids:
         # Guard: only treat all-vibing as quorum-met when there are actual submissions.
         total = await db.scalar(
-            select(func.count()).select_from(Submission).where(Submission.round_id == round_.id)
+            select(func.count()).select_from(Submission).where(Submission.mix_id == mix_.id)
         )
         return (total or 0) > 0
     voter_ids = set(
-        await db.scalars(select(Vote.voter_id).where(Vote.round_id == round_.id).distinct())
+        await db.scalars(select(Vote.voter_id).where(Vote.mix_id == mix_.id).distinct())
     )
     return playing_ids <= voter_ids
 
 
-@router.post("/clubs/{league_id}/mixes", status_code=201, response_model=RoundResponse)
-async def create_round(
+@router.post("/clubs/{league_id}/mixes", status_code=201, response_model=MixResponse)
+async def create_mix(
     league_id: uuid.UUID,
-    payload: RoundCreate,
+    payload: MixCreate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> RoundResponse:
-    league = await _load_league_as_organizer(
+) -> MixResponse:
+    club = await _load_club_as_organizer(
         league_id, current_user, db, "only an organizer or co-organizer can create mixes"
     )
-    if league.state == "complete":
+    if club.state == "complete":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="the club has wrapped")
 
-    # Rounds are strictly sequential: the current one must close first.
-    open_round = await db.scalar(
-        select(Round).where(Round.league_id == league_id, Round.state != "closed").limit(1)
+    # Mixes are strictly sequential: the current one must close first.
+    open_mix = await db.scalar(
+        select(Mix).where(Mix.club_id == league_id, Mix.state != "closed").limit(1)
     )
-    if open_round is not None:
+    if open_mix is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="the current mystery mix must be closed before starting a new one",
         )
 
     existing = await db.scalar(
-        select(func.count()).select_from(Round).where(Round.league_id == league_id)
+        select(func.count()).select_from(Mix).where(Mix.club_id == league_id)
     )
     next_number = (existing or 0) + 1
-    if next_number > league.total_rounds:
+    if next_number > club.total_mixes:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="all mixes for this club have already been created",
         )
 
-    round_ = Round(
-        league_id=league_id,
-        round_number=next_number,
+    mix_ = Mix(
+        club_id=league_id,
+        mix_number=next_number,
         theme=payload.theme,
         description=payload.description,
         submission_deadline=payload.submission_deadline,
@@ -450,102 +446,100 @@ async def create_round(
         votes_per_player=(
             payload.votes_per_player
             if payload.votes_per_player is not None
-            else league.votes_per_player
+            else club.votes_per_player
         ),
     )
-    # A freshly created round opens for submissions immediately (the model's
+    # A freshly created mix opens for submissions immediately (the model's
     # default state), so stamp when that window opened — auto-advance (MYS-69)
     # scopes its quorum to the members present at this moment.
-    round_.submission_opened_at = func.now()
-    db.add(round_)
-    # The newly opened round becomes the league's active round. The
-    # (league_id, round_number) unique constraint guards integrity if two
+    mix_.submission_opened_at = func.now()
+    db.add(mix_)
+    # The newly opened mix becomes the club's active mix. The
+    # (club_id, mix_number) unique constraint guards integrity if two
     # creates ever race.
-    league.current_round = next_number
+    club.current_mix = next_number
     await db.commit()
-    await db.refresh(round_)
-    # A freshly created round has no submissions or votes yet.
-    return _to_response(round_, 0, await _member_count(league_id, db))
+    await db.refresh(mix_)
+    # A freshly created mix has no submissions or votes yet.
+    return _to_response(mix_, 0, await _member_count(league_id, db))
 
 
-@router.get("/clubs/{league_id}/mixes", response_model=list[RoundResponse])
-async def list_rounds(
+@router.get("/clubs/{league_id}/mixes", response_model=list[MixResponse])
+async def list_mixes(
     league_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> list[RoundResponse]:
-    await _load_league_as_member(league_id, current_user, db)
-    rounds = list(
-        await db.scalars(
-            select(Round).where(Round.league_id == league_id).order_by(Round.round_number.asc())
-        )
+) -> list[MixResponse]:
+    await _load_club_as_member(league_id, current_user, db)
+    mixes = list(
+        await db.scalars(select(Mix).where(Mix.club_id == league_id).order_by(Mix.mix_number.asc()))
     )
     member_count = await _member_count(league_id, db)
-    round_ids = [r.id for r in rounds]
-    # One grouped count per field for the whole slate rather than a query per round.
+    mix_ids = [m.id for m in mixes]
+    # One grouped count per field for the whole slate rather than a query per mix.
     # Distinct submitters (people, not songs — MYS-116).
     count_rows = await db.execute(
-        select(Submission.round_id, func.count(func.distinct(Submission.user_id)))
-        .where(Submission.round_id.in_(round_ids))
-        .group_by(Submission.round_id)
+        select(Submission.mix_id, func.count(func.distinct(Submission.user_id)))
+        .where(Submission.mix_id.in_(mix_ids))
+        .group_by(Submission.mix_id)
     )
-    counts = {round_id: count for round_id, count in count_rows.all()}
-    # Viewer participation: one query each for submitted/voted round IDs.
+    counts = {mix_id: count for mix_id, count in count_rows.all()}
+    # Viewer participation: one query each for submitted/voted mix IDs.
     sub_rows = await db.execute(
-        select(Submission.round_id)
-        .where(Submission.round_id.in_(round_ids), Submission.user_id == current_user.id)
+        select(Submission.mix_id)
+        .where(Submission.mix_id.in_(mix_ids), Submission.user_id == current_user.id)
         .distinct()
     )
     viewer_submitted_ids = {row[0] for row in sub_rows.all()}
     vote_rows = await db.execute(
-        select(Vote.round_id)
-        .where(Vote.round_id.in_(round_ids), Vote.voter_id == current_user.id)
+        select(Vote.mix_id)
+        .where(Vote.mix_id.in_(mix_ids), Vote.voter_id == current_user.id)
         .distinct()
     )
     viewer_voted_ids = {row[0] for row in vote_rows.all()}
-    # Distinct voters per round (MYS-110).
+    # Distinct voters per mix (MYS-110).
     voted_rows = await db.execute(
-        select(Vote.round_id, func.count(func.distinct(Vote.voter_id)))
-        .where(Vote.round_id.in_(round_ids))
-        .group_by(Vote.round_id)
+        select(Vote.mix_id, func.count(func.distinct(Vote.voter_id)))
+        .where(Vote.mix_id.in_(mix_ids))
+        .group_by(Vote.mix_id)
     )
-    voted_counts = {round_id: count for round_id, count in voted_rows.all()}
-    # Distinct playing submitters per round — the voting denominator (MYS-110).
+    voted_counts = {mix_id: count for mix_id, count in voted_rows.all()}
+    # Distinct playing submitters per mix — the voting denominator (MYS-110).
     eligible_rows = await db.execute(
-        select(Submission.round_id, func.count(func.distinct(Submission.user_id)))
+        select(Submission.mix_id, func.count(func.distinct(Submission.user_id)))
         .where(
-            Submission.round_id.in_(round_ids),
+            Submission.mix_id.in_(mix_ids),
             Submission.participation_mode == "playing",
         )
-        .group_by(Submission.round_id)
+        .group_by(Submission.mix_id)
     )
-    eligible_counts = {round_id: count for round_id, count in eligible_rows.all()}
+    eligible_counts = {mix_id: count for mix_id, count in eligible_rows.all()}
     return [
         _to_response(
-            r,
-            counts.get(r.id, 0),
+            m,
+            counts.get(m.id, 0),
             member_count,
-            voted_counts.get(r.id, 0),
-            eligible_counts.get(r.id, 0),
-            viewer_submitted=r.id in viewer_submitted_ids,
-            viewer_voted=r.id in viewer_voted_ids,
+            voted_counts.get(m.id, 0),
+            eligible_counts.get(m.id, 0),
+            viewer_submitted=m.id in viewer_submitted_ids,
+            viewer_voted=m.id in viewer_voted_ids,
         )
-        for r in rounds
+        for m in mixes
     ]
 
 
-@router.get("/mixes/{round_id}", response_model=RoundResponse)
-async def get_round(
+@router.get("/mixes/{round_id}", response_model=MixResponse)
+async def get_mix(
     round_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> RoundResponse:
-    round_ = await _load_round(round_id, db)
-    await _load_league_as_member(round_.league_id, current_user, db)
+) -> MixResponse:
+    mix_ = await _load_mix(round_id, db)
+    await _load_club_as_member(mix_.club_id, current_user, db)
     return _to_response(
-        round_,
+        mix_,
         await _submission_count(round_id, db),
-        await _member_count(round_.league_id, db),
+        await _member_count(mix_.club_id, db),
         await _voted_count(round_id, db),
         await _voting_eligible_count(round_id, db),
         viewer_submitted=await _viewer_submitted(round_id, current_user.id, db),
@@ -553,63 +547,63 @@ async def get_round(
     )
 
 
-@router.patch("/mixes/{round_id}", response_model=RoundResponse)
-async def update_round(
+@router.patch("/mixes/{round_id}", response_model=MixResponse)
+async def update_mix(
     round_id: uuid.UUID,
-    payload: RoundUpdate,
+    payload: MixUpdate,
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
     settings: Settings = Depends(get_settings),
     spotify_client: SpotifyClient = Depends(get_spotify_client),
-) -> RoundResponse:
-    round_ = await _load_round(round_id, db)
-    league = await _load_league_as_organizer(
-        round_.league_id, current_user, db, "only an organizer or co-organizer can update mixes"
+) -> MixResponse:
+    mix_ = await _load_mix(round_id, db)
+    club = await _load_club_as_organizer(
+        mix_.club_id, current_user, db, "only an organizer or co-organizer can update mixes"
     )
 
     updates = payload.model_dump(exclude_unset=True)
     new_state = updates.pop("state", None)
     # Lifecycle emails to fire once the transition commits (MYS-109). Collected as
-    # (round, event) so an auto-opened next round notifies for *its* opening.
-    events: list[tuple[Round, RoundEvent]] = []
+    # (mix, event) so an auto-opened next mix notifies for *its* opening.
+    events: list[tuple[Mix, MixEvent]] = []
     voting_opened = False
 
-    # Field edits (theme, deadlines) are frozen once the round is closed.
-    if updates and round_.state == "closed":
+    # Field edits (theme, deadlines) are frozen once the mix is closed.
+    if updates and mix_.state == "closed":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="mystery mix is closed")
-    # theme/description are the round's identity: editable only while pending.
-    # Once the round opens, they are locked even though deadlines stay editable.
-    if round_.state != "pending" and ("theme" in updates or "description" in updates):
+    # theme/description are the mix's identity: editable only while pending.
+    # Once the mix opens, they are locked even though deadlines stay editable.
+    if mix_.state != "pending" and ("theme" in updates or "description" in updates):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="theme and description are locked once the mystery mix opens",
         )
     for field, value in updates.items():
-        setattr(round_, field, value)
+        setattr(mix_, field, value)
 
-    if new_state is not None and new_state != round_.state:
+    if new_state is not None and new_state != mix_.state:
         # The single sanctioned backward step (MYS-168): open_voting ->
         # open_submission. Everything else stays forward-only.
-        is_rollback = round_.state == "open_voting" and new_state == "open_submission"
-        if not is_rollback and new_state != _NEXT_STATE.get(round_.state):
+        is_rollback = mix_.state == "open_voting" and new_state == "open_submission"
+        if not is_rollback and new_state != _NEXT_STATE.get(mix_.state):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"cannot move mystery mix from {round_.state} to {new_state}",
+                detail=f"cannot move mystery mix from {mix_.state} to {new_state}",
             )
-        # Opening a pending round: only one round may be active per league. This
+        # Opening a pending mix: only one mix may be active per club. This
         # guard is the organizer's manual step only; auto-advance never makes the
         # pending->open_submission move, so it lives here, not in the helper. A
-        # rollback is exempt — the round is already the league's active round,
-        # so there is by definition no *other* active round to conflict with.
+        # rollback is exempt — the mix is already the club's active mix,
+        # so there is by definition no *other* active mix to conflict with.
         if new_state == "open_submission" and not is_rollback:
             active = await db.scalar(
-                select(Round)
+                select(Mix)
                 .where(
-                    Round.league_id == round_.league_id,
-                    Round.id != round_.id,
-                    Round.state.in_(_ACTIVE_STATES),
+                    Mix.club_id == mix_.club_id,
+                    Mix.id != mix_.id,
+                    Mix.state.in_(_ACTIVE_STATES),
                 )
                 .limit(1)
             )
@@ -621,11 +615,11 @@ async def update_round(
         if is_rollback:
             # Serialize with the deadline force-advance job and the vote-cast
             # auto-close (MYS-145/MYS-69) under the same FOR UPDATE discipline,
-            # then re-verify under the lock — the round may have just been
+            # then re-verify under the lock — the mix may have just been
             # force-closed or auto-closed concurrently.
             locked = await db.scalar(
-                select(Round)
-                .where(Round.id == round_.id)
+                select(Mix)
+                .where(Mix.id == mix_.id)
                 .with_for_update()
                 .execution_options(populate_existing=True)
             )
@@ -634,34 +628,32 @@ async def update_round(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="this mystery mix is no longer open for voting",
                 )
-            await rollback_round_to_submission(round_, league, db)
+            await rollback_mix_to_submission(mix_, club, db)
             # Silent (product decision 2026-07-04): the organizer tells the
-            # league directly, matching the incident's actual behavior — no
+            # club directly, matching the incident's actual behavior — no
             # "submissions reopened" email. `events` stays empty.
         else:
-            events = await advance_round_state(round_, league, new_state, db)
+            events = await advance_mix_state(mix_, club, new_state, db)
             voting_opened = any(event == "voting_open" for _, event in events)
             # All-vibing edge: if voting just opened but every participant is vibing,
             # nobody will ever call cast_votes, so voting quorum is immediately met.
             # Close in the same transaction and suppress the voting_open notification
-            # (nobody could vote in a round that closes in the same breath) — but
+            # (nobody could vote in a mix that closes in the same breath) — but
             # `voting_opened` stays true so the playlist still generates below; vibers
-            # still get a listen-along playlist even though the round never really
+            # still get a listen-along playlist even though the mix never really
             # waits for votes.
-            if round_.state == "open_voting" and await voting_quorum_met(round_, db):
-                events = [e for e in events if e != (round_, "voting_open")]
-                events += await advance_round_state(round_, league, "closed", db)
+            if mix_.state == "open_voting" and await voting_quorum_met(mix_, db):
+                events = [e for e in events if e != (mix_, "voting_open")]
+                events += await advance_mix_state(mix_, club, "closed", db)
 
     # Build + schedule notifications before commit, while the ORM objects are
     # loaded (avoids post-commit lazy-loads in async — the expire_on_commit
     # MissingGreenlet trap). Background tasks only run on a successful response,
     # so a failed commit below means no emails go out.
     if events:
-        recipients = await gather_recipients(db, round_.league_id)
-        for event_round, event in events:
-            queue_round_event(
-                background_tasks, sender, settings, recipients, league, event_round, event
-            )
+        recipients = await gather_recipients(db, mix_.club_id)
+        for event_mix, event in events:
+            queue_mix_event(background_tasks, sender, settings, recipients, club, event_mix, event)
 
     # Auto-generate the shared-account Spotify playlist the moment voting opens
     # (MYS-176) — no admin click needed. Best-effort: never raises, so a Spotify
@@ -669,18 +661,18 @@ async def update_round(
     # `voting_opened` (captured before the all-vibing rollup above may have
     # stripped the voting_open event from `events`), not the events list itself.
     if voting_opened:
-        await try_auto_generate_playlist(round_id, round_, league, db, spotify_client, settings)
+        await try_auto_generate_playlist(round_id, mix_, club, db, spotify_client, settings)
 
     await db.commit()
-    await db.refresh(round_)
+    await db.refresh(mix_)
     return _to_response(
-        round_,
-        await _submission_count(round_.id, db),
-        await _member_count(round_.league_id, db),
-        await _voted_count(round_.id, db),
-        await _voting_eligible_count(round_.id, db),
-        viewer_submitted=await _viewer_submitted(round_.id, current_user.id, db),
-        viewer_voted=await _viewer_voted(round_.id, current_user.id, db),
+        mix_,
+        await _submission_count(mix_.id, db),
+        await _member_count(mix_.club_id, db),
+        await _voted_count(mix_.id, db),
+        await _voting_eligible_count(mix_.id, db),
+        viewer_submitted=await _viewer_submitted(mix_.id, current_user.id, db),
+        viewer_voted=await _viewer_voted(mix_.id, current_user.id, db),
     )
 
 
@@ -694,7 +686,7 @@ class ExtendVotingRequest(WireModel):
     voting_deadline: datetime
 
 
-@router.post("/mixes/{round_id}/extend-voting", response_model=RoundResponse)
+@router.post("/mixes/{round_id}/extend-voting", response_model=MixResponse)
 async def extend_voting_deadline(
     round_id: uuid.UUID,
     payload: ExtendVotingRequest,
@@ -703,22 +695,22 @@ async def extend_voting_deadline(
     db: AsyncSession = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
     settings: Settings = Depends(get_settings),
-) -> RoundResponse:
-    """Push a round's voting deadline to an organizer-chosen time, up to 48h past
+) -> MixResponse:
+    """Push a mix's voting deadline to an organizer-chosen time, up to 48h past
     the current deadline (MYS-180).
 
-    Same permission level as every other round-management action (organizer or
-    co-organizer). Only valid while the round is still ``open_voting`` — locked
+    Same permission level as every other mix-management action (organizer or
+    co-organizer). Only valid while the mix is still ``open_voting`` — locked
     under ``FOR UPDATE`` and re-verified, the same discipline as the MYS-168
     rollback path, since this races the deadline job and vote-cast auto-close."""
-    round_ = await _load_round(round_id, db)
-    league = await _load_league_as_organizer(
-        round_.league_id, current_user, db, "only an organizer or co-organizer can extend voting"
+    mix_ = await _load_mix(round_id, db)
+    club = await _load_club_as_organizer(
+        mix_.club_id, current_user, db, "only an organizer or co-organizer can extend voting"
     )
 
     locked = await db.scalar(
-        select(Round)
-        .where(Round.id == round_.id)
+        select(Mix)
+        .where(Mix.id == mix_.id)
         .with_for_update()
         .execution_options(populate_existing=True)
     )
@@ -748,17 +740,15 @@ async def extend_voting_deadline(
     # deadline — the old marker refers to a deadline that no longer applies.
     locked.voting_warning_sent_at = None
 
-    recipients = await gather_recipients(db, league.id)
-    queue_round_event(
-        background_tasks, sender, settings, recipients, league, locked, "voting_extended"
-    )
+    recipients = await gather_recipients(db, club.id)
+    queue_mix_event(background_tasks, sender, settings, recipients, club, locked, "voting_extended")
 
     await db.commit()
     await db.refresh(locked)
     return _to_response(
         locked,
         await _submission_count(locked.id, db),
-        await _member_count(locked.league_id, db),
+        await _member_count(locked.club_id, db),
         await _voted_count(locked.id, db),
         await _voting_eligible_count(locked.id, db),
         viewer_submitted=await _viewer_submitted(locked.id, current_user.id, db),
@@ -804,20 +794,20 @@ class PlaylistEntry(WireModel):
 class PlaylistResponse(WireModel):
     round_id: str
     round_number: int
-    # Nullable: a round may not have a theme yet (clients fall back to "Round N").
+    # Nullable: a mix may not have a theme yet (clients fall back to "Mix N").
     theme: str | None
     state: str
     entries: list[PlaylistEntry]
     # A single ad-hoc YouTube link that plays the whole mix in playlist order
     # (watch_videos?video_ids=...), or None if no track resolved to a YouTube id.
     youtube_playlist_url: str | None
-    # How many of the round's tracks made it into the YouTube link, so the UI can
+    # How many of the mix's tracks made it into the YouTube link, so the UI can
     # show "N of M on YouTube". 0 when youtube_playlist_url is None.
     youtube_track_count: int
     # Voting progress (MYS-102): "X of Y voted or noted · Z just vibing".
     #  - voting_eligible (Y): playing participants — the ones who can vote.
     #  - voting_acted    (X): playing participants who have cast a vote OR left a
-    #    note this round.
+    #    note this mix.
     #  - vibing_count    (Z): vibing participants, along for the ride (they sit
     #    voting out, so they're reported separately, not inside X/Y).
     voting_eligible: int
@@ -834,25 +824,25 @@ def _preferred_url(platforms: dict[str, str], preferred_service: str | None) -> 
 
 
 @router.get("/mixes/{round_id}/playlist", response_model=PlaylistResponse)
-async def get_round_playlist(
+async def get_mix_playlist(
     round_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     youtube: YouTubeResolver = Depends(get_youtube_resolver),
 ) -> PlaylistResponse:
-    round_ = await _load_round(round_id, db)
-    await _load_league_as_member(round_.league_id, current_user, db)
+    mix_ = await _load_mix(round_id, db)
+    await _load_club_as_member(mix_.club_id, current_user, db)
     # The playlist is the voting surface; it opens once submissions are locked.
-    if round_.state == "open_submission":
+    if mix_.state == "open_submission":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="the playlist is available once voting opens",
         )
 
-    submissions = list(await db.scalars(select(Submission).where(Submission.round_id == round_id)))
+    submissions = list(await db.scalars(select(Submission).where(Submission.mix_id == round_id)))
     # Anonymous + shuffled (technical-design §8). Sort by id first so Postgres heap
-    # order doesn't affect the result, then seed the shuffle on the round id for a
-    # stable per-round order that's consistent across all playlist platforms (MYS-151).
+    # order doesn't affect the result, then seed the shuffle on the mix id for a
+    # stable per-mix order that's consistent across all playlist platforms (MYS-151).
     submissions.sort(key=lambda s: s.id)
     random.Random(round_id.int).shuffle(submissions)
 
@@ -862,10 +852,10 @@ async def get_round_playlist(
     playing_user_ids = {s.user_id for s in submissions if s.participation_mode == "playing"}
     vibing_count = sum(1 for s in submissions if s.participation_mode == "vibing")
     voter_ids = set(
-        await db.scalars(select(Vote.voter_id).where(Vote.round_id == round_id).distinct())
+        await db.scalars(select(Vote.voter_id).where(Vote.mix_id == round_id).distinct())
     )
     note_author_ids = set(
-        await db.scalars(select(Note.author_id).where(Note.round_id == round_id).distinct())
+        await db.scalars(select(Note.author_id).where(Note.mix_id == round_id).distinct())
     )
     acted_user_ids = playing_user_ids & (voter_ids | note_author_ids)
 
@@ -892,7 +882,7 @@ async def get_round_playlist(
         )
         # YouTube ids are resolved at submit time. Lazily backfill any submission
         # that predates that (or whose submit-time resolve failed) so existing
-        # rounds light up; cache it back so it's a one-time cost per submission.
+        # mixes light up; cache it back so it's a one-time cost per submission.
         # Source-only tracks (MYS-201) are never fuzzy-resolved: a youtube: row
         # already carries its exact id from submit time, and a bandcamp: row must
         # never be linked to a *guessed* video, so it simply sits out the playlist.
@@ -918,10 +908,10 @@ async def get_round_playlist(
     playlist_ids = normalize_video_ids(video_ids)
     youtube_playlist_url = build_watch_videos_url(playlist_ids)
     return PlaylistResponse(
-        round_id=str(round_.id),
-        round_number=round_.round_number,
-        theme=round_.theme,
-        state=round_.state,
+        round_id=str(mix_.id),
+        round_number=mix_.mix_number,
+        theme=mix_.theme,
+        state=mix_.state,
         entries=entries,
         youtube_playlist_url=youtube_playlist_url,
         youtube_track_count=len(playlist_ids),
@@ -971,7 +961,7 @@ class ResultSubmission(WireModel):
     # Notes others left on this submission, oldest first.
     notes: list[ResultNote]
     # Who voted for this song (MYS-173). Voting itself stays anonymous through
-    # open_voting; this is only ever populated on the closed-round reveal, and
+    # open_voting; this is only ever populated on the closed-mix reveal, and
     # only on ResultSubmission — the vibe-safe RevealPick/WinnerReveal shapes
     # below intentionally omit it so a vibing viewer never sees voter identity,
     # matching the existing no-vote-count rule (MYS-112).
@@ -1030,10 +1020,10 @@ class RevealPick(WireModel):
 class ResultsResponse(WireModel):
     round_id: str
     round_number: int
-    # Nullable: a round may not have a theme yet (clients fall back to "Round N").
+    # Nullable: a mix may not have a theme yet (clients fall back to "Mix N").
     theme: str | None
     state: str
-    # Reveal is gated by the viewer's participation mode for the round (MYS-112).
+    # Reveal is gated by the viewer's participation mode for the mix (MYS-112).
     # A player sees the full reveal below; a viber sees only `winners`, `picks`,
     # and `most_noted` — `submissions` and `leaderboard` are empty for them so no
     # vote counts/rankings leak. A non-submitter is treated as a player.
@@ -1049,26 +1039,26 @@ class ResultsResponse(WireModel):
 
 
 @router.get("/mixes/{round_id}/results", response_model=ResultsResponse)
-async def get_round_results(
+async def get_mix_results(
     round_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ResultsResponse:
-    round_ = await _load_round(round_id, db)
-    await _load_league_as_member(round_.league_id, current_user, db)
+    mix_ = await _load_mix(round_id, db)
+    await _load_club_as_member(mix_.club_id, current_user, db)
     # Results are the reveal: submitters and vote tallies stay hidden until close.
-    if round_.state != "closed":
+    if mix_.state != "closed":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="results are available once the mystery mix closes",
         )
 
-    # Submissions joined to their submitter (revealed now the round is closed).
+    # Submissions joined to their submitter (revealed now the mix is closed).
     submission_rows = (
         await db.execute(
             select(Submission, User.display_name)
             .join(User, User.id == Submission.user_id)
-            .where(Submission.round_id == round_id)
+            .where(Submission.mix_id == round_id)
         )
     ).all()
 
@@ -1077,20 +1067,20 @@ async def get_round_results(
     vote_count_rows = (
         await db.execute(
             select(Vote.submission_id, func.count())
-            .where(Vote.round_id == round_id)
+            .where(Vote.mix_id == round_id)
             .group_by(Vote.submission_id)
         )
     ).all()
     votes_by_submission: dict[uuid.UUID, int] = {sid: count for sid, count in vote_count_rows}
 
     # Voter identity per submission (MYS-173) — who cast each vote, revealed only
-    # now that the round is closed (voting itself stays anonymous throughout
+    # now that the mix is closed (voting itself stays anonymous throughout
     # open_voting; this endpoint is already gated to state == "closed" above).
     voter_rows = (
         await db.execute(
             select(Vote.submission_id, Vote.voter_id, User.display_name)
             .join(User, User.id == Vote.voter_id)
-            .where(Vote.round_id == round_id)
+            .where(Vote.mix_id == round_id)
         )
     ).all()
     voters_by_submission: dict[uuid.UUID, list[ResultVoter]] = {}
@@ -1101,12 +1091,12 @@ async def get_round_results(
     for voters in voters_by_submission.values():
         voters.sort(key=lambda v: v.display_name)
 
-    # All notes for the round, joined to author display names, grouped in Python.
+    # All notes for the mix, joined to author display names, grouped in Python.
     note_rows = (
         await db.execute(
             select(Note, User.display_name)
             .join(User, User.id == Note.author_id)
-            .where(Note.round_id == round_id)
+            .where(Note.mix_id == round_id)
             .order_by(Note.created_at.asc())
         )
     ).all()
@@ -1186,7 +1176,7 @@ async def get_round_results(
         ],
     )
 
-    # Reveal gating (MYS-112). The viewer's mode for this round comes from their
+    # Reveal gating (MYS-112). The viewer's mode for this mix comes from their
     # own submission (read from the ORM rows — it's not exposed on the response);
     # a non-submitter is treated as a player (full reveal).
     own_sub = next((s for s, _ in submission_rows if s.user_id == current_user.id), None)
@@ -1194,10 +1184,10 @@ async def get_round_results(
 
     if not viewer_is_vibing:
         return ResultsResponse(
-            round_id=str(round_.id),
-            round_number=round_.round_number,
-            theme=round_.theme,
-            state=round_.state,
+            round_id=str(mix_.id),
+            round_number=mix_.mix_number,
+            theme=mix_.theme,
+            state=mix_.state,
             viewer_is_vibing=False,
             submissions=submissions,
             leaderboard=leaderboard,
@@ -1241,10 +1231,10 @@ async def get_round_results(
         for s in sorted(submissions, key=lambda s: s.title)
     ]
     return ResultsResponse(
-        round_id=str(round_.id),
-        round_number=round_.round_number,
-        theme=round_.theme,
-        state=round_.state,
+        round_id=str(mix_.id),
+        round_number=mix_.mix_number,
+        theme=mix_.theme,
+        state=mix_.state,
         viewer_is_vibing=True,
         submissions=[],
         leaderboard=[],

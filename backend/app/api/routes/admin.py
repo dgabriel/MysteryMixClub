@@ -8,7 +8,7 @@ from app.api.wire import WireModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.routes.leagues import (
+from app.api.routes.clubs import (
     _INVITE_TOKEN_BYTES,
     _INVITE_TTL,
     InviteResponse,
@@ -95,7 +95,7 @@ async def create_platform_invite(
     open one). Same shareable-link shape and 48h expiry as a league invite;
     regenerating from this screen is one click, so that stays low-friction."""
     invite = Invite(
-        league_id=None,
+        club_id=None,
         created_by=admin.id,
         token=secrets.token_urlsafe(_INVITE_TOKEN_BYTES),
         expires_at=datetime.now(timezone.utc) + _INVITE_TTL,

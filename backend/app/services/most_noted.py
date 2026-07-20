@@ -1,9 +1,9 @@
 """Most Noted calculation (MYS-21).
 
-Reusable, endpoint-free service that computes a round's "Most Noted" — the
+Reusable, endpoint-free service that computes a mix's "Most Noted" — the
 submission(s) that received the highest raw count of notes. This is a library
 function only: it is NOT wired to any route here. MYS-23 will call it from the
-round results endpoint (``GET /rounds/:id/results``).
+mix results endpoint (``GET /mixes/:id/results``).
 
 Semantics (product decisions for MYS-21):
 - Notes are counted raw, per submission, across the whole round.
@@ -52,33 +52,33 @@ class MostNotedSubmission:
 
 @dataclass(frozen=True)
 class MostNoted:
-    """Result of a Most Noted calculation for one round.
+    """Result of a Most Noted calculation for one mix.
 
     ``note_count`` is the shared maximum across all winners (``0`` when the
-    round has no notes). ``winners`` holds every submission at that maximum,
+    mix has no notes). ``winners`` holds every submission at that maximum,
     ordered by submission ``created_at`` for a stable presentation.
     """
 
-    round_id: uuid.UUID
+    mix_id: uuid.UUID
     note_count: int
     winners: list[MostNotedSubmission] = field(default_factory=list)
 
 
 async def compute_most_noted(round_id: uuid.UUID, db: AsyncSession) -> MostNoted:
-    """Compute the Most Noted submission(s) for a round.
+    """Compute the Most Noted submission(s) for a mix.
 
     Returns all submissions tied at the highest note count, each with the notes
-    that earned it. An empty ``winners`` list means the round has no notes.
+    that earned it. An empty ``winners`` list means the mix has no notes.
     """
     counts = (
         await db.execute(
             select(Note.submission_id, func.count())
-            .where(Note.round_id == round_id)
+            .where(Note.mix_id == round_id)
             .group_by(Note.submission_id)
         )
     ).all()
     if not counts:
-        return MostNoted(round_id=round_id, note_count=0, winners=[])
+        return MostNoted(mix_id=round_id, note_count=0, winners=[])
 
     max_count = max(count for _, count in counts)
     winning_ids = [submission_id for submission_id, count in counts if count == max_count]
@@ -115,4 +115,4 @@ async def compute_most_noted(round_id: uuid.UUID, db: AsyncSession) -> MostNoted
         )
         for submission in sorted(submissions.values(), key=lambda s: s.created_at)
     ]
-    return MostNoted(round_id=round_id, note_count=max_count, winners=winners)
+    return MostNoted(mix_id=round_id, note_count=max_count, winners=winners)

@@ -218,9 +218,11 @@ be `pending` (a started mystery mix cannot be removed). The lifecycle is
 forward-only: `pending → open_submission → open_voting → closed`. Only one mix
 per club may be active (`open_submission`/`open_voting`) at a time, enforced
 when a mix opens. `theme` (nullable) and `description` are editable only while
-a mix is `pending`; deadlines remain editable until the mix closes. Closing a
-non-final mix auto-opens the next `pending` mix; closing the final mix
-completes the club.
+a mix is `pending`; deadlines remain editable until the mix closes. A mix
+cannot open — manually or via auto-advance — without a `theme` set (MYS-211).
+Closing a non-final mix auto-opens the next `pending` mix *if it has a theme*;
+if not, it's left `pending` (no active mix) and the organizer alone is emailed
+to set one. Closing the final mix completes the club.
 
 ### submissions
 ```

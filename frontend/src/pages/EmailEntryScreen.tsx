@@ -60,20 +60,6 @@ export function EmailEntryScreen({
         <p className="mt-2 text-center font-mono text-[13px] font-light text-muted">
           invite-only. sign in with your email.
         </p>
-        {waitlistEnabled ? (
-          <WaitlistForm />
-        ) : waitlistEnabled === undefined ? null : (
-          <p className="mt-1 text-center font-mono text-[11px] font-light text-muted">
-            no invite yet?{" "}
-            <ContactEmail
-              user="info"
-              domain="mysterymixclub.com"
-              label="email us"
-              className="text-ink underline underline-offset-[3px]"
-            />{" "}
-            to request one.
-          </p>
-        )}
 
         <form onSubmit={handleSubmit} className="mt-10 space-y-8">
           <TextField
@@ -100,6 +86,24 @@ export function EmailEntryScreen({
             {submitting ? "sending…" : "send sign-in link"}
           </Button>
         </form>
+
+        {/* Below the sign-in form, not above it (MYS-215) — this is the
+            secondary path for someone without an account yet, not the
+            primary action on the page. */}
+        {waitlistEnabled ? (
+          <WaitlistForm />
+        ) : waitlistEnabled === undefined ? null : (
+          <p className="mt-10 text-center font-mono text-[11px] font-light text-muted">
+            no invite yet?{" "}
+            <ContactEmail
+              user="info"
+              domain="mysterymixclub.com"
+              label="email us"
+              className="text-ink underline underline-offset-[3px]"
+            />{" "}
+            to request one.
+          </p>
+        )}
 
         {/* Dev/staging convenience: a clickable sign-in link so testers don't
             need a delivered email. Styled understated (ink, not Rust — the

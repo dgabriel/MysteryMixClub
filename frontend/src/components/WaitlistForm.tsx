@@ -43,14 +43,14 @@ export function WaitlistForm() {
 
   if (joined) {
     return (
-      <p className="mt-1 text-center font-mono text-[11px] font-light text-muted">
+      <p className="mt-10 text-center font-mono text-[11px] font-light text-muted">
         you&apos;re on the waitlist. we&apos;ll email you when a spot opens up.
       </p>
     );
   }
 
   return (
-    <div className="mt-1 text-center">
+    <div className="mt-10 text-center">
       <p className="font-mono text-[11px] font-light text-muted">no invite yet? join the waitlist.</p>
       <form onSubmit={handleSubmit} className="mt-3 flex items-end justify-center gap-3">
         <div className="w-full max-w-[220px] text-left">

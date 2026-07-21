@@ -90,14 +90,19 @@ class LogoutResponse(WireModel):
 
 
 async def _load_valid_invite(
-    db: AsyncSession, invite_token: str | None, now: datetime
+    db: AsyncSession, invite_token: str | None, now: datetime, email: str | None = None
 ) -> Invite | None:
     """Return the invite for ``invite_token`` if it exists, is unexpired, and
     (for a platform invite) hasn't already been used, else None. Legacy
     invites with no expires_at never expire (MYS-126/127). A club invite
     stays multi-use — used_at is never set for one, so that check never
     excludes it. A platform (club-less) invite is single-use (MYS-182
-    follow-up): once used_at is stamped, it reads the same as nonexistent."""
+    follow-up): once used_at is stamped, it reads the same as nonexistent.
+
+    ``email`` should be the lowercased address the caller is signing in with.
+    A waitlist-issued invite (MYS-215) carries a locked email; if it doesn't
+    match, the invite reads as nonexistent — same neutral treatment as a bad
+    token, so a mismatch can't be distinguished from "no invite" (TD 5)."""
     if not invite_token:
         return None
     invite = await db.scalar(select(Invite).where(Invite.token == invite_token))
@@ -106,6 +111,8 @@ async def _load_valid_invite(
     if invite.expires_at is not None and invite.expires_at <= now:
         return None
     if invite.club_id is None and invite.used_at is not None:
+        return None
+    if invite.email is not None and invite.email != email:
         return None
     return invite
 
@@ -141,7 +148,7 @@ async def request_magic_link(
     existing_user = (
         await db.scalar(select(User.id).where(User.email == email, User.deleted_at.is_(None)))
     ) is not None
-    invite = await _load_valid_invite(db, payload.invite_token, now)
+    invite = await _load_valid_invite(db, payload.invite_token, now, email=email)
     if not existing_user and invite is None:
         logger.debug(
             "Sign-in request without an existing account or valid invite; neutral response"
@@ -219,7 +226,7 @@ async def verify_magic_link(
     email = token_row.email
 
     # The invite token (if any) rode here on the link; re-validate it server-side.
-    invite_row = await _load_valid_invite(db, invite, now)
+    invite_row = await _load_valid_invite(db, invite, now, email=email)
 
     user = await db.scalar(select(User).where(User.email == email, User.deleted_at.is_(None)))
     if user is None:

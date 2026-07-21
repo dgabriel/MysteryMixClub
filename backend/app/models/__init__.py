@@ -11,6 +11,7 @@ from app.models.spotify_mix_playlist import SpotifyMixPlaylist
 from app.models.submission import Submission
 from app.models.user import User
 from app.models.vote import Vote
+from app.models.waitlist_entry import WaitlistEntry
 
 __all__ = [
     "AppleMixPlaylist",
@@ -26,4 +27,5 @@ __all__ = [
     "Submission",
     "User",
     "Vote",
+    "WaitlistEntry",
 ]

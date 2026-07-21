@@ -72,6 +72,12 @@ class Settings(BaseSettings):
     email_redirect_to_test: bool = Field(default=False)
     email_test_recipient: str = Field(default="")
 
+    # Public waitlist (MYS-215, temporary — pre-launch access-request flow).
+    # When on, the login page and POST /waitlist accept join requests; when
+    # off, /waitlist routes 404 and the frontend falls back to the "email us"
+    # copy. No companion config. See docs/feature-flags.md.
+    waitlist_enabled: bool = Field(default=False)
+
     @field_validator("database_url")
     @classmethod
     def _normalize_async_driver(cls, value: str) -> str:

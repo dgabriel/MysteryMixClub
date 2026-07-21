@@ -22,6 +22,11 @@ class Invite(Base):
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
     token: Mapped[str] = mapped_column(String, nullable=False, unique=True, index=True)
+    # Set only for a waitlist-issued invite (MYS-215): locks redemption to this
+    # one address, checked (case-insensitively) alongside the token in
+    # auth._load_valid_invite. Null for every other invite — a normal
+    # club/admin invite stays a shareable link redeemable by anyone, unchanged.
+    email: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     # Always None in v1: invites are shareable links with no expiry (TD 6).
     expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(

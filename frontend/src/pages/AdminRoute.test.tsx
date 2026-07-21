@@ -244,7 +244,9 @@ describe("AdminRoute", () => {
       renderAdmin();
 
       await screen.findByText("waiting@example.com");
-      expect(screen.getByText(/invited/i)).toBeInTheDocument();
+      // "invited" alone also matches the status-filter toggle (MYS-215) — scope
+      // to the row's "· invited <date>" text specifically.
+      expect(screen.getByText(/· invited/i)).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /^resend$/i })).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /^invite$/i })).not.toBeInTheDocument();
     });
@@ -275,6 +277,76 @@ describe("AdminRoute", () => {
 
       expect(await screen.findByText(/waitlist entry not found/i)).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /^invite$/i })).toBeInTheDocument();
+    });
+
+    describe("client-side search + status filter", () => {
+      beforeEach(() => {
+        mockListWaitlist.mockResolvedValue([
+          waitlistEntryWith({ id: "wl-1", email: "fan@example.com", invited_at: null }),
+          waitlistEntryWith({
+            id: "wl-2",
+            email: "friend@example.com",
+            invited_at: "2026-07-16T00:00:00Z",
+          }),
+        ]);
+      });
+
+      it("search narrows to matching emails, case-insensitively", async () => {
+        const user = userEvent.setup();
+        renderAdmin();
+
+        await screen.findByText("fan@example.com");
+        await user.type(screen.getByLabelText(/^search$/i), "FAN");
+
+        expect(screen.getByText("fan@example.com")).toBeInTheDocument();
+        expect(screen.queryByText("friend@example.com")).not.toBeInTheDocument();
+      });
+
+      it("a search with no matches shows 'no matches', not the empty-waitlist message", async () => {
+        const user = userEvent.setup();
+        renderAdmin();
+
+        await screen.findByText("fan@example.com");
+        await user.type(screen.getByLabelText(/^search$/i), "nobody");
+
+        expect(await screen.findByText(/no matches/i)).toBeInTheDocument();
+        expect(screen.queryByText(/no one on the waitlist yet/i)).not.toBeInTheDocument();
+      });
+
+      it("the pending filter hides already-invited entries", async () => {
+        const user = userEvent.setup();
+        renderAdmin();
+
+        await screen.findByText("fan@example.com");
+        await user.click(screen.getByRole("button", { name: /^pending$/i }));
+
+        expect(screen.getByText("fan@example.com")).toBeInTheDocument();
+        expect(screen.queryByText("friend@example.com")).not.toBeInTheDocument();
+      });
+
+      it("the invited filter hides pending entries", async () => {
+        const user = userEvent.setup();
+        renderAdmin();
+
+        await screen.findByText("fan@example.com");
+        await user.click(screen.getByRole("button", { name: /^invited$/i }));
+
+        expect(screen.getByText("friend@example.com")).toBeInTheDocument();
+        expect(screen.queryByText("fan@example.com")).not.toBeInTheDocument();
+      });
+
+      it("switching back to all shows every entry again", async () => {
+        const user = userEvent.setup();
+        renderAdmin();
+
+        await screen.findByText("fan@example.com");
+        await user.click(screen.getByRole("button", { name: /^invited$/i }));
+        expect(screen.queryByText("fan@example.com")).not.toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", { name: /^all$/i }));
+        expect(screen.getByText("fan@example.com")).toBeInTheDocument();
+        expect(screen.getByText("friend@example.com")).toBeInTheDocument();
+      });
     });
   });
 });

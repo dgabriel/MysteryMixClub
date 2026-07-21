@@ -67,117 +67,201 @@ export function AdminScreen({
   return (
     <main className="mx-auto w-full max-w-lg px-4 pb-16 sm:px-8">
       <h1 className="font-serif lowercase text-[28px] leading-tight text-ink">admin</h1>
-        <p className="mt-4 font-mono text-[13px] font-light text-muted">
-          find a user by email, then remove their account and all of their data.
+      <p className="mt-4 font-mono text-[13px] font-light text-muted">
+        find a user by email, then remove their account and all of their data.
+      </p>
+
+      <form onSubmit={handleSubmit} className="mt-8 flex items-end gap-4">
+        <div className="flex-1">
+          <TextField
+            id="admin-user-search"
+            label="email"
+            type="search"
+            name="email"
+            autoComplete="off"
+            placeholder="name@example.com"
+            value={query}
+            onChange={(e) => onQueryChange(e.target.value)}
+            disabled={searching}
+          />
+        </div>
+        <Button type="submit" disabled={searching || !query.trim()}>
+          {searching ? "searching…" : "search"}
+        </Button>
+      </form>
+
+      {searchError ? (
+        <p role="alert" className="mt-4 font-mono text-[11px] text-ink">
+          {searchError}
+        </p>
+      ) : null}
+
+      <div className="mt-8">
+        {searched && results.length === 0 && !searching ? (
+          <p className="font-mono text-[13px] font-light text-muted">no matches</p>
+        ) : (
+          <ul className="divide-y divide-border border-t border-border">
+            {results.map((user) => (
+              <li key={user.id} className="py-4">
+                <AdminUserRow
+                  user={user}
+                  deleting={deletingUserId === user.id}
+                  onDelete={() => onDeleteUser(user.id)}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {deleteError ? (
+        <p role="alert" className="mt-4 font-mono text-[11px] text-ink">
+          {deleteError}
+        </p>
+      ) : null}
+
+      <section className="mt-16">
+        <h2 className="font-serif lowercase text-[20px] leading-tight text-ink">invite</h2>
+        <p className="mt-2 font-mono text-[13px] font-light text-muted">
+          generate a signup invite. no club attached — whoever uses it creates their own, or later
+          joins an open one.
         </p>
 
-        <form onSubmit={handleSubmit} className="mt-8 flex items-end gap-4">
-          <div className="flex-1">
-            <TextField
-              id="admin-user-search"
-              label="email"
-              type="search"
-              name="email"
-              autoComplete="off"
-              placeholder="name@example.com"
-              value={query}
-              onChange={(e) => onQueryChange(e.target.value)}
-              disabled={searching}
-            />
-          </div>
-          <Button type="submit" disabled={searching || !query.trim()}>
-            {searching ? "searching…" : "search"}
-          </Button>
-        </form>
-
-        {searchError ? (
+        {inviteError ? (
           <p role="alert" className="mt-4 font-mono text-[11px] text-ink">
-            {searchError}
+            {inviteError}
           </p>
         ) : null}
 
-        <div className="mt-8">
-          {searched && results.length === 0 && !searching ? (
-            <p className="font-mono text-[13px] font-light text-muted">no matches</p>
+        <div className="mt-6">
+          {platformInviteUrl ? (
+            <InviteShare inviteUrl={platformInviteUrl} />
           ) : (
-            <ul className="divide-y divide-border border-t border-border">
-              {results.map((user) => (
-                <li key={user.id} className="py-4">
-                  <AdminUserRow
-                    user={user}
-                    deleting={deletingUserId === user.id}
-                    onDelete={() => onDeleteUser(user.id)}
-                  />
-                </li>
-              ))}
-            </ul>
+            <Button type="button" onClick={onGenerateInvite} disabled={generatingInvite}>
+              {generatingInvite ? "generating…" : "generate invite"}
+            </Button>
           )}
         </div>
+      </section>
 
-        {deleteError ? (
+      <section className="mt-16">
+        <h2 className="font-serif lowercase text-[20px] leading-tight text-ink">waitlist</h2>
+        <p className="mt-2 font-mono text-[13px] font-light text-muted">
+          temporary, pre-launch. inviting a waitlist entry sends them a signup invite by email — the
+          same kind generated above.
+        </p>
+
+        {waitlistError ? (
           <p role="alert" className="mt-4 font-mono text-[11px] text-ink">
-            {deleteError}
+            {waitlistError}
           </p>
         ) : null}
 
-        <section className="mt-16">
-          <h2 className="font-serif lowercase text-[20px] leading-tight text-ink">invite</h2>
-          <p className="mt-2 font-mono text-[13px] font-light text-muted">
-            generate a signup invite. no club attached — whoever uses it creates their
-            own, or later joins an open one.
-          </p>
-
-          {inviteError ? (
-            <p role="alert" className="mt-4 font-mono text-[11px] text-ink">
-              {inviteError}
+        <div className="mt-6">
+          {waitlistLoading ? null : waitlistEntries.length === 0 ? (
+            <p className="font-mono text-[13px] font-light text-muted">
+              no one on the waitlist yet
             </p>
-          ) : null}
-
-          <div className="mt-6">
-            {platformInviteUrl ? (
-              <InviteShare inviteUrl={platformInviteUrl} />
-            ) : (
-              <Button type="button" onClick={onGenerateInvite} disabled={generatingInvite}>
-                {generatingInvite ? "generating…" : "generate invite"}
-              </Button>
-            )}
-          </div>
-        </section>
-
-        <section className="mt-16">
-          <h2 className="font-serif lowercase text-[20px] leading-tight text-ink">waitlist</h2>
-          <p className="mt-2 font-mono text-[13px] font-light text-muted">
-            temporary, pre-launch. inviting a waitlist entry sends them a signup invite
-            by email — the same kind generated above.
-          </p>
-
-          {waitlistError ? (
-            <p role="alert" className="mt-4 font-mono text-[11px] text-ink">
-              {waitlistError}
-            </p>
-          ) : null}
-
-          <div className="mt-6">
-            {waitlistLoading ? null : waitlistEntries.length === 0 ? (
-              <p className="font-mono text-[13px] font-light text-muted">
-                no one on the waitlist yet
-              </p>
-            ) : (
-              <ul className="divide-y divide-border border-t border-border">
-                {waitlistEntries.map((entry) => (
-                  <li key={entry.id} className="py-4">
-                    <WaitlistRow
-                      entry={entry}
-                      inviting={invitingEntryId === entry.id}
-                      onInvite={() => onInviteFromWaitlist(entry.id)}
-                    />
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </section>
+          ) : (
+            <WaitlistList
+              entries={waitlistEntries}
+              invitingEntryId={invitingEntryId}
+              onInviteFromWaitlist={onInviteFromWaitlist}
+            />
+          )}
+        </div>
+      </section>
     </main>
+  );
+}
+
+type WaitlistStatusFilter = "all" | "pending" | "invited";
+
+/**
+ * Client-side search + status filter over the already-fetched waitlist
+ * (MYS-215). Kept out of AdminRoute — this operates purely on data that's
+ * already on the page, not a re-fetch, so it stays a display-layer concern
+ * local to this component. Backend pagination would only be worth it if the
+ * list grew into the thousands; this list is bounded by the same pre-launch
+ * audience as the beta user cap.
+ */
+function WaitlistList({
+  entries,
+  invitingEntryId,
+  onInviteFromWaitlist,
+}: {
+  entries: WaitlistEntry[];
+  invitingEntryId: string | null;
+  onInviteFromWaitlist: (entryId: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState<WaitlistStatusFilter>("all");
+
+  const normalizedQuery = query.trim().toLowerCase();
+  const filtered = entries.filter((entry) => {
+    const matchesQuery = entry.email.toLowerCase().includes(normalizedQuery);
+    const matchesStatus =
+      status === "all"
+        ? true
+        : status === "invited"
+          ? entry.invited_at !== null
+          : entry.invited_at === null;
+    return matchesQuery && matchesStatus;
+  });
+
+  return (
+    <>
+      <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
+        <div className="min-w-0 flex-1">
+          <TextField
+            id="admin-waitlist-search"
+            label="search"
+            type="search"
+            name="waitlist-search"
+            autoComplete="off"
+            placeholder="name@example.com"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+        <div className="flex gap-4 pb-[10px]">
+          {(["all", "pending", "invited"] as const).map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => setStatus(option)}
+              aria-pressed={status === option}
+              className={[
+                "font-mono uppercase tracking-ui text-[11px] transition-colors duration-150",
+                status === option
+                  ? "text-sage underline underline-offset-[3px]"
+                  : "text-muted hover:text-ink",
+              ].join(" ")}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-6">
+        {filtered.length === 0 ? (
+          <p className="font-mono text-[13px] font-light text-muted">no matches</p>
+        ) : (
+          <ul className="divide-y divide-border border-t border-border">
+            {filtered.map((entry) => (
+              <li key={entry.id} className="py-4">
+                <WaitlistRow
+                  entry={entry}
+                  inviting={invitingEntryId === entry.id}
+                  onInvite={() => onInviteFromWaitlist(entry.id)}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </>
   );
 }
 
@@ -281,12 +365,7 @@ function AdminUserRow({
           />
           <div className="flex items-center gap-4">
             {/* The page's single Rust use: the armed destructive confirm. */}
-            <Button
-              variant="link"
-              type="button"
-              onClick={onDelete}
-              disabled={!matches || deleting}
-            >
+            <Button variant="link" type="button" onClick={onDelete} disabled={!matches || deleting}>
               {deleting ? "deleting…" : "delete account"}
             </Button>
             <Button
@@ -306,4 +385,3 @@ function AdminUserRow({
     </div>
   );
 }
-

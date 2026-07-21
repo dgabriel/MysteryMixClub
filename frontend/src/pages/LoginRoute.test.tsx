@@ -106,7 +106,7 @@ describe("LoginRoute", () => {
     // contact note is shown unconditionally so it never reveals which. The
     // address itself stays hidden until clicked (MYS-182). Waitlist-off
     // check resolves async (MYS-215).
-    await screen.findByText(/new here\?/i);
+    await screen.findByText(/no account yet\?/i);
     await user.click(screen.getByRole("button", { name: /^email us$/i }));
     expect(screen.getByRole("link", { name: /info@mysterymixclub\.com/i })).toHaveAttribute(
       "href",
@@ -210,7 +210,9 @@ describe("LoginRoute", () => {
     await user.click(screen.getByRole("button", { name: /send sign-in link/i }));
 
     await screen.findByText("check your email");
-    await user.click(screen.getByRole("button", { name: /use a different email/i }));
+    // The button is conditional on the async waitlist-off check (MYS-215),
+    // so wait for it rather than assuming it's already resolved.
+    await user.click(await screen.findByRole("button", { name: /use a different email/i }));
 
     await waitFor(() =>
       expect(
@@ -231,7 +233,7 @@ describe("LoginRoute", () => {
     expect(screen.queryByRole("button", { name: /^email us$/i })).not.toBeInTheDocument();
   });
 
-  it("waitlist enabled (MYS-215): CheckEmail points back to the waitlist, not the mailto fallback", async () => {
+  it("waitlist enabled (MYS-215): CheckEmail renders the actual join form, not just a pointer", async () => {
     mockGetWaitlistEnabled.mockResolvedValue({ enabled: true });
     mockRequestMagicLink.mockResolvedValue({ devToken: null });
     const user = userEvent.setup();
@@ -248,7 +250,10 @@ describe("LoginRoute", () => {
     await user.click(signInButton);
 
     await screen.findByText("check your email");
-    expect(await screen.findByText(/use a different email below to join the waitlist/i)).toBeInTheDocument();
+    // The real form is here now, not just a link back to /login.
+    expect(await screen.findByRole("button", { name: /^join$/i })).toBeInTheDocument();
+    expect(screen.getByText(/no invite yet\?/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^use a different email$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^email us$/i })).not.toBeInTheDocument();
   });
 });

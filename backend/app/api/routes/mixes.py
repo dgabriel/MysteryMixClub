@@ -47,7 +47,12 @@ from app.services.spotify_playlist_generation import try_auto_generate_playlist
 from app.models.vote import Vote
 from app.services.email import EmailSender, get_email_sender
 from app.services.most_noted import compute_most_noted
-from app.services.notifications import MixEvent, gather_recipients, queue_mix_event
+from app.services.notifications import (
+    MixEvent,
+    gather_recipients,
+    organizer_recipient,
+    queue_mix_event,
+)
 from app.services.youtube_playlist import build_watch_videos_url, normalize_video_ids
 from app.services.youtube_resolver import YouTubeResolver, get_youtube_resolver
 
@@ -230,10 +235,13 @@ async def advance_mix_state(
       mix the club's ``current_mix``;
     * ``closed`` — stamp ``closed_at``, then either complete the club (final
       mix) or auto-open the next pending mix (stamping *its*
-      ``submission_opened_at`` + ``current_mix``).
+      ``submission_opened_at`` + ``current_mix``) — unless that next mix has
+      no theme yet (MYS-211), in which case it's left ``pending`` and a
+      ``needs_theme`` event fires instead of ``submission_open``.
 
     Returns the ``(mix, event)`` notification tuples to dispatch (including the
-    auto-opened next mix's ``submission_open``). It does NOT commit.
+    auto-opened next mix's ``submission_open``, or its ``needs_theme`` if it
+    couldn't open). It does NOT commit.
     """
     events: list[tuple[Mix, MixEvent]] = []
     mix_.state = new_state
@@ -272,7 +280,13 @@ async def advance_mix_state(
                     Mix.state == "pending",
                 )
             )
-            if next_mix is not None:
+            if next_mix is not None and not next_mix.theme:
+                # No theme yet (MYS-211) — mixes can't open without one, and
+                # there's no admin present in an auto-advance to set it. Leave
+                # the club with no active mix (current_mix stays put) and nudge
+                # the organizer instead of silently opening a themeless mix.
+                events.append((next_mix, "needs_theme"))
+            elif next_mix is not None:
                 next_mix.state = "open_submission"
                 next_mix.submission_opened_at = func.now()
                 # Same club window as the manual open (MYS-159): stamp the next
@@ -435,6 +449,14 @@ async def create_mix(
             status_code=status.HTTP_409_CONFLICT,
             detail="all mixes for this club have already been created",
         )
+    # This mix is born open_submission (below) — same theme-before-open rule
+    # as the PATCH-driven transition (MYS-211), since a mix can't open
+    # without a theme by any route.
+    if not payload.theme:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="set a theme before opening this mystery mix",
+        )
 
     mix_ = Mix(
         club_id=league_id,
@@ -592,6 +614,16 @@ async def update_mix(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"cannot move mystery mix from {mix_.state} to {new_state}",
             )
+        # A mix can't open without a theme (MYS-211) — checked after the field
+        # updates above have already applied, so setting the theme and opening
+        # in the same request works. A rollback is exempt: the mix already
+        # opened once before (theme is locked once non-pending), so it's
+        # guaranteed to have one.
+        if new_state == "open_submission" and not is_rollback and not mix_.theme:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="set a theme before opening this mystery mix",
+            )
         # Opening a pending mix: only one mix may be active per club. This
         # guard is the organizer's manual step only; auto-advance never makes the
         # pending->open_submission move, so it lives here, not in the helper. A
@@ -652,8 +684,17 @@ async def update_mix(
     # so a failed commit below means no emails go out.
     if events:
         recipients = await gather_recipients(db, mix_.club_id)
+        # needs_theme (MYS-211) is organizer-only, never the whole club.
+        theme_notice_recipients = (
+            await organizer_recipient(db, club)
+            if any(event == "needs_theme" for _, event in events)
+            else []
+        )
         for event_mix, event in events:
-            queue_mix_event(background_tasks, sender, settings, recipients, club, event_mix, event)
+            event_recipients = theme_notice_recipients if event == "needs_theme" else recipients
+            queue_mix_event(
+                background_tasks, sender, settings, event_recipients, club, event_mix, event
+            )
 
     # Auto-generate the shared-account Spotify playlist the moment voting opens
     # (MYS-176) — no admin click needed. Best-effort: never raises, so a Spotify

@@ -39,7 +39,14 @@ logger = logging.getLogger("app.services.notifications")
 # so "the next mix auto-opened" and "this mix opened" can both map to a
 # submission_open notification for their respective mixes.
 MixEvent = Literal[
-    "submission_open", "voting_open", "mix_closed", "club_complete", "voting_extended"
+    "submission_open",
+    "voting_open",
+    "mix_closed",
+    "club_complete",
+    "voting_extended",
+    # The mix that would auto-open next (on a close) has no theme (MYS-211) —
+    # organizer-only, never sent to the whole club. See organizer_recipient().
+    "needs_theme",
 ]
 
 # The two deadline phases a mix can be warned about (MYS-162).
@@ -68,6 +75,18 @@ async def gather_recipients(db: AsyncSession, league_id: uuid.UUID) -> list[Reci
         )
     )
     return [Recipient(user_id=r[0], email=r[1], display_name=r[2]) for r in rows.all()]
+
+
+async def organizer_recipient(db: AsyncSession, club: Club) -> list[Recipient]:
+    """The organizer as a recipient, or empty if the club has no organizer
+    (hard-purged) or the organizer has email notifications off. Shared by the
+    API path and the deadline job — anything that must reach only the
+    organizer, never the whole club (e.g. an empty-mix nudge, MYS-145; a
+    themeless-next-mix nudge, MYS-211)."""
+    if club.organizer_id is None:
+        return []
+    recipients = await gather_recipients(db, club.id)
+    return [r for r in recipients if r.user_id == club.organizer_id]
 
 
 def _mix_label(mix_: Mix) -> str:
@@ -128,6 +147,13 @@ def _subject_and_body(event: MixEvent, club: Club, mix_: Mix, club_url: str) -> 
             f"{club.name} — voting extended for {label}",
             f"<p>Voting for <strong>{label}</strong> in <strong>{club.name}</strong> has been "
             f"extended. New deadline: {by}. {link}</p>",
+        )
+    if event == "needs_theme":
+        return (
+            f"{club.name} — {label} needs a theme before it can open",
+            f"<p><strong>{label}</strong> in <strong>{club.name}</strong> was next in line to "
+            f"open, but it has no theme yet — mixes can't open without one. Set a theme, "
+            f"then open it yourself whenever you're ready. {link}</p>",
         )
     # club_complete
     return (

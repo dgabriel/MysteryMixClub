@@ -99,10 +99,13 @@ async def _load_valid_invite(
     excludes it. A platform (club-less) invite is single-use (MYS-182
     follow-up): once used_at is stamped, it reads the same as nonexistent.
 
-    ``email`` should be the lowercased address the caller is signing in with.
-    A waitlist-issued invite (MYS-215) carries a locked email; if it doesn't
-    match, the invite reads as nonexistent — same neutral treatment as a bad
-    token, so a mismatch can't be distinguished from "no invite" (TD 5)."""
+    ``email`` is the address the caller is signing in with. A waitlist-issued
+    invite (MYS-215) carries a locked email; if it doesn't match, the invite
+    reads as nonexistent — same neutral treatment as a bad token, so a
+    mismatch can't be distinguished from "no invite" (TD 5). Compared
+    case-insensitively here (not just relying on callers to have already
+    lowercased both sides) so this can't silently be defeated by a future
+    write path that skips normalization."""
     if not invite_token:
         return None
     invite = await db.scalar(select(Invite).where(Invite.token == invite_token))
@@ -112,7 +115,7 @@ async def _load_valid_invite(
         return None
     if invite.club_id is None and invite.used_at is not None:
         return None
-    if invite.email is not None and invite.email != email:
+    if invite.email is not None and (email is None or invite.email.lower() != email.lower()):
         return None
     return invite
 

@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from "react";
-import type { AdminUser } from "../services/api";
+import type { AdminUser, WaitlistEntry } from "../services/api";
 import { Button } from "../components/Button";
 import { InviteShare } from "../components/InviteShare";
 import { TextField } from "../components/TextField";
@@ -22,6 +22,12 @@ type AdminScreenProps = {
   generatingInvite: boolean;
   inviteError?: string | null;
   onGenerateInvite: () => void;
+  /** Waitlist (MYS-215, temporary). */
+  waitlistEntries: WaitlistEntry[];
+  waitlistLoading: boolean;
+  waitlistError?: string | null;
+  invitingEntryId: string | null;
+  onInviteFromWaitlist: (entryId: string) => void;
 };
 
 /**
@@ -47,6 +53,11 @@ export function AdminScreen({
   generatingInvite,
   inviteError,
   onGenerateInvite,
+  waitlistEntries,
+  waitlistLoading,
+  waitlistError,
+  invitingEntryId,
+  onInviteFromWaitlist,
 }: AdminScreenProps) {
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -132,7 +143,86 @@ export function AdminScreen({
             )}
           </div>
         </section>
+
+        <section className="mt-16">
+          <h2 className="font-serif lowercase text-[20px] leading-tight text-ink">waitlist</h2>
+          <p className="mt-2 font-mono text-[13px] font-light text-muted">
+            temporary, pre-launch. inviting a waitlist entry sends them a signup invite
+            by email — the same kind generated above.
+          </p>
+
+          {waitlistError ? (
+            <p role="alert" className="mt-4 font-mono text-[11px] text-ink">
+              {waitlistError}
+            </p>
+          ) : null}
+
+          <div className="mt-6">
+            {waitlistLoading ? null : waitlistEntries.length === 0 ? (
+              <p className="font-mono text-[13px] font-light text-muted">
+                no one on the waitlist yet
+              </p>
+            ) : (
+              <ul className="divide-y divide-border border-t border-border">
+                {waitlistEntries.map((entry) => (
+                  <li key={entry.id} className="py-4">
+                    <WaitlistRow
+                      entry={entry}
+                      inviting={invitingEntryId === entry.id}
+                      onInvite={() => onInviteFromWaitlist(entry.id)}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
     </main>
+  );
+}
+
+/** One waitlist entry: email, when they joined, and whether/when they've
+ *  already been invited. Non-destructive, resendable — a plain ghost button,
+ *  no confirm step and no Rust (this screen's single Rust use stays on the
+ *  destructive user-delete confirm above). */
+function WaitlistRow({
+  entry,
+  inviting,
+  onInvite,
+}: {
+  entry: WaitlistEntry;
+  inviting: boolean;
+  onInvite: () => void;
+}) {
+  const joined = new Date(entry.created_at).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <span className="min-w-0">
+        <span className="block truncate font-mono text-[13px] text-ink">{entry.email}</span>
+        <span className="mt-0.5 block font-mono text-[11px] font-light text-muted">
+          joined {joined}
+          {entry.invited_at
+            ? ` · invited ${new Date(entry.invited_at).toLocaleDateString(undefined, {
+                month: "short",
+                day: "numeric",
+              })}`
+            : null}
+        </span>
+      </span>
+      <Button
+        variant="ghost"
+        type="button"
+        onClick={onInvite}
+        disabled={inviting}
+        className="shrink-0"
+      >
+        {inviting ? "sending…" : entry.invited_at ? "resend" : "invite"}
+      </Button>
+    </div>
   );
 }
 

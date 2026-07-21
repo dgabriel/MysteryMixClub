@@ -1329,4 +1329,60 @@ export async function adminCreateInvite(): Promise<Invite> {
   return (await res.json()) as Invite;
 }
 
+/** A public waitlist join request (MYS-215, temporary pre-launch flow). */
+export type WaitlistEntry = {
+  id: string;
+  email: string;
+  created_at: string;
+  /** Set once an admin has invited this entry; null while still waiting. */
+  invited_at: string | null;
+  invited_by: string | null;
+};
+
+/** Whether the waitlist form should render at all — checked on page load so
+ *  a disabled waitlist never flashes a form that would just 404 on submit. */
+export async function getWaitlistEnabled(): Promise<{ enabled: boolean }> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/waitlist/enabled`);
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as { enabled: boolean };
+}
+
+/** Join the waitlist. Public, unauthenticated. Throws ApiError(409) on a
+ *  duplicate email, ApiError(404) if the waitlist is currently disabled. */
+export async function joinWaitlist(email: string): Promise<WaitlistEntry> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/waitlist`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as WaitlistEntry;
+}
+
+/** Every waitlist entry, oldest first (platform-admin only). */
+export async function adminListWaitlist(): Promise<WaitlistEntry[]> {
+  const res = await authenticatedRequest("/api/v1/admin/waitlist");
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as WaitlistEntry[];
+}
+
+/** Mint a platform invite for a waitlist entry and email it (platform-admin
+ *  only). Resendable — calling this again on an already-invited entry mints
+ *  a fresh invite and re-stamps invited_at. */
+export async function adminInviteFromWaitlist(entryId: string): Promise<WaitlistEntry> {
+  const res = await authenticatedRequest(`/api/v1/admin/waitlist/${entryId}/invite`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as WaitlistEntry;
+}
+
 export { ApiError };

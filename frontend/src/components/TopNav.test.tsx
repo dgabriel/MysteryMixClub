@@ -63,6 +63,7 @@ function renderNav(ui = <TopNav />, at = "/start") {
         <Route path="/home" element={<div>HOME CONTENT</div>} />
         <Route path="/profile" element={<div>PROFILE CONTENT</div>} />
         <Route path="/about" element={<div>ABOUT CONTENT</div>} />
+        <Route path="/help" element={<div>HELP CONTENT</div>} />
         <Route path="/admin" element={<div>ADMIN CONTENT</div>} />
         <Route path="/login" element={<div>LOGIN CONTENT</div>} />
         <Route path="/clubs/:id" element={<div>CLUB CONTENT</div>} />
@@ -77,13 +78,14 @@ describe("TopNav", () => {
     setAuth(false);
   });
 
-  it("renders home / profile / about / logout for any authed user, and hides admin for non-admins", () => {
+  it("renders home / profile / about / help / logout for any authed user, and hides admin for non-admins", () => {
     renderNav();
 
     // Two home controls: the ring mark (aria-label) and the text link.
     expect(screen.getAllByRole("button", { name: /^home$/i })).toHaveLength(2);
     expect(screen.getByRole("button", { name: /^profile$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^about$/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^help$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^logout$/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^admin$/i })).not.toBeInTheDocument();
   });
@@ -94,6 +96,14 @@ describe("TopNav", () => {
 
     await user.click(screen.getByRole("button", { name: /^about$/i }));
     expect(await screen.findByText("ABOUT CONTENT")).toBeInTheDocument();
+  });
+
+  it("help link routes to /help", async () => {
+    const user = userEvent.setup();
+    renderNav();
+
+    await user.click(screen.getByRole("button", { name: /^help$/i }));
+    expect(await screen.findByText("HELP CONTENT")).toBeInTheDocument();
   });
 
   it("shows the admin entry for a platform admin and routes to /admin", async () => {
@@ -158,6 +168,7 @@ describe("TopNav", () => {
       expect(screen.queryByRole("button", { name: /^home$/i })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /^profile$/i })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /^about$/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^help$/i })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /^admin$/i })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /^logout$/i })).not.toBeInTheDocument();
     });

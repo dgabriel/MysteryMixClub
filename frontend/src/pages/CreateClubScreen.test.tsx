@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { CreateClubScreen } from "./CreateClubScreen";
 
 // Two DeadlineWindowFields ("submission window" / "voting window") share the
@@ -10,13 +11,15 @@ function renderScreen(overrides: Partial<Parameters<typeof CreateClubScreen>[0]>
   const onSubmit = vi.fn();
   const onCancel = vi.fn();
   const utils = render(
-    <CreateClubScreen
-      onSubmit={onSubmit}
-      submitting={false}
-      error={null}
-      onCancel={onCancel}
-      {...overrides}
-    />,
+    <MemoryRouter>
+      <CreateClubScreen
+        onSubmit={onSubmit}
+        submitting={false}
+        error={null}
+        onCancel={onCancel}
+        {...overrides}
+      />
+    </MemoryRouter>,
   );
   const getInput = (id: string) => utils.container.querySelector(`#${id}`) as HTMLInputElement;
   return { onSubmit, onCancel, ...utils, getInput };

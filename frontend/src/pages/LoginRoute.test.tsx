@@ -200,6 +200,11 @@ describe("LoginRoute", () => {
     );
   });
 
+  it("links to the help page (MYS-222)", () => {
+    renderLogin();
+    expect(screen.getByRole("link", { name: /^help$/i })).toHaveAttribute("href", "/help");
+  });
+
   it("back affordance on CheckEmail returns to the email entry form", async () => {
     mockRequestMagicLink.mockResolvedValue({ devToken: null });
     const user = userEvent.setup();

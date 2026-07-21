@@ -3,6 +3,7 @@ import { Button } from "../components/Button";
 import { TextField } from "../components/TextField";
 import { ConcentricRings } from "../components/ConcentricRings";
 import { DeadlineWindowField } from "../components/DeadlineWindowField";
+import { HelpLink } from "../components/HelpLink";
 import { daysAndHoursToTotal, validateWindowHours } from "../utils/deadlineWindow";
 
 type CreateClubInput = {
@@ -207,10 +208,11 @@ export function CreateClubScreen({
               <span className="font-mono uppercase tracking-ui text-[11px] text-ink">
                 just vibing by default
               </span>
+              <HelpLink anchor="just-vibing" />
             </label>
             <p className="mt-2 font-mono text-[11px] font-light text-muted">
-              vibing means no voting or ranking — just songs and response notes. members
-              start out vibing and can switch to playing anytime.
+              vibing means no voting or ranking — just songs and response notes. every
+              member who joins starts out vibing.
             </p>
           </div>
 

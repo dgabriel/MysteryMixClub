@@ -122,9 +122,12 @@ export function EmailEntryScreen({
           </div>
         ) : null}
 
-        <div className="mt-10 flex justify-center gap-4 text-center">
+        <div className="mt-10 flex flex-wrap justify-center gap-4 text-center">
           <Link to="/about" className="font-mono text-[11px] text-muted hover:text-ink">
             about mysterymixclub
+          </Link>
+          <Link to="/help" className="font-mono text-[11px] text-muted hover:text-ink">
+            help
           </Link>
           <Link to="/terms" className="font-mono text-[11px] text-muted hover:text-ink">
             terms

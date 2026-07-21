@@ -4,6 +4,7 @@ import { Badge } from "../components/Badge";
 import { Card } from "../components/Card";
 import { ConcentricRings } from "../components/ConcentricRings";
 import { CrownIcon } from "../components/CrownIcon";
+import { HelpLink } from "../components/HelpLink";
 import { SongSearchCard } from "../components/songs/SongSearchCard";
 
 type MyClubsScreenProps = {
@@ -41,7 +42,10 @@ export function MyClubsScreen({
               <div className="flex flex-col items-center pt-4 text-center">
                 {/* Empty state — the screen's one Rust use is the off-center ring dot. */}
                 <ConcentricRings size={88} accent className="mx-auto" />
-                <p className="mt-8 font-mono text-[13px] font-light text-muted">no clubs yet</p>
+                <span className="mt-8 flex items-center gap-2">
+                  <p className="font-mono text-[13px] font-light text-muted">no clubs yet</p>
+                  <HelpLink anchor="clubs" />
+                </span>
                 <div className="mt-6">
                   <Button type="button" onClick={onCreateClub}>
                     create a club
@@ -60,9 +64,12 @@ export function MyClubsScreen({
                     {displayName}
                   </p>
                 ) : null}
-                <h1 className="mt-1 font-serif lowercase text-[28px] leading-tight text-ink">
-                  my clubs
-                </h1>
+                <span className="mt-1 flex items-center gap-2">
+                  <h1 className="font-serif lowercase text-[28px] leading-tight text-ink">
+                    my clubs
+                  </h1>
+                  <HelpLink anchor="clubs" />
+                </span>
 
                 <div className="mt-4">
                   <Button type="button" onClick={onCreateClub}>

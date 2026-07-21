@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { ConcentricRings } from "../components/ConcentricRings";
 import { ContactEmail } from "../components/ContactEmail";
 import { TopNav } from "../components/TopNav";
@@ -206,8 +208,21 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
  *
  * Each section carries a stable `id` so it can be deep-linked as context help
  * from elsewhere in the app (e.g. /help#just-vibing) — see HelpLink.tsx.
+ *
+ * Client-side route changes don't get the browser's native #hash scroll (that
+ * only fires on a real document navigation), so this scrolls to the target
+ * section itself on mount and on every hash change thereafter — covers both
+ * arriving fresh from another page and clicking a second HelpLink while
+ * already on /help.
  */
 export function HelpRoute() {
+  const { hash } = useLocation();
+
+  useEffect(() => {
+    if (!hash) return;
+    document.getElementById(hash.slice(1))?.scrollIntoView({ behavior: "smooth" });
+  }, [hash]);
+
   return (
     <div className="min-h-screen flex flex-col">
       <TopNav />

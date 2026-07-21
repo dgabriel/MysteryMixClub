@@ -152,6 +152,57 @@ async def test_invite_mints_a_clubless_invite_and_emails_it(client, db_session, 
     assert invites[0].token in html
 
 
+class _FailingEmailSender:
+    """Email sender that always raises, simulating an unverified-domain / outage
+    (same shape as test_auth_request.py's twin)."""
+
+    def send_magic_link(self, email: str, link: str) -> None:
+        raise RuntimeError("domain is not verified")
+
+    def send(self, email, subject, html, headers=None) -> None:
+        raise RuntimeError("domain is not verified")
+
+
+async def test_invite_send_failure_returns_502_and_persists_nothing(session_factory, db_session):
+    # The email is the only way the recipient learns their invite exists, so a
+    # delivery failure must not leave the entry marked "invited" with no
+    # actual invite behind it.
+    from httpx import ASGITransport, AsyncClient
+
+    from app.config import Settings, get_settings
+    from app.db.session import get_db
+    from app.main import create_app
+    from app.services.email import get_email_sender
+
+    admin = await _seed_admin(db_session)
+    entry = await _seed_entry(db_session, "waiting@example.com")
+    admin_id, entry_id = admin.id, entry.id  # captured before expire_all() below
+
+    app = create_app()
+
+    async def _override_db():
+        async with session_factory() as session:
+            yield session
+
+    app.dependency_overrides[get_db] = _override_db
+    app.dependency_overrides[get_email_sender] = lambda: _FailingEmailSender()
+    app.dependency_overrides[get_settings] = lambda: Settings(seed_admin_emails=ADMIN_EMAIL)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        resp = await ac.post(_invite_url(entry_id), headers=_auth(admin_id))
+
+    assert resp.status_code == 502, resp.text
+
+    db_session.expire_all()
+    entry_after = await db_session.get(WaitlistEntry, entry_id)
+    assert entry_after.invited_at is None
+    assert entry_after.invited_by is None
+
+    invites = (await db_session.scalars(select(Invite).where(Invite.created_by == admin_id))).all()
+    assert len(invites) == 0
+
+
 async def test_invite_is_resendable_and_mints_a_fresh_invite(client, db_session, email_spy):
     admin = await _seed_admin(db_session)
     entry = await _seed_entry(db_session, "waiting@example.com")

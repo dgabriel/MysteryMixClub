@@ -1,3 +1,4 @@
+import logging
 import secrets
 import uuid
 from datetime import datetime, timezone
@@ -23,6 +24,8 @@ from app.models.user import User
 from app.models.waitlist_entry import WaitlistEntry
 from app.services.email import EmailSender, get_email_sender
 from app.services.notifications import send_waitlist_invite
+
+logger = logging.getLogger("app.api.routes.admin")
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -159,6 +162,11 @@ async def invite_from_waitlist(
     Resendable: inviting an already-invited entry is allowed and mints a
     fresh invite (the original link may have expired unused), re-stamping
     invited_at/invited_by to the latest send.
+
+    Sends before persisting anything: the email is the only way the
+    recipient learns their invite exists, so a delivery failure must not
+    leave the entry marked "invited" with a link nobody received. On
+    failure, nothing is added to the session — there's nothing to roll back.
     """
     entry = await db.scalar(select(WaitlistEntry).where(WaitlistEntry.id == entry_id))
     if entry is None:
@@ -166,10 +174,21 @@ async def invite_from_waitlist(
             status_code=status.HTTP_404_NOT_FOUND, detail="waitlist entry not found"
         )
 
+    token = secrets.token_urlsafe(_INVITE_TOKEN_BYTES)
+    invite_url = f"{settings.app_base_url.rstrip('/')}/invite/{token}"
+    try:
+        send_waitlist_invite(sender, settings, entry.email, invite_url)
+    except Exception:
+        logger.exception("failed to send waitlist invite email to %s", entry.email)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="couldn't send the invite email right now. try again.",
+        ) from None
+
     invite = Invite(
         club_id=None,
         created_by=admin.id,
-        token=secrets.token_urlsafe(_INVITE_TOKEN_BYTES),
+        token=token,
         expires_at=datetime.now(timezone.utc) + _INVITE_TTL,
         # Locks redemption to the waitlisted address (MYS-215) — a link that
         # leaks or gets forwarded can't be used by someone else.
@@ -180,8 +199,5 @@ async def invite_from_waitlist(
     entry.invited_by = admin.id
     await db.commit()
     await db.refresh(entry)
-
-    invite_url = f"{settings.app_base_url.rstrip('/')}/invite/{invite.token}"
-    send_waitlist_invite(sender, settings, entry.email, invite_url)
 
     return _to_waitlist_response(entry)

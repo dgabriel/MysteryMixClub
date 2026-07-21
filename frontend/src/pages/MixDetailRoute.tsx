@@ -912,7 +912,10 @@ function EditMixForm({
   }) => Promise<boolean | undefined>;
   onDismissError: () => void;
 }) {
-  const [open, setOpen] = useState(false);
+  // Themeless mixes can't open (MYS-211) — skip the "edit mix" click and show
+  // the fields right away, since the organizer needs to fill this in before
+  // they can do anything else with the mix.
+  const [open, setOpen] = useState(!mix.theme);
   const [theme, setTheme] = useState(mix.theme ?? "");
   const [description, setDescription] = useState(mix.description ?? "");
 

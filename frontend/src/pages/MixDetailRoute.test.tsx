@@ -738,6 +738,23 @@ describe("MixDetailRoute", () => {
     expect(mockUpdateMix).not.toHaveBeenCalled();
   });
 
+  it("a themeless pending mix shows the theme/description fields directly, no 'edit mix' click needed", async () => {
+    mockGetMix.mockResolvedValue(mix({ state: "pending", theme: null }));
+    renderMix();
+    await screen.findByRole("button", { name: "open mix" });
+    expect(screen.getByLabelText(/^theme$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/description/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^edit mix$/i })).not.toBeInTheDocument();
+  });
+
+  it("a themed pending mix still requires an 'edit mix' click to reveal the fields", async () => {
+    mockGetMix.mockResolvedValue(mix({ state: "pending" })); // has a theme by default
+    renderMix();
+    await screen.findByText("late summer feels");
+    expect(screen.queryByLabelText(/^theme$/i)).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /^edit mix$/i })).toBeInTheDocument();
+  });
+
   describe("closing a mix — confirm step (MYS-170)", () => {
     beforeEach(() => {
       mockGetMix.mockResolvedValue(mix({ state: "open_voting" }));

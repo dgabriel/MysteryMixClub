@@ -7,7 +7,8 @@ ones. As new ideas land, add a flag here.
 > Flags are plain settings on `backend/app/config.py` (`Settings`), read through
 > `get_settings()`. We deliberately keep them as simple env-driven booleans
 > rather than a flag service — there's no per-user/percentage targeting today.
-> If we ever need that, this doc is where we'll record the shift.
+> If we ever need that, this doc is where we'll record the shift. Rationale:
+> `docs/adr/0001-feature-flags-as-env-booleans.md`.
 
 ---
 

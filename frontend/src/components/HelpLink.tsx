@@ -12,11 +12,16 @@ type HelpLinkProps = {
  * appears (e.g. "just vibing"). Stays in the Sage/Muted/Border family, never
  * Rust — a help icon isn't a screen's primary signal, so it must never spend
  * that screen's one-Rust budget.
+ *
+ * Opens in a new tab: several of these sit on forms with in-progress input
+ * (e.g. creating a club) that a same-tab navigation away would lose.
  */
 export function HelpLink({ anchor, className = "" }: HelpLinkProps) {
   return (
     <Link
       to={`/help#${anchor}`}
+      target="_blank"
+      rel="noopener noreferrer"
       aria-label="what is this?"
       title="what is this?"
       className={[

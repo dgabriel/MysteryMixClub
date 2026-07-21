@@ -129,87 +129,67 @@ export function CreateClubScreen({
           />
 
           <div>
-            <div className="flex items-end gap-2">
-              <div className="flex-1">
-                <TextField
-                  id="club-total-mixes"
-                  label="number of mystery mixes"
-                  name="total_mixes"
-                  type="number"
-                  min={1}
-                  value={totalMixes}
-                  onChange={(e) => setTotalMixes(e.target.value)}
-                  disabled={submitting}
-                />
-              </div>
-              <HelpLink anchor="clubs" className="mb-1" />
-            </div>
+            <TextField
+              id="club-total-mixes"
+              label="number of mystery mixes"
+              name="total_mixes"
+              type="number"
+              min={1}
+              value={totalMixes}
+              onChange={(e) => setTotalMixes(e.target.value)}
+              disabled={submitting}
+            />
             <p className="mt-2 font-mono text-[11px] font-light text-muted">
               we&apos;ll create this many mystery mixes for you — name each one later.
             </p>
           </div>
 
-          <div className="flex items-end gap-2">
-            <div className="flex-1">
-              <TextField
-                id="club-votes-per-player"
-                label="votes per player"
-                name="votes_per_player"
-                type="number"
-                min={1}
-                value={votesPerPlayer}
-                onChange={(e) => setVotesPerPlayer(e.target.value)}
-                disabled={submitting}
-              />
-            </div>
-            <HelpLink anchor="voting-results" className="mb-1" />
-          </div>
+          <TextField
+            id="club-votes-per-player"
+            label="votes per player"
+            name="votes_per_player"
+            type="number"
+            min={1}
+            value={votesPerPlayer}
+            onChange={(e) => setVotesPerPlayer(e.target.value)}
+            disabled={submitting}
+          />
 
           <div>
-            <div className="flex items-end gap-2">
-              <div className="flex-1">
-                <TextField
-                  id="club-songs-per-submission"
-                  label="songs per submission"
-                  name="songs_per_submission"
-                  type="number"
-                  min={1}
-                  value={songsPerSubmission}
-                  onChange={(e) => setSongsPerSubmission(e.target.value)}
-                  disabled={submitting}
-                />
-              </div>
-              <HelpLink anchor="submitting-a-song" className="mb-1" />
-            </div>
+            <TextField
+              id="club-songs-per-submission"
+              label="songs per submission"
+              name="songs_per_submission"
+              type="number"
+              min={1}
+              value={songsPerSubmission}
+              onChange={(e) => setSongsPerSubmission(e.target.value)}
+              disabled={submitting}
+            />
             <p className="mt-2 font-mono text-[11px] font-light text-muted">
               how many songs each player can submit per mystery mix — 1 to 5.
             </p>
           </div>
 
           <div className="space-y-6">
-            <div className="flex items-start gap-2">
-              <div className="flex-1 space-y-6">
-                <DeadlineWindowField
-                  idPrefix="submission-window"
-                  label="submission window"
-                  days={submissionWindowDays}
-                  hours={submissionWindowHours}
-                  onDaysChange={setSubmissionWindowDays}
-                  onHoursChange={setSubmissionWindowHours}
-                  disabled={submitting}
-                />
-                <DeadlineWindowField
-                  idPrefix="voting-window"
-                  label="voting window"
-                  days={votingWindowDays}
-                  hours={votingWindowHours}
-                  onDaysChange={setVotingWindowDays}
-                  onHoursChange={setVotingWindowHours}
-                  disabled={submitting}
-                />
-              </div>
-              <HelpLink anchor="mystery-mixes" className="mt-1" />
-            </div>
+            <DeadlineWindowField
+              idPrefix="submission-window"
+              label="submission window"
+              days={submissionWindowDays}
+              hours={submissionWindowHours}
+              onDaysChange={setSubmissionWindowDays}
+              onHoursChange={setSubmissionWindowHours}
+              disabled={submitting}
+            />
+            <DeadlineWindowField
+              idPrefix="voting-window"
+              label="voting window"
+              days={votingWindowDays}
+              hours={votingWindowHours}
+              onDaysChange={setVotingWindowDays}
+              onHoursChange={setVotingWindowHours}
+              disabled={submitting}
+            />
             <p className="font-mono text-[11px] font-light text-muted">
               mystery mixes also close early if everyone finishes.
             </p>

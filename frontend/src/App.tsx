@@ -5,7 +5,7 @@ import { LoginRoute } from "./pages/LoginRoute";
 import { AboutRoute } from "./pages/AboutRoute";
 import { TermsRoute } from "./pages/TermsRoute";
 import { PrivacyRoute } from "./pages/PrivacyRoute";
-import { FaqRoute } from "./pages/FaqRoute";
+import { HelpRoute } from "./pages/HelpRoute";
 import { VerifyRoute } from "./pages/VerifyRoute";
 import { HomeRoute } from "./pages/HomeRoute";
 import { OnboardingRoute } from "./pages/OnboardingRoute";
@@ -29,7 +29,8 @@ import { AuthedLayout } from "./components/AuthedLayout";
  *                    TopNav, and the onboarding/consent gate
  *   /privacy       → public Privacy Policy (MYS-183); linked from /login,
  *                    TopNav, and the onboarding/consent gate
- *   /faq           → public FAQ (MYS-216); linked from /login and TopNav
+ *   /help          → public help/FAQ (MYS-222); linked from /login, TopNav, and
+ *                    context-help "?" icons elsewhere in the app (HelpLink.tsx)
  *
  *   Authed shell (ProtectedRoute + AuthedLayout, which renders the shared TopNav):
  *     /home        → My Clubs landing
@@ -69,7 +70,7 @@ const router = createBrowserRouter([
   { path: "/about", element: <AboutRoute /> },
   { path: "/terms", element: <TermsRoute /> },
   { path: "/privacy", element: <PrivacyRoute /> },
-  { path: "/faq", element: <FaqRoute /> },
+  { path: "/help", element: <HelpRoute /> },
   { path: "/auth/verify", element: <VerifyRoute /> },
   { path: "/onboarding", element: <OnboardingRoute /> },
 

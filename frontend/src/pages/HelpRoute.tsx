@@ -4,8 +4,9 @@ import { TopNav } from "../components/TopNav";
 
 type QA = { q: string; a: string };
 
-const SECTIONS: { label: string; items: QA[] }[] = [
+const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
   {
+    slug: "getting-in",
     label: "getting in",
     items: [
       {
@@ -27,6 +28,7 @@ const SECTIONS: { label: string; items: QA[] }[] = [
     ],
   },
   {
+    slug: "clubs",
     label: "clubs",
     items: [
       {
@@ -44,6 +46,7 @@ const SECTIONS: { label: string; items: QA[] }[] = [
     ],
   },
   {
+    slug: "mystery-mixes",
     label: "mystery mixes",
     items: [
       {
@@ -65,6 +68,7 @@ const SECTIONS: { label: string; items: QA[] }[] = [
     ],
   },
   {
+    slug: "submitting-a-song",
     label: "submitting a song",
     items: [
       {
@@ -90,6 +94,7 @@ const SECTIONS: { label: string; items: QA[] }[] = [
     ],
   },
   {
+    slug: "voting-results",
     label: "voting & results",
     items: [
       {
@@ -111,11 +116,12 @@ const SECTIONS: { label: string; items: QA[] }[] = [
     ],
   },
   {
+    slug: "just-vibing",
     label: "just vibing",
     items: [
       {
         q: "what is just vibing?",
-        a: "a non-competitive mode you can turn on for yourself, club-wide or for a single mystery mix. your song still gets submitted, shuffled in, and is fully eligible to win or get most noted — you just don't cast votes.",
+        a: "a non-competitive mode a club's organizer can turn on by default when creating the club. your song still gets submitted, shuffled in, and is fully eligible to win or get most noted — you just don't cast votes.",
       },
       {
         q: "will people know i'm vibing?",
@@ -128,6 +134,7 @@ const SECTIONS: { label: string; items: QA[] }[] = [
     ],
   },
   {
+    slug: "listening-playlists",
     label: "listening & playlists",
     items: [
       {
@@ -145,6 +152,7 @@ const SECTIONS: { label: string; items: QA[] }[] = [
     ],
   },
   {
+    slug: "notifications",
     label: "notifications",
     items: [
       {
@@ -158,6 +166,7 @@ const SECTIONS: { label: string; items: QA[] }[] = [
     ],
   },
   {
+    slug: "your-account",
     label: "your account",
     items: [
       {
@@ -175,6 +184,7 @@ const SECTIONS: { label: string; items: QA[] }[] = [
     ],
   },
   {
+    slug: "other",
     label: "other things to know",
     items: [
       {
@@ -190,11 +200,14 @@ const SECTIONS: { label: string; items: QA[] }[] = [
 ];
 
 /**
- * Public FAQ page (MYS-216) — no auth required, linked from the login screen
- * footer and TopNav. Mirrors TermsRoute/PrivacyRoute's layout; TopNav collapses
- * to a login-only nav for signed-out visitors.
+ * Public help/FAQ page (MYS-222) — no auth required, linked from the login
+ * screen footer and TopNav. Mirrors TermsRoute/PrivacyRoute's layout; TopNav
+ * collapses to a login-only nav for signed-out visitors.
+ *
+ * Each section carries a stable `id` so it can be deep-linked as context help
+ * from elsewhere in the app (e.g. /help#just-vibing) — see HelpLink.tsx.
  */
-export function FaqRoute() {
+export function HelpRoute() {
   return (
     <div className="min-h-screen flex flex-col">
       <TopNav />
@@ -203,14 +216,14 @@ export function FaqRoute() {
           {/* Motif — the screen's single Rust use lives in the off-center ring dot. */}
           <ConcentricRings size={72} accent className="mx-auto" />
 
-          <h1 className="mt-8 text-center font-serif text-[34px] leading-tight">faq</h1>
+          <h1 className="mt-8 text-center font-serif text-[34px] leading-tight">help</h1>
           <p className="mt-2 text-center font-mono text-[11px] font-light text-muted">
             everything from signing in to your first reveal
           </p>
 
           <div className="mt-10 space-y-10">
             {SECTIONS.map((section) => (
-              <section key={section.label}>
+              <section key={section.slug} id={section.slug} className="scroll-mt-8">
                 <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
                   {section.label}
                 </p>

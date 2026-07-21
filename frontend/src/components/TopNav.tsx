@@ -51,7 +51,7 @@ function LogoutIcon() {
 
 /**
  * Shared top navigation. On authenticated screens the ring mark returns home;
- * HOME / PROFILE / ABOUT / FAQ / LOGOUT are always present, ADMIN only for
+ * HOME / PROFILE / ABOUT / HELP / LOGOUT are always present, ADMIN only for
  * platform admins. An optional back affordance (e.g. "← club") sits beside the mark on
  * deeper screens. The mark carries its single Rust dot as persistent brand
  * identity — a style-guide exception that does NOT count against a screen's
@@ -136,8 +136,8 @@ export function TopNav({ back }: TopNavProps) {
         <button type="button" onClick={() => navigate("/about")} className={linkClass}>
           about
         </button>
-        <button type="button" onClick={() => navigate("/faq")} className={linkClass}>
-          faq
+        <button type="button" onClick={() => navigate("/help")} className={linkClass}>
+          help
         </button>
         {isPlatformAdmin ? (
           <button type="button" onClick={() => navigate("/admin")} className={linkClass}>

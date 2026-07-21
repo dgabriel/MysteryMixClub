@@ -200,9 +200,9 @@ describe("LoginRoute", () => {
     );
   });
 
-  it("links to the faq page (MYS-216)", () => {
+  it("links to the help page (MYS-222)", () => {
     renderLogin();
-    expect(screen.getByRole("link", { name: /^faq$/i })).toHaveAttribute("href", "/faq");
+    expect(screen.getByRole("link", { name: /^help$/i })).toHaveAttribute("href", "/help");
   });
 
   it("back affordance on CheckEmail returns to the email entry form", async () => {

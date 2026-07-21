@@ -126,8 +126,8 @@ export function EmailEntryScreen({
           <Link to="/about" className="font-mono text-[11px] text-muted hover:text-ink">
             about mysterymixclub
           </Link>
-          <Link to="/faq" className="font-mono text-[11px] text-muted hover:text-ink">
-            faq
+          <Link to="/help" className="font-mono text-[11px] text-muted hover:text-ink">
+            help
           </Link>
           <Link to="/terms" className="font-mono text-[11px] text-muted hover:text-ink">
             terms

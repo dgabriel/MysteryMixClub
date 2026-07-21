@@ -3,8 +3,15 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { AdminRoute } from "./AdminRoute";
-import { ApiError, adminCreateInvite, adminDeleteUser, adminSearchUsers } from "../services/api";
-import type { AdminUser, Invite } from "../services/api";
+import {
+  ApiError,
+  adminCreateInvite,
+  adminDeleteUser,
+  adminInviteFromWaitlist,
+  adminListWaitlist,
+  adminSearchUsers,
+} from "../services/api";
+import type { AdminUser, Invite, WaitlistEntry } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 
 // Mock the API module (no network). Keep ApiError real.
@@ -15,6 +22,8 @@ vi.mock("../services/api", async () => {
     adminSearchUsers: vi.fn(),
     adminDeleteUser: vi.fn(),
     adminCreateInvite: vi.fn(),
+    adminListWaitlist: vi.fn(),
+    adminInviteFromWaitlist: vi.fn(),
   };
 });
 
@@ -23,6 +32,8 @@ vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
 const mockSearch = vi.mocked(adminSearchUsers);
 const mockDelete = vi.mocked(adminDeleteUser);
 const mockCreateInvite = vi.mocked(adminCreateInvite);
+const mockListWaitlist = vi.mocked(adminListWaitlist);
+const mockInviteFromWaitlist = vi.mocked(adminInviteFromWaitlist);
 const mockUseAuth = vi.mocked(useAuth);
 
 function setAuth(isPlatformAdmin: boolean) {
@@ -68,6 +79,17 @@ function platformInviteWith(overrides: Partial<Invite> = {}): Invite {
   };
 }
 
+function waitlistEntryWith(overrides: Partial<WaitlistEntry> = {}): WaitlistEntry {
+  return {
+    id: "wl-1",
+    email: "waiting@example.com",
+    created_at: "2026-07-15T00:00:00Z",
+    invited_at: null,
+    invited_by: null,
+    ...overrides,
+  };
+}
+
 function renderAdmin() {
   return render(
     <MemoryRouter initialEntries={["/admin"]}>
@@ -84,6 +106,7 @@ describe("AdminRoute", () => {
     vi.clearAllMocks();
     setAuth(true);
     mockSearch.mockResolvedValue([]);
+    mockListWaitlist.mockResolvedValue([]);
   });
 
   it("non-admin: redirects to /home and never renders the admin page", () => {
@@ -196,6 +219,62 @@ describe("AdminRoute", () => {
 
       expect(await screen.findByText(/not authorized/i)).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /^generate invite$/i })).toBeInTheDocument();
+    });
+  });
+
+  describe("waitlist (MYS-215, temporary)", () => {
+    it("empty state shows a calm message", async () => {
+      renderAdmin();
+      expect(await screen.findByText(/no one on the waitlist yet/i)).toBeInTheDocument();
+    });
+
+    it("lists entries with join date, and unmarked entries offer 'invite'", async () => {
+      mockListWaitlist.mockResolvedValue([waitlistEntryWith({ email: "fan@example.com" })]);
+      renderAdmin();
+
+      expect(await screen.findByText("fan@example.com")).toBeInTheDocument();
+      expect(screen.getByText(/joined/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /^invite$/i })).toBeInTheDocument();
+    });
+
+    it("an already-invited entry shows when, and offers 'resend' instead of 'invite'", async () => {
+      mockListWaitlist.mockResolvedValue([
+        waitlistEntryWith({ invited_at: "2026-07-16T00:00:00Z" }),
+      ]);
+      renderAdmin();
+
+      await screen.findByText("waiting@example.com");
+      expect(screen.getByText(/invited/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /^resend$/i })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^invite$/i })).not.toBeInTheDocument();
+    });
+
+    it("clicking invite calls the API and updates that row to invited", async () => {
+      mockListWaitlist.mockResolvedValue([waitlistEntryWith()]);
+      mockInviteFromWaitlist.mockResolvedValue(
+        waitlistEntryWith({ invited_at: "2026-07-21T00:00:00Z", invited_by: "admin-1" }),
+      );
+      const user = userEvent.setup();
+      renderAdmin();
+
+      await screen.findByText("waiting@example.com");
+      await user.click(screen.getByRole("button", { name: /^invite$/i }));
+
+      expect(mockInviteFromWaitlist).toHaveBeenCalledWith("wl-1");
+      expect(await screen.findByRole("button", { name: /^resend$/i })).toBeInTheDocument();
+    });
+
+    it("a failed invite attempt shows a calm message and leaves the row unmarked", async () => {
+      mockListWaitlist.mockResolvedValue([waitlistEntryWith()]);
+      mockInviteFromWaitlist.mockRejectedValue(new ApiError(404, "waitlist entry not found"));
+      const user = userEvent.setup();
+      renderAdmin();
+
+      await screen.findByText("waiting@example.com");
+      await user.click(screen.getByRole("button", { name: /^invite$/i }));
+
+      expect(await screen.findByText(/waitlist entry not found/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /^invite$/i })).toBeInTheDocument();
     });
   });
 });

@@ -191,9 +191,15 @@ id                  UUID PRIMARY KEY
 club_id             UUID REFERENCES clubs(id)
 created_by          UUID REFERENCES users(id)
 token               TEXT UNIQUE NOT NULL
+email               TEXT (nullable — set only on a waitlist-issued invite, MYS-215)
 expires_at          TIMESTAMP
 created_at          TIMESTAMP
 ```
+> `email`, when set, locks redemption to that one address (checked
+> case-insensitively in `auth._load_valid_invite`); a mismatch reads as no
+> invite at all, same neutral handling as a bad token. Null (every club and
+> `POST /admin/invites` invite) keeps the original shareable-link behavior —
+> anyone with the token can redeem it.
 
 ### mixes
 ```
@@ -286,6 +292,23 @@ used                BOOLEAN DEFAULT FALSE
 created_at          TIMESTAMP
 ```
 
+### waitlist_entries
+```
+id                  UUID PRIMARY KEY
+email               TEXT UNIQUE NOT NULL
+created_at          TIMESTAMP
+invited_at          TIMESTAMP (nullable — set once an admin invites this entry)
+invited_by          UUID REFERENCES users(id) (nullable)
+```
+> Temporary, pre-launch (MYS-215, `WAITLIST_ENABLED` flag — see
+> `docs/feature-flags.md`). Not an invite and not a user account — a row only
+> becomes a real signup when an admin acts on it, which mints a club-less
+> platform invite like `POST /admin/invites` creates, but with `email` locked
+> to this entry's address, and emails it, stamping `invited_at`/`invited_by`.
+> Resendable: inviting an already-invited row mints a fresh invite and
+> re-stamps both fields, since the 48h invite link may have expired unused.
+> Email stored lowercased.
+
 ---
 
 ## 7. API Design
@@ -336,6 +359,22 @@ PATCH  /clubs/:id/members/:userId/role  Promote/demote an active member to/from 
 POST   /clubs/:id/invites     Generate invite link (organizer or member)
 GET    /invites/:token        Validate invite token, return club preview
 POST   /invites/:token/accept Join club via invite
+```
+
+### Admin
+```
+GET    /admin/users                    Search live accounts by email substring (platform-admin)
+DELETE /admin/users/:id                Hard-delete an account and all its data (platform-admin, MYS-128)
+POST   /admin/invites                  Generate a club-less signup invite (platform-admin, MYS-182)
+GET    /admin/waitlist                 List waitlist entries, oldest first (platform-admin, MYS-215)
+POST   /admin/waitlist/:id/invite      Mint + email an email-locked platform invite for a waitlist entry (platform-admin, MYS-215)
+```
+
+### Waitlist
+```
+GET    /waitlist/enabled      Whether the waitlist is currently on (public, MYS-215)
+POST   /waitlist               Join the waitlist (public, MYS-215) — 404 while WAITLIST_ENABLED
+                                is off, 409 on a duplicate email, 429 past 5/hour per IP
 ```
 
 ### Mystery Mixes

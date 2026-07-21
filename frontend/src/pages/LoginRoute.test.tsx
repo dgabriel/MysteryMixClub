@@ -1,18 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { LoginRoute } from "./LoginRoute";
-import { requestMagicLink } from "../services/api";
+import { getWaitlistEnabled, requestMagicLink } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 
 // Mock only the API module so no network is touched.
 vi.mock("../services/api", () => ({
   requestMagicLink: vi.fn(),
+  getWaitlistEnabled: vi.fn(),
+  joinWaitlist: vi.fn(),
 }));
 vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
 
 const mockRequestMagicLink = vi.mocked(requestMagicLink);
+const mockGetWaitlistEnabled = vi.mocked(getWaitlistEnabled);
 const mockUseAuth = vi.mocked(useAuth);
 
 // EmailEntryScreen links to /about (MYS-155), which needs a Router context.
@@ -29,6 +32,10 @@ describe("LoginRoute", () => {
     vi.clearAllMocks();
     // Default: not signed in, so the form renders.
     mockUseAuth.mockReturnValue({ status: "unauthenticated" } as ReturnType<typeof useAuth>);
+    // Default: waitlist off (MYS-215), matching the flag's production-safe
+    // default — every existing "email us" assertion in this file relies on
+    // this resolving to false.
+    mockGetWaitlistEnabled.mockResolvedValue({ enabled: false });
   });
 
   it("redirects an already-authenticated user to /home", () => {
@@ -48,7 +55,9 @@ describe("LoginRoute", () => {
     const user = userEvent.setup();
     renderLogin();
 
-    expect(screen.getByText(/no invite yet\?/i)).toBeInTheDocument();
+    // Waitlist-off check resolves async (MYS-215), so this copy appears a
+    // tick after render rather than synchronously.
+    await screen.findByText(/no invite yet\?/i);
     // The address itself isn't in the DOM until clicked (MYS-182: keeps it
     // out of reach of scrapers that don't simulate interaction).
     expect(screen.queryByText(/info@mysterymixclub\.com/i)).not.toBeInTheDocument();
@@ -95,8 +104,9 @@ describe("LoginRoute", () => {
     expect(screen.getByText("Friend@Example.com")).toBeInTheDocument();
     // Same neutral response either way (registered or not) — the invite
     // contact note is shown unconditionally so it never reveals which. The
-    // address itself stays hidden until clicked (MYS-182).
-    expect(screen.getByText(/new here\?/i)).toBeInTheDocument();
+    // address itself stays hidden until clicked (MYS-182). Waitlist-off
+    // check resolves async (MYS-215).
+    await screen.findByText(/new here\?/i);
     await user.click(screen.getByRole("button", { name: /^email us$/i }));
     expect(screen.getByRole("link", { name: /info@mysterymixclub\.com/i })).toHaveAttribute(
       "href",
@@ -208,5 +218,37 @@ describe("LoginRoute", () => {
       ).toBeInTheDocument(),
     );
     expect(screen.queryByText("check your email")).not.toBeInTheDocument();
+  });
+
+  it("waitlist enabled (MYS-215): shows the join-waitlist form instead of email-us copy", async () => {
+    mockGetWaitlistEnabled.mockResolvedValue({ enabled: true });
+    renderLogin();
+
+    expect(await screen.findByText(/join the waitlist/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^join$/i })).toBeInTheDocument();
+    // The old mailto fallback copy/button is gone, not just co-rendered.
+    expect(screen.queryByText(/to request one/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^email us$/i })).not.toBeInTheDocument();
+  });
+
+  it("waitlist enabled (MYS-215): CheckEmail points back to the waitlist, not the mailto fallback", async () => {
+    mockGetWaitlistEnabled.mockResolvedValue({ enabled: true });
+    mockRequestMagicLink.mockResolvedValue({ devToken: null });
+    const user = userEvent.setup();
+
+    renderLogin();
+    await screen.findByText(/join the waitlist/i); // wait out the async flag check
+
+    // Two "email" fields on screen now (sign-in form + waitlist form) — scope
+    // to the sign-in form specifically.
+    const signInButton = screen.getByRole("button", { name: /send sign-in link/i });
+    const signInForm = signInButton.closest("form");
+    if (!signInForm) throw new Error("sign-in form not found");
+    await user.type(within(signInForm).getByLabelText(/^email$/i), "user@example.com");
+    await user.click(signInButton);
+
+    await screen.findByText("check your email");
+    expect(await screen.findByText(/use a different email below to join the waitlist/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^email us$/i })).not.toBeInTheDocument();
   });
 });

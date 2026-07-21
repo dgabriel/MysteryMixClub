@@ -359,6 +359,17 @@ async def _seed_invite(db_session, *, expires_at: datetime | None) -> str:
     return token
 
 
+async def _seed_email_locked_invite(db_session, *, email: str) -> str:
+    """Seed a waitlist-style platform invite (MYS-215) locked to ``email``."""
+    admin = User(email="admin@example.com", display_name="Admin")
+    db_session.add(admin)
+    await db_session.flush()
+    token = "tok_" + uuid.uuid4().hex
+    db_session.add(Invite(club_id=None, created_by=admin.id, token=token, email=email))
+    await db_session.commit()
+    return token
+
+
 async def test_existing_user_without_invite_issues_token(client, db_session, email_spy):
     # alice is seeded as an existing user; she signs in with no invite at all.
     resp = await client.post(REQUEST_URL, json={"email": "alice@example.com"})
@@ -473,3 +484,50 @@ async def test_existing_user_link_omits_invite_when_no_token_supplied(
     assert resp.status_code == 200, resp.text
     _, link = email_spy.calls[-1]
     assert "&invite=" not in link
+
+
+# --------------------------------------------------------------------------- #
+# Email-locked invite (MYS-215): a waitlist-issued invite only validates for
+# the address it was minted for.
+# --------------------------------------------------------------------------- #
+
+
+async def test_email_locked_invite_issues_token_for_matching_email(client, db_session, email_spy):
+    token = await _seed_email_locked_invite(db_session, email="waiter@example.com")
+
+    resp = await client.post(
+        REQUEST_URL, json={"email": "waiter@example.com", "invite_token": token}
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["dev_token"]
+    assert await _count_rows(db_session, "waiter@example.com") == 1
+
+
+async def test_email_locked_invite_is_case_insensitive(client, db_session, email_spy):
+    token = await _seed_email_locked_invite(db_session, email="waiter@example.com")
+
+    resp = await client.post(
+        REQUEST_URL, json={"email": "Waiter@Example.com", "invite_token": token}
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["dev_token"]
+
+
+async def test_email_locked_invite_rejects_mismatched_email_neutrally(
+    client, db_session, email_spy
+):
+    # Someone else typing a different address with the same token gets the
+    # same neutral no-send response as no invite at all — the mismatch can't
+    # be distinguished from "no invite" (anti-enumeration, TD 5).
+    token = await _seed_email_locked_invite(db_session, email="waiter@example.com")
+
+    resp = await client.post(
+        REQUEST_URL, json={"email": "someoneelse@example.com", "invite_token": token}
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert "dev_token" not in resp.json()
+    assert await _count_rows(db_session, "someoneelse@example.com") == 0
+    assert email_spy.call_count == 0

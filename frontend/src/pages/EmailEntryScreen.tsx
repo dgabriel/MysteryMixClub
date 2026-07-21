@@ -1,9 +1,11 @@
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "../components/Button";
 import { ContactEmail } from "../components/ContactEmail";
 import { TextField } from "../components/TextField";
 import { ConcentricRings } from "../components/ConcentricRings";
+import { WaitlistForm } from "../components/WaitlistForm";
+import { getWaitlistEnabled } from "../services/api";
 
 type EmailEntryScreenProps = {
   onSubmit: (email: string) => void;
@@ -20,6 +22,24 @@ export function EmailEntryScreen({
   devLink,
 }: EmailEntryScreenProps) {
   const [email, setEmail] = useState("");
+  // undefined = still checking (renders neither form nor fallback copy, to
+  // avoid a flash of the wrong one), null = disabled or the check failed —
+  // both fall back to today's "email us" copy (fail-safe, MYS-215).
+  const [waitlistEnabled, setWaitlistEnabled] = useState<boolean | null | undefined>(undefined);
+
+  useEffect(() => {
+    let active = true;
+    getWaitlistEnabled()
+      .then((r) => {
+        if (active) setWaitlistEnabled(r.enabled);
+      })
+      .catch(() => {
+        if (active) setWaitlistEnabled(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -40,16 +60,20 @@ export function EmailEntryScreen({
         <p className="mt-2 text-center font-mono text-[13px] font-light text-muted">
           invite-only. sign in with your email.
         </p>
-        <p className="mt-1 text-center font-mono text-[11px] font-light text-muted">
-          no invite yet?{" "}
-          <ContactEmail
-            user="info"
-            domain="mysterymixclub.com"
-            label="email us"
-            className="text-ink underline underline-offset-[3px]"
-          />{" "}
-          to request one.
-        </p>
+        {waitlistEnabled ? (
+          <WaitlistForm />
+        ) : waitlistEnabled === undefined ? null : (
+          <p className="mt-1 text-center font-mono text-[11px] font-light text-muted">
+            no invite yet?{" "}
+            <ContactEmail
+              user="info"
+              domain="mysterymixclub.com"
+              label="email us"
+              className="text-ink underline underline-offset-[3px]"
+            />{" "}
+            to request one.
+          </p>
+        )}
 
         <form onSubmit={handleSubmit} className="mt-10 space-y-8">
           <TextField

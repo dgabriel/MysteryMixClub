@@ -314,6 +314,27 @@ def send_empty_mix_notice(
     _send_direct(sender, settings, recipients, subject, body)
 
 
+def send_waitlist_invite(
+    sender: EmailSender, settings: Settings, email: str, invite_url: str
+) -> None:
+    """Tell a waitlist entry their invite is ready (MYS-215, temporary).
+
+    Sent to an address with no User row yet — unlike every other notification
+    here, there's no notification preference to check and no unsubscribe
+    footer to attach (same reasoning as the magic-link email). Unlike those
+    other notifications, this is NOT routed through _safe_send: the email is
+    the only way the recipient learns their invite link exists, so a delivery
+    failure must surface to the caller (admin.py) rather than be silently
+    swallowed — same reasoning as auth.py's magic-link send."""
+    subject = "you're off the mysterymixclub waitlist"
+    body = (
+        "<p>a spot opened up, and you're in. here's your invite link:</p>"
+        f'<p><a href="{invite_url}">join mysterymixclub →</a></p>'
+        "<p>it expires in 48 hours.</p>"
+    )
+    sender.send(email, subject, body)
+
+
 def queue_club_joined(
     background_tasks: BackgroundTasks,
     sender: EmailSender,

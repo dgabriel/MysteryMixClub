@@ -7,7 +7,8 @@ ones. As new ideas land, add a flag here.
 > Flags are plain settings on `backend/app/config.py` (`Settings`), read through
 > `get_settings()`. We deliberately keep them as simple env-driven booleans
 > rather than a flag service — there's no per-user/percentage targeting today.
-> If we ever need that, this doc is where we'll record the shift.
+> If we ever need that, this doc is where we'll record the shift. Rationale:
+> `docs/adr/0001-feature-flags-as-env-booleans.md`.
 
 ---
 
@@ -72,6 +73,37 @@ without it the app logs emails (`ConsoleEmailSender`) regardless of this flag.
 4. Verify deliverability via Gmail "Show original" (SPF/DKIM/DMARC pass) and the
    native Unsubscribe button (from the `List-Unsubscribe` header). See MYS-123.
 5. Flip to real delivery: set `EMAIL_REDIRECT_TO_TEST=false`, restart.
+
+### `WAITLIST_ENABLED` — public pre-launch waitlist
+
+| | |
+|---|---|
+| **Env var** | `WAITLIST_ENABLED` (bool) |
+| **Companion** | none |
+| **Default** | `false` |
+| **Code** | `app/config.py`; checked in `app/api/routes/waitlist.py` (`GET /waitlist/enabled`, `POST /waitlist`) |
+| **Introduced** | MYS-215 (temporary — replaces "email us for an invite" while the app is pre-launch) |
+| **Use in** | wherever the waitlist should be live. Off reverts the login page to the "email us" copy with no code change. |
+
+**What it does.** When `true`, the login page shows a small "join the
+waitlist" form instead of the mailto "email us" copy, and `POST /waitlist`
+accepts join requests (format-validated, duplicate-rejected). When `false`,
+`POST /waitlist` 404s and the frontend's `GET /waitlist/enabled` check tells
+it to render the old copy instead. Admin invites waitlist entries manually
+from `/admin` (`POST /admin/waitlist/{id}/invite`) — that admin flow works
+regardless of this flag (an admin can always invite anyone who's already on
+the waitlist from a time the flag was on).
+
+**Fail-safe.** No companion config to misconfigure. If the frontend's
+`GET /waitlist/enabled` check itself fails (network error), `EmailEntryScreen`
+falls back to the "email us" copy rather than showing a broken form.
+
+**How to test.** Set `WAITLIST_ENABLED=true`, restart. Visit the login page —
+the waitlist form should replace the "email us" line. Submit an email, then
+check `/admin` → waitlist section shows the entry; click "invite" and confirm
+the email sends (or logs, in dev/without `RESEND_API_KEY`) with a working
+`/invite/:token` link. Set back to `false` and restart to confirm the login
+page reverts to the "email us" copy and `POST /waitlist` 404s.
 
 ---
 

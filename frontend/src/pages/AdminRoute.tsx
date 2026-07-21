@@ -1,12 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { AdminScreen } from "./AdminScreen";
 import {
   ApiError,
   adminCreateInvite,
   adminDeleteUser,
+  adminInviteFromWaitlist,
+  adminListWaitlist,
   adminSearchUsers,
   type AdminUser,
+  type WaitlistEntry,
 } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 
@@ -33,8 +36,51 @@ export function AdminRoute() {
   const [generatingInvite, setGeneratingInvite] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
 
+  // Waitlist (MYS-215, temporary).
+  const [waitlistEntries, setWaitlistEntries] = useState<WaitlistEntry[]>([]);
+  const [waitlistLoading, setWaitlistLoading] = useState(true);
+  const [waitlistError, setWaitlistError] = useState<string | null>(null);
+  const [invitingEntryId, setInvitingEntryId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isPlatformAdmin) return;
+    let active = true;
+    adminListWaitlist()
+      .then((entries) => {
+        if (active) setWaitlistEntries(entries);
+      })
+      .catch((err: unknown) => {
+        if (active) {
+          setWaitlistError(
+            err instanceof ApiError ? err.message : "couldn't load the waitlist.",
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setWaitlistLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [isPlatformAdmin]);
+
   if (!isPlatformAdmin) {
     return <Navigate to="/home" replace />;
+  }
+
+  async function handleInviteFromWaitlist(entryId: string) {
+    setInvitingEntryId(entryId);
+    setWaitlistError(null);
+    try {
+      const updated = await adminInviteFromWaitlist(entryId);
+      setWaitlistEntries((current) => current.map((e) => (e.id === entryId ? updated : e)));
+    } catch (err) {
+      setWaitlistError(
+        err instanceof ApiError ? err.message : "couldn't send that invite. try again.",
+      );
+    } finally {
+      setInvitingEntryId(null);
+    }
   }
 
   async function handleSearch() {
@@ -103,6 +149,11 @@ export function AdminRoute() {
       generatingInvite={generatingInvite}
       inviteError={inviteError}
       onGenerateInvite={handleGenerateInvite}
+      waitlistEntries={waitlistEntries}
+      waitlistLoading={waitlistLoading}
+      waitlistError={waitlistError}
+      invitingEntryId={invitingEntryId}
+      onInviteFromWaitlist={handleInviteFromWaitlist}
     />
   );
 }

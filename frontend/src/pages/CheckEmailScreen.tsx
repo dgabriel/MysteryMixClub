@@ -1,6 +1,8 @@
+import { useEffect, useState } from "react";
 import { Button } from "../components/Button";
 import { ContactEmail } from "../components/ContactEmail";
 import { ConcentricRings } from "../components/ConcentricRings";
+import { getWaitlistEnabled } from "../services/api";
 
 type CheckEmailScreenProps = {
   email: string;
@@ -8,6 +10,26 @@ type CheckEmailScreenProps = {
 };
 
 export function CheckEmailScreen({ email, onBack }: CheckEmailScreenProps) {
+  // Same fail-safe pattern as EmailEntryScreen (MYS-215): undefined while
+  // checking, falls back to "email us" on disabled/error. Not a second copy
+  // of the join form — just points back to where it lives (the sign-in
+  // screen, one "use a different email" click away).
+  const [waitlistEnabled, setWaitlistEnabled] = useState<boolean | null | undefined>(undefined);
+
+  useEffect(() => {
+    let active = true;
+    getWaitlistEnabled()
+      .then((r) => {
+        if (active) setWaitlistEnabled(r.enabled);
+      })
+      .catch(() => {
+        if (active) setWaitlistEnabled(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-4 sm:px-8">
       <div className="w-full max-w-sm text-center">
@@ -23,16 +45,22 @@ export function CheckEmailScreen({ email, onBack }: CheckEmailScreenProps) {
         <p className="mt-4 font-mono text-[13px] font-light text-muted">
           open it on this device to continue. the link expires soon.
         </p>
-        <p className="mt-6 font-mono text-[11px] font-light text-muted">
-          new here? you'll need an invite —{" "}
-          <ContactEmail
-            user="info"
-            domain="mysterymixclub.com"
-            label="email us"
-            className="text-ink underline underline-offset-[3px]"
-          />{" "}
-          to request one.
-        </p>
+        {waitlistEnabled === undefined ? null : waitlistEnabled ? (
+          <p className="mt-6 font-mono text-[11px] font-light text-muted">
+            new here? use a different email below to join the waitlist.
+          </p>
+        ) : (
+          <p className="mt-6 font-mono text-[11px] font-light text-muted">
+            new here? you'll need an invite —{" "}
+            <ContactEmail
+              user="info"
+              domain="mysterymixclub.com"
+              label="email us"
+              className="text-ink underline underline-offset-[3px]"
+            />{" "}
+            to request one.
+          </p>
+        )}
 
         {onBack ? (
           <div className="mt-10">

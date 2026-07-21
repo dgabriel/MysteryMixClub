@@ -137,6 +137,14 @@ def max_users() -> int:
     return 0
 
 
+@pytest.fixture
+def waitlist_enabled() -> bool:
+    """The waitlist flag (MYS-215) injected into the ``client`` fixture's
+    settings. Defaults to False, matching the flag's production-safe
+    default; waitlist tests override it to True."""
+    return False
+
+
 class _OfflineYouTubeResolver:
     """Default resolver for the shared client fixture: never hits the real
     YouTube Data API. Tests that need resolution behaviour override this with
@@ -148,7 +156,11 @@ class _OfflineYouTubeResolver:
 
 @pytest_asyncio.fixture
 async def client(
-    session_factory, email_spy: SpyEmailSender, seed_admin_emails: str, max_users: int
+    session_factory,
+    email_spy: SpyEmailSender,
+    seed_admin_emails: str,
+    max_users: int,
+    waitlist_enabled: bool,
 ) -> AsyncGenerator[AsyncClient, None]:
     """AsyncClient over the ASGI app with get_db / get_email_sender overridden."""
     app = create_app()
@@ -168,6 +180,7 @@ async def client(
         environment="development",
         seed_admin_emails=seed_admin_emails,
         max_users=max_users,
+        waitlist_enabled=waitlist_enabled,
     )
 
     def override_get_settings() -> Settings:

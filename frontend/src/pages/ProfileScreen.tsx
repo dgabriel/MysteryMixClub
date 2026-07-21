@@ -6,6 +6,7 @@ import { Badge } from "../components/Badge";
 import { Card } from "../components/Card";
 import { ConcentricRings } from "../components/ConcentricRings";
 import { UserAvatar } from "../components/avatars/UserAvatar";
+import { HelpLink } from "../components/HelpLink";
 
 type ProfileScreenProps = {
   userId: string | null;
@@ -219,9 +220,12 @@ function PreferredServicePicker({
 }) {
   return (
     <section className="mt-12">
-      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
-        preferred service
-      </h2>
+      <span className="flex items-center gap-2">
+        <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
+          preferred service
+        </h2>
+        <HelpLink anchor="listening-playlists" />
+      </span>
       <p className="mt-1 font-mono text-[11px] font-light text-muted">
         platform links show this service first.
       </p>

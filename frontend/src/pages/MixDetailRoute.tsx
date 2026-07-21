@@ -56,6 +56,7 @@ import { CrownIcon } from "../components/CrownIcon";
 import { MedalIcon } from "../components/MedalIcon";
 import { MusicNoteIcon } from "../components/MusicNoteIcon";
 import { DeadlineChip } from "../components/DeadlineChip";
+import { HelpLink } from "../components/HelpLink";
 import { toDatetimeLocalValue } from "../utils/deadline";
 
 const STATE_LABEL: Record<MixState, string> = {
@@ -1174,6 +1175,7 @@ function ComposerSlot({
       <SongSearchCard
         eyebrow="this mix"
         heading={heading}
+        helpAnchor="submitting-a-song"
         idPrefix={idPrefix}
         submitting={submitting}
         noteText={noteText}
@@ -1602,9 +1604,12 @@ function VotingSection({
       <SpotifyPlaylist mixId={mixId} />
       <AppleMusicPlaylist mixId={mixId} />
       <div className="flex items-baseline justify-between gap-4">
-        <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
-          cast your votes
-        </h2>
+        <span className="flex items-center gap-2">
+          <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
+            cast your votes
+          </h2>
+          <HelpLink anchor="voting-results" />
+        </span>
         <span
           aria-live="polite"
           className="font-mono uppercase tracking-label text-[9px] text-muted"

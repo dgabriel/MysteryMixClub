@@ -12,6 +12,7 @@ import { Button } from "../Button";
 import { TextField } from "../TextField";
 import { ConcentricRings } from "../ConcentricRings";
 import { SourceBadge } from "../SourceBadge";
+import { HelpLink } from "../HelpLink";
 
 /**
  * SongSearchCard (MYS-45) — a permanent home-screen utility with two modes:
@@ -143,6 +144,11 @@ type SongSearchCardProps = {
   /** User's preferred streaming service — seeds the link-tab service selector.
    *  Falls back to Spotify when absent or unrecognised (MYS-164). */
   preferredService?: string | null;
+  /** When provided, shows a small "what is this?" icon beside the heading,
+   *  linking to that /help section (MYS-222). Omit for contexts where the
+   *  card isn't a real submission (e.g. the practice search on My Clubs) —
+   *  a help link about submitting would be misleading there. */
+  helpAnchor?: string;
 };
 
 export function SongSearchCard({
@@ -154,6 +160,7 @@ export function SongSearchCard({
   noteText,
   onNoteChange,
   preferredService,
+  helpAnchor,
 }: SongSearchCardProps = {}) {
   const [mode, setMode] = useState<Mode>("search");
 
@@ -291,7 +298,10 @@ export function SongSearchCard({
   return (
     <Card>
       <span className="font-mono uppercase tracking-label text-[9px] text-muted">{eyebrow}</span>
-      <h2 className="mt-1 font-serif text-[20px] leading-tight text-ink">{heading}</h2>
+      <div className="mt-1 flex items-center gap-2">
+        <h2 className="font-serif text-[20px] leading-tight text-ink">{heading}</h2>
+        {helpAnchor ? <HelpLink anchor={helpAnchor} /> : null}
+      </div>
 
       {pendingSourceOnly && pendingSourceOnly.source ? (
         <SourceOnlyConfirm

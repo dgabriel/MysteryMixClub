@@ -11,6 +11,25 @@
 name: mysterymixclub-prod
 region: nyc
 
+# Domain cutover (MYS-174). Canonical form is www; the bare apex is an ALIAS,
+# which DO auto-redirects to the PRIMARY domain — verify that behavior in the
+# dashboard after applying, since it isn't exercised anywhere in this repo.
+# DNS (apex + www records at the registrar, pointed at this app) must be in
+# place before applying, or DO can't issue the managed SSL cert.
+#
+# App-level (not scoped to one component below) — DO resolves this to
+# whichever component owns the app's default "/" route, which with no
+# explicit `routes:` on either component below should be the frontend static
+# site. This repo has never carried a custom domain before, so confirm in the
+# DO dashboard after applying that BOTH the frontend (on this domain) and the
+# api (still on its own ${api.PUBLIC_URL}) are reachable, before relying on
+# it — this is the one piece here that can't be checked without live access.
+domains:
+  - domain: www.mysterymixclub.com
+    type: PRIMARY
+  - domain: mysterymixclub.com
+    type: ALIAS
+
 services:
   - name: api
     source_dir: backend
@@ -95,6 +114,25 @@ services:
         scope: RUN_TIME
         type: GENERAL
         value: production
+      # Frontend origin allowed to call this API cross-origin (MYS-174) — the
+      # frontend and api components keep separate hostnames (the custom domain
+      # attaches to the frontend below; api stays on its DO-generated URL), so
+      # without this the browser blocks every request with no explicit error
+      # in the response. No prior value existed here — per project memory,
+      # prod carries no real user traffic yet (beta testers are on staging),
+      # so this replaces rather than adds alongside a previous origin.
+      - key: ALLOWED_ORIGINS
+        scope: RUN_TIME
+        type: GENERAL
+        value: https://www.mysterymixclub.com
+      # Magic-link/invite emails and in-app club links must point at the real
+      # domain, not config.py's default (which now also says www, but staying
+      # explicit here matches every other env in this file and survives a
+      # future default change).
+      - key: APP_BASE_URL
+        scope: RUN_TIME
+        type: GENERAL
+        value: https://www.mysterymixclub.com
 
 jobs:
   # Runs DB migrations before the new code goes live. DO runs PRE_DEPLOY jobs to

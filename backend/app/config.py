@@ -36,7 +36,9 @@ class Settings(BaseSettings):
     apple_music_private_key: str = Field(default="")
     allowed_origins: str = Field(default="")
     environment: Literal["development", "staging", "production"] = "development"
-    app_base_url: str = Field(default="https://mysterymixclub.com")
+    # Canonical form is www (MYS-174) — the bare apex redirects to it at the DO
+    # App Platform domain level, not here.
+    app_base_url: str = Field(default="https://www.mysterymixclub.com")
     # Public base URL of the API itself, used to build links that must hit the
     # backend directly (e.g. the one-click email-unsubscribe endpoint). Falls
     # back to app_base_url when unset (same-host deployments that proxy /api).

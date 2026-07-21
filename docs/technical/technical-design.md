@@ -93,7 +93,7 @@ MysteryMixClub is a PWA from day one. This is not a post-launch enhancement.
 1. User enters email address
 2. Server generates a cryptographically random one-time token (minimum 32 bytes, URL-safe)
 3. Token is stored in the database with a 15-minute expiry and marked as unused
-4. Magic link is emailed via Resend: `https://mysterymixclub.com/auth/verify?token=<token>`
+4. Magic link is emailed via Resend: `https://www.mysterymixclub.com/auth/verify?token=<token>`
 5. User clicks link; server validates token (exists, unexpired, unused)
 6. Token is immediately invalidated (single-use, hard delete)
 7. Server issues an access token (JWT, 60-minute expiry) and a refresh token (cryptographically random, 30-day expiry)

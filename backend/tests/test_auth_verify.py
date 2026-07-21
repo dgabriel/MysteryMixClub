@@ -105,6 +105,23 @@ async def _seed_platform_invite(db_session, *, expires_at: datetime | None = Non
     return invite
 
 
+async def _seed_email_locked_invite(db_session, *, email: str) -> Invite:
+    """Seed a waitlist-style platform invite (MYS-215) locked to ``email``."""
+    admin = User(email="admin@example.com", display_name="Admin")
+    db_session.add(admin)
+    await db_session.flush()
+    invite = Invite(
+        club_id=None,
+        created_by=admin.id,
+        token="tok_" + uuid.uuid4().hex,
+        email=email,
+    )
+    db_session.add(invite)
+    await db_session.commit()
+    await db_session.refresh(invite)
+    return invite
+
+
 async def _request_link(client, email_spy, email: str, invite_token: str | None = None) -> str:
     """Request a magic link and return the raw token from the email link."""
     body: dict[str, str] = {"email": email}
@@ -613,3 +630,48 @@ async def test_missing_token_param_returns_422(client, db_session):
     assert resp.status_code == 422, resp.text
     assert await _count(db_session, User) == 0
     assert await _count(db_session, Session) == 0
+
+
+# --------------------------------------------------------------------------- #
+# Email-locked invite (MYS-215): a waitlist-issued invite only creates an
+# account for the address it was minted for.
+# --------------------------------------------------------------------------- #
+
+
+async def test_email_locked_invite_creates_account_for_matching_email(
+    client, email_spy, db_session
+):
+    invite = await _seed_email_locked_invite(db_session, email="waiter@example.com")
+    token = invite.token
+
+    raw = await _request_link(client, email_spy, "waiter@example.com", invite_token=token)
+    resp = await client.get(VERIFY_URL, params={"token": raw, "invite": token})
+    assert resp.status_code == 200, resp.text
+
+    new_user = await db_session.scalar(select(User).where(User.email == "waiter@example.com"))
+    assert new_user is not None
+
+
+async def test_email_locked_invite_rejects_mismatched_email_at_verify(client, db_session):
+    # The magic-link token belongs to a DIFFERENT address than the invite is
+    # locked to (e.g. a forwarded link, or a hand-crafted &invite= param) —
+    # new-account creation must still be refused.
+    invite = await _seed_email_locked_invite(db_session, email="waiter@example.com")
+    token = invite.token
+    raw = "raw-token-value"
+    db_session.add(
+        MagicLinkToken(
+            email="intruder@example.com",
+            token_hash=hash_token(raw),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+            used=False,
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.get(VERIFY_URL, params={"token": raw, "invite": token})
+
+    assert resp.status_code == 403, resp.text
+    assert resp.json()["detail"] == _INVITE_REQUIRED_MESSAGE
+    db_session.expire_all()
+    assert await _count(db_session, User, email="intruder@example.com") == 0

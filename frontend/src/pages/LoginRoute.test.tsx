@@ -250,11 +250,9 @@ describe("LoginRoute", () => {
     await user.click(signInButton);
 
     await screen.findByText("check your email");
-    expect(
-      await screen.findByText(/you won.t receive anything here — join the waitlist below/i),
-    ).toBeInTheDocument();
     // The real form is here now, not just a link back to /login.
-    expect(screen.getByRole("button", { name: /^join$/i })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /^join$/i })).toBeInTheDocument();
+    expect(screen.getByText(/no invite yet\?/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^use a different email$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^email us$/i })).not.toBeInTheDocument();
   });

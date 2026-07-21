@@ -51,16 +51,7 @@ export function CheckEmailScreen({ email, onBack }: CheckEmailScreenProps) {
         </p>
 
         {waitlistEnabled === undefined ? null : waitlistEnabled ? (
-          <>
-            {/* Same-response-either-way sign-in (MYS-127/182) means someone
-                without an account sees this exact screen and would otherwise
-                wait for an email that's never coming — say so plainly, and
-                give them the real next step instead of a dead end. */}
-            <p className="mt-6 font-mono text-[11px] font-light text-muted">
-              no account yet? you won&apos;t receive anything here — join the waitlist below.
-            </p>
-            <WaitlistForm />
-          </>
+          <WaitlistForm />
         ) : (
           <>
             <p className="mt-6 font-mono text-[11px] font-light text-muted">

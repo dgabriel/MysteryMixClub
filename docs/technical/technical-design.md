@@ -374,7 +374,7 @@ POST   /admin/waitlist/:id/invite      Mint + email an email-locked platform inv
 ```
 GET    /waitlist/enabled      Whether the waitlist is currently on (public, MYS-215)
 POST   /waitlist               Join the waitlist (public, MYS-215) — 404 while WAITLIST_ENABLED
-                                is off, 409 on a duplicate email
+                                is off, 409 on a duplicate email, 429 past 5/hour per IP
 ```
 
 ### Mystery Mixes

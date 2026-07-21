@@ -43,7 +43,7 @@ export function CheckEmailScreen({ email, onBack }: CheckEmailScreenProps) {
         <h1 className="mt-8 font-serif text-[34px] leading-tight">check your email</h1>
 
         <p className="mt-4 font-mono text-[13px] font-light text-muted">
-          we sent a sign-in link to
+          if you have an account, we sent a sign-in link to
         </p>
         <p className="mt-1 font-mono text-[13px] text-ink break-all">{email}</p>
         <p className="mt-4 font-mono text-[13px] font-light text-muted">

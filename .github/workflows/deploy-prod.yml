@@ -12,21 +12,39 @@ concurrency:
 
 jobs:
   deploy:
-    name: Deploy to DO App Platform (production)
+    name: Deploy to production Droplet
     runs-on: ubuntu-latest
     # The `production` environment gates this job behind a manual approval.
     # Configure required reviewers under Settings → Environments → production.
     environment: production
     steps:
-      - uses: actions/checkout@v4
-
-      # The deploy action reads the spec from `.do/app.yaml`; stage the
-      # production-specific spec into that path.
-      - name: Stage production app spec
-        run: cp .do/app.prod.yaml .do/app.yaml
-
-      - name: Deploy to DigitalOcean App Platform
-        uses: digitalocean/app_action/deploy@v2
+      # SSH into the Droplet and run the deploy script that lives in the checkout
+      # at /home/mysterymixclub/app (placed there by scripts/bootstrap-droplet-prod.sh).
+      # Mirrors deploy-staging.yml — see ADR 0002 (docs/adr/0002-prod-platform-self-managed-droplet.md)
+      # for why prod moved off App Platform onto this same droplet pattern.
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
         with:
-          app_name: mysterymixclub-prod
-          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_SSH_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script_stop: true
+          script: |
+            cd /home/mysterymixclub/app
+            # Sync the checkout (including deploy-prod.sh itself) to
+            # origin/main BEFORE invoking it, so a deploy never executes a
+            # stale copy of the script that then changes underneath it.
+            git fetch --prune origin
+            git checkout -f -B main origin/main
+            ./scripts/deploy-prod.sh
+
+      # Simple pass/fail notification (Actions log only, for now).
+      - name: Report result
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "✅ Production deploy to ${{ secrets.PROD_HOST }} succeeded"
+          else
+            echo "❌ Production deploy to ${{ secrets.PROD_HOST }} failed"
+            exit 1
+          fi

@@ -1,0 +1,776 @@
+"""Tests for MYS-20: voting endpoints.
+
+Covers the full cast-votes validation matrix (in declared check order), the
+Playing-player happy path at the max-vote boundary, idempotent replace-on-recast,
+and the GET /votes/mine read (cast set, ordering, and the empty case).
+
+Voting has no external dependency to fake, so these use the shared ``client``
+fixture. Submissions are seeded directly in the DB so each test controls the
+exact participation_mode and ownership it needs.
+"""
+
+import uuid
+from datetime import datetime, timezone
+
+from sqlalchemy import func, select
+
+from app.auth.jwt import create_access_token
+from app.models.club import Club
+from app.models.club_member import ClubMember
+from app.models.mix import Mix
+from app.models.submission import Submission
+from app.models.user import User
+from app.models.vote import Vote
+
+
+# --------------------------------------------------------------------------- #
+# Seeding helpers
+# --------------------------------------------------------------------------- #
+
+
+async def _seed_user(db_session, email: str) -> User:
+    user = User(email=email, display_name="U")
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    return user
+
+
+async def _seed_club_with_mix(
+    db_session, organizer: User, *, state: str = "open_voting", votes_per_player: int = 3
+) -> Mix:
+    club = Club(
+        name="L",
+        organizer_id=organizer.id,
+        total_mixes=3,
+        votes_per_player=votes_per_player,
+    )
+    db_session.add(club)
+    await db_session.flush()
+    db_session.add(ClubMember(club_id=club.id, user_id=organizer.id))
+    mix_ = Mix(
+        club_id=club.id,
+        mix_number=1,
+        theme="late summer",
+        state=state,
+        votes_per_player=votes_per_player,
+    )
+    db_session.add(mix_)
+    await db_session.commit()
+    await db_session.refresh(mix_)
+    return mix_
+
+
+async def _add_member(
+    db_session, club_id: uuid.UUID, user: User, *, vibe_mode: bool = False
+) -> None:
+    db_session.add(ClubMember(club_id=club_id, user_id=user.id, vibe_mode=vibe_mode))
+    await db_session.commit()
+
+
+async def _seed_submission(
+    db_session, mix_id: uuid.UUID, user: User, *, mode: str = "playing", title: str = "song"
+) -> Submission:
+    sub = Submission(
+        mix_id=mix_id,
+        user_id=user.id,
+        isrc="USABC1234567",
+        title=title,
+        artist="Artist",
+        participation_mode=mode,
+    )
+    db_session.add(sub)
+    await db_session.commit()
+    await db_session.refresh(sub)
+    return sub
+
+
+def _auth(user_id: uuid.UUID) -> dict[str, str]:
+    return {"Authorization": f"Bearer {create_access_token(user_id)}"}
+
+
+def _votes_url(mix_id) -> str:
+    return f"/api/v1/mixes/{mix_id}/votes"
+
+
+# --------------------------------------------------------------------------- #
+# POST — validation matrix (declared check order in cast_votes)
+# --------------------------------------------------------------------------- #
+
+
+async def test_cast_requires_auth(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    resp = await client.post(_votes_url(mix_.id), json={"submission_ids": [str(uuid.uuid4())]})
+    assert resp.status_code == 401
+
+
+async def test_cast_mix_missing_404(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    await _seed_club_with_mix(db_session, organizer)
+    resp = await client.post(
+        _votes_url(uuid.uuid4()),
+        json={"submission_ids": [str(uuid.uuid4())]},
+        headers=_auth(organizer.id),
+    )
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "mystery mix not found"
+
+
+async def test_cast_non_member_403(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    outsider = await _seed_user(db_session, "x@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    resp = await client.post(
+        _votes_url(mix_.id),
+        json={"submission_ids": [str(uuid.uuid4())]},
+        headers=_auth(outsider.id),
+    )
+    assert resp.status_code == 403
+    assert resp.json()["detail"] == "you are not a member of this club"
+
+
+async def test_cast_mix_not_open_voting_409(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer, state="open_submission")
+    resp = await client.post(
+        _votes_url(mix_.id),
+        json={"submission_ids": [str(uuid.uuid4())]},
+        headers=_auth(organizer.id),
+    )
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "voting is not open for this mystery mix"
+
+
+async def test_cast_without_own_submission_succeeds(client, db_session):
+    # MYS-167: a member who did not submit may still vote, provided they aren't
+    # vibing. Membership is playing by default, so this non-submitter can vote.
+    organizer = await _seed_user(db_session, "o@example.com")
+    voter = await _seed_user(db_session, "v@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    await _add_member(db_session, mix_.club_id, voter)
+    # A target exists, but the voter has not submitted anything.
+    target = await _seed_submission(db_session, mix_.id, organizer)
+    resp = await client.post(
+        _votes_url(mix_.id),
+        json={"submission_ids": [str(target.id)]},
+        headers=_auth(voter.id),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["submission_ids"] == [str(target.id)]
+
+
+async def test_cast_when_own_submission_is_vibing_409(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    voter = await _seed_user(db_session, "v@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    await _add_member(db_session, mix_.club_id, voter)
+    target = await _seed_submission(db_session, mix_.id, organizer)
+    await _seed_submission(db_session, mix_.id, voter, mode="vibing")
+    resp = await client.post(
+        _votes_url(mix_.id),
+        json={"submission_ids": [str(target.id)]},
+        headers=_auth(voter.id),
+    )
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "just vibing players don't cast votes — leave a note instead"
+
+
+# --------------------------------------------------------------------------- #
+# POST — non-submitter voting (MYS-167)
+# --------------------------------------------------------------------------- #
+
+
+async def test_cast_non_submitter_vibing_membership_409(client, db_session):
+    # MYS-167: a non-submitter's stance comes from club_members.vibe_mode. A
+    # member whose membership is vibing sits voting out even without a submission.
+    organizer = await _seed_user(db_session, "o@example.com")
+    voter = await _seed_user(db_session, "v@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    await _add_member(db_session, mix_.club_id, voter, vibe_mode=True)
+    target = await _seed_submission(db_session, mix_.id, organizer)
+    resp = await client.post(
+        _votes_url(mix_.id),
+        json={"submission_ids": [str(target.id)]},
+        headers=_auth(voter.id),
+    )
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "just vibing players don't cast votes — leave a note instead"
+
+
+async def test_cast_non_submitter_playing_persists_and_counts(client, db_session):
+    # MYS-167: a playing non-submitter's ballot is persisted and shows up in the
+    # running vote-counts tally like any other vote.
+    organizer = await _seed_user(db_session, "o@example.com")
+    voter = await _seed_user(db_session, "v@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    mix_id = mix_.id
+    await _add_member(db_session, mix_.club_id, voter)  # playing by default
+    target = await _seed_submission(db_session, mix_id, organizer, title="Target")
+    # Capture PKs into locals before expire_all() — reading expired ORM
+    # attributes later raises MissingGreenlet in async tests.
+    target_id = target.id
+    organizer_id = organizer.id
+    voter_id = voter.id
+
+    resp = await client.post(
+        _votes_url(mix_id),
+        json={"submission_ids": [str(target_id)]},
+        headers=_auth(voter_id),
+    )
+    assert resp.status_code == 200, resp.text
+
+    # Persisted: exactly the voter's one vote for the target.
+    db_session.expire_all()
+    rows = list(
+        await db_session.scalars(
+            select(Vote).where(Vote.mix_id == mix_id, Vote.voter_id == voter_id)
+        )
+    )
+    assert len(rows) == 1
+    assert str(rows[0].submission_id) == str(target_id)
+
+    # Appears in the vote-counts tally.
+    counts = await client.get(_vote_counts_url(mix_id), headers=_auth(organizer_id))
+    assert counts.status_code == 200, counts.text
+    entry = next(e for e in counts.json()["entries"] if e["title"] == "Target")
+    assert entry["vote_count"] == 1
+
+
+async def test_non_submitter_vote_does_not_trip_auto_close(client, db_session):
+    # MYS-167: auto-close quorum is playing-SUBMITTERS-only. With two playing
+    # submitters of whom only one has voted, a non-submitter casting a ballot must
+    # NOT close the mix — the second submitter still hasn't voted.
+    organizer = await _seed_user(db_session, "o@example.com")
+    submitter_b = await _seed_user(db_session, "b@example.com")
+    non_submitter = await _seed_user(db_session, "n@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    mix_id = mix_.id
+    club_id = mix_.club_id
+    await _add_member(db_session, club_id, submitter_b)
+    await _add_member(db_session, club_id, non_submitter)  # playing, no submission
+
+    org_sub = await _seed_submission(db_session, mix_id, organizer, title="Org")
+    b_sub = await _seed_submission(db_session, mix_id, submitter_b, title="B")
+
+    # One of the two playing submitters votes (organizer -> B's song).
+    first = await client.post(
+        _votes_url(mix_id),
+        json={"submission_ids": [str(b_sub.id)]},
+        headers=_auth(organizer.id),
+    )
+    assert first.status_code == 200, first.text
+
+    # The non-submitter votes (for the organizer's song). submitter_b still hasn't
+    # voted, so quorum is not met and the mix must stay open.
+    resp = await client.post(
+        _votes_url(mix_id),
+        json={"submission_ids": [str(org_sub.id)]},
+        headers=_auth(non_submitter.id),
+    )
+    assert resp.status_code == 200, resp.text
+
+    db_session.expire_all()
+    persisted = await db_session.scalar(select(Mix).where(Mix.id == mix_id))
+    assert persisted.state == "open_voting"
+    assert persisted.closed_at is None
+
+
+async def test_cast_non_submitter_over_limit_409(client, db_session):
+    # The votes_per_player cap applies to non-submitters too (checked after the
+    # vibing gate, before target resolution — ids need not exist).
+    organizer = await _seed_user(db_session, "o@example.com")
+    voter = await _seed_user(db_session, "v@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer, votes_per_player=2)
+    await _add_member(db_session, mix_.club_id, voter)  # playing, no submission
+    ids = [str(uuid.uuid4()) for _ in range(3)]
+    resp = await client.post(
+        _votes_url(mix_.id),
+        json={"submission_ids": ids},
+        headers=_auth(voter.id),
+    )
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "you may cast up to 2 votes"
+
+
+async def test_cast_removed_member_403(client, db_session):
+    # A member removed from the club (removed_at set) is not an active member, so
+    # _load_club_as_member rejects them before any voting logic (403).
+    organizer = await _seed_user(db_session, "o@example.com")
+    voter = await _seed_user(db_session, "v@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    db_session.add(
+        ClubMember(
+            club_id=mix_.club_id,
+            user_id=voter.id,
+            removed_at=datetime.now(timezone.utc),
+        )
+    )
+    await db_session.commit()
+    target = await _seed_submission(db_session, mix_.id, organizer)
+    resp = await client.post(
+        _votes_url(mix_.id),
+        json={"submission_ids": [str(target.id)]},
+        headers=_auth(voter.id),
+    )
+    assert resp.status_code == 403
+    assert resp.json()["detail"] == "you are not a member of this club"
+
+
+async def test_cast_zero_votes_409(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    await _seed_submission(db_session, mix_.id, organizer)
+    resp = await client.post(
+        _votes_url(mix_.id),
+        json={"submission_ids": []},
+        headers=_auth(organizer.id),
+    )
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "you may cast up to 3 votes"
+
+
+async def test_cast_too_many_votes_409(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer, votes_per_player=2)
+    await _seed_submission(db_session, mix_.id, organizer)
+    # Four distinct ids, votes_per_player is 2.
+    ids = [str(uuid.uuid4()) for _ in range(4)]
+    resp = await client.post(
+        _votes_url(mix_.id),
+        json={"submission_ids": ids},
+        headers=_auth(organizer.id),
+    )
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "you may cast up to 2 votes"
+
+
+async def test_cast_duplicate_ids_409(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    voter = await _seed_user(db_session, "v@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    await _add_member(db_session, mix_.club_id, voter)
+    target = await _seed_submission(db_session, mix_.id, organizer)
+    await _seed_submission(db_session, mix_.id, voter)
+    tid = str(target.id)
+    resp = await client.post(
+        _votes_url(mix_.id),
+        json={"submission_ids": [tid, tid]},
+        headers=_auth(voter.id),
+    )
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "duplicate votes are not allowed"
+
+
+async def test_cast_id_not_in_mix_404(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    await _seed_submission(db_session, mix_.id, organizer)
+    resp = await client.post(
+        _votes_url(mix_.id),
+        json={"submission_ids": [str(uuid.uuid4())]},
+        headers=_auth(organizer.id),
+    )
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "submission not found in this mystery mix"
+
+
+async def test_cast_id_from_another_mix_404(client, db_session):
+    # A real submission, but it belongs to a different mix.
+    organizer = await _seed_user(db_session, "o@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    await _seed_submission(db_session, mix_.id, organizer)
+    # Second mix under the same club with its own submission.
+    club_id = mix_.club_id
+    other_mix = Mix(club_id=club_id, mix_number=2, theme="other", state="open_voting")
+    db_session.add(other_mix)
+    await db_session.commit()
+    await db_session.refresh(other_mix)
+    foreign = await _seed_submission(db_session, other_mix.id, organizer, title="foreign")
+    resp = await client.post(
+        _votes_url(mix_.id),
+        json={"submission_ids": [str(foreign.id)]},
+        headers=_auth(organizer.id),
+    )
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "submission not found in this mystery mix"
+
+
+async def test_cast_for_own_song_409(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    own = await _seed_submission(db_session, mix_.id, organizer)
+    resp = await client.post(
+        _votes_url(mix_.id),
+        json={"submission_ids": [str(own.id)]},
+        headers=_auth(organizer.id),
+    )
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "you can't vote for your own song"
+
+
+async def test_cast_for_vibing_song_succeeds(client, db_session):
+    # MYS-112: a viber's song competes like any other — it is votable, and the
+    # voter can't tell it was a viber's.
+    organizer = await _seed_user(db_session, "o@example.com")
+    viber = await _seed_user(db_session, "vibe@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    await _add_member(db_session, mix_.club_id, viber)
+    await _seed_submission(db_session, mix_.id, organizer)  # voter's own song
+    vibing_sub = await _seed_submission(db_session, mix_.id, viber, mode="vibing")
+    resp = await client.post(
+        _votes_url(mix_.id),
+        json={"submission_ids": [str(vibing_sub.id)]},
+        headers=_auth(organizer.id),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["submission_ids"] == [str(vibing_sub.id)]
+
+
+# --------------------------------------------------------------------------- #
+# POST — happy paths
+# --------------------------------------------------------------------------- #
+
+
+async def test_cast_max_votes_happy_path(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    a = await _seed_user(db_session, "a@example.com")
+    b = await _seed_user(db_session, "b@example.com")
+    c = await _seed_user(db_session, "c@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer, votes_per_player=3)
+    mix_id = mix_.id
+    club_id = mix_.club_id
+    for u in (a, b, c):
+        await _add_member(db_session, club_id, u)
+    await _seed_submission(db_session, mix_id, organizer)  # voter's own song
+    s_a = await _seed_submission(db_session, mix_id, a, title="A")
+    s_b = await _seed_submission(db_session, mix_id, b, title="B")
+    s_c = await _seed_submission(db_session, mix_id, c, title="C")
+    voter_id = organizer.id
+    target_ids = [str(s_a.id), str(s_b.id), str(s_c.id)]
+
+    resp = await client.post(
+        _votes_url(mix_id), json={"submission_ids": target_ids}, headers=_auth(voter_id)
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["mix_id"] == str(mix_id)
+    assert body["count"] == 3
+    assert body["votes_per_player"] == 3
+    assert sorted(body["submission_ids"]) == sorted(target_ids)
+
+    db_session.expire_all()
+    count = await db_session.scalar(
+        select(func.count())
+        .select_from(Vote)
+        .where(Vote.mix_id == mix_id, Vote.voter_id == voter_id)
+    )
+    assert count == 3
+
+
+async def test_recast_replaces_idempotent(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    a = await _seed_user(db_session, "a@example.com")
+    b = await _seed_user(db_session, "b@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer, votes_per_player=2)
+    mix_id = mix_.id
+    club_id = mix_.club_id
+    for u in (a, b):
+        await _add_member(db_session, club_id, u)
+    await _seed_submission(db_session, mix_id, organizer)
+    s_a = await _seed_submission(db_session, mix_id, a, title="A")
+    s_b = await _seed_submission(db_session, mix_id, b, title="B")
+    voter_id = organizer.id
+
+    first = await client.post(
+        _votes_url(mix_id), json={"submission_ids": [str(s_a.id)]}, headers=_auth(voter_id)
+    )
+    assert first.status_code == 200, first.text
+    # Re-cast with a different (and larger) set; should replace, not append.
+    second = await client.post(
+        _votes_url(mix_id),
+        json={"submission_ids": [str(s_a.id), str(s_b.id)]},
+        headers=_auth(voter_id),
+    )
+    assert second.status_code == 200, second.text
+    assert second.json()["count"] == 2
+
+    # Capture PKs into locals before expire_all() — reading expired ORM
+    # attributes later raises MissingGreenlet in async tests.
+    s_a_id, s_b_id = s_a.id, s_b.id
+    db_session.expire_all()
+    rows = list(
+        await db_session.scalars(
+            select(Vote).where(Vote.mix_id == mix_id, Vote.voter_id == voter_id)
+        )
+    )
+    assert len(rows) == 2  # not 3 — prior vote replaced, not doubled
+    assert {str(r.submission_id) for r in rows} == {str(s_a_id), str(s_b_id)}
+
+
+# --------------------------------------------------------------------------- #
+# GET /votes/mine
+# --------------------------------------------------------------------------- #
+
+
+async def test_get_mine_requires_auth(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    resp = await client.get(f"{_votes_url(mix_.id)}/mine")
+    assert resp.status_code == 401
+
+
+async def test_get_mine_non_member_403(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    outsider = await _seed_user(db_session, "x@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    resp = await client.get(f"{_votes_url(mix_.id)}/mine", headers=_auth(outsider.id))
+    assert resp.status_code == 403
+
+
+async def test_get_mine_unknown_mix_404(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    await _seed_club_with_mix(db_session, organizer)
+    resp = await client.get(f"{_votes_url(uuid.uuid4())}/mine", headers=_auth(organizer.id))
+    assert resp.status_code == 404
+
+
+async def test_get_mine_returns_cast_votes_ordered(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    a = await _seed_user(db_session, "a@example.com")
+    b = await _seed_user(db_session, "b@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer, votes_per_player=2)
+    mix_id = mix_.id
+    club_id = mix_.club_id
+    for u in (a, b):
+        await _add_member(db_session, club_id, u)
+    await _seed_submission(db_session, mix_id, organizer)
+    s_a = await _seed_submission(db_session, mix_id, a, title="A")
+    s_b = await _seed_submission(db_session, mix_id, b, title="B")
+    voter_id = organizer.id
+    target_ids = [str(s_a.id), str(s_b.id)]
+
+    cast = await client.post(
+        _votes_url(mix_id), json={"submission_ids": target_ids}, headers=_auth(voter_id)
+    )
+    assert cast.status_code == 200, cast.text
+
+    resp = await client.get(f"{_votes_url(mix_id)}/mine", headers=_auth(voter_id))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["mix_id"] == str(mix_id)
+    assert body["count"] == 2
+    assert body["votes_per_player"] == 2
+    # Ordered by created_at asc — preserves cast order.
+    assert body["submission_ids"] == target_ids
+
+
+async def test_get_mine_empty_when_nothing_cast(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer, votes_per_player=4)
+    resp = await client.get(f"{_votes_url(mix_.id)}/mine", headers=_auth(organizer.id))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["submission_ids"] == []
+    assert body["count"] == 0
+    assert body["votes_per_player"] == 4
+
+
+# --------------------------------------------------------------------------- #
+# GET /vote-counts
+# --------------------------------------------------------------------------- #
+
+
+def _vote_counts_url(mix_id) -> str:
+    return f"/api/v1/mixes/{mix_id}/vote-counts"
+
+
+async def test_vote_counts_requires_auth(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    resp = await client.get(_vote_counts_url(mix_.id))
+    assert resp.status_code == 401
+
+
+async def test_vote_counts_non_member_403(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    outsider = await _seed_user(db_session, "x@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    resp = await client.get(_vote_counts_url(mix_.id), headers=_auth(outsider.id))
+    assert resp.status_code == 403
+    assert resp.json()["detail"] == "you are not a member of this club"
+
+
+async def test_vote_counts_unknown_mix_404(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    await _seed_club_with_mix(db_session, organizer)
+    resp = await client.get(_vote_counts_url(uuid.uuid4()), headers=_auth(organizer.id))
+    assert resp.status_code == 404
+
+
+async def test_vote_counts_mix_not_open_voting_409(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer, state="open_submission")
+    resp = await client.get(_vote_counts_url(mix_.id), headers=_auth(organizer.id))
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "vote counts are available while voting is open"
+
+
+async def test_vote_counts_empty_mix(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    resp = await client.get(_vote_counts_url(mix_.id), headers=_auth(organizer.id))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["mix_id"] == str(mix_.id)
+    assert body["entries"] == []
+
+
+async def test_vote_counts_shows_counts(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    a = await _seed_user(db_session, "a@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer, votes_per_player=3)
+    mix_id = mix_.id
+    club_id = mix_.club_id
+    for u in (a,):
+        await _add_member(db_session, club_id, u)
+    # Create separate submissions - organizer's song too
+    await _seed_submission(db_session, mix_id, organizer, title="Organizer Song")
+    s_a = await _seed_submission(db_session, mix_id, a, title="Song A")
+
+    # Create a third submission so user a can vote for it (not their own)
+    b = await _seed_user(db_session, "b@example.com")
+    await _add_member(db_session, club_id, b)
+    s_b = await _seed_submission(db_session, mix_id, b, title="Song B")
+
+    # Cast votes - organizer votes for A and B
+    voter_id = organizer.id
+    cast_resp = await client.post(
+        _votes_url(mix_id),
+        json={"submission_ids": [str(s_a.id), str(s_b.id)]},
+        headers=_auth(voter_id),
+    )
+    # Debug: check if organizer can cast votes
+    assert cast_resp.status_code == 200, f"Organizer cast failed: {cast_resp.text}"
+
+    # User a votes for B (not A - their own song)
+    a_cast_resp = await client.post(
+        _votes_url(mix_id),
+        json={"submission_ids": [str(s_b.id)]},
+        headers=_auth(a.id),
+    )
+    # Debug: check if user a can cast votes
+    if a_cast_resp.status_code != 200:
+        print(f"User a cast failed: {a_cast_resp.text}")
+
+    resp = await client.get(_vote_counts_url(mix_id), headers=_auth(voter_id))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["mix_id"] == str(mix_id)
+    # 3 entries: organizer song (0 votes), A (1 vote), B (2 votes)
+    assert len(body["entries"]) == 3
+
+    # A has 1 vote (from organizer), B has 2 votes (from organizer and user a)
+    a_entry = next(e for e in body["entries"] if e["title"] == "Song A")
+    b_entry = next(e for e in body["entries"] if e["title"] == "Song B")
+
+    assert a_entry["vote_count"] == 1
+    assert b_entry["vote_count"] == 2
+
+    # Notes remain hidden in the tally
+    assert "notes" not in a_entry
+
+
+async def test_vote_counts_honors_vote_limit(client, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    a = await _seed_user(db_session, "a@example.com")
+    b = await _seed_user(db_session, "b@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer, votes_per_player=2)
+    mix_id = mix_.id
+    club_id = mix_.club_id
+    for u in (a, b):
+        await _add_member(db_session, club_id, u)
+    # Submissions: organizer's own song (not voted), A's song, B's song
+    await _seed_submission(db_session, mix_id, organizer, title="Organizer Song")
+    s_a = await _seed_submission(db_session, mix_id, a, title="Song A")
+    s_b = await _seed_submission(db_session, mix_id, b, title="Song B")
+
+    # Cast votes - organizer votes for A and B
+    voter_id = organizer.id
+    await client.post(
+        _votes_url(mix_id),
+        json={"submission_ids": [str(s_a.id), str(s_b.id)]},
+        headers=_auth(voter_id),
+    )
+
+    resp = await client.get(_vote_counts_url(mix_id), headers=_auth(voter_id))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    # organizer song has 0, A has 1, B has 1
+    # Sort order is vote_count desc, then title asc
+    # So: B (1), A (1), Organizer (0)
+    b_entry = next(e for e in body["entries"] if e["title"] == "Song B")
+    a_entry = next(e for e in body["entries"] if e["title"] == "Song A")
+
+    assert b_entry["vote_count"] == 1
+    assert a_entry["vote_count"] == 1
+
+
+# --------------------------------------------------------------------------- #
+# POST — MYS-168 rollback regression: state-check-then-mutate ordering
+# --------------------------------------------------------------------------- #
+
+
+def _mix_url(mix_id) -> str:
+    return f"/api/v1/mixes/{mix_id}"
+
+
+async def test_cast_after_organizer_rollback_rejected_and_not_persisted(client, db_session):
+    # HIGH-severity fix regression (MYS-168 code review): cast_votes used to check
+    # mix_.state != "open_voting" once at the top, mutate votes, and only lock the
+    # mix row later at the auto-close quorum check. A concurrent organizer
+    # rollback (open_voting -> open_submission) landing in that window could leave
+    # a stray Vote attached to a mix no longer accepting them. The fix
+    # re-acquires a with_for_update() lock and re-checks mix_.state ==
+    # "open_voting" immediately before the vote delete/insert. This test proves the
+    # outcome that guarantees: once a mix has been rolled back out of
+    # open_voting, a subsequent cast_votes call is rejected with 409 and persists
+    # no vote — it does not silently succeed against a mix that is no longer
+    # voting.
+    organizer = await _seed_user(db_session, "o@example.com")
+    voter = await _seed_user(db_session, "v@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    mix_id = mix_.id
+    await _add_member(db_session, mix_.club_id, voter)
+    target = await _seed_submission(db_session, mix_id, organizer, title="Target")
+    target_id = target.id
+    organizer_id = organizer.id
+    voter_id = voter.id
+
+    # Organizer rolls the mix back out of open_voting via the MYS-168 endpoint.
+    rollback_resp = await client.patch(
+        _mix_url(mix_id),
+        json={"state": "open_submission"},
+        headers=_auth(organizer_id),
+    )
+    assert rollback_resp.status_code == 200, rollback_resp.text
+    assert rollback_resp.json()["state"] == "open_submission"
+
+    # A subsequent cast against the now-rolled-back mix must be rejected, not
+    # silently accepted.
+    cast_resp = await client.post(
+        _votes_url(mix_id),
+        json={"submission_ids": [str(target_id)]},
+        headers=_auth(voter_id),
+    )
+    assert cast_resp.status_code == 409, cast_resp.text
+    assert cast_resp.json()["detail"] == "voting is not open for this mystery mix"
+
+    # No vote was persisted for the rejected cast.
+    db_session.expire_all()
+    rows = list(
+        await db_session.scalars(
+            select(Vote).where(Vote.mix_id == mix_id, Vote.voter_id == voter_id)
+        )
+    )
+    assert rows == []

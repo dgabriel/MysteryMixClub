@@ -1,0 +1,461 @@
+"""Tests for MYS-13: invite preview and accept.
+
+Covers:
+  GET  /api/v1/invites/{token}         — unauthenticated club preview
+  POST /api/v1/invites/{token}/accept  — authenticated join
+  MYS-32: concurrent accepts must not create duplicate membership rows
+
+TDD-first: written before the Invite model and the invite endpoints exist, so
+they are expected to FAIL (red) until the developer implements them. See
+technical-design.md §6 (invites, club_members) and §7 (Invites API).
+"""
+
+import asyncio
+import uuid
+from datetime import datetime, timedelta, timezone
+
+from sqlalchemy import select
+
+from app.auth.jwt import create_access_token
+from app.models.invite import Invite
+from app.models.club import Club
+from app.models.club_member import ClubMember
+from app.models.user import User
+
+# The exact key set the preview response must return.
+_PREVIEW_KEYS = {"club_id", "club_name", "member_count", "already_member"}
+
+# The full club object key set, matching POST /clubs.
+_CLUB_KEYS = {
+    "id",
+    "name",
+    "description",
+    "organizer_id",
+    "total_mixes",
+    "votes_per_player",
+    "songs_per_submission",
+    "current_mix",
+    "default_vibe_mode",
+    "submission_window_hours",
+    "voting_window_hours",
+    "state",
+    "created_at",
+    "completed_at",
+}
+
+
+# --------------------------------------------------------------------------- #
+# Helpers
+# --------------------------------------------------------------------------- #
+
+
+async def _seed_user(db_session, **overrides) -> User:
+    """Insert and commit a User, returning it. display_name is NOT NULL."""
+    defaults = {
+        "email": "alice@example.com",
+        "display_name": "Alice",
+        "preferred_service": None,
+    }
+    defaults.update(overrides)
+    user = User(**defaults)
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    return user
+
+
+async def _seed_club(db_session, organizer: User, **overrides) -> Club:
+    """Insert and commit a Club with the organizer as an active member."""
+    defaults = {
+        "name": "Summer Bangers",
+        "description": "A club for hot tracks",
+        "organizer_id": organizer.id,
+        "total_mixes": 6,
+        "votes_per_player": 5,
+        "current_mix": 0,
+        "state": "active",
+    }
+    defaults.update(overrides)
+    club = Club(**defaults)
+    db_session.add(club)
+    await db_session.flush()
+    db_session.add(ClubMember(club_id=club.id, user_id=organizer.id))
+    await db_session.commit()
+    await db_session.refresh(club)
+    return club
+
+
+async def _seed_member(db_session, club: Club, user: User, **overrides) -> ClubMember:
+    """Insert and commit a ClubMember row, returning it."""
+    defaults = {"club_id": club.id, "user_id": user.id}
+    defaults.update(overrides)
+    member = ClubMember(**defaults)
+    db_session.add(member)
+    await db_session.commit()
+    await db_session.refresh(member)
+    return member
+
+
+async def _seed_invite(db_session, club: Club, creator: User, **overrides) -> Invite:
+    """Insert and commit an Invite row, returning it."""
+    defaults = {
+        "club_id": club.id,
+        "created_by": creator.id,
+        "token": "tok_" + uuid.uuid4().hex,
+        "expires_at": None,
+    }
+    defaults.update(overrides)
+    invite = Invite(**defaults)
+    db_session.add(invite)
+    await db_session.commit()
+    await db_session.refresh(invite)
+    return invite
+
+
+def _auth_header(user_id: uuid.UUID) -> dict[str, str]:
+    return {"Authorization": f"Bearer {create_access_token(user_id)}"}
+
+
+def _preview_url(token: str) -> str:
+    return f"/api/v1/invites/{token}"
+
+
+def _accept_url(token: str) -> str:
+    return f"/api/v1/invites/{token}/accept"
+
+
+async def _active_membership_count(db_session, club_id, user_id) -> int:
+    rows = (
+        await db_session.scalars(
+            select(ClubMember).where(
+                ClubMember.club_id == club_id,
+                ClubMember.user_id == user_id,
+            )
+        )
+    ).all()
+    return len(rows)
+
+
+# ========================================================================== #
+# Endpoint B — GET /api/v1/invites/{token}  (unauthenticated preview)
+# ========================================================================== #
+
+
+async def test_preview_unknown_token_returns_404(client, db_session):
+    resp = await client.get(_preview_url("garbage-token-does-not-exist"))
+
+    assert resp.status_code == 404, resp.text
+
+
+async def test_preview_works_without_auth_header_returns_200_and_shape(client, db_session):
+    organizer = await _seed_user(db_session)
+    club = await _seed_club(db_session, organizer)
+    invite = await _seed_invite(db_session, club, organizer)
+
+    # No Authorization header at all.
+    resp = await client.get(_preview_url(invite.token))
+
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert set(data.keys()) == _PREVIEW_KEYS
+    assert data["club_name"] == club.name
+    assert data["club_id"] == str(club.id)
+    assert data["already_member"] is False
+
+
+async def test_preview_with_garbage_auth_header_still_returns_200(client, db_session):
+    # get_current_user_optional must swallow a malformed/invalid token rather
+    # than 401ing a route that's meant to work for anonymous callers too.
+    organizer = await _seed_user(db_session)
+    club = await _seed_club(db_session, organizer)
+    invite = await _seed_invite(db_session, club, organizer)
+
+    resp = await client.get(
+        _preview_url(invite.token), headers={"Authorization": "Bearer not-a-real-token"}
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["already_member"] is False
+
+
+async def test_preview_member_count_counts_only_active_members(client, db_session):
+    organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
+    club = await _seed_club(db_session, organizer)  # organizer = 1 active member
+    # Two more active members -> 3 active total.
+    m1 = await _seed_user(db_session, email="m1@example.com", display_name="M1")
+    m2 = await _seed_user(db_session, email="m2@example.com", display_name="M2")
+    await _seed_member(db_session, club, m1)
+    await _seed_member(db_session, club, m2)
+    # One removed member that must NOT be counted.
+    removed = await _seed_user(db_session, email="rem@example.com", display_name="Rem")
+    await _seed_member(db_session, club, removed, removed_at=datetime.now(timezone.utc))
+
+    invite = await _seed_invite(db_session, club, organizer)
+
+    resp = await client.get(_preview_url(invite.token))
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["member_count"] == 3
+
+
+# ========================================================================== #
+# Endpoint C — POST /api/v1/invites/{token}/accept  (authenticated join)
+# ========================================================================== #
+
+
+async def test_unauthenticated_accept_returns_401(client, db_session):
+    organizer = await _seed_user(db_session)
+    club = await _seed_club(db_session, organizer)
+    invite = await _seed_invite(db_session, club, organizer)
+
+    resp = await client.post(_accept_url(invite.token))
+
+    assert resp.status_code == 401, resp.text
+    assert resp.json()["detail"] == "not authenticated"
+
+
+async def test_accept_unknown_token_returns_404(client, db_session):
+    joiner = await _seed_user(db_session)
+
+    resp = await client.post(
+        _accept_url("garbage-token-does-not-exist"), headers=_auth_header(joiner.id)
+    )
+
+    assert resp.status_code == 404, resp.text
+
+
+async def test_new_user_accept_returns_200_and_full_club_shape(client, db_session):
+    organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
+    club = await _seed_club(db_session, organizer)
+    invite = await _seed_invite(db_session, club, organizer)
+    joiner = await _seed_user(db_session, email="join@example.com", display_name="Joiner")
+
+    resp = await client.post(_accept_url(invite.token), headers=_auth_header(joiner.id))
+
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert set(data.keys()) == _CLUB_KEYS
+    assert data["id"] == str(club.id)
+    assert data["name"] == club.name
+
+
+async def test_new_user_accept_persists_active_membership(client, db_session):
+    organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
+    club = await _seed_club(db_session, organizer)
+    invite = await _seed_invite(db_session, club, organizer)
+    joiner = await _seed_user(db_session, email="join@example.com", display_name="Joiner")
+
+    resp = await client.post(_accept_url(invite.token), headers=_auth_header(joiner.id))
+
+    assert resp.status_code == 200, resp.text
+
+    club_id = club.id
+    joiner_id = joiner.id
+    db_session.expire_all()
+
+    members = (
+        await db_session.scalars(
+            select(ClubMember).where(
+                ClubMember.club_id == club_id,
+                ClubMember.user_id == joiner_id,
+            )
+        )
+    ).all()
+    assert len(members) == 1
+    assert members[0].removed_at is None
+
+
+async def test_duplicate_active_membership_accept_is_idempotent_returns_club(client, db_session):
+    # MYS-135: an already-active member who re-accepts is routed to the club
+    # (200, club payload), not an error — and no duplicate membership row.
+    organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
+    club = await _seed_club(db_session, organizer)
+    invite = await _seed_invite(db_session, club, organizer)
+    member = await _seed_user(db_session, email="member@example.com", display_name="Member")
+    await _seed_member(db_session, club, member)  # already active
+
+    club_id = club.id
+    member_id = member.id
+
+    resp = await client.post(_accept_url(invite.token), headers=_auth_header(member.id))
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["id"] == str(club_id)
+
+    db_session.expire_all()
+    count = await _active_membership_count(db_session, club_id, member_id)
+    assert count == 1
+
+
+async def test_reactivation_accept_returns_200_and_reuses_same_row(client, db_session):
+    organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
+    club = await _seed_club(db_session, organizer)
+    invite = await _seed_invite(db_session, club, organizer)
+    returning = await _seed_user(db_session, email="back@example.com", display_name="Back")
+    removed = await _seed_member(db_session, club, returning, removed_at=datetime.now(timezone.utc))
+    original_member_id = removed.id
+
+    resp = await client.post(_accept_url(invite.token), headers=_auth_header(returning.id))
+
+    assert resp.status_code == 200, resp.text
+
+    club_id = club.id
+    returning_id = returning.id
+    db_session.expire_all()
+
+    members = (
+        await db_session.scalars(
+            select(ClubMember).where(
+                ClubMember.club_id == club_id,
+                ClubMember.user_id == returning_id,
+            )
+        )
+    ).all()
+    # Exactly one row — the original, reactivated, not a second insert.
+    assert len(members) == 1
+    assert members[0].id == original_member_id
+    assert members[0].removed_at is None
+
+
+# ========================================================================== #
+# Expired shareable links (MYS-126) — 410 Gone on both preview and accept
+# ========================================================================== #
+
+
+async def test_preview_expired_link_returns_410(client, db_session):
+    organizer = await _seed_user(db_session)
+    club = await _seed_club(db_session, organizer)
+    invite = await _seed_invite(
+        db_session, club, organizer, expires_at=datetime.now(timezone.utc) - timedelta(minutes=1)
+    )
+
+    resp = await client.get(_preview_url(invite.token))
+
+    assert resp.status_code == 410, resp.text
+
+
+async def test_accept_expired_link_returns_410_and_no_membership(client, db_session):
+    organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
+    club = await _seed_club(db_session, organizer)
+    invite = await _seed_invite(
+        db_session, club, organizer, expires_at=datetime.now(timezone.utc) - timedelta(minutes=1)
+    )
+    joiner = await _seed_user(db_session, email="join@example.com", display_name="Joiner")
+    joiner_id = joiner.id
+    club_id = club.id
+
+    resp = await client.post(_accept_url(invite.token), headers=_auth_header(joiner.id))
+
+    assert resp.status_code == 410, resp.text
+
+    # No membership was created for the would-be joiner.
+    db_session.expire_all()
+    members = (
+        await db_session.scalars(
+            select(ClubMember).where(
+                ClubMember.club_id == club_id,
+                ClubMember.user_id == joiner_id,
+            )
+        )
+    ).all()
+    assert members == []
+
+
+async def test_preview_expired_link_as_active_member_returns_200_and_redirect_signal(
+    client, db_session
+):
+    # MYS-181: an already-active member passes through the expiry gate — the
+    # frontend uses already_member to redirect straight into the club instead
+    # of showing "this link has expired".
+    organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
+    club = await _seed_club(db_session, organizer)
+    invite = await _seed_invite(
+        db_session, club, organizer, expires_at=datetime.now(timezone.utc) - timedelta(minutes=1)
+    )
+
+    resp = await client.get(_preview_url(invite.token), headers=_auth_header(organizer.id))
+
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["already_member"] is True
+    assert data["club_id"] == str(club.id)
+
+
+async def test_preview_expired_link_as_non_member_still_returns_410(client, db_session):
+    # A signed-in but unaffiliated visitor still gets the expired state — only
+    # an active member of THIS club bypasses expiry.
+    organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
+    club = await _seed_club(db_session, organizer)
+    invite = await _seed_invite(
+        db_session, club, organizer, expires_at=datetime.now(timezone.utc) - timedelta(minutes=1)
+    )
+    stranger = await _seed_user(db_session, email="stranger@example.com", display_name="Stranger")
+
+    resp = await client.get(_preview_url(invite.token), headers=_auth_header(stranger.id))
+
+    assert resp.status_code == 410, resp.text
+
+
+async def test_accept_expired_link_as_active_member_returns_200(client, db_session):
+    # MYS-181: accept mirrors preview — an already-active member is routed to
+    # the club (200) even past the invite's expiry, matching MYS-135's
+    # idempotent-accept spirit.
+    organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
+    club = await _seed_club(db_session, organizer)
+    invite = await _seed_invite(
+        db_session, club, organizer, expires_at=datetime.now(timezone.utc) - timedelta(minutes=1)
+    )
+    member = await _seed_user(db_session, email="member@example.com", display_name="Member")
+    await _seed_member(db_session, club, member)  # already active
+
+    club_id = club.id
+    member_id = member.id
+
+    resp = await client.post(_accept_url(invite.token), headers=_auth_header(member.id))
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["id"] == str(club_id)
+
+    db_session.expire_all()
+    count = await _active_membership_count(db_session, club_id, member_id)
+    assert count == 1, "the bypass must not create a duplicate membership row"
+
+
+async def test_unexpired_dated_link_still_previews_200(client, db_session):
+    # A dated link that hasn't passed its expiry behaves like a live link.
+    organizer = await _seed_user(db_session)
+    club = await _seed_club(db_session, organizer)
+    invite = await _seed_invite(
+        db_session, club, organizer, expires_at=datetime.now(timezone.utc) + timedelta(hours=24)
+    )
+
+    resp = await client.get(_preview_url(invite.token))
+
+    assert resp.status_code == 200, resp.text
+
+
+# ========================================================================== #
+# MYS-32: concurrent accept must not produce duplicate membership rows
+# ========================================================================== #
+
+
+async def test_concurrent_accept_produces_exactly_one_membership(client, db_session):
+    organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
+    club = await _seed_club(db_session, organizer)
+    invite = await _seed_invite(db_session, club, organizer)
+    joiner = await _seed_user(db_session, email="join@example.com", display_name="Joiner")
+
+    resp1, resp2 = await asyncio.gather(
+        client.post(_accept_url(invite.token), headers=_auth_header(joiner.id)),
+        client.post(_accept_url(invite.token), headers=_auth_header(joiner.id)),
+    )
+
+    assert resp1.status_code == 200, resp1.text
+    assert resp2.status_code == 200, resp2.text
+
+    club_id = club.id
+    joiner_id = joiner.id
+    db_session.expire_all()
+
+    count = await _active_membership_count(db_session, club_id, joiner_id)
+    assert count == 1, "concurrent accepts must not duplicate the membership row"

@@ -42,6 +42,27 @@ services:
         type: GENERAL
         value: staging
 
+jobs:
+  # Runs DB migrations before the new code goes live. DO runs PRE_DEPLOY jobs to
+  # completion before deploying the services, so the schema is always upgraded
+  # ahead of the api service that depends on it. Bound to the same managed db.
+  - name: migrate
+    kind: PRE_DEPLOY
+    source_dir: backend
+    github:
+      repo: dgabriel/MysteryMixClub
+      branch: develop
+      deploy_on_push: false
+    environment_slug: python
+    instance_size_slug: basic-xxs
+    run_command: alembic upgrade head
+    envs:
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+        # Bound to the managed database component defined below.
+        value: ${db.DATABASE_URL}
+
 static_sites:
   # The frontend is a Vite SPA, so on App Platform it is a static site
   # (build → `dist/`) rather than a long-running service.

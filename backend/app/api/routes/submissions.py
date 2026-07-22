@@ -1,0 +1,474 @@
+"""Song submission endpoints (MYS-51).
+
+Puts songs — picked via the search/resolve flow — into a mystery mix. A player
+may hold up to the club's ``songs_per_submission`` cap (MYS-116); at cap 1 this
+is the classic one-song-per-mix behavior.
+
+* ``POST   /api/v1/mixes/:id/submissions``       — add a song (up to the cap)
+* ``PATCH  /api/v1/mixes/:id/submissions/:sid``  — replace one of your songs
+* ``DELETE /api/v1/mixes/:id/submissions/:sid``  — remove one of your songs
+* ``GET    /api/v1/mixes/:id/submissions/mine``  — your songs for the mix
+* ``GET    /api/v1/mixes/:id/submissions``       — all submissions (after close only)
+
+The canonical track fields (isrc/title/artist/album/art) come from the client's
+prior search/resolve call; the server additionally assembles cross-service
+platform links (keyless) and persists them as ``submissions.platform_links`` for
+playlist/playback. The assembler always returns at least open-on-service deep
+links, so a transient upstream hiccup never blocks the submission.
+
+``participation_mode`` (just-vibing) is a per-player stance for the mystery mix,
+not a per-song one: it is kept uniform across all of a player's songs (MYS-112/116).
+"""
+
+import uuid
+from datetime import datetime
+from typing import Annotated, Any, Literal
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import StringConstraints, model_validator
+
+from app.api.wire import WireModel
+from sqlalchemy import exists, select, text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.routes.clubs import _load_club_as_member
+from app.api.routes.mixes import _load_mix
+from app.auth.deps import get_current_user
+from app.db.session import get_db
+from app.models.club_member import ClubMember
+from app.models.mix import Mix
+from app.models.submission import Submission
+from app.models.user import User
+from app.services.song_links import (
+    SongLinkAssembler,
+    assemble_source_links,
+    get_link_assembler,
+)
+from app.services.source_tracks import SOURCE_KEY_PATTERN, source_fields
+from app.services.youtube_resolver import YouTubeResolver, get_youtube_resolver
+
+router = APIRouter(tags=["submissions"])
+
+ShortText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
+Isrc = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)]
+SourceKey = Annotated[
+    str, StringConstraints(strip_whitespace=True, max_length=200, pattern=SOURCE_KEY_PATTERN)
+]
+Note = Annotated[str, StringConstraints(strip_whitespace=True, max_length=280)]
+Album = Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)]
+AlbumArtUrl = Annotated[str, StringConstraints(max_length=2048)]
+BandcampTrackId = Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^\d{1,20}$")]
+
+# Reserved, non-URL key under which the Bandcamp numeric track id rides along in
+# the platform_links JSONB (MYS-201, for the MYS-204 embedded player). Namespaced
+# so it can't collide with a platform URL key; consumers read links by fixed
+# platform keys, so it's inert to them.
+BANDCAMP_TRACK_ID_KEY = "bandcampTrackId"
+
+
+class SubmissionCreate(WireModel):
+    # Canonical identity + display fields from the search/resolve result. The
+    # cross-service links are assembled server-side. A submission carries EITHER
+    # an isrc (catalog track) or a source_key (source-only Bandcamp/YouTube track
+    # — MYS-201), never both and never neither. Used for both adding a song (POST)
+    # and replacing one wholesale (PATCH).
+    isrc: Isrc | None = None
+    source_key: SourceKey | None = None
+    title: ShortText
+    artist: ShortText
+    album: Album | None = None
+    album_art_url: AlbumArtUrl | None = None
+    # Bandcamp's numeric track id from the resolve step, echoed back on submit for
+    # any Bandcamp-sourced track (catalog-hit or source-only), for the embedded
+    # player (MYS-204). Persisted into platform_links; None for everything else.
+    bandcamp_track_id: BandcampTrackId | None = None
+    note: Note | None = None
+    participation_mode: Literal["playing", "vibing"] | None = None
+
+    @model_validator(mode="after")
+    def _exactly_one_identity(self) -> "SubmissionCreate":
+        if bool(self.isrc) == bool(self.source_key):
+            raise ValueError("provide exactly one of isrc or source_key")
+        return self
+
+
+class NoteUpdate(WireModel):
+    # Edit only the submitter note on an existing submission, leaving the track
+    # untouched. `None` clears the note.
+    note: Note | None = None
+
+
+class SubmissionResponse(WireModel):
+    id: str
+    round_id: str
+    user_id: str
+    # None for a source-only track; source/source_url are set instead (MYS-201).
+    isrc: str | None
+    source: Literal["youtube", "bandcamp"] | None = None
+    source_url: str | None = None
+    title: str
+    artist: str
+    album: str | None
+    album_art_url: str | None
+    note: str | None
+    participation_mode: str
+    created_at: datetime
+    club_previously_submitted: bool = False
+
+
+def _to_response(s: Submission, *, club_previously_submitted: bool = False) -> SubmissionResponse:
+    source, source_url = source_fields(s.source_key)
+    return SubmissionResponse(
+        id=str(s.id),
+        round_id=str(s.mix_id),
+        user_id=str(s.user_id),
+        isrc=s.isrc,
+        source=source,
+        source_url=source_url,
+        title=s.title,
+        artist=s.artist,
+        album=s.album,
+        album_art_url=s.album_art_url,
+        note=s.note,
+        participation_mode=s.participation_mode,
+        created_at=s.created_at,
+        club_previously_submitted=club_previously_submitted,
+    )
+
+
+async def _assemble_track(
+    payload: SubmissionCreate,
+    assembler: SongLinkAssembler,
+    youtube: YouTubeResolver,
+) -> tuple[dict[str, str], str | None]:
+    """Resolve the keyless cross-service links + a YouTube video id for a track.
+
+    Best-effort: the assembler always returns at least deep links, and the
+    YouTube resolve is None on any failure, so neither blocks a submission.
+    The video id is resolved once here and handed to the assembler so it
+    doesn't make its own redundant YouTube Data API call (MYS-175).
+
+    Source-only tracks (MYS-201) bypass every fuzzy lookup: the source_key's
+    exact video id (or Bandcamp page) drives the links — never a guessed match.
+    """
+    if payload.source_key is not None:
+        return await assemble_source_links(
+            assembler, payload.title, payload.artist, payload.source_key
+        )
+    youtube_video_id = await youtube.video_id_for(payload.title, payload.artist)
+    platform_links = await assembler.assemble(
+        payload.title, payload.artist, payload.isrc, youtube_video_id=youtube_video_id
+    )
+    return platform_links, youtube_video_id
+
+
+def _apply_track(
+    s: Submission, payload: SubmissionCreate, links: dict[str, str], yt: str | None
+) -> None:
+    """Write a resolved track onto a submission row (shared by add + replace)."""
+    s.isrc = payload.isrc
+    s.source_key = payload.source_key
+    s.title = payload.title
+    s.artist = payload.artist
+    s.album = payload.album
+    s.album_art_url = payload.album_art_url
+    # Ride the Bandcamp track id along in the platform_links JSONB under a
+    # reserved, non-URL key so it persists per submission for MYS-204 without a
+    # migration; a re-submit without one drops it (replace is wholesale).
+    if payload.bandcamp_track_id:
+        links = {**links, BANDCAMP_TRACK_ID_KEY: payload.bandcamp_track_id}
+    s.platform_links = links
+    s.youtube_video_id = yt
+    s.note = payload.note
+
+
+def _identity_clause(payload: SubmissionCreate) -> Any:
+    """The duplicate-detection column match for a payload: on ISRC for a catalog
+    track, on source_key for a source-only one (MYS-201). Two source-only tracks
+    collide only when they point at the exact same page — the intended semantics,
+    since source_key is exact and is never fuzzy-matched."""
+    if payload.source_key is not None:
+        return Submission.source_key == payload.source_key
+    return Submission.isrc == payload.isrc
+
+
+async def _duplicate_in_mix(
+    payload: SubmissionCreate,
+    round_id: uuid.UUID,
+    db: AsyncSession,
+    *,
+    exclude_submission_id: uuid.UUID | None = None,
+) -> bool:
+    clause = [_identity_clause(payload), Submission.mix_id == round_id]
+    if exclude_submission_id is not None:
+        clause.append(Submission.id != exclude_submission_id)
+    return bool(await db.scalar(select(exists().where(*clause))))
+
+
+async def _duplicate_in_prior_club_mixes(
+    payload: SubmissionCreate,
+    club_id: uuid.UUID,
+    round_id: uuid.UUID,
+    db: AsyncSession,
+) -> bool:
+    return bool(
+        await db.scalar(
+            select(
+                exists().where(
+                    _identity_clause(payload),
+                    Submission.mix_id == Mix.id,
+                    Mix.club_id == club_id,
+                    Mix.id != round_id,
+                )
+            )
+        )
+    )
+
+
+async def _own_mix_submissions(
+    round_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession
+) -> list[Submission]:
+    return list(
+        await db.scalars(
+            select(Submission)
+            .where(Submission.mix_id == round_id, Submission.user_id == user_id)
+            .order_by(Submission.created_at.asc())
+        )
+    )
+
+
+async def _resolve_mode(
+    payload_mode: str | None,
+    existing: list[Submission],
+    league_id: uuid.UUID,
+    user_id: uuid.UUID,
+    db: AsyncSession,
+) -> str:
+    """The player's vibe stance for the mix: explicit override → their current
+    stance (from any existing song) → their per-club default (MYS-112)."""
+    if payload_mode is not None:
+        return payload_mode
+    if existing:
+        return existing[0].participation_mode
+    member = await db.scalar(
+        select(ClubMember).where(
+            ClubMember.club_id == league_id,
+            ClubMember.user_id == user_id,
+            ClubMember.removed_at.is_(None),
+        )
+    )
+    return "vibing" if (member is not None and member.vibe_mode) else "playing"
+
+
+@router.post(
+    "/mixes/{round_id}/submissions",
+    response_model=SubmissionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def submit_song(
+    round_id: uuid.UUID,
+    payload: SubmissionCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    assembler: SongLinkAssembler = Depends(get_link_assembler),
+    youtube: YouTubeResolver = Depends(get_youtube_resolver),
+) -> SubmissionResponse:
+    mix_ = await _load_mix(round_id, db)
+    club = await _load_club_as_member(mix_.club_id, current_user, db)
+    if mix_.state != "open_submission":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="this mystery mix is not accepting submissions",
+        )
+
+    # Serialize concurrent submissions for the same (mix, user) pair so two
+    # racing requests can't both pass the cap check and both insert (MYS-144).
+    # XOR of the two UUID ints gives a cheap, deterministic per-(mix, user) key.
+    lock_key = (round_id.int ^ current_user.id.int) & 0x7FFFFFFFFFFFFFFF
+    await db.execute(text("SELECT pg_advisory_xact_lock(:k)").bindparams(k=lock_key))
+
+    existing = await _own_mix_submissions(round_id, current_user.id, db)
+    if len(existing) >= club.songs_per_submission:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"you've submitted the maximum of {club.songs_per_submission} song(s)",
+        )
+
+    if await _duplicate_in_mix(payload, round_id, db):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="oops, someone else has great taste too — this track is already in this mystery mix",
+        )
+    club_repeat = await _duplicate_in_prior_club_mixes(payload, mix_.club_id, round_id, db)
+
+    platform_links, youtube_video_id = await _assemble_track(payload, assembler, youtube)
+    mode = await _resolve_mode(
+        payload.participation_mode, existing, mix_.club_id, current_user.id, db
+    )
+    # Keep the player's vibe stance uniform across all their songs this mix.
+    for s in existing:
+        s.participation_mode = mode
+
+    submission = Submission(mix_id=round_id, user_id=current_user.id, participation_mode=mode)
+    _apply_track(submission, payload, platform_links, youtube_video_id)
+    db.add(submission)
+    await db.flush()
+    await db.commit()
+    await db.refresh(submission)
+    return _to_response(submission, club_previously_submitted=club_repeat)
+
+
+@router.patch("/mixes/{round_id}/submissions/{submission_id}", response_model=SubmissionResponse)
+async def edit_song(
+    round_id: uuid.UUID,
+    submission_id: uuid.UUID,
+    payload: SubmissionCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    assembler: SongLinkAssembler = Depends(get_link_assembler),
+    youtube: YouTubeResolver = Depends(get_youtube_resolver),
+) -> SubmissionResponse:
+    mix_ = await _load_mix(round_id, db)
+    await _load_club_as_member(mix_.club_id, current_user, db)
+    if mix_.state != "open_submission":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="this mystery mix is not accepting submissions",
+        )
+
+    submission = await db.scalar(
+        select(Submission).where(Submission.id == submission_id, Submission.mix_id == round_id)
+    )
+    if submission is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="submission not found in this mystery mix"
+        )
+    if submission.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="that submission isn't yours"
+        )
+
+    if await _duplicate_in_mix(payload, round_id, db, exclude_submission_id=submission_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="oops, someone else has great taste too — this track is already in this mystery mix",
+        )
+    club_repeat = await _duplicate_in_prior_club_mixes(payload, mix_.club_id, round_id, db)
+
+    platform_links, youtube_video_id = await _assemble_track(payload, assembler, youtube)
+    _apply_track(submission, payload, platform_links, youtube_video_id)
+    # An explicit mode change applies to all the player's songs (uniform stance).
+    if payload.participation_mode is not None:
+        for s in await _own_mix_submissions(round_id, current_user.id, db):
+            s.participation_mode = payload.participation_mode
+
+    await db.commit()
+    await db.refresh(submission)
+    return _to_response(submission, club_previously_submitted=club_repeat)
+
+
+@router.delete(
+    "/mixes/{round_id}/submissions/{submission_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+async def delete_song(
+    round_id: uuid.UUID,
+    submission_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    mix_ = await _load_mix(round_id, db)
+    await _load_club_as_member(mix_.club_id, current_user, db)
+    if mix_.state != "open_submission":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="this mystery mix is not accepting submissions",
+        )
+
+    submission = await db.scalar(
+        select(Submission).where(Submission.id == submission_id, Submission.mix_id == round_id)
+    )
+    if submission is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="submission not found in this mystery mix"
+        )
+    if submission.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="that submission isn't yours"
+        )
+
+    await db.delete(submission)
+    await db.commit()
+
+
+@router.patch(
+    "/mixes/{round_id}/submissions/{submission_id}/note", response_model=SubmissionResponse
+)
+async def update_submission_note(
+    round_id: uuid.UUID,
+    submission_id: uuid.UUID,
+    payload: NoteUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> SubmissionResponse:
+    """Edit only the submitter note on one of your submissions (MYS-150).
+
+    Lets a player add, change, or clear the context note on a song they've
+    already submitted without re-picking the track. Only the owner may edit, and
+    only while the mix is still accepting submissions.
+    """
+    mix_ = await _load_mix(round_id, db)
+    await _load_club_as_member(mix_.club_id, current_user, db)
+    if mix_.state != "open_submission":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="this mystery mix is not accepting submissions",
+        )
+    submission = await db.scalar(
+        select(Submission).where(Submission.id == submission_id, Submission.mix_id == round_id)
+    )
+    if submission is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="submission not found in this mystery mix"
+        )
+    if submission.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="that submission isn't yours"
+        )
+    submission.note = payload.note
+    await db.commit()
+    await db.refresh(submission)
+    return _to_response(submission)
+
+
+@router.get("/mixes/{round_id}/submissions/mine", response_model=list[SubmissionResponse])
+async def get_my_submissions(
+    round_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[SubmissionResponse]:
+    mix_ = await _load_mix(round_id, db)
+    await _load_club_as_member(mix_.club_id, current_user, db)
+    submissions = await _own_mix_submissions(round_id, current_user.id, db)
+    return [_to_response(s) for s in submissions]
+
+
+@router.get("/mixes/{round_id}/submissions", response_model=list[SubmissionResponse])
+async def list_submissions(
+    round_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[SubmissionResponse]:
+    mix_ = await _load_mix(round_id, db)
+    await _load_club_as_member(mix_.club_id, current_user, db)
+    # Submissions stay private until the mix closes (anonymity during voting).
+    if mix_.state != "closed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="submissions are revealed after the mystery mix closes",
+        )
+    submissions = await db.scalars(
+        select(Submission)
+        .where(Submission.mix_id == round_id)
+        .order_by(Submission.created_at.asc())
+    )
+    return [_to_response(s) for s in submissions]

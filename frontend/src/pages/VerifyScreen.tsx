@@ -4,9 +4,14 @@ import { ConcentricRings } from "../components/ConcentricRings";
 type VerifyScreenProps = {
   state: "verifying" | "error";
   onBackToLogin?: () => void;
+  /** Optional override for the error heading (defaults to the link-failed copy). */
+  heading?: string;
+  /** Optional override for the error body — used for invite-required / at-capacity
+   *  / expired-link cases so each reads in its own calm words. */
+  message?: string;
 };
 
-export function VerifyScreen({ state, onBackToLogin }: VerifyScreenProps) {
+export function VerifyScreen({ state, onBackToLogin, heading, message }: VerifyScreenProps) {
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-4 sm:px-8">
       <div className="w-full max-w-sm text-center">
@@ -22,10 +27,10 @@ export function VerifyScreen({ state, onBackToLogin }: VerifyScreenProps) {
           <>
             <ConcentricRings size={72} className="mx-auto" />
             <h1 className="mt-8 font-serif text-[28px] leading-tight">
-              that link didn’t work
+              {heading ?? "that link didn’t work"}
             </h1>
             <p className="mt-4 font-mono text-[13px] font-light text-muted">
-              it may have expired or already been used.
+              {message ?? "it may have expired or already been used."}
             </p>
 
             {onBackToLogin ? (

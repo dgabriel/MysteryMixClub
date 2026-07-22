@@ -1,0 +1,14 @@
+# MysteryMixClub deadline force-advance timer — production (MYS-145/162).
+# Fires mysterymixclub-advance-mixes.service every 15 minutes. Persistent=true so
+# a missed run (Droplet reboot / downtime) fires once on the next boot rather than
+# being skipped — deadlines shouldn't slip because the box was off.
+# Install: see mysterymixclub-advance-mixes-prod.service header.
+[Unit]
+Description=Run the MysteryMixClub deadline force-advance job every 15 minutes (production)
+
+[Timer]
+OnCalendar=*:00/15
+Persistent=true
+
+[Install]
+WantedBy=timers.target

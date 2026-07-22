@@ -4,13 +4,18 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { VerifyRoute } from "./VerifyRoute";
-import { verifyToken } from "../services/api";
+import { ApiError, verifyToken } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 
-// Mock the API module (no network).
-vi.mock("../services/api", () => ({
-  verifyToken: vi.fn(),
-}));
+// Mock the API module (no network). Keep ApiError real so VerifyRoute's
+// instanceof-based error mapping works.
+vi.mock("../services/api", async () => {
+  const actual = await vi.importActual<typeof import("../services/api")>("../services/api");
+  return {
+    ...actual,
+    verifyToken: vi.fn(),
+  };
+});
 
 // Mock useAuth so we can observe setAccessToken without a real provider.
 vi.mock("../hooks/useAuth", () => ({
@@ -62,6 +67,16 @@ describe("VerifyRoute", () => {
       clear: vi.fn(),
       logout: vi.fn(),
       logoutAll: vi.fn(),
+      displayName: null,
+      email: null,
+      userId: null,
+      profileStatus: "idle",
+      needsOnboarding: false,
+      isPlatformAdmin: false,
+      applyDisplayName: vi.fn(),
+    preferredService: null,
+    tosAccepted: true,
+    applyTosAccepted: vi.fn(),
     });
   });
 
@@ -74,7 +89,8 @@ describe("VerifyRoute", () => {
     expect(await screen.findByText("HOME CONTENT")).toBeInTheDocument();
 
     expect(mockVerifyToken).toHaveBeenCalledTimes(1);
-    expect(mockVerifyToken).toHaveBeenCalledWith("abc");
+    // No invite query param → the invite arg is null (ordinary verify).
+    expect(mockVerifyToken).toHaveBeenCalledWith("abc", null);
     expect(setAccessToken).toHaveBeenCalledWith("tok-123");
   });
 
@@ -98,6 +114,40 @@ describe("VerifyRoute", () => {
 
     expect(await screen.findByText(/that link didn.?t work/i)).toBeInTheDocument();
     expect(mockVerifyToken).not.toHaveBeenCalled();
+    expect(setAccessToken).not.toHaveBeenCalled();
+    // The verify screen is pre-auth — no shared TopNav.
+    expect(screen.queryByRole("button", { name: /^profile$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^logout$/i })).not.toBeInTheDocument();
+  });
+
+  it("invite: passes the invite query param through to verifyToken", async () => {
+    mockVerifyToken.mockResolvedValue({ access_token: "tok-123" });
+
+    renderAt("/auth/verify?token=abc&invite=inv-789");
+
+    expect(await screen.findByText("HOME CONTENT")).toBeInTheDocument();
+    expect(mockVerifyToken).toHaveBeenCalledWith("abc", "inv-789");
+  });
+
+  it("expired invite (410): shows the calm expired copy", async () => {
+    mockVerifyToken.mockRejectedValue(new ApiError(410, "gone"));
+
+    renderAt("/auth/verify?token=abc&invite=old");
+
+    expect(await screen.findByText(/this link has expired/i)).toBeInTheDocument();
+    expect(setAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("invite-required (403): shows the backend detail verbatim", async () => {
+    mockVerifyToken.mockRejectedValue(
+      new ApiError(403, "you need an invite to create an account"),
+    );
+
+    renderAt("/auth/verify?token=abc");
+
+    expect(
+      await screen.findByText(/you need an invite to create an account/i),
+    ).toBeInTheDocument();
     expect(setAccessToken).not.toHaveBeenCalled();
   });
 
@@ -129,7 +179,7 @@ describe("VerifyRoute", () => {
     await waitFor(() => expect(setAccessToken).toHaveBeenCalled());
 
     expect(mockVerifyToken).toHaveBeenCalledTimes(1);
-    expect(mockVerifyToken).toHaveBeenCalledWith("good");
+    expect(mockVerifyToken).toHaveBeenCalledWith("good", null);
     expect(setAccessToken).toHaveBeenCalledTimes(1);
   });
 

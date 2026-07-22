@@ -39,6 +39,16 @@ include = ["app*"]
 line-length = 100
 target-version = "py311"
 
+[tool.mypy]
+python_version = "3.11"
+
+# python-jose ships no type stubs. app/auth/jwt.py deliberately confines the
+# untyped boundary to that one module (re-exporting JWTError so callers don't
+# import jose directly); ignore the missing import rather than vendor stubs.
+[[tool.mypy.overrides]]
+module = ["jose.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

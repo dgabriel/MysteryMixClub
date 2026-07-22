@@ -12,19 +12,35 @@ concurrency:
 
 jobs:
   deploy:
-    name: Deploy to DO App Platform (staging)
+    name: Deploy to staging Droplet
     runs-on: ubuntu-latest
     environment: staging
     steps:
-      - uses: actions/checkout@v4
-
-      # The deploy action reads the spec from `.do/app.yaml`; stage the
-      # staging-specific spec into that path.
-      - name: Stage staging app spec
-        run: cp .do/app.staging.yaml .do/app.yaml
-
-      - name: Deploy to DigitalOcean App Platform
-        uses: digitalocean/app_action/deploy@v2
+      # SSH into the Droplet and run the deploy script that lives in the checkout
+      # at /home/mysterymixclub/app (placed there by scripts/bootstrap-droplet.sh).
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
         with:
-          app_name: mysterymixclub-staging
-          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_SSH_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script_stop: true
+          script: |
+            cd /home/mysterymixclub/app
+            # Sync the checkout (including deploy-staging.sh itself) to
+            # origin/develop BEFORE invoking it, so a deploy never executes a
+            # stale copy of the script that then changes underneath it.
+            git fetch --prune origin
+            git checkout -f -B develop origin/develop
+            ./scripts/deploy-staging.sh
+
+      # Simple pass/fail notification (Actions log only, for now).
+      - name: Report result
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "✅ Staging deploy to ${{ secrets.STAGING_HOST }} succeeded"
+          else
+            echo "❌ Staging deploy to ${{ secrets.STAGING_HOST }} failed"
+            exit 1
+          fi

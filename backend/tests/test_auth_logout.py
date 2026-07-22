@@ -31,30 +31,47 @@ REFRESH_URL = "/api/v1/auth/refresh"
 LOGOUT_URL = "/api/v1/auth/logout"
 LOGOUT_ALL_URL = "/api/v1/auth/logout-all"
 
+
 _NEUTRAL_SESSION_DETAIL = "invalid or expired session"
 
 
 # --------------------------------------------------------------------------- #
 # Helpers
+#
+# v2 access model (MYS-127): /auth/request only mails a link to an EXISTING
+# (non-deleted) user (or via a valid invite). These logout tests don't care how
+# the account came to exist, so the helper seeds the user first, then runs the
+# real magic-link flow. _seed_user is idempotent, so two sessions can be
+# established for the same email (one user, two devices).
 # --------------------------------------------------------------------------- #
 
 
-async def _request_link(client, email_spy, email: str) -> str:
-    """Request a magic link for ``email`` and return the raw token from the email."""
+async def _seed_user(session_factory, email: str) -> None:
+    """Idempotently ensure a non-deleted user exists for ``email``."""
+    async with session_factory() as db:
+        existing = await db.scalar(select(User).where(User.email == email))
+        if existing is None:
+            db.add(User(email=email, display_name=""))
+            await db.commit()
+
+
+async def _request_link(client, email_spy, session_factory, email: str) -> str:
+    """Seed the user, request a magic link, return the raw token from the email."""
+    await _seed_user(session_factory, email)
     resp = await client.post(REQUEST_URL, json={"email": email})
     assert resp.status_code == 200, f"request -> {resp.status_code}: {resp.text}"
     _, link = email_spy.calls[-1]
     return link.split("token=")[1]
 
 
-async def _establish_session(client, email_spy, email: str) -> str:
+async def _establish_session(client, email_spy, session_factory, email: str) -> str:
     """Run request -> verify and return the raw refresh token cookie value.
 
     NOTE: the shared client cookie jar also retains the cookie (path
     /api/v1/auth). Tests pass cookies explicitly to avoid jar bleed, and the
     captured raw value here is read off the verify Set-Cookie header.
     """
-    raw = await _request_link(client, email_spy, email)
+    raw = await _request_link(client, email_spy, session_factory, email)
     resp = await client.get(VERIFY_URL, params={"token": raw})
     assert resp.status_code == 200, resp.text
     refresh_cookie = resp.cookies.get("refresh_token")
@@ -97,9 +114,9 @@ def _assert_cookie_cleared(resp) -> None:
 
 
 async def test_logout_invalidates_session_and_clears_cookie(
-    client, email_spy, db_session
+    client, email_spy, db_session, session_factory
 ):
-    raw_cookie = await _establish_session(client, email_spy, "alice@example.com")
+    raw_cookie = await _establish_session(client, email_spy, session_factory, "alice@example.com")
 
     before = await _session_for_cookie(db_session, raw_cookie)
     assert before is not None
@@ -118,17 +135,15 @@ async def test_logout_invalidates_session_and_clears_cookie(
 
 
 async def test_logout_then_refresh_with_same_token_returns_401(
-    client, email_spy, db_session
+    client, email_spy, db_session, session_factory
 ):
-    raw_cookie = await _establish_session(client, email_spy, "alice@example.com")
+    raw_cookie = await _establish_session(client, email_spy, session_factory, "alice@example.com")
 
     logout_resp = await client.post(LOGOUT_URL, cookies={"refresh_token": raw_cookie})
     assert logout_resp.status_code == 200, logout_resp.text
 
     # The now-invalidated session can no longer mint access tokens.
-    refresh_resp = await client.post(
-        REFRESH_URL, cookies={"refresh_token": raw_cookie}
-    )
+    refresh_resp = await client.post(REFRESH_URL, cookies={"refresh_token": raw_cookie})
     assert refresh_resp.status_code == 401, refresh_resp.text
     assert refresh_resp.json()["detail"] == _NEUTRAL_SESSION_DETAIL
 
@@ -158,9 +173,9 @@ async def test_logout_garbage_cookie_returns_200(client):
 
 
 async def test_logout_already_invalidated_cookie_returns_200(
-    client, email_spy, db_session
+    client, email_spy, db_session, session_factory
 ):
-    raw_cookie = await _establish_session(client, email_spy, "alice@example.com")
+    raw_cookie = await _establish_session(client, email_spy, session_factory, "alice@example.com")
 
     session = await _session_for_cookie(db_session, raw_cookie)
     assert session is not None
@@ -185,13 +200,13 @@ async def test_logout_already_invalidated_cookie_returns_200(
 
 
 async def test_logout_all_invalidates_all_user_sessions_only(
-    client, email_spy, db_session
+    client, email_spy, db_session, session_factory
 ):
     # Two sessions for the same user.
-    raw_a1 = await _establish_session(client, email_spy, "user1@example.com")
-    raw_a2 = await _establish_session(client, email_spy, "user1@example.com")
+    raw_a1 = await _establish_session(client, email_spy, session_factory, "user1@example.com")
+    raw_a2 = await _establish_session(client, email_spy, session_factory, "user1@example.com")
     # One session for a different user.
-    raw_b = await _establish_session(client, email_spy, "user2@example.com")
+    raw_b = await _establish_session(client, email_spy, session_factory, "user2@example.com")
 
     assert await _count(db_session, User, email="user1@example.com") == 1
     assert await _count(db_session, Session) == 3
@@ -237,29 +252,25 @@ async def test_logout_all_invalidates_all_user_sessions_only(
 
 
 async def test_logout_all_then_refresh_with_other_session_returns_401(
-    client, email_spy, db_session
+    client, email_spy, db_session, session_factory
 ):
-    raw_a1 = await _establish_session(client, email_spy, "user1@example.com")
-    raw_a2 = await _establish_session(client, email_spy, "user1@example.com")
+    raw_a1 = await _establish_session(client, email_spy, session_factory, "user1@example.com")
+    raw_a2 = await _establish_session(client, email_spy, session_factory, "user1@example.com")
 
-    logout_resp = await client.post(
-        LOGOUT_ALL_URL, cookies={"refresh_token": raw_a1}
-    )
+    logout_resp = await client.post(LOGOUT_ALL_URL, cookies={"refresh_token": raw_a1})
     assert logout_resp.status_code == 200, logout_resp.text
 
     # The OTHER (not-presented) session can no longer refresh.
-    refresh_resp = await client.post(
-        REFRESH_URL, cookies={"refresh_token": raw_a2}
-    )
+    refresh_resp = await client.post(REFRESH_URL, cookies={"refresh_token": raw_a2})
     assert refresh_resp.status_code == 401, refresh_resp.text
     assert refresh_resp.json()["detail"] == _NEUTRAL_SESSION_DETAIL
 
 
 async def test_logout_all_with_already_invalidated_presenting_cookie(
-    client, email_spy, db_session
+    client, email_spy, db_session, session_factory
 ):
-    raw_a1 = await _establish_session(client, email_spy, "user1@example.com")
-    raw_a2 = await _establish_session(client, email_spy, "user1@example.com")
+    raw_a1 = await _establish_session(client, email_spy, session_factory, "user1@example.com")
+    raw_a2 = await _establish_session(client, email_spy, session_factory, "user1@example.com")
 
     # Invalidate the presenting session directly.
     presenting = await _session_for_cookie(db_session, raw_a1)
@@ -277,8 +288,7 @@ async def test_logout_all_with_already_invalidated_presenting_cookie(
     after_a2 = await _session_for_cookie(db_session, raw_a2)
     assert after_a2 is not None
     assert after_a2.invalidated_at is not None, (
-        "other active session not invalidated when presenting an "
-        "already-invalidated cookie"
+        "other active session not invalidated when presenting an already-invalidated cookie"
     )
 
     _assert_cookie_cleared(resp)
@@ -297,9 +307,7 @@ async def test_logout_all_no_cookie_returns_401(client, db_session):
 
 
 async def test_logout_all_garbage_cookie_returns_401(client, db_session):
-    resp = await client.post(
-        LOGOUT_ALL_URL, cookies={"refresh_token": "no-such-session"}
-    )
+    resp = await client.post(LOGOUT_ALL_URL, cookies={"refresh_token": "no-such-session"})
 
     assert resp.status_code == 401, resp.text
     assert resp.json()["detail"] == _NEUTRAL_SESSION_DETAIL

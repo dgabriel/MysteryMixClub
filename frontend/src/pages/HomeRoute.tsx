@@ -1,37 +1,55 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { HomeScreen } from "./HomeScreen";
+import { MyClubsScreen } from "./MyClubsScreen";
+import { ApiError, getClubs, type Club } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 
 /**
- * Protected home route. Wires HomeScreen's session actions to the auth context.
- * Both actions invalidate the session server-side, clear the in-memory token,
- * and return to /login. `busy` disables the controls during the calls.
+ * Protected home route — the My Clubs landing. On mount it first honours a
+ * pending invite path stored before sign-in (the join flow stashes it when an
+ * unauthenticated user follows an invite link), redirecting there instead of
+ * loading clubs. Otherwise it fetches the current user's clubs and wires
+ * MyClubsScreen's actions to navigation. Profile / admin / logout now live in
+ * the shared TopNav, so this route no longer owns them.
  */
 export function HomeRoute() {
   const navigate = useNavigate();
-  const { logout, logoutAll } = useAuth();
-  const [busy, setBusy] = useState(false);
+  const { displayName, preferredService } = useAuth();
+  const [clubs, setClubs] = useState<Club[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  async function handleLogout() {
-    setBusy(true);
-    try {
-      await logout();
-      navigate("/login", { replace: true });
-    } finally {
-      setBusy(false);
+  useEffect(() => {
+    const pending = localStorage.getItem("pendingInvitePath");
+    if (pending) {
+      localStorage.removeItem("pendingInvitePath");
+      navigate(pending, { replace: true });
+      return;
     }
-  }
 
-  async function handleLogoutAll() {
-    setBusy(true);
-    try {
-      await logoutAll();
-      navigate("/login", { replace: true });
-    } finally {
-      setBusy(false);
-    }
-  }
+    void (async () => {
+      try {
+        const result = await getClubs();
+        setClubs(result);
+      } catch (err) {
+        setError(
+          err instanceof ApiError ? err.message : "couldn't load your clubs. try again.",
+        );
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [navigate]);
 
-  return <HomeScreen onLogout={handleLogout} onLogoutAll={handleLogoutAll} busy={busy} />;
+  return (
+    <MyClubsScreen
+      displayName={displayName}
+      clubs={clubs}
+      loading={loading}
+      error={error}
+      preferredService={preferredService}
+      onCreateClub={() => navigate("/clubs/new")}
+      onOpenClub={(id) => navigate(`/clubs/${id}`)}
+    />
+  );
 }

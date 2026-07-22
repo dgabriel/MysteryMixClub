@@ -1,21 +1,56 @@
-"""Tests for MYS-6: POST /api/v1/auth/request (magic link request endpoint).
+"""Tests for MYS-6 + MYS-127: POST /api/v1/auth/request (magic link request).
 
 Covers happy path, edge cases (email normalization, rate-limit boundary),
-and error states (invalid / missing email). See technical-design.md §5, §6.
+error states (invalid / missing email), and the v2 invite-gated sign-up gate
+(MYS-127): a link is only mailed to an EXISTING (non-deleted) user or to someone
+arriving through a valid unexpired invite link; everyone else gets the same
+neutral response with no token persisted and no mail sent. See
+technical-design.md §5, §6.
 """
 
 import re
-from datetime import timedelta
+import uuid
+from datetime import datetime, timedelta, timezone
 
+import pytest_asyncio
 from sqlalchemy import func, select
 
 from app.auth.tokens import hash_token
 from app.config import get_settings
+from app.models.invite import Invite
+from app.models.club import Club
+from app.models.club_member import ClubMember
 from app.models.magic_link_token import MagicLinkToken
+from app.models.user import User
 
 REQUEST_URL = "/api/v1/auth/request"
 NEUTRAL_MESSAGE = "If that email is registered, a sign-in link is on its way."
 SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
+
+
+# The happy-path / rate-limit tests below request links for bare addresses that,
+# under v2 invite-gated sign-up (MYS-127), only receive a link if they already
+# belong to an existing user. Seed those addresses as real accounts so the
+# token-issuing path is exercised. The dedicated gate tests further down seed
+# their own state to assert the gate itself.
+_LEGACY_TEST_EMAILS = (
+    "alice@example.com",
+    "foo@x.com",
+    "boundary@example.com",
+    "busy@example.com",
+    "fresh@example.com",
+)
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _seed_legacy_users(session_factory):
+    """Ensure the bare addresses used by the happy-path/rate-limit tests exist as
+    accounts, so v2 /auth/request issues them a token."""
+    async with session_factory() as db:
+        for email in _LEGACY_TEST_EMAILS:
+            if await db.scalar(select(User).where(User.email == email)) is None:
+                db.add(User(email=email, display_name=""))
+        await db.commit()
 
 
 async def _count_rows(db_session, email: str | None = None) -> int:
@@ -34,7 +69,47 @@ async def test_valid_email_returns_200_neutral_message(client, email_spy):
     resp = await client.post(REQUEST_URL, json={"email": "alice@example.com"})
 
     assert resp.status_code == 200
-    assert resp.json() == {"message": NEUTRAL_MESSAGE}
+    assert resp.json()["message"] == NEUTRAL_MESSAGE
+
+
+async def test_dev_token_returned_outside_production(client, email_spy):
+    # Tests run with environment != "production", so the raw token is handed back
+    # for dev/staging UIs. It must match the link the email sender received.
+    resp = await client.post(REQUEST_URL, json={"email": "alice@example.com"})
+
+    assert resp.status_code == 200
+    dev_token = resp.json()["dev_token"]
+    assert dev_token
+    assert email_spy.calls[0][1].endswith(f"/auth/verify?token={dev_token}")
+
+
+async def test_dev_token_absent_in_production(session_factory, email_spy):
+    # In production the token must never be exposed in the response body.
+    from httpx import ASGITransport, AsyncClient
+
+    from app.config import Settings, get_settings
+    from app.db.session import get_db
+    from app.main import create_app
+    from app.services.email import get_email_sender
+
+    app = create_app()
+
+    async def _override_db():
+        async with session_factory() as session:
+            yield session
+
+    app.dependency_overrides[get_db] = _override_db
+    app.dependency_overrides[get_email_sender] = lambda: email_spy
+    app.dependency_overrides[get_settings] = lambda: Settings(environment="production")
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        # alice is an existing user (seeded by the autouse fixture), so the gate
+        # lets the request through; the assertion is only about dev_token secrecy.
+        resp = await ac.post(REQUEST_URL, json={"email": "alice@example.com"})
+
+    assert resp.status_code == 200
+    assert "dev_token" not in resp.json()
 
 
 async def test_valid_email_inserts_exactly_one_row(client, db_session):
@@ -43,9 +118,7 @@ async def test_valid_email_inserts_exactly_one_row(client, db_session):
     assert await _count_rows(db_session) == 1
 
 
-async def test_stored_token_hash_is_sha256_and_raw_not_stored(
-    client, db_session, email_spy
-):
+async def test_stored_token_hash_is_sha256_and_raw_not_stored(client, db_session, email_spy):
     await client.post(REQUEST_URL, json={"email": "alice@example.com"})
 
     row = (await db_session.execute(select(MagicLinkToken))).scalar_one()
@@ -185,4 +258,276 @@ async def test_empty_email_string_returns_422(client, db_session):
 
 async def test_no_email_sent_on_validation_error(client, email_spy):
     await client.post(REQUEST_URL, json={"email": "notanemail"})
+    assert email_spy.call_count == 0
+
+
+# --------------------------------------------------------------------------- #
+# Email delivery failure must not take down sign-in (the token is already
+# persisted; outside production the dev_token still lets the UI sign in).
+# --------------------------------------------------------------------------- #
+
+
+class _FailingEmailSender:
+    """Email sender that always raises, simulating an unverified-domain / outage."""
+
+    def send_magic_link(self, email: str, link: str) -> None:
+        raise RuntimeError("domain is not verified")
+
+    def send(self, email, subject, html, headers=None) -> None:
+        raise RuntimeError("domain is not verified")
+
+
+async def _client_with_failing_email(session_factory, environment: str):
+    from httpx import ASGITransport, AsyncClient
+
+    from app.config import Settings, get_settings
+    from app.db.session import get_db
+    from app.main import create_app
+    from app.services.email import get_email_sender
+
+    app = create_app()
+
+    async def _override_db():
+        async with session_factory() as session:
+            yield session
+
+    app.dependency_overrides[get_db] = _override_db
+    app.dependency_overrides[get_email_sender] = lambda: _FailingEmailSender()
+    app.dependency_overrides[get_settings] = lambda: Settings(environment=environment)
+    return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+
+
+async def test_send_failure_outside_production_still_succeeds_with_dev_token(
+    session_factory, db_session
+):
+    async with await _client_with_failing_email(session_factory, "staging") as ac:
+        resp = await ac.post(REQUEST_URL, json={"email": "alice@example.com"})
+
+    # Delivery failed, but sign-in is not blocked: 200 + a usable dev_token.
+    assert resp.status_code == 200
+    assert resp.json()["dev_token"]
+    # The token row was still persisted (it is created before the send).
+    assert await _count_rows(db_session, "alice@example.com") == 1
+
+
+async def test_send_failure_in_production_returns_502(session_factory, db_session):
+    async with await _client_with_failing_email(session_factory, "production") as ac:
+        resp = await ac.post(REQUEST_URL, json={"email": "alice@example.com"})
+
+    # In production email is the only way in, so surface a clean 502 (not a raw 500).
+    assert resp.status_code == 502
+    assert "dev_token" not in resp.json()
+
+
+# --------------------------------------------------------------------------- #
+# Invite-gated sign-up (MYS-127)
+#
+# A magic-link request is honored only if the email belongs to an existing
+# (non-deleted) user, OR a valid unexpired invite_token is supplied. Otherwise
+# the SAME neutral response is returned with NO token persisted and NO email
+# sent — both anti-bot (no open sign-up) and anti-enumeration. A valid invite
+# token rides through to /auth/verify on the link's &invite= so the new account
+# is joined to that club.
+# --------------------------------------------------------------------------- #
+
+
+async def _seed_invite(db_session, *, expires_at: datetime | None) -> str:
+    """Seed an organizer + club + shareable invite and return its token."""
+    organizer = User(email="org@example.com", display_name="Org")
+    db_session.add(organizer)
+    await db_session.flush()
+    club = Club(
+        name="Invited Club",
+        organizer_id=organizer.id,
+        total_mixes=3,
+        votes_per_player=3,
+        state="active",
+    )
+    db_session.add(club)
+    await db_session.flush()
+    db_session.add(ClubMember(club_id=club.id, user_id=organizer.id))
+    token = "tok_" + uuid.uuid4().hex
+    db_session.add(
+        Invite(
+            club_id=club.id,
+            created_by=organizer.id,
+            token=token,
+            expires_at=expires_at,
+        )
+    )
+    await db_session.commit()
+    return token
+
+
+async def _seed_email_locked_invite(db_session, *, email: str) -> str:
+    """Seed a waitlist-style platform invite (MYS-215) locked to ``email``."""
+    admin = User(email="admin@example.com", display_name="Admin")
+    db_session.add(admin)
+    await db_session.flush()
+    token = "tok_" + uuid.uuid4().hex
+    db_session.add(Invite(club_id=None, created_by=admin.id, token=token, email=email))
+    await db_session.commit()
+    return token
+
+
+async def test_existing_user_without_invite_issues_token(client, db_session, email_spy):
+    # alice is seeded as an existing user; she signs in with no invite at all.
+    resp = await client.post(REQUEST_URL, json={"email": "alice@example.com"})
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["dev_token"]
+    assert await _count_rows(db_session, "alice@example.com") == 1
+    assert email_spy.call_count == 1
+
+
+async def test_new_email_without_invite_gets_neutral_no_token_no_email(
+    client, db_session, email_spy
+):
+    # A brand-new address with no invite is the open-sign-up case the gate blocks.
+    resp = await client.post(REQUEST_URL, json={"email": "stranger@example.com"})
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["message"] == NEUTRAL_MESSAGE
+    assert "dev_token" not in body
+    assert await _count_rows(db_session, "stranger@example.com") == 0
+    assert email_spy.call_count == 0
+
+
+async def test_new_email_with_valid_invite_issues_token_and_carries_invite(
+    client, db_session, email_spy
+):
+    token = await _seed_invite(db_session, expires_at=None)
+
+    resp = await client.post(
+        REQUEST_URL, json={"email": "invitee@example.com", "invite_token": token}
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["dev_token"]
+    assert await _count_rows(db_session, "invitee@example.com") == 1
+    assert email_spy.call_count == 1
+    # The link carries the invite token through to verify so the new account is
+    # joined to the club on sign-in.
+    _, link = email_spy.calls[-1]
+    assert f"&invite={token}" in link
+
+
+async def test_new_email_with_unexpired_dated_invite_issues_token(client, db_session, email_spy):
+    token = await _seed_invite(
+        db_session, expires_at=datetime.now(timezone.utc) + timedelta(hours=24)
+    )
+
+    resp = await client.post(
+        REQUEST_URL, json={"email": "invitee@example.com", "invite_token": token}
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["dev_token"]
+    assert await _count_rows(db_session, "invitee@example.com") == 1
+
+
+async def test_new_email_with_expired_invite_gets_neutral_no_token(client, db_session, email_spy):
+    token = await _seed_invite(
+        db_session, expires_at=datetime.now(timezone.utc) - timedelta(minutes=1)
+    )
+
+    resp = await client.post(
+        REQUEST_URL, json={"email": "invitee@example.com", "invite_token": token}
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert "dev_token" not in resp.json()
+    assert await _count_rows(db_session, "invitee@example.com") == 0
+    assert email_spy.call_count == 0
+
+
+async def test_new_email_with_unknown_invite_token_gets_neutral_no_token(
+    client, db_session, email_spy
+):
+    resp = await client.post(
+        REQUEST_URL,
+        json={"email": "invitee@example.com", "invite_token": "no-such-invite"},
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert "dev_token" not in resp.json()
+    assert await _count_rows(db_session, "invitee@example.com") == 0
+    assert email_spy.call_count == 0
+
+
+async def test_soft_deleted_user_without_invite_gets_neutral(client, db_session, email_spy):
+    # A soft-deleted account no longer counts as an existing user for the gate.
+    db_session.add(
+        User(
+            email="ghost@example.com",
+            display_name="Ghost",
+            deleted_at=datetime.now(timezone.utc),
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.post(REQUEST_URL, json={"email": "ghost@example.com"})
+
+    assert resp.status_code == 200, resp.text
+    assert "dev_token" not in resp.json()
+    assert await _count_rows(db_session, "ghost@example.com") == 0
+    assert email_spy.call_count == 0
+
+
+async def test_existing_user_link_omits_invite_when_no_token_supplied(
+    client, db_session, email_spy
+):
+    # An existing user signing in without an invite token gets a plain link.
+    resp = await client.post(REQUEST_URL, json={"email": "alice@example.com"})
+
+    assert resp.status_code == 200, resp.text
+    _, link = email_spy.calls[-1]
+    assert "&invite=" not in link
+
+
+# --------------------------------------------------------------------------- #
+# Email-locked invite (MYS-215): a waitlist-issued invite only validates for
+# the address it was minted for.
+# --------------------------------------------------------------------------- #
+
+
+async def test_email_locked_invite_issues_token_for_matching_email(client, db_session, email_spy):
+    token = await _seed_email_locked_invite(db_session, email="waiter@example.com")
+
+    resp = await client.post(
+        REQUEST_URL, json={"email": "waiter@example.com", "invite_token": token}
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["dev_token"]
+    assert await _count_rows(db_session, "waiter@example.com") == 1
+
+
+async def test_email_locked_invite_is_case_insensitive(client, db_session, email_spy):
+    token = await _seed_email_locked_invite(db_session, email="waiter@example.com")
+
+    resp = await client.post(
+        REQUEST_URL, json={"email": "Waiter@Example.com", "invite_token": token}
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["dev_token"]
+
+
+async def test_email_locked_invite_rejects_mismatched_email_neutrally(
+    client, db_session, email_spy
+):
+    # Someone else typing a different address with the same token gets the
+    # same neutral no-send response as no invite at all — the mismatch can't
+    # be distinguished from "no invite" (anti-enumeration, TD 5).
+    token = await _seed_email_locked_invite(db_session, email="waiter@example.com")
+
+    resp = await client.post(
+        REQUEST_URL, json={"email": "someoneelse@example.com", "invite_token": token}
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert "dev_token" not in resp.json()
+    assert await _count_rows(db_session, "someoneelse@example.com") == 0
     assert email_spy.call_count == 0

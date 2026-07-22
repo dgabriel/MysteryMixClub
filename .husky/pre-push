@@ -1,5 +1,13 @@
 #!/usr/bin/env sh
 
+# Skip checks when only deleting remote branches (local SHA is all zeros on deletions)
+zero_sha="0000000000000000000000000000000000000000"
+pushing_code=0
+while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$local_sha" != "$zero_sha" ] && pushing_code=1
+done
+[ "$pushing_code" -eq 0 ] && exit 0
+
 # Frontend type safety
 npm --prefix frontend run typecheck
 

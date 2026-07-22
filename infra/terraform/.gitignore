@@ -1,0 +1,16 @@
+# Local provider/module cache
+.terraform/
+
+# State — MUST NOT be committed (may contain secrets); use a remote backend.
+*.tfstate
+*.tfstate.*
+.terraform.tfstate.lock.info
+
+# Crash logs, override files, CLI var files
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+*.tfvars.local

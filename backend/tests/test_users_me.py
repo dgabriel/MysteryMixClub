@@ -1,0 +1,464 @@
+"""Tests for MYS-26: get_current_user Bearer dependency + GET/PATCH /users/me.
+
+Covers the auth dependency (exercised via GET /users/me): valid token, missing
+header, garbage token, expired token, well-formed-UUID-but-no-user, and
+soft-deleted user. Then GET /users/me response shape, PATCH happy/partial paths,
+validation rejections, and the explicit-null edge case against the NOT NULL
+columns. See technical-design.md §5 (auth) and §6 (users data model).
+"""
+
+import uuid
+from datetime import datetime, timedelta, timezone
+
+import pytest
+from jose import jwt
+from sqlalchemy import select
+
+from app.auth.jwt import create_access_token
+from app.config import get_settings
+from app.models.user import User
+
+ME_URL = "/api/v1/users/me"
+_JWT_ALGORITHM = "HS256"
+
+
+# --------------------------------------------------------------------------- #
+# Helpers
+# --------------------------------------------------------------------------- #
+
+
+async def _seed_user(db_session, **overrides) -> User:
+    """Insert and commit a User, returning it. display_name is NOT NULL."""
+    defaults = {
+        "email": "alice@example.com",
+        "display_name": "Alice",
+        "preferred_service": None,
+    }
+    defaults.update(overrides)
+    user = User(**defaults)
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    return user
+
+
+def _auth_header(user_id: uuid.UUID) -> dict[str, str]:
+    return {"Authorization": f"Bearer {create_access_token(user_id)}"}
+
+
+def _expired_token(user_id: uuid.UUID) -> str:
+    """Mint a structurally valid JWT whose exp is in the past."""
+    past = datetime.now(timezone.utc) - timedelta(minutes=5)
+    claims = {
+        "sub": str(user_id),
+        "iat": int((past - timedelta(minutes=60)).timestamp()),
+        "exp": int(past.timestamp()),
+    }
+    return jwt.encode(claims, get_settings().secret_key, algorithm=_JWT_ALGORITHM)
+
+
+# --------------------------------------------------------------------------- #
+# Auth dependency (exercised via GET /users/me)
+# --------------------------------------------------------------------------- #
+
+
+async def test_valid_token_returns_200_and_profile(client, db_session):
+    user = await _seed_user(db_session)
+
+    resp = await client.get(ME_URL, headers=_auth_header(user.id))
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["display_name"] == "Alice"
+    assert body["email"] == "alice@example.com"
+
+
+async def test_missing_authorization_header_returns_401(client):
+    resp = await client.get(ME_URL)
+
+    assert resp.status_code == 401, resp.text
+    assert resp.json()["detail"] == "not authenticated"
+
+
+async def test_garbage_token_returns_401(client):
+    resp = await client.get(ME_URL, headers={"Authorization": "Bearer not-a-jwt"})
+
+    assert resp.status_code == 401, resp.text
+    assert resp.json()["detail"] == "not authenticated"
+
+
+async def test_expired_token_returns_401(client, db_session):
+    user = await _seed_user(db_session)
+    token = _expired_token(user.id)
+
+    resp = await client.get(ME_URL, headers={"Authorization": f"Bearer {token}"})
+
+    assert resp.status_code == 401, resp.text
+    assert resp.json()["detail"] == "not authenticated"
+
+
+async def test_token_for_nonexistent_user_returns_401(client, db_session):
+    # Well-formed UUID sub, but no such user row exists.
+    token = create_access_token(uuid.uuid4())
+
+    resp = await client.get(ME_URL, headers={"Authorization": f"Bearer {token}"})
+
+    assert resp.status_code == 401, resp.text
+    assert resp.json()["detail"] == "not authenticated"
+
+
+async def test_soft_deleted_user_returns_401(client, db_session):
+    user = await _seed_user(db_session, deleted_at=datetime.now(timezone.utc) - timedelta(days=1))
+
+    resp = await client.get(ME_URL, headers=_auth_header(user.id))
+
+    assert resp.status_code == 401, resp.text
+    assert resp.json()["detail"] == "not authenticated"
+
+
+# --------------------------------------------------------------------------- #
+# GET /users/me
+# --------------------------------------------------------------------------- #
+
+
+async def test_get_me_returns_exact_profile_shape(client, db_session):
+    user = await _seed_user(
+        db_session,
+        email="bob@example.com",
+        display_name="Bob",
+        preferred_service=None,
+    )
+
+    user_id = user.id
+
+    resp = await client.get(ME_URL, headers=_auth_header(user_id))
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert set(body.keys()) == {
+        "id",
+        "display_name",
+        "email",
+        "preferred_service",
+        "email_notifications",
+        "is_platform_admin",
+        "tos_accepted",
+    }
+    assert body["id"] == str(user_id)
+    assert body["display_name"] == "Bob"
+    assert body["email"] == "bob@example.com"
+    assert body["preferred_service"] is None
+    # Bob is not on SEED_ADMIN_EMAILS (empty by default in the client fixture).
+    assert body["is_platform_admin"] is False
+    # A fresh user has not accepted the Terms/Privacy Policy yet (MYS-183).
+    assert body["tos_accepted"] is False
+
+
+async def test_get_me_includes_user_id(client, db_session):
+    """MYS-35: GET /users/me surfaces the user's id, serialized as a string."""
+    user = await _seed_user(db_session, email="carol@example.com", display_name="Carol")
+    user_id = user.id
+
+    resp = await client.get(ME_URL, headers=_auth_header(user_id))
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["id"] == str(user_id)
+    assert isinstance(body["id"], str)
+    assert body["id"] != ""
+
+
+class TestPlatformAdminFlag:
+    """MYS-128: is_platform_admin is derived from SEED_ADMIN_EMAILS."""
+
+    @pytest.fixture
+    def seed_admin_emails(self) -> str:
+        return "boss@example.com"
+
+    async def test_admin_email_reports_is_platform_admin_true(self, client, db_session):
+        admin = await _seed_user(db_session, email="boss@example.com", display_name="Boss")
+
+        resp = await client.get(ME_URL, headers=_auth_header(admin.id))
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["is_platform_admin"] is True
+
+    async def test_admin_match_is_case_insensitive(self, client, db_session):
+        # Stored email differs in case from the seed list; still recognized.
+        admin = await _seed_user(db_session, email="Boss@Example.com", display_name="Boss")
+
+        resp = await client.get(ME_URL, headers=_auth_header(admin.id))
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["is_platform_admin"] is True
+
+    async def test_non_admin_email_reports_false_even_with_seed_set(self, client, db_session):
+        plain = await _seed_user(db_session, email="nobody@example.com", display_name="Nobody")
+
+        resp = await client.get(ME_URL, headers=_auth_header(plain.id))
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["is_platform_admin"] is False
+
+
+# --------------------------------------------------------------------------- #
+# PATCH /users/me — happy path
+# --------------------------------------------------------------------------- #
+
+
+async def test_patch_updates_all_fields_and_persists(client, db_session):
+    user = await _seed_user(
+        db_session,
+        display_name="Alice",
+        preferred_service=None,
+    )
+    user_id = user.id
+
+    resp = await client.patch(
+        ME_URL,
+        headers=_auth_header(user_id),
+        json={
+            "display_name": "  Alice Cooper  ",
+            "preferred_service": "spotify",
+        },
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    # display_name is trimmed by StringConstraints(strip_whitespace=True).
+    assert body["display_name"] == "Alice Cooper"
+    assert body["preferred_service"] == "spotify"
+
+    db_session.expire_all()
+    fresh = await db_session.scalar(select(User).where(User.id == user_id))
+    assert fresh.display_name == "Alice Cooper"
+    assert fresh.preferred_service == "spotify"
+
+
+async def test_patch_partial_leaves_omitted_fields_untouched(client, db_session):
+    user = await _seed_user(
+        db_session,
+        display_name="Original Name",
+        preferred_service="deezer",
+    )
+    user_id = user.id
+
+    resp = await client.patch(
+        ME_URL,
+        headers=_auth_header(user_id),
+        json={"display_name": "New Name"},
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["display_name"] == "New Name"
+    # Omitted fields unchanged.
+    assert body["preferred_service"] == "deezer"
+
+    db_session.expire_all()
+    fresh = await db_session.scalar(select(User).where(User.id == user_id))
+    assert fresh.display_name == "New Name"
+    assert fresh.preferred_service == "deezer"
+
+
+# --------------------------------------------------------------------------- #
+# PATCH /users/me — id is read-only / not client-writable (MYS-35)
+# --------------------------------------------------------------------------- #
+
+
+async def test_patch_cannot_change_id(client, db_session):
+    """A client-supplied `id` must not mutate the user's primary key.
+
+    UserProfileUpdate is a plain Pydantic model with no extra-field config, so
+    Pydantic silently IGNORES the unknown `id` field (no 422) and it is never
+    applied. The endpoint returns 200 with the original id, and the persisted
+    id is unchanged.
+    """
+    user = await _seed_user(db_session)
+    original_id = user.id
+    other_id = uuid.uuid4()
+    assert other_id != original_id
+
+    resp = await client.patch(
+        ME_URL,
+        headers=_auth_header(original_id),
+        json={"id": str(other_id)},
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    # Response surfaces the unchanged id, not the attacker-supplied one.
+    assert body["id"] == str(original_id)
+    assert body["id"] != str(other_id)
+
+    # Persisted id is untouched.
+    db_session.expire_all()
+    fresh = await db_session.scalar(select(User).where(User.id == original_id))
+    assert fresh is not None
+    assert fresh.id == original_id
+
+    # The other id never came into existence.
+    assert await db_session.scalar(select(User).where(User.id == other_id)) is None
+
+
+# --------------------------------------------------------------------------- #
+# PATCH /users/me — validation rejections (422)
+# --------------------------------------------------------------------------- #
+
+
+async def test_patch_empty_display_name_returns_422(client, db_session):
+    user = await _seed_user(db_session)
+
+    resp = await client.patch(ME_URL, headers=_auth_header(user.id), json={"display_name": ""})
+
+    assert resp.status_code == 422, resp.text
+
+
+async def test_patch_whitespace_only_display_name_returns_422(client, db_session):
+    user = await _seed_user(db_session)
+
+    resp = await client.patch(ME_URL, headers=_auth_header(user.id), json={"display_name": "   "})
+
+    assert resp.status_code == 422, resp.text
+
+
+async def test_patch_display_name_too_long_returns_422(client, db_session):
+    user = await _seed_user(db_session)
+
+    resp = await client.patch(
+        ME_URL, headers=_auth_header(user.id), json={"display_name": "x" * 51}
+    )
+
+    assert resp.status_code == 422, resp.text
+
+
+async def test_patch_invalid_preferred_service_returns_422(client, db_session):
+    user = await _seed_user(db_session)
+
+    resp = await client.patch(
+        ME_URL,
+        headers=_auth_header(user.id),
+        json={"preferred_service": "applemusic"},
+    )
+
+    assert resp.status_code == 422, resp.text
+
+
+# --------------------------------------------------------------------------- #
+# PATCH /users/me — explicit-null edge case (NOT NULL columns)
+# --------------------------------------------------------------------------- #
+
+
+# display_name maps to a NOT NULL column. UserProfileUpdate's
+# `_reject_explicit_null` model_validator rejects an explicitly provided JSON null
+# for it with a 422 (omission is still allowed for partial updates).
+# preferred_service is nullable, so an explicit null is accepted.
+
+
+async def test_patch_explicit_null_display_name_returns_422(client, db_session):
+    """Explicit null on NOT NULL display_name is rejected with 422."""
+    user = await _seed_user(db_session)
+
+    resp = await client.patch(ME_URL, headers=_auth_header(user.id), json={"display_name": None})
+
+    assert resp.status_code == 422
+
+
+async def test_patch_explicit_null_preferred_service_returns_200(client, db_session):
+    """preferred_service is nullable: explicit null is accepted and clears it."""
+    user = await _seed_user(db_session, preferred_service="spotify")
+    user_id = user.id
+
+    resp = await client.patch(
+        ME_URL, headers=_auth_header(user_id), json={"preferred_service": None}
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["preferred_service"] is None
+
+    db_session.expire_all()
+    fresh = await db_session.scalar(select(User).where(User.id == user_id))
+    assert fresh.preferred_service is None
+
+
+# --------------------------------------------------------------------------- #
+# PATCH /users/me — accept_terms (MYS-183 consent capture)
+# --------------------------------------------------------------------------- #
+
+
+async def test_patch_accept_terms_stamps_tos_accepted_and_reports_true(client, db_session):
+    user = await _seed_user(db_session)
+    user_id = user.id
+
+    resp = await client.patch(ME_URL, headers=_auth_header(user_id), json={"accept_terms": True})
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["tos_accepted"] is True
+
+    db_session.expire_all()
+    fresh = await db_session.scalar(select(User).where(User.id == user_id))
+    assert fresh.tos_accepted_at is not None
+
+
+async def test_patch_accept_terms_false_returns_422(client, db_session):
+    """There's no client-initiated "unaccept" — false is not a valid value."""
+    user = await _seed_user(db_session)
+
+    resp = await client.patch(ME_URL, headers=_auth_header(user.id), json={"accept_terms": False})
+
+    assert resp.status_code == 422, resp.text
+
+
+async def test_patch_omitting_accept_terms_leaves_unaccepted(client, db_session):
+    user = await _seed_user(db_session)
+    user_id = user.id
+
+    resp = await client.patch(
+        ME_URL, headers=_auth_header(user_id), json={"display_name": "Renamed"}
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["tos_accepted"] is False
+
+    db_session.expire_all()
+    fresh = await db_session.scalar(select(User).where(User.id == user_id))
+    assert fresh.tos_accepted_at is None
+
+
+async def test_patch_accept_terms_ignores_any_client_supplied_timestamp(client, db_session):
+    """The server always stamps its own time; a client can't backdate/forge one.
+
+    accept_terms is a bare boolean in the schema, so a client attempt to smuggle
+    a timestamp value is simply an invalid boolean and rejected outright.
+    """
+    user = await _seed_user(db_session)
+
+    resp = await client.patch(
+        ME_URL,
+        headers=_auth_header(user.id),
+        json={"accept_terms": "2020-01-01T00:00:00Z"},
+    )
+
+    assert resp.status_code == 422, resp.text
+
+
+async def test_patch_accept_terms_combined_with_other_fields(client, db_session):
+    """MYS-183: the onboarding screen submits display_name and accept_terms together."""
+    user = await _seed_user(db_session, display_name="")
+    user_id = user.id
+
+    resp = await client.patch(
+        ME_URL,
+        headers=_auth_header(user_id),
+        json={"display_name": "New User", "accept_terms": True},
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["display_name"] == "New User"
+    assert body["tos_accepted"] is True
+
+    db_session.expire_all()
+    fresh = await db_session.scalar(select(User).where(User.id == user_id))
+    assert fresh.display_name == "New User"
+    assert fresh.tos_accepted_at is not None

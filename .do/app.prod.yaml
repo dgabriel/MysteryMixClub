@@ -37,10 +37,85 @@ services:
       - key: SECRET_KEY
         scope: RUN_TIME
         type: SECRET
+      # YouTube Data API key for the round playlist link (MYS-78). Optional —
+      # the app degrades gracefully (no link) when unset. Set the value in the
+      # DO dashboard / doctl, never here.
+      - key: YOUTUBE_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+      # Spotify per-user OAuth playlist creation (MYS-83). Optional — the feature
+      # is hidden when unset. SPOTIFY_REDIRECT_URI must match a redirect URI
+      # registered on the Spotify app and point at this API's /spotify/callback.
+      # Set the secret values in the DO dashboard / doctl, never here.
+      - key: SPOTIFY_CLIENT_ID
+        scope: RUN_TIME
+        type: SECRET
+      - key: SPOTIFY_CLIENT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: SPOTIFY_REDIRECT_URI
+        scope: RUN_TIME
+        type: SECRET
+      # Shared-account playlist generation (MYS-169). UUID of the app user whose
+      # spotify_connections row is the dedicated MysteryMixClub Spotify account —
+      # see .env.example at repo root. Set the value in the DO dashboard / doctl.
+      - key: SPOTIFY_PLAYLIST_ACCOUNT_USER_ID
+        scope: RUN_TIME
+        type: SECRET
+      # Resend API key for transactional + lifecycle email (MYS-109/123). Without
+      # it the app falls back to ConsoleEmailSender (logs only, no real send). Set
+      # the value in the DO dashboard / doctl, never here.
+      - key: RESEND_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+      # Apple Music, per-player library playlists + exact ISRC link matching
+      # (MYS-104/105/106/108). All three are required together: with any of them
+      # unset the Apple UI renders nothing and Apple links fall back to the
+      # keyless iTunes lookup — a normal, supported state, not an error.
+      # APPLE_MUSIC_PRIVATE_KEY is the .p8 PEM; DO accepts it multi-line, and the
+      # app also un-escapes literal \n if it is pasted as a single line.
+      # Set all three in the DO dashboard / doctl, never here.
+      - key: APPLE_MUSIC_TEAM_ID
+        scope: RUN_TIME
+        type: SECRET
+      - key: APPLE_MUSIC_KEY_ID
+        scope: RUN_TIME
+        type: SECRET
+      - key: APPLE_MUSIC_PRIVATE_KEY
+        scope: RUN_TIME
+        type: SECRET
+      # Points the unsubscribe link/header at the API host. Without it the app
+      # falls back to APP_BASE_URL (the frontend host). Bound to this api
+      # component's public URL.
+      - key: API_BASE_URL
+        scope: RUN_TIME
+        type: GENERAL
+        value: ${api.PUBLIC_URL}
       - key: ENVIRONMENT
         scope: RUN_TIME
         type: GENERAL
         value: production
+
+jobs:
+  # Runs DB migrations before the new code goes live. DO runs PRE_DEPLOY jobs to
+  # completion before deploying the services, so the schema is always upgraded
+  # ahead of the api service that depends on it. Bound to the same managed db.
+  - name: migrate
+    kind: PRE_DEPLOY
+    source_dir: backend
+    github:
+      repo: dgabriel/MysteryMixClub
+      branch: main
+      deploy_on_push: false
+    environment_slug: python
+    instance_size_slug: basic-xxs
+    run_command: alembic upgrade head
+    envs:
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+        # Bound to the managed database component defined below.
+        value: ${db.DATABASE_URL}
 
 static_sites:
   # The frontend is a Vite SPA, so on App Platform it is a static site

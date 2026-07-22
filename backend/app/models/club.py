@@ -1,0 +1,61 @@
+import uuid
+from datetime import datetime
+from typing import Optional
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func, text
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.db.base import Base
+
+
+class Club(Base):
+    # Renamed from League (MYS-195, R3/R4 identifier cleanup) — the DB was
+    # already renamed to club/mix vocabulary in MYS-196, so the attribute names
+    # now match the column names directly with no seam.
+    __tablename__ = "clubs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    # Nullable: hard-purging an account (MYS-50) nulls the organizer of any
+    # completed clubs it organized, preserving other members' history.
+    organizer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
+    )
+    total_mixes: Mapped[int] = mapped_column(Integer, nullable=False)
+    votes_per_player: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=3, server_default=text("3")
+    )
+    # Admin-set cap on how many songs a player may submit per mix (MYS-116).
+    # Chosen once at club setup and applied to every mix; 1..5, default 1
+    # (one song = today's behaviour). Enforced in the submission endpoint.
+    songs_per_submission: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default=text("1")
+    )
+    current_mix: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    state: Mapped[str] = mapped_column(
+        String, nullable=False, default="active", server_default=text("'active'")
+    )
+    # Deadline windows (in hours) for the club's mixes (MYS-159). A mix closes on
+    # quorum OR its deadline, whichever comes first (epic MYS-158); when a mix
+    # opens, these seed its submission_deadline / voting_deadline. Organizer-set,
+    # hour-granular, 4..168 (1 week), default 72 (3 days).
+    submission_window_hours: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=72, server_default=text("72")
+    )
+    voting_window_hours: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=72, server_default=text("72")
+    )
+    # Admin-set default participation mode for the club (MYS-112). Seeds each
+    # member's club_members.vibe_mode at join; per-mix overrides live on the
+    # submission's participation_mode.
+    default_vibe_mode: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

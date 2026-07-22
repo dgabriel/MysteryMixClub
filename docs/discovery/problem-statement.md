@@ -1,3 +1,5 @@
+> Terminology: this document predates the July 2026 rename — "league" is now "club", "round" is now "mystery mix" (internal: mix).
+
 # MysteryMixClub — Problem Statement
 
 **Document type:** Discovery  

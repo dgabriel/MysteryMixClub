@@ -1,0 +1,359 @@
+# Staging environment — DigitalOcean Droplet
+
+Staging runs on a single **$6/mo Ubuntu 24.04 Droplet** (IaaS), not DigitalOcean
+App Platform. The frontend build is served by Nginx; the FastAPI backend runs
+under systemd behind an Nginx reverse proxy; Postgres runs locally on the box.
+Production still deploys via App Platform — see [`ci-cd.md`](ci-cd.md).
+
+```
+ push to develop ─► deploy-staging.yml ─► ssh ─► scripts/deploy-staging.sh
+                                                  ├─ git pull develop
+                                                  ├─ pip install -e . + alembic upgrade
+                                                  ├─ systemctl restart mysterymixclub-api
+                                                  └─ npm ci && npm run build → /var/www/mysterymixclub
+```
+
+| Thing            | Value                                            |
+|------------------|--------------------------------------------------|
+| Service user     | `mysterymixclub`                                 |
+| App checkout     | `/home/mysterymixclub/app` (branch `develop`)    |
+| Backend venv     | `/home/mysterymixclub/app/backend/.venv`         |
+| Web root         | `/var/www/mysterymixclub`                        |
+| Runtime env file | `/etc/mysterymixclub/staging.env`                |
+| systemd unit     | `mysterymixclub-api` (uvicorn on `127.0.0.1:8000`) |
+| Nginx site       | `/etc/nginx/sites-available/mysterymixclub-staging` |
+| Basic-auth file  | `/etc/nginx/.htpasswd-mmc-staging` (user `mmctest`) |
+
+---
+
+## Prerequisites
+
+1. A **$6/mo Ubuntu 24.04 Droplet** created in DigitalOcean; note its public IP.
+2. Your **SSH key** added to the Droplet (you can `ssh root@<ip>`).
+3. No domain required for now — staging runs HTTPS on the raw IP with a
+   self-signed cert (step 4). Add a domain later to switch to Let's Encrypt
+   (step 5).
+
+---
+
+## 1. Bootstrap the Droplet (one time)
+
+Copy the repo's `scripts/` to the box (or clone it) and run the bootstrap as
+root, passing the staging DB password in the environment:
+
+```bash
+# from your machine
+scp -r scripts root@<DROPLET_IP>:/root/
+
+# on the Droplet
+STAGING_DB_PASSWORD='choose-a-strong-password' \
+  sudo -E bash /root/scripts/bootstrap-droplet.sh
+```
+
+This installs packages, creates the `mysterymixclub` user, the `mysterymixclub_staging`
+Postgres database + `mmc_staging` role, clones the repo to
+`/home/mysterymixclub/app`, builds the backend venv, and opens ports 22/80/443.
+It is idempotent — safe to re-run.
+
+> Optional overrides (env vars): `STAGING_DB_NAME`, `STAGING_DB_USER`,
+> `REPO_URL`, `REPO_BRANCH`, `APP_ROOT`, `WEB_ROOT`.
+
+---
+
+## 2. Populate the runtime env file
+
+```bash
+sudo cp /home/mysterymixclub/app/scripts/staging.env.example \
+        /etc/mysterymixclub/staging.env
+sudo nano /etc/mysterymixclub/staging.env
+```
+
+Fill in at least:
+
+- `DATABASE_URL` — use the `STAGING_DB_PASSWORD` you chose in step 1, e.g.
+  `postgresql+asyncpg://mmc_staging:<password>@localhost:5432/mysterymixclub_staging`
+- `SECRET_KEY` — generate with
+  `python3 -c "import secrets; print(secrets.token_urlsafe(64))"`
+- `RESEND_API_KEY` — set this so magic-link emails are actually sent. If left
+  empty, links are only written to the service journal (see Troubleshooting).
+- `APPLE_MUSIC_TEAM_ID` / `APPLE_MUSIC_KEY_ID` / `APPLE_MUSIC_PRIVATE_KEY` —
+  optional, but **all three or none**: with any unset the Apple Music UI renders
+  nothing and Apple links fall back to the keyless iTunes lookup. The private key
+  must be a single line here, quoted, with literal `\n` between PEM lines. See
+  "Enabling Apple Music" below.
+- `ALLOWED_ORIGINS` / `APP_BASE_URL` — your staging URL.
+- `VITE_API_BASE_URL` — leave **empty**. The SPA then calls the API same-origin
+  (relative `/api/v1/...`), which nginx proxies to the backend. An absolute host
+  here (e.g. `http://localhost:8000`) would resolve against the visitor's own
+  browser and fail.
+
+Lock it down:
+
+```bash
+sudo chmod 640 /etc/mysterymixclub/staging.env
+sudo chown root:mysterymixclub /etc/mysterymixclub/staging.env
+```
+
+---
+
+## 3. Install the systemd service
+
+```bash
+sudo cp /home/mysterymixclub/app/scripts/mysterymixclub-api.service \
+        /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now mysterymixclub-api
+sudo systemctl status mysterymixclub-api      # should be active (running)
+```
+
+Apply the first migration and confirm the API answers locally:
+
+```bash
+sudo -u mysterymixclub bash -c '
+  cd /home/mysterymixclub/app/backend &&
+  set -a && source /etc/mysterymixclub/staging.env && set +a &&
+  .venv/bin/alembic upgrade head'
+curl -s http://127.0.0.1:8000/api/v1/healthz   # -> {"status":"ok"}
+```
+
+---
+
+## 4. TLS cert + Nginx site + basic auth
+
+The site serves HTTPS. With no domain yet, generate a **self-signed** cert (the
+Nginx config references `/etc/ssl/mmc-staging/`); testers click through a browser
+warning. Then install the site.
+
+```bash
+# Self-signed cert for the raw IP (CN defaults to 67.207.81.183).
+sudo bash /home/mysterymixclub/app/scripts/generate-self-signed-cert.sh
+
+# Basic-auth file (username mmctest). Choose a password to share with testers.
+sudo htpasswd -bc /etc/nginx/.htpasswd-mmc-staging mmctest 'choose-a-test-password'
+
+sudo cp /home/mysterymixclub/app/scripts/nginx-mysterymixclub-staging.conf \
+        /etc/nginx/sites-available/mysterymixclub-staging
+sudo ln -sf /etc/nginx/sites-available/mysterymixclub-staging \
+        /etc/nginx/sites-enabled/mysterymixclub-staging
+sudo rm -f /etc/nginx/sites-enabled/default      # drop the default site
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Staging is now at `https://<DROPLET_IP>/` behind basic auth (with a cert warning).
+
+> Whenever you edit the site conf afterwards (e.g. to add the HSTS header),
+> re-copy it to `/etc/nginx/sites-available/` and apply with
+> `sudo nginx -t && sudo systemctl reload nginx`.
+
+> Note: `ENVIRONMENT=staging` means auth cookies are **not** marked `Secure`.
+> That's fine here; sign-in still works over the self-signed HTTPS connection.
+
+---
+
+## 5. Later: swap self-signed for a real Let's Encrypt cert
+
+Once a domain (e.g. `staging.mysterymixclub.com`) points at the Droplet:
+
+```bash
+# Update server_name in the site file to the domain first, then:
+sudo certbot --nginx -d staging.mysterymixclub.com
+```
+
+Certbot takes over the `ssl_certificate` directives and installs an auto-renew
+timer — no more browser warning. Also update `ALLOWED_ORIGINS` / `APP_BASE_URL`
+in `staging.env` to the new domain and restart the service.
+
+---
+
+## 6. Wire up the GitHub Actions deploy
+
+The `Deploy Staging` workflow (`.github/workflows/deploy-staging.yml`) SSHes into
+the Droplet on every push to `develop` and runs `scripts/deploy-staging.sh`.
+
+**Sudoers** — the deploy script restarts the service and keeps the deadline-job
+units current via sudo (the web root is owned by the deploy user, so the frontend
+publish needs no sudo). Grant passwordless sudo for exactly those commands:
+
+```bash
+# on the Droplet, as root
+cat >/etc/sudoers.d/mysterymixclub-deploy <<'EOF'
+mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl restart mysterymixclub-api
+mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl disable --now mysterymixclub-advance-rounds.timer
+mysterymixclub ALL=(root) NOPASSWD: /usr/bin/rm -f /etc/systemd/system/mysterymixclub-advance-rounds.service /etc/systemd/system/mysterymixclub-advance-rounds.timer
+mysterymixclub ALL=(root) NOPASSWD: /usr/bin/cp /home/mysterymixclub/app/scripts/mysterymixclub-advance-mixes.service /etc/systemd/system/
+mysterymixclub ALL=(root) NOPASSWD: /usr/bin/cp /home/mysterymixclub/app/scripts/mysterymixclub-advance-mixes.timer /etc/systemd/system/
+mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl daemon-reload
+mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl enable --now mysterymixclub-advance-mixes.timer
+EOF
+chmod 440 /etc/sudoers.d/mysterymixclub-deploy
+```
+
+> The four `advance-mixes` lines were added for the MYS-145/162 deadline job. On
+> a Droplet bootstrapped before this change, add them to the existing sudoers
+> file (and see §7) or the next deploy will fail at the timer-refresh step.
+>
+> The `disable --now .../rm -f ...advance-rounds...` lines were added for
+> MYS-195 (the club/mix identifier rename), which deletes `advance_rounds.py`
+> — the old unit's `ExecStart` target. `deploy-staging.sh` guards both commands
+> with `|| true` so a Droplet without this grant yet won't fail its deploy, but
+> the old unit will linger and start erroring in journalctl every time it fires
+> (its target module is gone) until this grant is applied by hand on the
+> **live staging Droplet** — do this before or at the next deploy off `develop`.
+
+**GitHub secrets** (Settings → Secrets and variables → Actions → environment
+`staging`):
+
+| Secret            | Value                                                        |
+|-------------------|-------------------------------------------------------------|
+| `STAGING_HOST`    | Droplet public IP or hostname                               |
+| `STAGING_SSH_USER`| `mysterymixclub`                                            |
+| `STAGING_SSH_KEY` | a **private** key whose public half is in `mysterymixclub`'s `~/.ssh/authorized_keys` |
+
+Create a deploy key on the Droplet and authorize it:
+
+```bash
+sudo -u mysterymixclub ssh-keygen -t ed25519 -f /home/mysterymixclub/.ssh/deploy -N ''
+sudo -u mysterymixclub bash -c 'cat /home/mysterymixclub/.ssh/deploy.pub >> /home/mysterymixclub/.ssh/authorized_keys'
+sudo cat /home/mysterymixclub/.ssh/deploy   # paste this private key into STAGING_SSH_KEY
+```
+
+Then push to `develop` (or re-run the workflow) to trigger a deploy.
+
+---
+
+## 7. The deadline force-advance job (MYS-145/162)
+
+Mystery mixes close on quorum **or** a deadline, whichever comes first. Quorum is
+handled live by the API; the deadline is handled by `app.jobs.advance_mixes`, run
+on a 15-minute systemd timer. Each run, per live mix, it: stamps a missing
+deadline from the club window; sends the "about 12 hours left" submit/vote
+warning once when the deadline is 1–12h away (only for windows longer than 12h);
+force-advances a submission mix to voting (or nudges the organizer once if
+nobody submitted — that mix then waits for a manual advance); and closes a
+voting mix whose deadline has passed.
+
+**Units** (installed from `scripts/`): `mysterymixclub-advance-mixes.service`
+(`Type=oneshot`, same user/env/venv as the API) and
+`mysterymixclub-advance-mixes.timer` (`OnCalendar=*:00/15`, `Persistent=true`).
+Bootstrap installs and arms them; each deploy refreshes the files and runs
+`enable --now`. On a Droplet bootstrapped before this job existed, install once:
+
+```bash
+sudo cp /home/mysterymixclub/app/scripts/mysterymixclub-advance-mixes.service /etc/systemd/system/
+sudo cp /home/mysterymixclub/app/scripts/mysterymixclub-advance-mixes.timer   /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now mysterymixclub-advance-mixes.timer
+```
+
+**Check it:**
+
+```bash
+systemctl list-timers mysterymixclub-advance-mixes.timer   # NEXT / LAST run
+sudo journalctl -u mysterymixclub-advance-mixes.service -f # per-run summary line
+sudo systemctl start mysterymixclub-advance-mixes.service  # run once, on demand
+```
+
+Each run logs a summary: `stamped=… warned=… empty_notices=… advanced=… closed=…
+skipped=… errors=…`.
+
+**Disable in an emergency** (stops all deadline-driven transitions; quorum-based
+closing keeps working):
+
+```bash
+sudo systemctl disable --now mysterymixclub-advance-mixes.timer
+```
+
+Re-enable with `sudo systemctl enable --now mysterymixclub-advance-mixes.timer`.
+
+---
+
+## Enabling Apple Music (MYS-104)
+
+Apple Music is **off** until three credentials are present, and the app treats
+that as a normal state: the mystery mix page renders no Apple UI at all, and Apple
+per-track links fall back to the keyless iTunes lookup. So this can be done long
+after the code ships, and skipping it breaks nothing.
+
+**Credentials come from the Apple Developer portal** (paid membership required).
+Certificates, Identifiers & Profiles → **Identifiers → ＋ → Media IDs** first —
+the Keys page reports *"no identifiers available that can be associated with the
+key"* until a Media ID exists, and an App ID with the MusicKit capability ticked
+does **not** satisfy it. Then Keys → ＋ → Media Services (MusicKit) → download
+the `.p8`. **That download is one-time and non-recoverable** — store the original
+in a password manager before doing anything else.
+
+- `APPLE_MUSIC_TEAM_ID` — membership details page, 10 chars
+- `APPLE_MUSIC_KEY_ID` — the 10 chars in the `AuthKey_XXXXXXXXXX.p8` filename
+- `APPLE_MUSIC_PRIVATE_KEY` — the `.p8` PEM contents
+
+On the Droplet, add all three to the env file. The PEM must be **one quoted
+line** with literal `\n` between PEM lines (the app un-escapes them —
+`apple_music_token.py`):
+
+```bash
+sudo nano /etc/mysterymixclub/staging.env
+# APPLE_MUSIC_TEAM_ID=A1B2C3D4E5
+# APPLE_MUSIC_KEY_ID=XXXXXXXXXX
+# APPLE_MUSIC_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIGT...\n-----END PRIVATE KEY-----"
+
+sudo systemctl restart mysterymixclub-api
+```
+
+To flatten the PEM to that one-line form without pasting it through anything:
+
+```bash
+awk '{printf "%s\\n", $0}' AuthKey_XXXXXXXXXX.p8
+```
+
+**Verify** — the endpoint returns a token only when all three are valid and
+Apple accepts the signature. It requires a logged-in user's bearer token:
+
+```bash
+curl -s https://staging.mysterymixclub.com/api/v1/apple-music/developer-token \
+     -H "Authorization: Bearer <access-token>"
+# {"token":"eyJ..."}   → working
+# {"token":null}       → unconfigured or the key can't sign; check the journal
+```
+
+A restart is required: the settings and the token service are cached per
+process, so editing the env file alone changes nothing.
+
+---
+
+## What to share with the test team
+
+- **URL:** `https://staging.mysterymixclub.com` (or `http://<DROPLET_IP>/`)
+- **Basic auth:** username `mmctest`, password (the one set in step 4)
+- Sign-in is magic-link based; with `RESEND_API_KEY` set, testers receive the
+  link by email.
+
+---
+
+## Troubleshooting
+
+- **API status / logs:** `sudo systemctl status mysterymixclub-api` and
+  `sudo journalctl -u mysterymixclub-api -f`.
+- **Magic link not emailed:** if `RESEND_API_KEY` is empty the app falls back to
+  the console sender; the link is logged — `sudo journalctl -u mysterymixclub-api | grep -i "magic link"`.
+- **502 from Nginx:** the API isn't listening on `127.0.0.1:8000` — check the
+  service and that `staging.env` is valid (a bad value makes the app exit on boot).
+- **Manual deploy:** `sudo -u mysterymixclub /home/mysterymixclub/app/scripts/deploy-staging.sh`.
+- **Deadline job status / logs:** `systemctl list-timers mysterymixclub-advance-mixes.timer`
+  and `sudo journalctl -u mysterymixclub-advance-mixes.service -f` (see §7). Mixes
+  not advancing at their deadline → check the timer is enabled and the run summary
+  for `errors=`.
+
+---
+
+## If this Droplet is ever compromised
+
+This is where real beta user data actually lives (magic-link emails, songs,
+notes, votes) — see `docs/security/breach-notification-runbook.md` for what to
+do: containment steps, scoping the exposure, and the GDPR 72-hour authority
+notification / user notification process (MYS-187).
+
+## Where this Droplet actually is
+
+Its DO region isn't recorded here — see `docs/security/data-residency.md`
+(MYS-188) for what's confirmed, what's inferred, and the international-transfer
+safeguard reasoning if EU/EEA/UK users are ever in scope.

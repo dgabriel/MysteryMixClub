@@ -1,26 +1,89 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { LoginRoute } from "./LoginRoute";
-import { requestMagicLink } from "../services/api";
+import { getWaitlistEnabled, requestMagicLink } from "../services/api";
+import { useAuth } from "../hooks/useAuth";
 
 // Mock only the API module so no network is touched.
 vi.mock("../services/api", () => ({
   requestMagicLink: vi.fn(),
+  getWaitlistEnabled: vi.fn(),
+  joinWaitlist: vi.fn(),
 }));
+vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
 
 const mockRequestMagicLink = vi.mocked(requestMagicLink);
+const mockGetWaitlistEnabled = vi.mocked(getWaitlistEnabled);
+const mockUseAuth = vi.mocked(useAuth);
+
+// EmailEntryScreen links to /about (MYS-155), which needs a Router context.
+function renderLogin() {
+  return render(
+    <MemoryRouter initialEntries={["/login"]}>
+      <LoginRoute />
+    </MemoryRouter>,
+  );
+}
 
 describe("LoginRoute", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: not signed in, so the form renders.
+    mockUseAuth.mockReturnValue({ status: "unauthenticated" } as ReturnType<typeof useAuth>);
+    // Default: waitlist off (MYS-215), matching the flag's production-safe
+    // default — every existing "email us" assertion in this file relies on
+    // this resolving to false.
+    mockGetWaitlistEnabled.mockResolvedValue({ enabled: false });
+  });
+
+  it("redirects an already-authenticated user to /home", () => {
+    mockUseAuth.mockReturnValue({ status: "authenticated" } as ReturnType<typeof useAuth>);
+    render(
+      <MemoryRouter initialEntries={["/login"]}>
+        <Routes>
+          <Route path="/login" element={<LoginRoute />} />
+          <Route path="/home" element={<div>HOME</div>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("HOME")).toBeInTheDocument();
+  });
+
+  it("shows invite-required contact info upfront, before any submission — email revealed only on click", async () => {
+    const user = userEvent.setup();
+    renderLogin();
+
+    // Waitlist-off check resolves async (MYS-215), so this copy appears a
+    // tick after render rather than synchronously.
+    await screen.findByText(/no invite yet\?/i);
+    // The address itself isn't in the DOM until clicked (MYS-182: keeps it
+    // out of reach of scrapers that don't simulate interaction).
+    expect(screen.queryByText(/info@mysterymixclub\.com/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^email us$/i }));
+
+    expect(screen.getByRole("link", { name: /info@mysterymixclub\.com/i })).toHaveAttribute(
+      "href",
+      "mailto:info@mysterymixclub.com",
+    );
+  });
+
+  it("no TopNav on the login screen (unauthenticated)", () => {
+    renderLogin();
+
+    // The shared nav is authed-only; none of its links appear here.
+    expect(screen.queryByRole("button", { name: /^profile$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^logout$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^home$/i })).not.toBeInTheDocument();
   });
 
   it("happy path: submits a trimmed email and shows CheckEmail with that email", async () => {
-    mockRequestMagicLink.mockResolvedValue(undefined);
+    mockRequestMagicLink.mockResolvedValue({ devToken: null });
     const user = userEvent.setup();
 
-    render(<LoginRoute />);
+    renderLogin();
 
     // EmailEntry visible
     expect(
@@ -33,18 +96,29 @@ describe("LoginRoute", () => {
     await user.click(screen.getByRole("button", { name: /send sign-in link/i }));
 
     expect(mockRequestMagicLink).toHaveBeenCalledTimes(1);
-    expect(mockRequestMagicLink).toHaveBeenCalledWith("Friend@Example.com");
+    // No pending invite stashed → the invite token is null (ordinary sign-in).
+    expect(mockRequestMagicLink).toHaveBeenCalledWith("Friend@Example.com", null);
 
     // CheckEmail screen now shown with the submitted email.
     expect(await screen.findByText("check your email")).toBeInTheDocument();
     expect(screen.getByText("Friend@Example.com")).toBeInTheDocument();
+    // Same neutral response either way (registered or not) — the invite
+    // contact note is shown unconditionally so it never reveals which. The
+    // address itself stays hidden until clicked (MYS-182). Waitlist-off
+    // check resolves async (MYS-215).
+    await screen.findByText(/no account yet\?/i);
+    await user.click(screen.getByRole("button", { name: /^email us$/i }));
+    expect(screen.getByRole("link", { name: /info@mysterymixclub\.com/i })).toHaveAttribute(
+      "href",
+      "mailto:info@mysterymixclub.com",
+    );
   });
 
   it("error path: when requestMagicLink rejects, shows an error and does NOT show CheckEmail", async () => {
     mockRequestMagicLink.mockRejectedValue(new Error("rate limited"));
     const user = userEvent.setup();
 
-    render(<LoginRoute />);
+    renderLogin();
 
     await user.type(screen.getByLabelText(/email/i), "user@example.com");
     await user.click(screen.getByRole("button", { name: /send sign-in link/i }));
@@ -64,7 +138,7 @@ describe("LoginRoute", () => {
   it("edge case: empty input does not call requestMagicLink and stays on the form", async () => {
     const user = userEvent.setup();
 
-    render(<LoginRoute />);
+    renderLogin();
 
     await user.click(screen.getByRole("button", { name: /send sign-in link/i }));
 
@@ -75,7 +149,7 @@ describe("LoginRoute", () => {
   it("edge case: whitespace-only input does not submit", async () => {
     const user = userEvent.setup();
 
-    render(<LoginRoute />);
+    renderLogin();
 
     await user.type(screen.getByLabelText(/email/i), "    ");
     await user.click(screen.getByRole("button", { name: /send sign-in link/i }));
@@ -84,17 +158,66 @@ describe("LoginRoute", () => {
     expect(screen.queryByText("check your email")).not.toBeInTheDocument();
   });
 
-  it("back affordance on CheckEmail returns to the email entry form", async () => {
-    mockRequestMagicLink.mockResolvedValue(undefined);
+  it("dev/staging: when a dev token is returned, shows a relative sign-in link and NOT CheckEmail", async () => {
+    mockRequestMagicLink.mockResolvedValue({ devToken: "tok-123" });
     const user = userEvent.setup();
 
-    render(<LoginRoute />);
+    renderLogin();
+
+    await user.type(screen.getByLabelText(/email/i), "user@example.com");
+    await user.click(screen.getByRole("button", { name: /send sign-in link/i }));
+
+    const link = await screen.findByRole("link", { name: /sign in with this link/i });
+    expect(link).toHaveAttribute("href", "/auth/verify?token=tok-123");
+    // The "check your email" screen is not shown when the dev link is available.
+    expect(screen.queryByText("check your email")).not.toBeInTheDocument();
+  });
+
+  it("invite flow: a stashed pending invite is passed to requestMagicLink and appended to the dev link", async () => {
+    localStorage.setItem("pendingInvitePath", "/invite/inv-789");
+    mockRequestMagicLink.mockResolvedValue({ devToken: "tok-123" });
+    const user = userEvent.setup();
+
+    try {
+      renderLogin();
+
+      await user.type(screen.getByLabelText(/email/i), "guest@example.com");
+      await user.click(screen.getByRole("button", { name: /send sign-in link/i }));
+
+      expect(mockRequestMagicLink).toHaveBeenCalledWith("guest@example.com", "inv-789");
+      const link = await screen.findByRole("link", { name: /sign in with this link/i });
+      expect(link).toHaveAttribute("href", "/auth/verify?token=tok-123&invite=inv-789");
+    } finally {
+      localStorage.clear();
+    }
+  });
+
+  it("links to the about page (MYS-155)", () => {
+    renderLogin();
+    expect(screen.getByRole("link", { name: /about mysterymixclub/i })).toHaveAttribute(
+      "href",
+      "/about",
+    );
+  });
+
+  it("links to the help page (MYS-222)", () => {
+    renderLogin();
+    expect(screen.getByRole("link", { name: /^help$/i })).toHaveAttribute("href", "/help");
+  });
+
+  it("back affordance on CheckEmail returns to the email entry form", async () => {
+    mockRequestMagicLink.mockResolvedValue({ devToken: null });
+    const user = userEvent.setup();
+
+    renderLogin();
 
     await user.type(screen.getByLabelText(/email/i), "user@example.com");
     await user.click(screen.getByRole("button", { name: /send sign-in link/i }));
 
     await screen.findByText("check your email");
-    await user.click(screen.getByRole("button", { name: /use a different email/i }));
+    // The button is conditional on the async waitlist-off check (MYS-215),
+    // so wait for it rather than assuming it's already resolved.
+    await user.click(await screen.findByRole("button", { name: /use a different email/i }));
 
     await waitFor(() =>
       expect(
@@ -102,5 +225,40 @@ describe("LoginRoute", () => {
       ).toBeInTheDocument(),
     );
     expect(screen.queryByText("check your email")).not.toBeInTheDocument();
+  });
+
+  it("waitlist enabled (MYS-215): shows the join-waitlist form instead of email-us copy", async () => {
+    mockGetWaitlistEnabled.mockResolvedValue({ enabled: true });
+    renderLogin();
+
+    expect(await screen.findByText(/join the waitlist/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^join$/i })).toBeInTheDocument();
+    // The old mailto fallback copy/button is gone, not just co-rendered.
+    expect(screen.queryByText(/to request one/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^email us$/i })).not.toBeInTheDocument();
+  });
+
+  it("waitlist enabled (MYS-215): CheckEmail renders the actual join form, not just a pointer", async () => {
+    mockGetWaitlistEnabled.mockResolvedValue({ enabled: true });
+    mockRequestMagicLink.mockResolvedValue({ devToken: null });
+    const user = userEvent.setup();
+
+    renderLogin();
+    await screen.findByText(/join the waitlist/i); // wait out the async flag check
+
+    // Two "email" fields on screen now (sign-in form + waitlist form) — scope
+    // to the sign-in form specifically.
+    const signInButton = screen.getByRole("button", { name: /send sign-in link/i });
+    const signInForm = signInButton.closest("form");
+    if (!signInForm) throw new Error("sign-in form not found");
+    await user.type(within(signInForm).getByLabelText(/^email$/i), "user@example.com");
+    await user.click(signInButton);
+
+    await screen.findByText("check your email");
+    // The real form is here now, not just a link back to /login.
+    expect(await screen.findByRole("button", { name: /^join$/i })).toBeInTheDocument();
+    expect(screen.getByText(/no invite yet\?/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^use a different email$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^email us$/i })).not.toBeInTheDocument();
   });
 });

@@ -12,6 +12,8 @@
 # Token / secrets
 .token-temp.txt
 *.token
+# Apple MusicKit signing keys (MYS-104) — one-time download, never recoverable
+*.p8
 
 # Environment
 .env
@@ -47,3 +49,9 @@ build/
 
 # Generated at deploy time from .do/app.{staging,prod}.yaml
 .do/app.yaml
+
+# Local dev runtime (pids/logs from scripts/dev-up.sh)
+.dev/
+
+# Scratch / temp files
+tmp/

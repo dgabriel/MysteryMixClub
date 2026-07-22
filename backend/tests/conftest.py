@@ -23,10 +23,12 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from httpx import ASGITransport, AsyncClient
 
+from app.config import Settings, get_settings
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import create_app
 from app.services.email import EmailSender, get_email_sender
+from app.services.youtube_resolver import get_youtube_resolver
 
 # Import models so they register on Base.metadata before create_all.
 from app.models import MagicLinkToken, Session, User  # noqa: F401
@@ -36,17 +38,30 @@ TEST_ASYNC_DATABASE_URL = "postgresql+asyncpg://mmc:mmc@localhost:5432/mysterymi
 # Tables truncated before and after each test for isolation. ``sessions``
 # references ``users``; CASCADE on the TRUNCATE handles the FK, and
 # magic_link_tokens is independent. Listed together so one statement covers all.
-_TRUNCATE_TABLES = "magic_link_tokens, sessions, users"
+_TRUNCATE_TABLES = (
+    "magic_link_tokens, sessions, spotify_connections, invites, submissions, "
+    "mixes, clubs, club_members, users"
+)
 
 
 @dataclass
 class SpyEmailSender:
-    """Records every magic-link send so tests can assert on arguments."""
+    """Records every send so tests can assert on arguments."""
 
     calls: list[tuple[str, str]] = field(default_factory=list)
+    # General notification sends (MYS-109): (email, subject, html).
+    sends: list[tuple[str, str, str]] = field(default_factory=list)
+    # Extra MIME headers per send (e.g. List-Unsubscribe), parallel to `sends`.
+    sent_headers: list[dict[str, str] | None] = field(default_factory=list)
 
     def send_magic_link(self, email: str, link: str) -> None:
         self.calls.append((email, link))
+
+    def send(
+        self, email: str, subject: str, html: str, headers: dict[str, str] | None = None
+    ) -> None:
+        self.sends.append((email, subject, html))
+        self.sent_headers.append(headers)
 
     @property
     def call_count(self) -> int:
@@ -64,6 +79,9 @@ def _schema() -> None:
     async def _create() -> None:
         eng = create_async_engine(TEST_ASYNC_DATABASE_URL, future=True)
         async with eng.begin() as conn:
+            # Drop first so schema changes (new columns, constraints, indexes)
+            # are always applied — create_all silently skips existing tables.
+            await conn.run_sync(Base.metadata.drop_all)
             await conn.run_sync(Base.metadata.create_all)
         await eng.dispose()
 
@@ -100,8 +118,50 @@ def email_spy() -> SpyEmailSender:
     return SpyEmailSender()
 
 
+@pytest.fixture
+def seed_admin_emails() -> str:
+    """Comma-separated platform-admin identity injected into the ``client``
+    fixture's settings (MYS-128).
+
+    Defaults to empty. This is NOT a login gate in v2 — it only controls
+    ``is_platform_admin`` on /users/me and access to the /admin endpoints. Admin
+    tests override it to make a caller a platform admin."""
+    return ""
+
+
+@pytest.fixture
+def max_users() -> int:
+    """Hard cap on non-deleted accounts injected into the ``client`` fixture's
+    settings (MYS-127). Defaults to 0 (unlimited) so ordinary tests aren't
+    blocked by the beta cap; the cap test overrides it to a small number."""
+    return 0
+
+
+@pytest.fixture
+def waitlist_enabled() -> bool:
+    """The waitlist flag (MYS-215) injected into the ``client`` fixture's
+    settings. Defaults to False, matching the flag's production-safe
+    default; waitlist tests override it to True."""
+    return False
+
+
+class _OfflineYouTubeResolver:
+    """Default resolver for the shared client fixture: never hits the real
+    YouTube Data API. Tests that need resolution behaviour override this with
+    their own fake; everyone else gets a safe no-op (always None)."""
+
+    async def video_id_for(self, title: str, artist: str | None = None) -> str | None:
+        return None
+
+
 @pytest_asyncio.fixture
-async def client(session_factory, email_spy: SpyEmailSender) -> AsyncGenerator[AsyncClient, None]:
+async def client(
+    session_factory,
+    email_spy: SpyEmailSender,
+    seed_admin_emails: str,
+    max_users: int,
+    waitlist_enabled: bool,
+) -> AsyncGenerator[AsyncClient, None]:
     """AsyncClient over the ASGI app with get_db / get_email_sender overridden."""
     app = create_app()
 
@@ -112,8 +172,25 @@ async def client(session_factory, email_spy: SpyEmailSender) -> AsyncGenerator[A
     def override_get_email_sender() -> EmailSender:
         return email_spy
 
+    # Inject settings so tests can control platform-admin identity
+    # (``seed_admin_emails``, MYS-128) and the beta sign-up cap (``max_users``,
+    # MYS-127). environment stays development (the suite's default), matching the
+    # global lru_cached settings.
+    test_settings = Settings(
+        environment="development",
+        seed_admin_emails=seed_admin_emails,
+        max_users=max_users,
+        waitlist_enabled=waitlist_enabled,
+    )
+
+    def override_get_settings() -> Settings:
+        return test_settings
+
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_email_sender] = override_get_email_sender
+    app.dependency_overrides[get_settings] = override_get_settings
+    # Keep the whole suite offline by default — no live YouTube Data API calls.
+    app.dependency_overrides[get_youtube_resolver] = lambda: _OfflineYouTubeResolver()
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:

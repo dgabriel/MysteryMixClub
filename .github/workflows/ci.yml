@@ -40,12 +40,40 @@ jobs:
       - name: Test
         run: npm test
 
+      # Non-blocking (MYS-47): surface prod-dependency advisories on every PR so a
+      # vulnerable runtime dep can't regress silently. Dev-only tooling advisories
+      # are excluded to keep the signal actionable; a red step never blocks merge.
+      - name: Dependency audit (prod deps)
+        run: npm audit --omit=dev --audit-level=moderate
+        continue-on-error: true
+
   backend:
     name: Backend (ruff · mypy · pytest)
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: backend
+    # app.db.session builds the engine at import from DATABASE_URL, and the test
+    # suite (tests/conftest.py) runs against a real Postgres at this URL. SECRET_KEY
+    # is needed so JWT signing/verification works in the auth tests. These are
+    # throwaway CI values — not real secrets.
+    env:
+      DATABASE_URL: postgresql+asyncpg://mmc:mmc@localhost:5432/mysterymixclub_test
+      SECRET_KEY: ci-test-secret-not-for-production
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: mmc
+          POSTGRES_PASSWORD: mmc
+          POSTGRES_DB: mysterymixclub_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mmc -d mysterymixclub_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
@@ -66,6 +94,19 @@ jobs:
       - name: Mypy
         run: mypy app
 
+      # Guards against "model added but migration missing": prove the migrations
+      # apply cleanly (and reverse) against a fresh DB on every PR. Uses a separate
+      # throwaway database so it never collides with the schema pytest's conftest
+      # builds via create_all on mysterymixclub_test.
+      - name: Alembic migrations apply
+        run: |
+          PGPASSWORD=mmc psql -h localhost -U mmc -d mysterymixclub_test \
+            -c "CREATE DATABASE mmc_migrate_check;"
+          export DATABASE_URL=postgresql+asyncpg://mmc:mmc@localhost:5432/mmc_migrate_check
+          alembic upgrade head
+          alembic downgrade base
+          alembic upgrade head
+
       - name: Pytest (with coverage)
         run: pytest --cov=app --cov-report=term-missing --cov-report=xml
 
@@ -76,3 +117,12 @@ jobs:
           name: backend-coverage
           path: backend/coverage.xml
           if-no-files-found: ignore
+
+      # Non-blocking (MYS-47): pip-audit against the resolved env on every PR.
+      # --skip-editable skips the local editable package (not on PyPI); a red step
+      # never blocks merge but surfaces a newly-vulnerable dependency.
+      - name: Dependency audit (pip-audit)
+        run: |
+          pip install pip-audit
+          pip-audit --skip-editable
+        continue-on-error: true

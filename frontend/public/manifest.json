@@ -1,7 +1,7 @@
 {
   "name": "MysteryMixClub",
   "short_name": "MMC",
-  "description": "A platform-agnostic, emotionally inclusive music league for close-knit friend groups.",
+  "description": "A platform-agnostic, emotionally inclusive music club for close-knit friend groups.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

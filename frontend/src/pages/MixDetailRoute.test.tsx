@@ -1,0 +1,2749 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { RouterProvider, createMemoryRouter } from "react-router-dom";
+import { MixDetailRoute } from "./MixDetailRoute";
+import {
+  addNote,
+  castVotes,
+  deleteSubmission,
+  editSubmission,
+  extendVotingDeadline,
+  getClub,
+  getClubMembers,
+  getMyMembership,
+  getMySubmissions,
+  getMyVotes,
+  getNotes,
+  getPlaylist,
+  getResults,
+  getMix,
+  getSpotifyStatus,
+  getVoteCounts,
+  resolveSong,
+  submitSong,
+  updateMix,
+} from "../services/api";
+import type {
+  Club,
+  ClubMember,
+  PlaylistEntry,
+  Mix,
+  MixResults,
+  SubmissionResult,
+} from "../services/api";
+import { useAuth } from "../hooks/useAuth";
+
+vi.mock("../services/api", async () => {
+  const actual = await vi.importActual<typeof import("../services/api")>("../services/api");
+  return {
+    ...actual,
+    getMix: vi.fn(),
+    getClub: vi.fn(),
+    getClubMembers: vi.fn(),
+    getMyMembership: vi.fn(),
+    getMySubmissions: vi.fn(),
+    getPlaylist: vi.fn(),
+    getResults: vi.fn(),
+    updateMix: vi.fn(),
+    extendVotingDeadline: vi.fn(),
+    submitSong: vi.fn(),
+    editSubmission: vi.fn(),
+    deleteSubmission: vi.fn(),
+    resolveSong: vi.fn(),
+    getMyVotes: vi.fn(),
+    castVotes: vi.fn(),
+    getNotes: vi.fn(),
+    addNote: vi.fn(),
+    getSpotifyStatus: vi.fn(),
+    getVoteCounts: vi.fn(),
+  };
+});
+vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
+
+const mockGetMix = vi.mocked(getMix);
+const mockGetClub = vi.mocked(getClub);
+const mockGetClubMembers = vi.mocked(getClubMembers);
+const mockGetMyMembership = vi.mocked(getMyMembership);
+const mockGetMine = vi.mocked(getMySubmissions);
+const mockEditSubmission = vi.mocked(editSubmission);
+const mockDeleteSubmission = vi.mocked(deleteSubmission);
+const mockGetPlaylist = vi.mocked(getPlaylist);
+const mockGetResults = vi.mocked(getResults);
+const mockUpdateMix = vi.mocked(updateMix);
+const mockExtendVotingDeadline = vi.mocked(extendVotingDeadline);
+const mockGetMyVotes = vi.mocked(getMyVotes);
+const mockCastVotes = vi.mocked(castVotes);
+const mockGetNotes = vi.mocked(getNotes);
+const mockAddNote = vi.mocked(addNote);
+const mockGetSpotifyStatus = vi.mocked(getSpotifyStatus);
+const mockGetVoteCounts = vi.mocked(getVoteCounts);
+const mockResolveSong = vi.mocked(resolveSong);
+const mockSubmitSong = vi.mocked(submitSong);
+const mockUseAuth = vi.mocked(useAuth);
+
+const ORGANIZER = "org-1";
+const OTHER = "user-2";
+const CO_ORGANIZER = "co-3";
+
+function mix(overrides: Partial<Mix> = {}): Mix {
+  return {
+    id: "r1",
+    club_id: "lg1",
+    mix_number: 1,
+    theme: "late summer feels",
+    state: "open_submission",
+    description: null,
+    submission_deadline: null,
+    voting_deadline: null,
+    votes_per_player: 3,
+    created_at: "2026-01-01T00:00:00Z",
+    closed_at: null,
+    submission_count: 0,
+    member_count: 0,
+    viewer_submitted: false,
+    viewer_voted: false,
+    voted_count: 0,
+    voting_eligible_count: 0,
+    ...overrides,
+  };
+}
+
+function club(): Club {
+  return {
+    id: "lg1",
+    name: "Friday Mixtape",
+    description: null,
+    organizer_id: ORGANIZER,
+    total_mixes: 6,
+    votes_per_player: 3,
+    songs_per_submission: 1,
+    current_mix: 1,
+    state: "active",
+    created_at: "2026-01-01T00:00:00Z",
+    default_vibe_mode: false,
+    submission_window_hours: 72,
+    voting_window_hours: 72,
+    completed_at: null,
+  };
+}
+
+// Club membership (MYS-99) — the fixed organizer's row carries is_admin;
+// OTHER defaults to a plain member.
+function members(): ClubMember[] {
+  return [
+    {
+      user_id: ORGANIZER,
+      display_name: "Org",
+      joined_at: "2026-01-01T00:00:00Z",
+      is_organizer: true,
+      is_admin: true,
+    },
+    {
+      user_id: OTHER,
+      display_name: "Other",
+      joined_at: "2026-01-02T00:00:00Z",
+      is_organizer: false,
+      is_admin: false,
+    },
+  ];
+}
+
+// A roster with a promoted co-organizer (MYS-99), for parity coverage: same
+// full mix-management access as the fixed organizer without being the
+// organizer themselves.
+function membersWithCoOrganizer(): ClubMember[] {
+  return [
+    ...members(),
+    {
+      user_id: CO_ORGANIZER,
+      display_name: "Cy",
+      joined_at: "2026-01-03T00:00:00Z",
+      is_organizer: false,
+      is_admin: true,
+    },
+  ];
+}
+
+function entry(overrides: Partial<PlaylistEntry> = {}): PlaylistEntry {
+  return {
+    submission_id: "p1",
+    isrc: "I1",
+    source: null,
+    source_url: null,
+    title: "Debaser",
+    artist: "Pixies",
+    album: null,
+    album_art_url: null,
+    platforms: { spotify: "https://s" },
+    preferred_url: "https://s",
+    is_own: false,
+    submitter_note: null,
+    ...overrides,
+  };
+}
+
+function mine(overrides: Partial<SubmissionResult> = {}): SubmissionResult {
+  return {
+    id: "s-mine",
+    mix_id: "r1",
+    user_id: ORGANIZER,
+    isrc: "IM",
+    source: null,
+    source_url: null,
+    title: "My Song",
+    artist: "Me",
+    album: null,
+    album_art_url: null,
+    note: null,
+    participation_mode: "playing",
+    created_at: "2026-01-01T00:00:00Z",
+    club_previously_submitted: false,
+    ...overrides,
+  };
+}
+
+function results(overrides: Partial<MixResults> = {}): MixResults {
+  return {
+    mix_id: "r1",
+    mix_number: 1,
+    theme: "late summer feels",
+    state: "closed",
+    viewer_is_vibing: false,
+    winners: [],
+    picks: [],
+    submissions: [],
+    leaderboard: [],
+    most_noted: { note_count: 0, winners: [] },
+    ...overrides,
+  };
+}
+
+function setAuth(userId: string) {
+  mockUseAuth.mockReturnValue({
+    status: "authenticated",
+    isAuthenticated: true,
+    setAccessToken: vi.fn(),
+    clear: vi.fn(),
+    logout: vi.fn(),
+    logoutAll: vi.fn(),
+    displayName: "x",
+    email: "x@example.com",
+    userId,
+    profileStatus: "ready",
+    needsOnboarding: false,
+    isPlatformAdmin: false,
+    applyDisplayName: vi.fn(),
+    preferredService: null,
+    tosAccepted: true,
+    applyTosAccepted: vi.fn(),
+  } as unknown as ReturnType<typeof useAuth>);
+}
+
+function renderMix() {
+  const router = createMemoryRouter(
+    [
+      { path: "/mixes/:id", element: <MixDetailRoute /> },
+      { path: "/clubs/:id", element: <div>CLUB PAGE</div> },
+    ],
+    { initialEntries: ["/mixes/r1"] },
+  );
+  return render(<RouterProvider router={router} />);
+}
+
+describe("MixDetailRoute", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetMix.mockResolvedValue(mix());
+    mockGetClub.mockResolvedValue(club());
+    mockGetClubMembers.mockResolvedValue(members());
+    mockGetMyMembership.mockResolvedValue({
+      club_id: "lg1",
+      user_id: ORGANIZER,
+      vibe_mode: false,
+    });
+    mockGetMine.mockResolvedValue([]);
+    // Spotify feature hidden by default in these tests (not configured).
+    mockGetSpotifyStatus.mockResolvedValue({ configured: false, connected: false });
+    mockGetPlaylist.mockResolvedValue({
+      mix_id: "r1",
+      mix_number: 1,
+      theme: "t",
+      state: "open_voting",
+      entries: [],
+      youtube_playlist_url: null,
+      youtube_track_count: 0,
+      voting_eligible: 0,
+      voting_acted: 0,
+      vibing_count: 0,
+    });
+    mockGetResults.mockResolvedValue(results());
+    mockGetMyVotes.mockResolvedValue({
+      mix_id: "r1",
+      submission_ids: [],
+      count: 0,
+      votes_per_player: 3,
+    });
+    mockCastVotes.mockResolvedValue({
+      mix_id: "r1",
+      submission_ids: [],
+      count: 0,
+      votes_per_player: 3,
+    });
+    mockGetNotes.mockResolvedValue([]);
+    mockAddNote.mockResolvedValue({
+      id: "n1",
+      submission_id: "p1",
+      mix_id: "r1",
+      author_id: OTHER,
+      author_display_name: "Bob",
+      body: "lovely pick",
+      created_at: "2026-01-01T00:00:00Z",
+    });
+    mockGetVoteCounts.mockResolvedValue({
+      mix_id: "r1",
+      entries: [],
+    });
+    setAuth(ORGANIZER);
+  });
+
+  it("open_submission, no submission: shows the submit-a-song card", async () => {
+    renderMix();
+    expect(await screen.findByText("late summer feels")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /submit a song/i })).toBeInTheDocument();
+  });
+
+  it("open_submission: shows submission progress (X of Y submitted) — MYS-101", async () => {
+    mockGetMix.mockResolvedValue(mix({ submission_count: 2, member_count: 5 }));
+    renderMix();
+    expect(await screen.findByText("2 of 5 submitted")).toBeInTheDocument();
+  });
+
+  it("open_submission: hides progress until the member count is known — MYS-101", async () => {
+    mockGetMix.mockResolvedValue(mix({ submission_count: 0, member_count: 0 }));
+    renderMix();
+    // Wait for the screen to settle on the submit card, then assert no progress.
+    expect(await screen.findByRole("heading", { name: /submit a song/i })).toBeInTheDocument();
+    expect(screen.queryByText(/submitted$/i)).not.toBeInTheDocument();
+  });
+
+  it("open_submission: renders the static deadline line when a deadline is set — MYS-161", async () => {
+    // The action area shows "closes …" (lowercase in the DOM; uppercase is CSS).
+    mockGetMix.mockResolvedValue(
+      mix({ state: "open_submission", submission_deadline: "2026-07-05T12:00:00Z" }),
+    );
+    renderMix();
+    expect(await screen.findByText(/^closes /i)).toBeInTheDocument();
+  });
+
+  it("closed: does not render the static deadline line — MYS-161", async () => {
+    mockGetMix.mockResolvedValue(
+      mix({
+        state: "closed",
+        submission_deadline: "2026-07-05T12:00:00Z",
+        voting_deadline: "2026-07-05T12:00:00Z",
+      }),
+    );
+    mockGetResults.mockResolvedValue(
+      results({
+        submissions: [
+          {
+            submission_id: "s1",
+            user_id: OTHER,
+            submitter_display_name: "Bob",
+            isrc: "I1",
+            source: null,
+            source_url: null,
+            title: "Bad Guy",
+            artist: "Billie Eilish",
+            album: null,
+            album_art_url: null,
+            platforms: {},
+            submitter_note: null,
+            vote_count: 0,
+            notes: [],
+            voters: [],
+          },
+        ],
+      }),
+    );
+    renderMix();
+    await screen.findByRole("heading", { name: /the picks/i });
+    expect(screen.queryByText(/^closes /i)).not.toBeInTheDocument();
+  });
+
+  it("open_submission: hides the vibing UI from players (toggle + mode badge)", async () => {
+    // Vibing isn't ready for players yet — the submit screen must not surface the
+    // "just vibes" toggle, and a submitted song must not show a playing/vibing
+    // badge. (Backend mode handling is untouched; this is a UI-only hide.)
+    mockGetMine.mockResolvedValue([mine({ participation_mode: "playing" })]);
+    renderMix();
+
+    expect(await screen.findByText("My Song")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/just vibes for this mix/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/just vibes/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("playing")).not.toBeInTheDocument();
+    expect(screen.queryByText("vibing")).not.toBeInTheDocument();
+  });
+
+  it("open_submission: submitting a song refreshes the X of Y count — MYS-101", async () => {
+    const user = userEvent.setup();
+    // The mix is refetched after a successful submit: first load shows 0, the
+    // post-submit refetch shows 1.
+    mockGetMix
+      .mockResolvedValueOnce(mix({ submission_count: 0, member_count: 5 }))
+      .mockResolvedValue(mix({ submission_count: 1, member_count: 5 }));
+    mockResolveSong.mockResolvedValue({
+      title: "Debaser",
+      artist: "Pixies",
+      isrc: "I1",
+      album: null,
+      thumbnail_url: null,
+      platforms: {},
+    } as Awaited<ReturnType<typeof resolveSong>>);
+    mockSubmitSong.mockResolvedValue({
+      id: "s1",
+      mix_id: "r1",
+      user_id: ORGANIZER,
+      isrc: "I1",
+      source: null,
+      source_url: null,
+      title: "Debaser",
+      artist: "Pixies",
+      album: null,
+      album_art_url: null,
+      note: null,
+      participation_mode: "playing",
+      created_at: "2026-01-01T00:00:00Z",
+      club_previously_submitted: false,
+    });
+
+    renderMix();
+    expect(await screen.findByText("0 of 5 submitted")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: /paste a link/i }));
+    await user.type(screen.getByLabelText(/paste a link/i), "https://x");
+    await user.click(screen.getByRole("button", { name: /^resolve$/i }));
+    await user.click(await screen.findByRole("button", { name: /submit this song/i }));
+
+    expect(await screen.findByText("1 of 5 submitted")).toBeInTheDocument();
+    expect(mockSubmitSong).toHaveBeenCalledTimes(1);
+  });
+
+  it("open_submission with an existing submission: shows it + change affordance", async () => {
+    mockGetMine.mockResolvedValue([mine({ id: "s1", title: "Take on Me", artist: "a-ha" })]);
+    renderMix();
+    expect(await screen.findByText("Take on Me")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /change song/i })).toBeInTheDocument();
+  });
+
+  describe("multi-song submissions (MYS-142)", () => {
+    /** A resolved-song stub for the composer's link-resolve step. */
+    function resolved(isrc: string, title: string) {
+      return {
+        title,
+        artist: "Band",
+        isrc,
+        album: null,
+        thumbnail_url: null,
+        platforms: {},
+      } as Awaited<ReturnType<typeof resolveSong>>;
+    }
+
+    /** The <li> of the first empty submit slot, located by its composer heading
+     *  (numbered "submit song N" at cap > 1, plain "submit a song" at cap 1). */
+    function firstComposerSlot(): HTMLElement {
+      const heading = screen.getAllByRole("heading", { name: /submit (a song|song \d+)/i })[0];
+      const li = heading.closest("li");
+      if (!li) throw new Error("no empty submit slot found");
+      return li as HTMLElement;
+    }
+
+    /** Drive a composer: paste a link, resolve, then submit the resolved song.
+     *  Scoped to `slot` when several composers are on screen (multiple slots). */
+    async function composeAndSubmit(user: ReturnType<typeof userEvent.setup>, slot?: HTMLElement) {
+      const q = slot ? within(slot) : screen;
+      // Search is the default tab now; switch to paste-a-link for the link flow.
+      await user.click(q.getByRole("tab", { name: /paste a link/i }));
+      await user.type(q.getByLabelText(/paste a link/i), "https://x");
+      await user.click(q.getByRole("button", { name: /^resolve$/i }));
+      await user.click(await q.findByRole("button", { name: /submit this song/i }));
+    }
+
+    it("cap 1: at the cap shows only the song with change/remove — no add affordance", async () => {
+      mockGetMine.mockResolvedValue([mine({ id: "s1", title: "Take on Me" })]);
+      renderMix();
+
+      expect(await screen.findByText("Take on Me")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /change song/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /^remove$/i })).toBeInTheDocument();
+      // at cap 1 there's no add affordance and no open composer
+      expect(screen.queryByRole("button", { name: /add another song/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: /submit a song/i })).not.toBeInTheDocument();
+      // and no "N of M" header — cap 1 stays as quiet as the classic screen
+      expect(screen.queryByText(/your songs ·/i)).not.toBeInTheDocument();
+    });
+
+    it("cap > 1: shows only the next empty submit slot, with an N-of-M header", async () => {
+      mockGetClub.mockResolvedValue({ ...club(), songs_per_submission: 3 });
+      mockGetMine.mockResolvedValue([mine({ id: "s1", title: "Song One" })]);
+      renderMix();
+
+      expect(await screen.findByText("Song One")).toBeInTheDocument();
+      expect(screen.getByText("your songs · 1 of 3")).toBeInTheDocument();
+      // only the next slot is shown — not all remaining slots at once
+      expect(screen.getAllByRole("heading", { name: /submit song \d/i })).toHaveLength(1);
+      expect(screen.getByRole("heading", { name: /submit song 2/i })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /add another song/i })).not.toBeInTheDocument();
+    });
+
+    it("cap > 1 with no songs: shows only the first empty submit slot", async () => {
+      mockGetClub.mockResolvedValue({ ...club(), songs_per_submission: 2 });
+      mockGetMine.mockResolvedValue([]);
+      renderMix();
+
+      // only song 1 slot shown — song 2 appears only after song 1 is submitted
+      await waitFor(() =>
+        expect(screen.getByRole("heading", { name: /submit song 1/i })).toBeInTheDocument(),
+      );
+      expect(screen.queryByRole("heading", { name: /submit song 2/i })).not.toBeInTheDocument();
+    });
+
+    it("cap > 1: slots are numbered (Submit Song N; a filled slot reads Song N)", async () => {
+      mockGetClub.mockResolvedValue({ ...club(), songs_per_submission: 2 });
+      mockGetMine.mockResolvedValue([mine({ id: "s1", title: "Song One" })]);
+      renderMix();
+
+      await screen.findByText("Song One");
+      // filled slot 1 carries its number; the empty slot 2 prompts "submit song 2"
+      expect(screen.getByText("song 1")).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: /^submit song 2$/i })).toBeInTheDocument();
+    });
+
+    it("cap > 1: confirm appears once every slot is filled and returns to the club", async () => {
+      const user = userEvent.setup();
+      mockGetClub.mockResolvedValue({ ...club(), songs_per_submission: 2 });
+      mockGetMine.mockResolvedValue([
+        mine({ id: "s1", title: "Song One" }),
+        mine({ id: "s2", title: "Song Two" }),
+      ]);
+      renderMix();
+
+      await screen.findByText("Song One");
+      await user.click(screen.getByRole("button", { name: /^confirm$/i }));
+      expect(await screen.findByText("CLUB PAGE")).toBeInTheDocument();
+    });
+
+    it("cap > 1: confirm stays hidden until every slot is filled", async () => {
+      mockGetClub.mockResolvedValue({ ...club(), songs_per_submission: 2 });
+      mockGetMine.mockResolvedValue([mine({ id: "s1", title: "Song One" })]);
+      renderMix();
+
+      await screen.findByText("Song One");
+      expect(screen.queryByRole("button", { name: /^confirm$/i })).not.toBeInTheDocument();
+    });
+
+    it("cap 1: no confirm button and no slot numbering (single-song parity)", async () => {
+      mockGetMine.mockResolvedValue([mine({ id: "s1", title: "Only Song" })]);
+      renderMix();
+
+      await screen.findByText("Only Song");
+      expect(screen.queryByRole("button", { name: /^confirm$/i })).not.toBeInTheDocument();
+      expect(screen.getByText("your song")).toBeInTheDocument();
+      expect(screen.queryByText(/^song 1$/i)).not.toBeInTheDocument();
+    });
+
+    it("cap > 1: at the cap, the add affordance is gone", async () => {
+      mockGetClub.mockResolvedValue({ ...club(), songs_per_submission: 2 });
+      mockGetMine.mockResolvedValue([
+        mine({ id: "s1", title: "Song One" }),
+        mine({ id: "s2", title: "Song Two" }),
+      ]);
+      renderMix();
+
+      expect(await screen.findByText("Song One")).toBeInTheDocument();
+      expect(screen.getByText("your songs · 2 of 2")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /add another song/i })).not.toBeInTheDocument();
+    });
+
+    it("cap > 1: submitting an empty slot calls submitSong and fills it", async () => {
+      const user = userEvent.setup();
+      mockGetClub.mockResolvedValue({ ...club(), songs_per_submission: 3 });
+      mockGetMine.mockResolvedValue([mine({ id: "s1", title: "Song One" })]);
+      mockResolveSong.mockResolvedValue(resolved("I2", "Song Two"));
+      mockSubmitSong.mockResolvedValue(mine({ id: "s2", title: "Song Two" }));
+      renderMix();
+
+      await screen.findByText("Song One");
+      await composeAndSubmit(user, firstComposerSlot());
+
+      expect(mockSubmitSong).toHaveBeenCalledWith("r1", expect.objectContaining({ isrc: "I2" }));
+      expect(await screen.findByText("Song Two")).toBeInTheDocument();
+      // the original stays — multi-song, not a replace
+      expect(screen.getByText("Song One")).toBeInTheDocument();
+    });
+
+    it("change song edits the existing submission in place via editSubmission", async () => {
+      const user = userEvent.setup();
+      mockGetMine.mockResolvedValue([mine({ id: "s1", title: "Old Song" })]);
+      mockResolveSong.mockResolvedValue(resolved("I9", "New Song"));
+      mockEditSubmission.mockResolvedValue(mine({ id: "s1", title: "New Song" }));
+      renderMix();
+
+      await screen.findByText("Old Song");
+      await user.click(screen.getByRole("button", { name: /change song/i }));
+      await composeAndSubmit(user);
+
+      expect(mockEditSubmission).toHaveBeenCalledWith(
+        "r1",
+        "s1",
+        expect.objectContaining({ isrc: "I9" }),
+      );
+      expect(await screen.findByText("New Song")).toBeInTheDocument();
+      expect(screen.queryByText("Old Song")).not.toBeInTheDocument();
+    });
+
+    it("remove deletes the song via deleteSubmission and drops it from the list", async () => {
+      const user = userEvent.setup();
+      mockGetClub.mockResolvedValue({ ...club(), songs_per_submission: 2 });
+      mockGetMine.mockResolvedValue([
+        mine({ id: "s1", title: "Song One" }),
+        mine({ id: "s2", title: "Song Two" }),
+      ]);
+      mockDeleteSubmission.mockResolvedValue(undefined);
+      renderMix();
+
+      await screen.findByText("Song One");
+      const firstCard = screen.getByText("Song One").closest("li") as HTMLElement;
+      await user.click(within(firstCard).getByRole("button", { name: /^remove$/i }));
+
+      expect(mockDeleteSubmission).toHaveBeenCalledWith("r1", "s1");
+      await waitFor(() => expect(screen.queryByText("Song One")).not.toBeInTheDocument());
+      expect(screen.getByText("Song Two")).toBeInTheDocument();
+    });
+
+    it("cap 1: removing the only song reopens the submit composer", async () => {
+      const user = userEvent.setup();
+      mockGetMine.mockResolvedValue([mine({ id: "s1", title: "Lonely Song" })]);
+      mockDeleteSubmission.mockResolvedValue(undefined);
+      renderMix();
+
+      await screen.findByText("Lonely Song");
+      await user.click(screen.getByRole("button", { name: /^remove$/i }));
+
+      expect(mockDeleteSubmission).toHaveBeenCalledWith("r1", "s1");
+      expect(await screen.findByRole("heading", { name: /submit a song/i })).toBeInTheDocument();
+    });
+
+    it("the cap-409 from the backend surfaces in the action error region", async () => {
+      const user = userEvent.setup();
+      const { ApiError } =
+        await vi.importActual<typeof import("../services/api")>("../services/api");
+      mockGetClub.mockResolvedValue({ ...club(), songs_per_submission: 2 });
+      mockGetMine.mockResolvedValue([mine({ id: "s1", title: "Song One" })]);
+      mockResolveSong.mockResolvedValue(resolved("I2", "Song Two"));
+      mockSubmitSong.mockRejectedValue(
+        new ApiError(409, "you've submitted the maximum of 2 song(s)"),
+      );
+      renderMix();
+
+      await screen.findByText("Song One");
+      await composeAndSubmit(user, firstComposerSlot());
+
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent(/maximum of 2 song/i);
+    });
+  });
+
+  it("organizer can open voting; advancing calls updateMix", async () => {
+    const user = userEvent.setup();
+    renderMix();
+    const btn = await screen.findByRole("button", { name: /open voting/i });
+    await user.click(btn);
+    expect(mockUpdateMix).toHaveBeenCalledWith("r1", { state: "open_voting" });
+  });
+
+  it("advance button resets after a successful open (not stuck on 'opening…') — MYS-95", async () => {
+    const user = userEvent.setup();
+    renderMix();
+    await user.click(await screen.findByRole("button", { name: /open voting/i }));
+    expect(mockUpdateMix).toHaveBeenCalled();
+    // After success the button returns to its label; it must not stay "opening…".
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /open voting/i })).toBeInTheDocument(),
+    );
+    expect(screen.queryByRole("button", { name: /opening/i })).not.toBeInTheDocument();
+  });
+
+  it("non-organizer sees no advance control", async () => {
+    setAuth(OTHER);
+    renderMix();
+    await screen.findByText("late summer feels");
+    expect(screen.queryByRole("button", { name: /open voting/i })).not.toBeInTheDocument();
+  });
+
+  // --- Co-organizer parity (MYS-99): isAdmin (isOrganizer OR own row's
+  // is_admin) gates OrganizerControls/EditMixForm, same as the fixed
+  // organizer. ---
+
+  it("co-organizer viewer: sees OrganizerControls (advance control) though they are not the fixed organizer", async () => {
+    mockGetClubMembers.mockResolvedValue(membersWithCoOrganizer());
+    setAuth(CO_ORGANIZER);
+    renderMix();
+    await screen.findByText("late summer feels");
+    expect(await screen.findByRole("button", { name: /open voting/i })).toBeInTheDocument();
+  });
+
+  it("co-organizer viewer: sees EditMixForm (edit mix) on a pending mix", async () => {
+    mockGetMix.mockResolvedValue(mix({ state: "pending" }));
+    mockGetClubMembers.mockResolvedValue(membersWithCoOrganizer());
+    setAuth(CO_ORGANIZER);
+    renderMix();
+    await screen.findByText("late summer feels");
+    expect(await screen.findByRole("button", { name: /^edit mix$/i })).toBeInTheDocument();
+  });
+
+  it("plain member viewer: sees neither OrganizerControls nor EditMixForm on a pending mix", async () => {
+    mockGetMix.mockResolvedValue(mix({ state: "pending" }));
+    mockGetClubMembers.mockResolvedValue(membersWithCoOrganizer());
+    setAuth(OTHER);
+    renderMix();
+    await screen.findByText("late summer feels");
+    expect(screen.queryByRole("button", { name: /open mix/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^edit mix$/i })).not.toBeInTheDocument();
+  });
+
+  it("organizer can open a pending mix; advancing calls updateMix directly, no confirm step — MYS-170", async () => {
+    mockGetMix.mockResolvedValue(mix({ state: "pending" }));
+    const user = userEvent.setup();
+    renderMix();
+    const btn = await screen.findByRole("button", { name: "open mix" });
+    await user.click(btn);
+    expect(mockUpdateMix).toHaveBeenCalledWith("r1", { state: "open_submission" });
+    // No confirm affordance should ever appear for this transition.
+    expect(screen.queryByRole("button", { name: /yes, close mix/i })).not.toBeInTheDocument();
+  });
+
+  it("a themeless pending mix can't be opened — the button is disabled with an explanatory note (MYS-211)", async () => {
+    mockGetMix.mockResolvedValue(mix({ state: "pending", theme: null }));
+    const user = userEvent.setup();
+    renderMix();
+    const btn = await screen.findByRole("button", { name: "open mix" });
+    expect(btn).toBeDisabled();
+    expect(
+      screen.getByText(/set a theme below before opening this mystery mix/i),
+    ).toBeInTheDocument();
+    // Belt and suspenders: even a forced click must never reach the API.
+    await user.click(btn);
+    expect(mockUpdateMix).not.toHaveBeenCalled();
+  });
+
+  it("a themeless pending mix shows the theme/description fields directly, no 'edit mix' click needed", async () => {
+    mockGetMix.mockResolvedValue(mix({ state: "pending", theme: null }));
+    renderMix();
+    await screen.findByRole("button", { name: "open mix" });
+    expect(screen.getByLabelText(/^theme$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/description/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^edit mix$/i })).not.toBeInTheDocument();
+  });
+
+  it("a themed pending mix still requires an 'edit mix' click to reveal the fields", async () => {
+    mockGetMix.mockResolvedValue(mix({ state: "pending" })); // has a theme by default
+    renderMix();
+    await screen.findByText("late summer feels");
+    expect(screen.queryByLabelText(/^theme$/i)).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /^edit mix$/i })).toBeInTheDocument();
+  });
+
+  describe("closing a mix — confirm step (MYS-170)", () => {
+    beforeEach(() => {
+      mockGetMix.mockResolvedValue(mix({ state: "open_voting" }));
+    });
+
+    it("clicking 'close mix' shows a confirm panel instead of calling updateMix immediately", async () => {
+      const user = userEvent.setup();
+      renderMix();
+      const closeBtn = await screen.findByRole("button", { name: "close mix" });
+      await user.click(closeBtn);
+
+      expect(mockUpdateMix).not.toHaveBeenCalled();
+      expect(await screen.findByRole("button", { name: "yes, close mix" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "cancel" })).toBeInTheDocument();
+      // The plain one-click button is gone while confirming.
+      expect(screen.queryByRole("button", { name: "close mix" })).not.toBeInTheDocument();
+    });
+
+    it("confirm panel shows the non-final-mix copy when more mixes remain", async () => {
+      // default club() has total_mixes: 6; mix() defaults mix_number: 1.
+      const user = userEvent.setup();
+      renderMix();
+      await user.click(await screen.findByRole("button", { name: "close mix" }));
+
+      expect(
+        await screen.findByText(
+          /this closes the mystery mix and opens the next one, starting its submission deadline\. it can't be undone\./i,
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/completes the club/i)).not.toBeInTheDocument();
+    });
+
+    it("confirm panel shows the final-mix copy when mix_number >= club.total_mixes", async () => {
+      mockGetMix.mockResolvedValue(mix({ state: "open_voting", mix_number: 6 }));
+      mockGetClub.mockResolvedValue({ ...club(), total_mixes: 6 });
+      const user = userEvent.setup();
+      renderMix();
+      await user.click(await screen.findByRole("button", { name: "close mix" }));
+
+      expect(
+        await screen.findByText(
+          /this closes the mystery mix and completes the club\. it can't be undone\./i,
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/opens the next one/i)).not.toBeInTheDocument();
+    });
+
+    it("clicking 'yes, close mix' in the confirm panel calls updateMix with state: closed", async () => {
+      const user = userEvent.setup();
+      renderMix();
+      await user.click(await screen.findByRole("button", { name: "close mix" }));
+      await user.click(await screen.findByRole("button", { name: "yes, close mix" }));
+
+      expect(mockUpdateMix).toHaveBeenCalledWith("r1", { state: "closed" });
+    });
+
+    it("clicking 'cancel' dismisses the confirm panel without calling updateMix", async () => {
+      const user = userEvent.setup();
+      renderMix();
+      await user.click(await screen.findByRole("button", { name: "close mix" }));
+      await user.click(await screen.findByRole("button", { name: "cancel" }));
+
+      expect(mockUpdateMix).not.toHaveBeenCalled();
+      // Back to the plain button; the confirm panel's controls are gone.
+      expect(await screen.findByRole("button", { name: "close mix" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "yes, close mix" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "cancel" })).not.toBeInTheDocument();
+    });
+  });
+
+  describe("reopening submissions — organizer rollback (MYS-168)", () => {
+    beforeEach(() => {
+      mockGetMix.mockResolvedValue(mix({ state: "open_voting" }));
+    });
+
+    it("shows both 'close mix' and 'reopen submissions' buttons while open_voting", async () => {
+      renderMix();
+      expect(await screen.findByRole("button", { name: "close mix" })).toBeInTheDocument();
+      expect(await screen.findByRole("button", { name: "reopen submissions" })).toBeInTheDocument();
+    });
+
+    it("clicking 'reopen submissions' shows a confirm panel instead of calling updateMix immediately", async () => {
+      const user = userEvent.setup();
+      renderMix();
+      const reopenBtn = await screen.findByRole("button", { name: "reopen submissions" });
+      await user.click(reopenBtn);
+
+      expect(mockUpdateMix).not.toHaveBeenCalled();
+      expect(
+        await screen.findByRole("button", { name: "yes, reopen submissions" }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "cancel" })).toBeInTheDocument();
+      // The plain two-button row is gone while confirming.
+      expect(screen.queryByRole("button", { name: "reopen submissions" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "close mix" })).not.toBeInTheDocument();
+    });
+
+    it("confirm copy mentions the vote count (pluralized) when votes have been cast", async () => {
+      mockGetVoteCounts.mockResolvedValue({
+        mix_id: "r1",
+        entries: [
+          { submission_id: "p1", title: "Debaser", artist: "Pixies", vote_count: 2 },
+          { submission_id: "p2", title: "Bad Guy", artist: "Billie Eilish", vote_count: 1 },
+        ],
+      });
+      const user = userEvent.setup();
+      renderMix();
+      await user.click(await screen.findByRole("button", { name: "reopen submissions" }));
+
+      expect(
+        await screen.findByText(
+          "this reopens submissions with a fresh window and discards 3 votes already cast. it can't be undone.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("confirm copy uses singular 'vote' for exactly one cast vote", async () => {
+      mockGetVoteCounts.mockResolvedValue({
+        mix_id: "r1",
+        entries: [{ submission_id: "p1", title: "Debaser", artist: "Pixies", vote_count: 1 }],
+      });
+      const user = userEvent.setup();
+      renderMix();
+      await user.click(await screen.findByRole("button", { name: "reopen submissions" }));
+
+      expect(
+        await screen.findByText(
+          "this reopens submissions with a fresh window and discards 1 vote already cast. it can't be undone.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("confirm copy omits the vote count when no votes have been cast", async () => {
+      // beforeEach default mockGetVoteCounts resolves to an empty entries list.
+      const user = userEvent.setup();
+      renderMix();
+      await user.click(await screen.findByRole("button", { name: "reopen submissions" }));
+
+      expect(
+        await screen.findByText(
+          "this reopens submissions with a fresh window. it can't be undone.",
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/discards/i)).not.toBeInTheDocument();
+    });
+
+    it("clicking 'cancel' dismisses the confirm panel without calling updateMix", async () => {
+      const user = userEvent.setup();
+      renderMix();
+      await user.click(await screen.findByRole("button", { name: "reopen submissions" }));
+      await user.click(await screen.findByRole("button", { name: "cancel" }));
+
+      expect(mockUpdateMix).not.toHaveBeenCalled();
+      // Back to the plain two-button row; the confirm panel's controls are gone.
+      expect(await screen.findByRole("button", { name: "reopen submissions" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "close mix" })).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "yes, reopen submissions" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("clicking 'yes, reopen submissions' calls updateMix(mixId, { state: 'open_submission' })", async () => {
+      const user = userEvent.setup();
+      renderMix();
+      await user.click(await screen.findByRole("button", { name: "reopen submissions" }));
+      await user.click(await screen.findByRole("button", { name: "yes, reopen submissions" }));
+
+      expect(mockUpdateMix).toHaveBeenCalledWith("r1", { state: "open_submission" });
+    });
+
+    it("the two confirm flows don't interfere: canceling 'reopen submissions' returns to the plain row, not a broken close-mix state", async () => {
+      const user = userEvent.setup();
+      renderMix();
+      await user.click(await screen.findByRole("button", { name: "reopen submissions" }));
+      await user.click(await screen.findByRole("button", { name: "cancel" }));
+
+      // Plain two-button row is restored; "close mix" still opens ITS OWN
+      // confirm panel correctly (not a leftover/broken intermediate state).
+      await user.click(await screen.findByRole("button", { name: "close mix" }));
+      expect(await screen.findByRole("button", { name: "yes, close mix" })).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "yes, reopen submissions" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("the two confirm flows don't interfere: canceling 'close mix' returns to the plain row, not a broken reopen state", async () => {
+      const user = userEvent.setup();
+      renderMix();
+      await user.click(await screen.findByRole("button", { name: "close mix" }));
+      await user.click(await screen.findByRole("button", { name: "cancel" }));
+
+      await user.click(await screen.findByRole("button", { name: "reopen submissions" }));
+      expect(
+        await screen.findByRole("button", { name: "yes, reopen submissions" }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "yes, close mix" })).not.toBeInTheDocument();
+    });
+  });
+
+  describe("extending the voting deadline (MYS-180)", () => {
+    beforeEach(() => {
+      mockGetMix.mockResolvedValue(
+        mix({ state: "open_voting", voting_deadline: "2026-07-20T12:00:00Z" }),
+      );
+    });
+
+    it("shows an 'extend voting' button while open_voting", async () => {
+      renderMix();
+      expect(await screen.findByRole("button", { name: "extend voting" })).toBeInTheDocument();
+    });
+
+    it("clicking it opens a datetime picker, prefilled and bounded off the current deadline", async () => {
+      const user = userEvent.setup();
+      renderMix();
+      await user.click(await screen.findByRole("button", { name: "extend voting" }));
+
+      const input = await screen.findByLabelText(/new voting deadline/i);
+      // Exact clock values depend on the runner's local timezone, so assert
+      // shape + the relative bounds rather than a hardcoded wall-clock string.
+      expect((input as HTMLInputElement).value).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+      expect(input).toHaveAttribute("min");
+      expect(input).toHaveAttribute("max");
+      const min = new Date(input.getAttribute("min")!);
+      const max = new Date(input.getAttribute("max")!);
+      expect(max.getTime() - min.getTime()).toBeCloseTo(48 * 60 * 60 * 1000 - 60_000, -3);
+    });
+
+    it("saving calls extendVotingDeadline with the chosen time as an ISO UTC string", async () => {
+      mockExtendVotingDeadline.mockResolvedValue(
+        mix({ state: "open_voting", voting_deadline: "2026-07-22T12:00:00.000Z" }),
+      );
+      const user = userEvent.setup();
+      renderMix();
+      await user.click(await screen.findByRole("button", { name: "extend voting" }));
+
+      const input = await screen.findByLabelText(/new voting deadline/i);
+      fireEvent.change(input, { target: { value: "2026-07-22T12:00" } });
+      await user.click(await screen.findByRole("button", { name: "save" }));
+
+      expect(mockExtendVotingDeadline).toHaveBeenCalledWith(
+        "r1",
+        new Date("2026-07-22T12:00").toISOString(),
+      );
+      // Picker closes back to the plain button on success.
+      expect(await screen.findByRole("button", { name: "extend voting" })).toBeInTheDocument();
+      expect(screen.queryByLabelText(/new voting deadline/i)).not.toBeInTheDocument();
+    });
+
+    it("clicking 'cancel' dismisses the picker without calling extendVotingDeadline", async () => {
+      const user = userEvent.setup();
+      renderMix();
+      await user.click(await screen.findByRole("button", { name: "extend voting" }));
+      await user.click(await screen.findByRole("button", { name: "cancel" }));
+
+      expect(mockExtendVotingDeadline).not.toHaveBeenCalled();
+      expect(await screen.findByRole("button", { name: "extend voting" })).toBeInTheDocument();
+      expect(screen.queryByLabelText(/new voting deadline/i)).not.toBeInTheDocument();
+    });
+
+    it("is not rendered once the mix is closed", async () => {
+      mockGetMix.mockResolvedValue(mix({ state: "closed" }));
+      renderMix();
+      await screen.findByText(/closed/i);
+      expect(screen.queryByRole("button", { name: "extend voting" })).not.toBeInTheDocument();
+    });
+  });
+
+  it("'reopen submissions' is never rendered while the mix is pending", async () => {
+    mockGetMix.mockResolvedValue(mix({ state: "pending" }));
+    renderMix();
+    await screen.findByRole("button", { name: "open mix" });
+    expect(screen.queryByRole("button", { name: "reopen submissions" })).not.toBeInTheDocument();
+  });
+
+  it("'reopen submissions' is never rendered while the mix is open_submission", async () => {
+    renderMix(); // default mix() state is open_submission
+    await screen.findByRole("button", { name: "open voting" });
+    expect(screen.queryByRole("button", { name: "reopen submissions" })).not.toBeInTheDocument();
+  });
+
+  it("open_voting: renders the playlist with platform links", async () => {
+    mockGetMix.mockResolvedValue(mix({ state: "open_voting" }));
+    const entries: PlaylistEntry[] = [
+      {
+        submission_id: "p1",
+        isrc: "I1",
+        source: null,
+        source_url: null,
+        title: "Debaser",
+        artist: "Pixies",
+        album: null,
+        album_art_url: null,
+        platforms: { spotify: "https://s", deezer: "https://d" },
+        preferred_url: "https://s",
+        is_own: false,
+        submitter_note: null,
+      },
+    ];
+    mockGetPlaylist.mockResolvedValue({
+      mix_id: "r1",
+      mix_number: 1,
+      theme: "t",
+      state: "open_voting",
+      entries,
+      youtube_playlist_url: null,
+      youtube_track_count: 0,
+      voting_eligible: 0,
+      voting_acted: 0,
+      vibing_count: 0,
+    });
+    renderMix();
+    expect(await screen.findByText("Debaser")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /on Spotify/i })).toHaveAttribute("href", "https://s");
+    expect(screen.getByRole("button", { name: /close mix/i })).toBeInTheDocument();
+  });
+
+  it("open_voting: lists bandcamp/youtube-only tracks above the playlist links", async () => {
+    mockGetMix.mockResolvedValue(mix({ state: "open_voting" }));
+    mockGetPlaylist.mockResolvedValue({
+      mix_id: "r1",
+      mix_number: 1,
+      theme: "t",
+      state: "open_voting",
+      entries: [
+        entry({ submission_id: "p1", title: "Debaser", artist: "Pixies" }),
+        entry({
+          submission_id: "p2",
+          isrc: null,
+          source: "bandcamp",
+          source_url: "https://artist.bandcamp.com/track/only",
+          title: "Only Here",
+          artist: "Cassette Kid",
+        }),
+      ],
+      youtube_playlist_url: null,
+      youtube_track_count: 0,
+      voting_eligible: 0,
+      voting_acted: 0,
+      vibing_count: 0,
+    });
+    renderMix();
+    expect(
+      await screen.findByText(
+        "bandcamp or YouTube only tracks that may not appear on your playlists",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Only Here" })).toHaveAttribute(
+      "href",
+      "https://artist.bandcamp.com/track/only",
+    );
+  });
+
+  it("open_voting: omits the source-only list when every track is a catalog track", async () => {
+    mockGetMix.mockResolvedValue(mix({ state: "open_voting" }));
+    mockGetPlaylist.mockResolvedValue({
+      mix_id: "r1",
+      mix_number: 1,
+      theme: "t",
+      state: "open_voting",
+      entries: [entry({ submission_id: "p1", title: "Debaser", artist: "Pixies" })],
+      youtube_playlist_url: null,
+      youtube_track_count: 0,
+      voting_eligible: 0,
+      voting_acted: 0,
+      vibing_count: 0,
+    });
+    renderMix();
+    expect(await screen.findByText("Debaser")).toBeInTheDocument();
+    expect(
+      screen.queryByText("bandcamp or YouTube only tracks that may not appear on your playlists"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("closed: reveals submissions with submitter names", async () => {
+    mockGetMix.mockResolvedValue(mix({ state: "closed" }));
+    mockGetResults.mockResolvedValue(
+      results({
+        submissions: [
+          {
+            submission_id: "s1",
+            user_id: OTHER,
+            submitter_display_name: "Bob",
+            isrc: "I1",
+            source: null,
+            source_url: null,
+            title: "Bad Guy",
+            artist: "Billie Eilish",
+            album: null,
+            album_art_url: null,
+            platforms: {},
+            submitter_note: "a banger",
+            vote_count: 0,
+            notes: [],
+            voters: [],
+          },
+        ],
+      }),
+    );
+    renderMix();
+    expect(await screen.findByText("Bad Guy")).toBeInTheDocument();
+    expect(screen.getByText("Bob")).toBeInTheDocument();
+    expect(screen.getByText(/a banger/)).toBeInTheDocument();
+    // No voters on this submission — no "voted by" line at all (MYS-173).
+    expect(screen.queryByText(/voted by/i)).not.toBeInTheDocument();
+  });
+
+  it("closed: names who voted for a song (MYS-173)", async () => {
+    mockGetMix.mockResolvedValue(mix({ state: "closed" }));
+    mockGetResults.mockResolvedValue(
+      results({
+        submissions: [
+          {
+            submission_id: "s1",
+            user_id: OTHER,
+            submitter_display_name: "Bob",
+            isrc: "I1",
+            source: null,
+            source_url: null,
+            title: "Bad Guy",
+            artist: "Billie Eilish",
+            album: null,
+            album_art_url: null,
+            platforms: {},
+            submitter_note: null,
+            vote_count: 2,
+            notes: [],
+            voters: [
+              { user_id: "u-ada", display_name: "Ada" },
+              { user_id: "u-cal", display_name: "Cal" },
+            ],
+          },
+        ],
+      }),
+    );
+    renderMix();
+    expect(await screen.findByText("voted by Ada, Cal")).toBeInTheDocument();
+  });
+
+  it("closed: the picks list ranks songs by votes with shared-rank ties, called out as 'tied'", async () => {
+    const sub = (id: string, title: string, vote_count: number) => ({
+      submission_id: id,
+      user_id: OTHER,
+      submitter_display_name: "Bob",
+      isrc: id,
+      source: null,
+      source_url: null,
+      title,
+      artist: "",
+      album: null,
+      album_art_url: null,
+      platforms: {},
+      submitter_note: null,
+      vote_count,
+      notes: [],
+      voters: [],
+    });
+    mockGetMix.mockResolvedValue(mix({ state: "closed" }));
+    mockGetResults.mockResolvedValue(
+      results({
+        submissions: [sub("a", "Alpha", 7), sub("b", "Bravo", 7), sub("c", "Charlie", 4)],
+      }),
+    );
+    renderMix();
+    const heading = await screen.findByText("the picks (3)");
+    const section = heading.closest("section") as HTMLElement;
+    const picks = within(section);
+    // Two songs tie at rank 1, the next distinct score is rank 3 (not 2).
+    expect(picks.getByText("Charlie").closest("li")).toHaveTextContent("3");
+    expect(picks.getAllByText("7 votes")).toHaveLength(2);
+    expect(picks.getByText("4 votes")).toBeInTheDocument();
+    // The tied pair is called out; the untied third place is not.
+    expect(picks.getAllByText("tied")).toHaveLength(2);
+    expect(
+      within(picks.getByText("Charlie").closest("li") as HTMLElement).queryByText("tied"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("closed: the picks list gives the top 3 ranks a medal icon", async () => {
+    const sub = (id: string, title: string, vote_count: number) => ({
+      submission_id: id,
+      user_id: OTHER,
+      submitter_display_name: "Bob",
+      isrc: id,
+      source: null,
+      source_url: null,
+      title,
+      artist: "",
+      album: null,
+      album_art_url: null,
+      platforms: {},
+      submitter_note: null,
+      vote_count,
+      notes: [],
+      voters: [],
+    });
+    mockGetMix.mockResolvedValue(mix({ state: "closed" }));
+    mockGetResults.mockResolvedValue(
+      results({
+        submissions: [
+          sub("a", "Alpha", 4),
+          sub("b", "Bravo", 3),
+          sub("c", "Charlie", 2),
+          sub("d", "Delta", 1),
+        ],
+      }),
+    );
+    renderMix();
+    const heading = await screen.findByText("the picks (4)");
+    const section = heading.closest("section") as HTMLElement;
+    const picks = within(section);
+    const medalFor = (title: string) => picks.getByText(title).closest("li")!.querySelector("svg");
+    expect(medalFor("Alpha")).not.toBeNull();
+    expect(medalFor("Bravo")).not.toBeNull();
+    expect(medalFor("Charlie")).not.toBeNull();
+    expect(medalFor("Delta")).toBeNull();
+  });
+
+  describe("open_voting voting UX (MYS-20)", () => {
+    /** Put the mix into open_voting with the given playlist entries, and a
+     *  caller submission (so participation_mode is known) defaulting to playing. */
+    function setupVoting(opts: {
+      entries: PlaylistEntry[];
+      votesPerPlayer?: number;
+      myVotes?: string[];
+      mine?: SubmissionResult | null;
+      youtubePlaylistUrl?: string | null;
+      youtubeTrackCount?: number;
+      votingEligible?: number;
+      votingActed?: number;
+      vibingCount?: number;
+    }) {
+      const vpp = opts.votesPerPlayer ?? 3;
+      mockGetMix.mockResolvedValue(mix({ state: "open_voting", votes_per_player: vpp }));
+      mockGetPlaylist.mockResolvedValue({
+        mix_id: "r1",
+        mix_number: 1,
+        theme: "t",
+        state: "open_voting",
+        entries: opts.entries,
+        youtube_playlist_url: opts.youtubePlaylistUrl ?? null,
+        youtube_track_count: opts.youtubeTrackCount ?? 0,
+        voting_eligible: opts.votingEligible ?? 0,
+        voting_acted: opts.votingActed ?? 0,
+        vibing_count: opts.vibingCount ?? 0,
+      });
+      mockGetMyVotes.mockResolvedValue({
+        mix_id: "r1",
+        submission_ids: opts.myVotes ?? [],
+        count: (opts.myVotes ?? []).length,
+        votes_per_player: vpp,
+      });
+      // Default: a playing submission so the caller is a voter.
+      mockGetMine.mockResolvedValue(
+        opts.mine === undefined ? [mine()] : opts.mine ? [opts.mine] : [],
+      );
+    }
+
+    it("open YouTube affordance: renders a new-tab link to youtube_playlist_url with the N of M count (MYS-78)", async () => {
+      setupVoting({
+        entries: [
+          entry({ submission_id: "p1", title: "Debaser" }),
+          entry({ submission_id: "p2", title: "Hey" }),
+        ],
+        myVotes: [],
+        youtubePlaylistUrl: "https://www.youtube.com/watch_videos?video_ids=a,b",
+        youtubeTrackCount: 1,
+      });
+      renderMix();
+
+      const link = await screen.findByRole("link", { name: /open playlist in youtube/i });
+      expect(link).toHaveAttribute("href", "https://www.youtube.com/watch_videos?video_ids=a,b");
+      expect(link).toHaveAttribute("target", "_blank");
+      // N (youtube_track_count) of M (entry count) on YouTube
+      expect(screen.getByText("1 of 2 on YouTube")).toBeInTheDocument();
+    });
+
+    it("open YouTube affordance: hidden entirely when youtube_playlist_url is null (MYS-78)", async () => {
+      setupVoting({
+        entries: [entry({ submission_id: "p1", title: "Debaser" })],
+        myVotes: [],
+        youtubePlaylistUrl: null,
+      });
+      renderMix();
+
+      await screen.findByRole("button", { name: /Debaser/i });
+      expect(
+        screen.queryByRole("link", { name: /open playlist in youtube/i }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/on YouTube/i)).not.toBeInTheDocument();
+    });
+
+    it("voting progress: shows X of Y voted or noted · Z just vibing (MYS-102)", async () => {
+      setupVoting({
+        entries: [entry({ submission_id: "p1", title: "Debaser" })],
+        myVotes: [],
+        votingEligible: 4,
+        votingActed: 2,
+        vibingCount: 1,
+      });
+      renderMix();
+
+      expect(await screen.findByText("2 of 4 voted or noted · 1 just vibing")).toBeInTheDocument();
+    });
+
+    it("voting progress: omits the vibing clause when nobody is vibing (MYS-102)", async () => {
+      setupVoting({
+        entries: [entry({ submission_id: "p1", title: "Debaser" })],
+        myVotes: [],
+        votingEligible: 3,
+        votingActed: 1,
+        vibingCount: 0,
+      });
+      renderMix();
+
+      expect(await screen.findByText("1 of 3 voted or noted")).toBeInTheDocument();
+      expect(screen.queryByText(/just vibing/i)).not.toBeInTheDocument();
+    });
+
+    it("voting progress: refreshes after casting votes (MYS-102)", async () => {
+      const user = userEvent.setup();
+      setupVoting({
+        entries: [
+          entry({ submission_id: "p1", title: "Debaser" }),
+          entry({ submission_id: "p2", title: "Hey" }),
+        ],
+        myVotes: [],
+        votingEligible: 4,
+        votingActed: 1,
+        vibingCount: 0,
+      });
+      // Key the reported progress on whether a cast has happened, so the
+      // assertion is robust to how many times the playlist is (re)fetched: the
+      // caller joins the "acted" tally only after they cast (1 → 2 of 4).
+      let casted = false;
+      mockCastVotes.mockImplementation(async () => {
+        casted = true;
+        return { mix_id: "r1", submission_ids: ["p1"], count: 1, votes_per_player: 3 };
+      });
+      // After casting, the playlist shows 2 voted and the vote counts update
+      mockGetVoteCounts.mockImplementation(async () => ({
+        mix_id: "r1",
+        entries: casted
+          ? [
+              { submission_id: "p1", title: "Debaser", artist: "Pixies", vote_count: 1 },
+              { submission_id: "p2", title: "Hey", artist: "Pixies", vote_count: 0 },
+            ]
+          : [],
+      }));
+      mockGetPlaylist.mockImplementation(async () => ({
+        mix_id: "r1",
+        mix_number: 1,
+        theme: "t",
+        state: "open_voting",
+        entries: [
+          entry({ submission_id: "p1", title: "Debaser" }),
+          entry({ submission_id: "p2", title: "Hey" }),
+        ],
+        youtube_playlist_url: null,
+        youtube_track_count: 0,
+        voting_eligible: 4,
+        voting_acted: casted ? 2 : 1,
+        vibing_count: 0,
+      }));
+      renderMix();
+
+      expect(await screen.findByText("1 of 4 voted or noted")).toBeInTheDocument();
+      await user.click(await screen.findByRole("button", { name: /Debaser/i }));
+      await user.click(screen.getByRole("button", { name: /cast votes/i }));
+
+      // After casting, the voting controls are replaced by the vote tally
+      expect(await screen.findByText(/votes saved/i)).toBeInTheDocument();
+      expect(await screen.findByText(/you've locked in your votes/i)).toBeInTheDocument();
+      expect(screen.getByText(/vote tally/i)).toBeInTheDocument();
+    });
+
+    it("playing voter sees votable entries as toggles, a counter, and pre-selection from getMyVotes", async () => {
+      setupVoting({
+        entries: [
+          entry({ submission_id: "p1", title: "Debaser" }),
+          entry({ submission_id: "p2", title: "Hey", artist: "Pixies" }),
+        ],
+        myVotes: [], // User hasn't voted yet - voting controls shown
+      });
+      renderMix();
+
+      const debaser = await screen.findByRole("button", { name: /Debaser/i });
+      const hey = screen.getByRole("button", { name: /Hey/i });
+      // pre-selected from getMyVotes (empty in this case)
+      expect(debaser).toHaveAttribute("aria-pressed", "false");
+      expect(hey).toHaveAttribute("aria-pressed", "false");
+      // live counter reflects the seeded selection
+      expect(screen.getByText("0 / 3 selected")).toBeInTheDocument();
+    });
+
+    it("own song (is_own): marked as yours, not a vote toggle, no notes affordance, not selectable (MYS-73/74/75/77)", async () => {
+      setupVoting({
+        entries: [
+          entry({ submission_id: "mine", title: "My Track", is_own: true }),
+          entry({ submission_id: "p2", title: "Their Track" }),
+        ],
+        myVotes: [],
+      });
+      renderMix();
+
+      await screen.findByText("My Track");
+      // clearly marked as yours, with the no-self-vote explanation
+      expect(screen.getByText("your submission")).toBeInTheDocument();
+      expect(screen.getByText(/can't vote for your own song/i)).toBeInTheDocument();
+      // your own song is NOT a vote toggle…
+      expect(screen.queryByRole("button", { name: /My Track/i })).not.toBeInTheDocument();
+      // …while everyone else's still is
+      expect(screen.getByRole("button", { name: /Their Track/i })).toBeInTheDocument();
+      // and it doesn't count toward the selectable set
+      expect(screen.getByText("0 / 3 selected")).toBeInTheDocument();
+
+      // you can't leave a note on your own submission (MYS-77): the own card has
+      // no notes / leave-a-note affordance, while a peer's card still does.
+      const ownCard = screen.getByText("My Track").closest("li") as HTMLElement;
+      expect(within(ownCard).queryByRole("button", { name: /^notes$/i })).not.toBeInTheDocument();
+      expect(
+        within(ownCard).queryByRole("button", { name: /leave a note/i }),
+      ).not.toBeInTheDocument();
+      const peerCard = screen.getByText("Their Track").closest("li") as HTMLElement;
+      expect(within(peerCard).getByRole("button", { name: /^notes$/i })).toBeInTheDocument();
+    });
+
+    it("toggling selects/deselects and updates the counter", async () => {
+      const user = userEvent.setup();
+      setupVoting({
+        entries: [
+          entry({ submission_id: "p1", title: "Debaser" }),
+          entry({ submission_id: "p2", title: "Hey" }),
+        ],
+        myVotes: [],
+      });
+      renderMix();
+
+      const debaser = await screen.findByRole("button", { name: /Debaser/i });
+      expect(screen.getByText("0 / 3 selected")).toBeInTheDocument();
+
+      await user.click(debaser);
+      expect(debaser).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByText("1 / 3 selected")).toBeInTheDocument();
+
+      await user.click(debaser);
+      expect(debaser).toHaveAttribute("aria-pressed", "false");
+      expect(screen.getByText("0 / 3 selected")).toBeInTheDocument();
+    });
+
+    it("at the votes_per_player limit, unselected toggles are disabled but deselect still works", async () => {
+      const user = userEvent.setup();
+      setupVoting({
+        entries: [
+          entry({ submission_id: "p1", title: "Debaser" }),
+          entry({ submission_id: "p2", title: "Hey" }),
+        ],
+        votesPerPlayer: 1,
+        myVotes: [], // User hasn't voted yet
+      });
+      renderMix();
+
+      const debaser = await screen.findByRole("button", { name: /Debaser/i });
+      const hey = screen.getByRole("button", { name: /Hey/i });
+      expect(screen.getByText("0 / 1 selected")).toBeInTheDocument();
+      // at limit (0 selected, 1 allowed), no songs are disabled yet
+      expect(hey).not.toBeDisabled();
+      expect(debaser).not.toBeDisabled();
+
+      await user.click(debaser);
+      expect(debaser).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByText("1 / 1 selected")).toBeInTheDocument();
+      // now at limit: hey is disabled, debaser can be deselected
+      expect(hey).toBeDisabled();
+      expect(debaser).not.toBeDisabled();
+
+      await user.click(debaser);
+      expect(debaser).toHaveAttribute("aria-pressed", "false");
+      expect(screen.getByText("0 / 1 selected")).toBeInTheDocument();
+      // now under the limit, hey is enabled again
+      expect(hey).not.toBeDisabled();
+    });
+
+    it("cast votes calls castVotes with the selected submission_ids and shows the confirmation", async () => {
+      const user = userEvent.setup();
+      setupVoting({
+        entries: [
+          entry({ submission_id: "p1", title: "Debaser" }),
+          entry({ submission_id: "p2", title: "Hey" }),
+        ],
+        myVotes: [],
+      });
+      mockCastVotes.mockResolvedValue({
+        mix_id: "r1",
+        submission_ids: ["p1"],
+        count: 1,
+        votes_per_player: 3,
+      });
+      renderMix();
+
+      const debaser = await screen.findByRole("button", { name: /Debaser/i });
+      await user.click(debaser);
+      await user.click(screen.getByRole("button", { name: /cast votes/i }));
+
+      expect(mockCastVotes).toHaveBeenCalledWith("r1", ["p1"]);
+      expect(await screen.findByText(/votes saved/i)).toBeInTheDocument();
+    });
+
+    it("cast votes button shows a clear busy label while the request is in flight", async () => {
+      const user = userEvent.setup();
+      setupVoting({
+        entries: [entry({ submission_id: "p1", title: "Debaser" })],
+        myVotes: [],
+      });
+      // Hold the request open so the busy state is observable (MYS-66: the
+      // button must read "casting…", never a bare "…").
+      let resolveCast: (() => void) | undefined;
+      mockCastVotes.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveCast = () =>
+              resolve({ mix_id: "r1", submission_ids: ["p1"], count: 1, votes_per_player: 3 });
+          }),
+      );
+      renderMix();
+
+      await user.click(await screen.findByRole("button", { name: /Debaser/i }));
+      await user.click(screen.getByRole("button", { name: /cast votes/i }));
+
+      expect(await screen.findByRole("button", { name: /casting…/i })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^…$/ })).not.toBeInTheDocument();
+
+      resolveCast?.();
+      // Wait for the component to update after isVotesLocked becomes true
+      await waitFor(() => {
+        expect(screen.getByText(/votes saved/i)).toBeInTheDocument();
+      });
+    });
+
+    it("cast votes button is disabled when nothing is selected", async () => {
+      setupVoting({
+        entries: [entry({ submission_id: "p1", title: "Debaser" })],
+        myVotes: [],
+      });
+      renderMix();
+
+      await screen.findByRole("button", { name: /Debaser/i });
+      expect(screen.getByRole("button", { name: /cast votes/i })).toBeDisabled();
+    });
+
+    it("every submission is a votable toggle — no separate vibing section (MYS-112)", async () => {
+      setupVoting({
+        entries: [
+          entry({ submission_id: "p1", title: "Debaser" }),
+          entry({ submission_id: "p2", title: "Ambient Drift" }),
+        ],
+        myVotes: [],
+      });
+      renderMix();
+
+      // Every song is a votable toggle now — vibing is private during voting.
+      expect(await screen.findByRole("button", { name: /Debaser/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Ambient Drift/i })).toBeInTheDocument();
+      // No separate "just vibing" section or "along for the ride" copy.
+      expect(screen.queryByRole("heading", { name: /just vibing/i })).not.toBeInTheDocument();
+      expect(screen.queryByText(/along for the ride/i)).not.toBeInTheDocument();
+    });
+
+    it("a caller who is themselves vibing sees no vote controls, a sit-out message, and still the playlist", async () => {
+      setupVoting({
+        entries: [entry({ submission_id: "p1", title: "Debaser" })],
+        myVotes: [],
+        mine: mine({ participation_mode: "vibing" }),
+      });
+      renderMix();
+
+      expect(await screen.findByText(/you sit voting out/i)).toBeInTheDocument();
+      // no vote controls
+      expect(screen.queryByRole("button", { name: /cast votes/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Debaser/i })).not.toBeInTheDocument();
+      // playlist still visible
+      expect(screen.getByText("Debaser")).toBeInTheDocument();
+    });
+
+    it("a non-submitter whose club membership is vibing sits voting out (MYS-167)", async () => {
+      // No submission this mix, so the vibe stance falls back to the caller's
+      // per-club membership: vibe_mode true → they sit voting out, matching the
+      // backend which rejects such a ballot.
+      mockGetMyMembership.mockResolvedValue({
+        club_id: "lg1",
+        user_id: ORGANIZER,
+        vibe_mode: true,
+      });
+      setupVoting({
+        entries: [entry({ submission_id: "p1", title: "Debaser" })],
+        myVotes: [],
+        mine: null, // no submission — stance comes from membership vibe_mode
+      });
+      renderMix();
+
+      expect(await screen.findByText(/you sit voting out/i)).toBeInTheDocument();
+      // no vote controls
+      expect(screen.queryByRole("button", { name: /cast votes/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Debaser/i })).not.toBeInTheDocument();
+      // playlist still visible
+      expect(screen.getByText("Debaser")).toBeInTheDocument();
+    });
+
+    it("a non-submitter whose club membership is playing can vote (MYS-167)", async () => {
+      // Playing membership + no submission → the ballot is available, matching the
+      // backend which now accepts non-submitter votes from playing members.
+      mockGetMyMembership.mockResolvedValue({
+        club_id: "lg1",
+        user_id: ORGANIZER,
+        vibe_mode: false,
+      });
+      setupVoting({
+        entries: [entry({ submission_id: "p1", title: "Debaser" })],
+        myVotes: [],
+        mine: null, // no submission — stance comes from membership vibe_mode
+      });
+      renderMix();
+
+      // The song is a votable toggle and there's no sit-out message.
+      expect(await screen.findByRole("button", { name: /Debaser/i })).toBeInTheDocument();
+      expect(screen.queryByText(/you sit voting out/i)).not.toBeInTheDocument();
+    });
+
+    it("vibing viewer can leave a note on each song (MYS-132)", async () => {
+      setupVoting({
+        entries: [entry({ submission_id: "p1", title: "Debaser" })],
+        myVotes: [],
+        mine: mine({ participation_mode: "vibing" }),
+      });
+      renderMix();
+
+      // Vibers don't vote, but they can still leave notes — the affordance is
+      // present on the playlist card.
+      expect(await screen.findByText(/you sit voting out/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /leave a note/i })).toBeInTheDocument();
+    });
+
+    it("a castVotes ApiError surfaces in the actionError region", async () => {
+      const user = userEvent.setup();
+      const { ApiError } =
+        await vi.importActual<typeof import("../services/api")>("../services/api");
+      setupVoting({
+        entries: [entry({ submission_id: "p1", title: "Debaser" })],
+        myVotes: [],
+      });
+      mockCastVotes.mockRejectedValue(new ApiError(403, "you can't vote for your own song"));
+      renderMix();
+
+      const debaser = await screen.findByRole("button", { name: /Debaser/i });
+      await user.click(debaser);
+      await user.click(screen.getByRole("button", { name: /cast votes/i }));
+
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent(/you can't vote for your own song/i);
+    });
+  });
+
+  describe("locked vote tally — VotingTally (MYS-171)", () => {
+    /** Puts the mix straight into the locked-tally view: getMyVotes already
+     *  returns a non-empty submission_ids, so isVotesLocked is true from load()
+     *  without needing to drive the cast-votes UI flow. */
+    function setupLockedTally(opts: {
+      voteCounts: { submission_id: string; title: string; artist: string; vote_count: number }[];
+      myVotes: string[];
+      votesPerPlayer?: number;
+    }) {
+      const vpp = opts.votesPerPlayer ?? 3;
+      mockGetMix.mockResolvedValue(mix({ state: "open_voting", votes_per_player: vpp }));
+      mockGetPlaylist.mockResolvedValue({
+        mix_id: "r1",
+        mix_number: 1,
+        theme: "t",
+        state: "open_voting",
+        entries: opts.voteCounts.map((v) =>
+          entry({ submission_id: v.submission_id, title: v.title, artist: v.artist }),
+        ),
+        youtube_playlist_url: null,
+        youtube_track_count: 0,
+        voting_eligible: 0,
+        voting_acted: 0,
+        vibing_count: 0,
+      });
+      mockGetMyVotes.mockResolvedValue({
+        mix_id: "r1",
+        submission_ids: opts.myVotes,
+        count: opts.myVotes.length,
+        votes_per_player: vpp,
+      });
+      mockGetMine.mockResolvedValue([mine()]);
+      mockGetVoteCounts.mockResolvedValue({ mix_id: "r1", entries: opts.voteCounts });
+    }
+
+    /** Finds the tally row div for a given song title — three levels up from
+     *  the title <p>: p -> div.min-w-0 -> div.flex (rank+title) -> row div. */
+    function tallyRowFor(title: string): HTMLElement {
+      const titleEl = screen.getByText(title);
+      return titleEl.parentElement!.parentElement!.parentElement as HTMLElement;
+    }
+
+    it("marks the song actually voted for, not simply the top-N by vote count (bug fix)", async () => {
+      // The caller voted for the LOWEST-count song (p3). Under the old
+      // rank-based `i < voteLimit` logic (votes_per_player=1 -> top 1), the
+      // highest-count song (p1, "Debaser") would have been wrongly labeled
+      // "your vote" instead.
+      setupLockedTally({
+        voteCounts: [
+          { submission_id: "p1", title: "Debaser", artist: "Pixies", vote_count: 5 },
+          { submission_id: "p2", title: "Hey", artist: "Pixies", vote_count: 3 },
+          { submission_id: "p3", title: "Where Is My Mind", artist: "Pixies", vote_count: 1 },
+        ],
+        myVotes: ["p3"],
+        votesPerPlayer: 1,
+      });
+      renderMix();
+
+      await screen.findByText(/vote tally/i);
+
+      // Only one "your vote" label anywhere, and it's on the song actually voted for.
+      // (Exact match — the intro copy above the tally also contains the
+      // substring "your votes", so a loose regex would over-match.)
+      const voteLabels = screen.getAllByText("your vote", { exact: true });
+      expect(voteLabels).toHaveLength(1);
+
+      const votedRow = tallyRowFor("Where Is My Mind");
+      expect(within(votedRow).getByText("your vote", { exact: true })).toBeInTheDocument();
+
+      // The higher-ranked songs the caller did NOT vote for must not be marked.
+      const debaserRow = tallyRowFor("Debaser");
+      const heyRow = tallyRowFor("Hey");
+      expect(within(debaserRow).queryByText("your vote", { exact: true })).not.toBeInTheDocument();
+      expect(within(heyRow).queryByText("your vote", { exact: true })).not.toBeInTheDocument();
+    });
+
+    it("renders the CheckmarkIcon svg, not just the 'your vote' text", async () => {
+      setupLockedTally({
+        voteCounts: [
+          { submission_id: "p1", title: "Debaser", artist: "Pixies", vote_count: 2 },
+          { submission_id: "p2", title: "Hey", artist: "Pixies", vote_count: 1 },
+        ],
+        myVotes: ["p1"],
+      });
+      renderMix();
+
+      await screen.findByText(/vote tally/i);
+
+      const voteLabel = screen.getByText("your vote", { exact: true });
+      const svg = voteLabel.querySelector("svg");
+      expect(svg).toBeInTheDocument();
+      expect(svg?.querySelector("polyline")).toHaveAttribute("points", "1.5 6.5 4.5 9.5 10.5 2.5");
+    });
+
+    it("uses Sage styling for the voted row, never Rust (Rust is reserved elsewhere on this screen)", async () => {
+      setupLockedTally({
+        voteCounts: [
+          { submission_id: "p1", title: "Debaser", artist: "Pixies", vote_count: 2 },
+          { submission_id: "p2", title: "Hey", artist: "Pixies", vote_count: 1 },
+        ],
+        myVotes: ["p1"],
+      });
+      const { container } = renderMix();
+
+      await screen.findByText(/vote tally/i);
+
+      const votedRow = tallyRowFor("Debaser");
+      expect(votedRow.className).toMatch(/border-sage/);
+      const voteLabel = within(votedRow).getByText("your vote", { exact: true });
+      expect(voteLabel.className).toMatch(/text-sage/);
+
+      // The unvoted row keeps its neutral border.
+      const heyRow = tallyRowFor("Hey");
+      expect(heyRow.className).toMatch(/border-border/);
+
+      // Rust is never used in the locked tally view.
+      expect(container.innerHTML).not.toMatch(/border-rust/);
+      expect(container.innerHTML).not.toMatch(/text-rust/);
+    });
+
+    it("zero-votes case: no checkmark anywhere and the locked-footer doesn't render when myVotes is empty", async () => {
+      const user = userEvent.setup();
+      // Reach the locked tally via the cast-votes flow with a backend response
+      // that (edge case) reports no submission_ids for this caller, so
+      // myVotes ends up empty even though isVotesLocked flips true.
+      setupLockedTally({
+        voteCounts: [
+          { submission_id: "p1", title: "Debaser", artist: "Pixies", vote_count: 0 },
+          { submission_id: "p2", title: "Hey", artist: "Pixies", vote_count: 0 },
+        ],
+        myVotes: [], // not locked yet — voting controls shown first
+      });
+      mockCastVotes.mockResolvedValue({
+        mix_id: "r1",
+        submission_ids: [],
+        count: 0,
+        votes_per_player: 3,
+      });
+      renderMix();
+
+      await user.click(await screen.findByRole("button", { name: /Debaser/i }));
+      await user.click(screen.getByRole("button", { name: /cast votes/i }));
+
+      await screen.findByText(/vote tally/i);
+      expect(screen.queryByText("your vote", { exact: true })).not.toBeInTheDocument();
+      expect(screen.queryByText(/your votes are locked/i)).not.toBeInTheDocument();
+    });
+
+    it("multiple votes: checkmarks appear on every song the caller voted for", async () => {
+      setupLockedTally({
+        voteCounts: [
+          { submission_id: "p1", title: "Debaser", artist: "Pixies", vote_count: 4 },
+          { submission_id: "p2", title: "Hey", artist: "Pixies", vote_count: 3 },
+          { submission_id: "p3", title: "Where Is My Mind", artist: "Pixies", vote_count: 1 },
+        ],
+        myVotes: ["p1", "p3"],
+        votesPerPlayer: 2,
+      });
+      renderMix();
+
+      await screen.findByText(/vote tally/i);
+
+      expect(screen.getAllByText("your vote", { exact: true })).toHaveLength(2);
+      expect(
+        within(tallyRowFor("Debaser")).getByText("your vote", { exact: true }),
+      ).toBeInTheDocument();
+      expect(
+        within(tallyRowFor("Where Is My Mind")).getByText("your vote", { exact: true }),
+      ).toBeInTheDocument();
+      expect(
+        within(tallyRowFor("Hey")).queryByText("your vote", { exact: true }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("the locked-footer renders once at least one vote is cast", async () => {
+      setupLockedTally({
+        voteCounts: [{ submission_id: "p1", title: "Debaser", artist: "Pixies", vote_count: 1 }],
+        myVotes: ["p1"],
+      });
+      renderMix();
+
+      expect(
+        await screen.findByText(
+          /your votes are locked — they will be revealed when the mystery mix closes/i,
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe("open_voting notes UX (MYS-21)", () => {
+    function setupVoting(opts: { entries: PlaylistEntry[]; mine?: SubmissionResult | null }) {
+      mockGetMix.mockResolvedValue(mix({ state: "open_voting" }));
+      mockGetPlaylist.mockResolvedValue({
+        mix_id: "r1",
+        mix_number: 1,
+        theme: "t",
+        state: "open_voting",
+        entries: opts.entries,
+        youtube_playlist_url: null,
+        youtube_track_count: 0,
+        voting_eligible: 0,
+        voting_acted: 0,
+        vibing_count: 0,
+      });
+      mockGetMyVotes.mockResolvedValue({
+        mix_id: "r1",
+        submission_ids: [],
+        count: 0,
+        votes_per_player: 3,
+      });
+      mockGetMine.mockResolvedValue(
+        opts.mine === undefined ? [mine()] : opts.mine ? [opts.mine] : [],
+      );
+    }
+
+    /** The <li> that wraps a single playlist card, located by its song title. */
+    function cardFor(title: string): HTMLElement {
+      const heading = screen.getByText(title);
+      const li = heading.closest("li");
+      if (!li) throw new Error(`no card <li> found for "${title}"`);
+      return li as HTMLElement;
+    }
+
+    it("a song that's vibing for its submitter is a normal votable card to others (MYS-112)", async () => {
+      setupVoting({
+        entries: [
+          entry({ submission_id: "p1", title: "Debaser" }),
+          entry({ submission_id: "p2", title: "Ambient Drift" }),
+        ],
+      });
+      renderMix();
+
+      // It's a votable toggle like any other, and the old vibing-only
+      // "can't vote on this one — leave a note instead" hint is gone entirely.
+      expect(await screen.findByRole("button", { name: /Ambient Drift/i })).toBeInTheDocument();
+      expect(screen.queryByText(/can't vote on this one/i)).not.toBeInTheDocument();
+    });
+
+    it("revealing notes calls getNotes for that submission and renders body + author", async () => {
+      const user = userEvent.setup();
+      setupVoting({ entries: [entry({ submission_id: "p1", title: "Debaser" })] });
+      mockGetNotes.mockResolvedValue([
+        {
+          id: "n1",
+          submission_id: "p1",
+          mix_id: "r1",
+          author_id: OTHER,
+          author_display_name: "Bob",
+          body: "this slaps",
+          created_at: "2026-01-01T00:00:00Z",
+        },
+      ]);
+      renderMix();
+
+      await screen.findByRole("button", { name: /Debaser/i });
+      const card = cardFor("Debaser");
+      await user.click(within(card).getByRole("button", { name: /^notes$/i }));
+
+      expect(mockGetNotes).toHaveBeenCalledWith("p1");
+      expect(await within(card).findByText("this slaps")).toBeInTheDocument();
+      expect(within(card).getByText("Bob")).toBeInTheDocument();
+    });
+
+    it("revealing a submission with no notes shows the empty state", async () => {
+      const user = userEvent.setup();
+      setupVoting({ entries: [entry({ submission_id: "p1", title: "Debaser" })] });
+      mockGetNotes.mockResolvedValue([]);
+      renderMix();
+
+      await screen.findByRole("button", { name: /Debaser/i });
+      const card = cardFor("Debaser");
+      await user.click(within(card).getByRole("button", { name: /^notes$/i }));
+
+      expect(mockGetNotes).toHaveBeenCalledWith("p1");
+      expect(await within(card).findByText(/no notes yet/i)).toBeInTheDocument();
+    });
+
+    it("composer: typing updates the N/280 counter, submit disabled when empty, then addNote appends and collapses", async () => {
+      const user = userEvent.setup();
+      setupVoting({ entries: [entry({ submission_id: "p1", title: "Debaser" })] });
+      mockGetNotes.mockResolvedValue([]);
+      mockAddNote.mockResolvedValue({
+        id: "n1",
+        submission_id: "p1",
+        mix_id: "r1",
+        author_id: OTHER,
+        author_display_name: "Bob",
+        body: "great taste",
+        created_at: "2026-01-01T00:00:00Z",
+      });
+      renderMix();
+
+      await screen.findByRole("button", { name: /Debaser/i });
+      const card = cardFor("Debaser");
+      await user.click(within(card).getByRole("button", { name: /leave a note/i }));
+
+      // empty draft → counter 0/280, submit disabled
+      expect(within(card).getByText("0 / 280")).toBeInTheDocument();
+      const leaveNoteBtn = within(card).getByRole("button", { name: /leave note/i });
+      expect(leaveNoteBtn).toBeDisabled();
+
+      const textarea = within(card).getByRole("textbox");
+      await user.type(textarea, "great taste");
+      expect(within(card).getByText("11 / 280")).toBeInTheDocument();
+      expect(leaveNoteBtn).not.toBeDisabled();
+
+      await user.click(leaveNoteBtn);
+
+      expect(mockAddNote).toHaveBeenCalledWith("p1", "great taste");
+      // the new note appears
+      expect(await within(card).findByText("great taste")).toBeInTheDocument();
+      expect(within(card).getByText("Bob")).toBeInTheDocument();
+      // composer collapsed: textarea gone, leave-a-note affordance back
+      expect(within(card).queryByRole("textbox")).not.toBeInTheDocument();
+      expect(within(card).getByRole("button", { name: /leave a note/i })).toBeInTheDocument();
+    });
+
+    it("an addNote ApiError surfaces in the actionError alert region", async () => {
+      const user = userEvent.setup();
+      const { ApiError } =
+        await vi.importActual<typeof import("../services/api")>("../services/api");
+      setupVoting({ entries: [entry({ submission_id: "p1", title: "Debaser" })] });
+      mockGetNotes.mockResolvedValue([]);
+      mockAddNote.mockRejectedValue(
+        new ApiError(409, "notes are only allowed while voting is open"),
+      );
+      renderMix();
+
+      await screen.findByRole("button", { name: /Debaser/i });
+      const card = cardFor("Debaser");
+      await user.click(within(card).getByRole("button", { name: /leave a note/i }));
+      await user.type(within(card).getByRole("textbox"), "nope");
+      await user.click(within(card).getByRole("button", { name: /leave note/i }));
+
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent(/notes are only allowed while voting is open/i);
+    });
+
+    it("a votable (playing) card exposes the notes affordance without losing its vote toggle", async () => {
+      const user = userEvent.setup();
+      setupVoting({ entries: [entry({ submission_id: "p1", title: "Debaser" })] });
+      mockGetNotes.mockResolvedValue([]);
+      renderMix();
+
+      // the vote toggle still works
+      const toggle = await screen.findByRole("button", { name: /Debaser/i });
+      expect(toggle).toHaveAttribute("aria-pressed", "false");
+      await user.click(toggle);
+      expect(toggle).toHaveAttribute("aria-pressed", "true");
+
+      // and the same card exposes a notes affordance
+      const card = cardFor("Debaser");
+      expect(within(card).getByRole("button", { name: /^notes$/i })).toBeInTheDocument();
+      expect(within(card).getByRole("button", { name: /leave a note/i })).toBeInTheDocument();
+    });
+
+    it("notes affordances do NOT appear in the closed/reveal view", async () => {
+      mockGetMix.mockResolvedValue(mix({ state: "closed" }));
+      mockGetResults.mockResolvedValue(
+        results({
+          submissions: [
+            {
+              submission_id: "s1",
+              user_id: OTHER,
+              submitter_display_name: "Bob",
+              isrc: "I1",
+              source: null,
+              source_url: null,
+              title: "Bad Guy",
+              artist: "Billie Eilish",
+              album: null,
+              album_art_url: null,
+              platforms: {},
+              submitter_note: "a banger",
+              vote_count: 0,
+              notes: [],
+              voters: [],
+            },
+          ],
+        }),
+      );
+      renderMix();
+
+      await screen.findByRole("heading", { name: /the picks/i });
+      expect(screen.queryByRole("button", { name: /leave a note/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^notes$/i })).not.toBeInTheDocument();
+      expect(mockGetNotes).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("closed reveal / results (MYS-24)", () => {
+    /** A revealed submission fixture. */
+    function sub(
+      overrides: Partial<MixResults["submissions"][number]> = {},
+    ): MixResults["submissions"][number] {
+      return {
+        submission_id: "s1",
+        user_id: OTHER,
+        submitter_display_name: "Bob",
+        isrc: "I1",
+        source: null,
+        source_url: null,
+        title: "Bad Guy",
+        artist: "Billie Eilish",
+        album: null,
+        album_art_url: null,
+        platforms: {},
+        submitter_note: null,
+        vote_count: 0,
+        notes: [],
+        voters: [],
+        ...overrides,
+      };
+    }
+
+    /** Put the mix into closed state with the given results payload. */
+    function setupClosed(overrides: Partial<MixResults> = {}) {
+      mockGetMix.mockResolvedValue(mix({ state: "closed" }));
+      mockGetResults.mockResolvedValue(results(overrides));
+    }
+
+    /** The <section> wrapping a heading, by that heading's text. */
+    function sectionFor(headingText: RegExp): HTMLElement {
+      const heading = screen.getByRole("heading", { name: headingText });
+      const section = heading.closest("section");
+      if (!section) throw new Error(`no <section> found for heading ${headingText}`);
+      return section as HTMLElement;
+    }
+
+    /** The <li> card wrapping a submission in the picks list, by its song title.
+     *  Scoped to the picks section since a top-voted song also appears in the
+     *  Winner(s) highlight (and Most Noted) above. */
+    function cardFor(title: string): HTMLElement {
+      const picks = sectionFor(/the picks/i);
+      const heading = within(picks).getByText(title);
+      const li = heading.closest("li");
+      if (!li) throw new Error(`no card <li> found for "${title}"`);
+      return li as HTMLElement;
+    }
+
+    // ----- Vibing-viewer reveal (MYS-112 / MYS-134) ------------------------ //
+
+    it("vibing viewer: winner + full tracklist with notes, no leaderboard or scores", async () => {
+      setupClosed({
+        viewer_is_vibing: true,
+        submissions: [],
+        leaderboard: [],
+        winners: [
+          {
+            submission_id: "w1",
+            title: "Winning Song",
+            artist: "The Champs",
+            submitter_display_name: "Wren",
+          },
+        ],
+        picks: [
+          {
+            submission_id: "w1",
+            submitter_display_name: "Wren",
+            title: "Winning Song",
+            artist: "The Champs",
+            source: null,
+            source_url: null,
+            platforms: {},
+            submitter_note: null,
+            notes: [],
+          },
+          {
+            submission_id: "mine",
+            submitter_display_name: "Vera",
+            title: "My Quiet Pick",
+            artist: "Me",
+            source: null,
+            source_url: null,
+            platforms: { spotify: "https://open.spotify.com/track/x" },
+            submitter_note: null,
+            notes: [{ body: "this one got me", author_display_name: "Ada", created_at: "x" }],
+          },
+        ],
+      });
+      renderMix();
+
+      // Winner named (no count) and the full tracklist is visible, with notes
+      // behind the collapsible toggle. "Winning Song" shows in both the winner
+      // highlight and the tracklist.
+      expect(await screen.findByRole("heading", { name: /the picks/i })).toBeInTheDocument();
+      expect(screen.getAllByText("Winning Song").length).toBeGreaterThanOrEqual(2);
+      expect(screen.getByText("My Quiet Pick")).toBeInTheDocument();
+      // The tracklist tiles are playable (regression — MYS-134 tiles need links).
+      expect(screen.getByRole("link", { name: /on Spotify/i })).toBeInTheDocument();
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: /show 1 note/i }));
+      expect(screen.getByText("this one got me")).toBeInTheDocument();
+      // No leaderboard and no vote tallies for a viber.
+      expect(screen.queryByRole("heading", { name: /leaderboard/i })).not.toBeInTheDocument();
+      expect(screen.queryByText(/\bvotes?\b/i)).not.toBeInTheDocument();
+    });
+
+    // ----- Most Noted ------------------------------------------------------ //
+
+    it("Most Noted: renders winner title/artist, note count, and all its notes", async () => {
+      setupClosed({
+        submissions: [sub({ vote_count: 2, notes: [] })],
+        most_noted: {
+          note_count: 2,
+          winners: [
+            {
+              submission_id: "s1",
+              title: "Bad Guy",
+              artist: "Billie Eilish",
+              note_count: 2,
+              notes: [
+                { body: "an absolute banger", author_display_name: "Ada", created_at: "x" },
+                { body: "haunting bassline", author_display_name: "Cal", created_at: "y" },
+              ],
+            },
+          ],
+        },
+      });
+      renderMix();
+
+      await screen.findByRole("heading", { name: /most noted/i });
+      const section = sectionFor(/most noted/i);
+      // singular framing copy for a single winner
+      expect(within(section).getByText(/the pick that got everyone talking/i)).toBeInTheDocument();
+      expect(within(section).getByText("Bad Guy")).toBeInTheDocument();
+      expect(within(section).getByText("Billie Eilish")).toBeInTheDocument();
+      expect(within(section).getByText("2 notes")).toBeInTheDocument();
+      // ALL notes (body + author) shown within the Most Noted section
+      expect(within(section).getByText("an absolute banger")).toBeInTheDocument();
+      expect(within(section).getByText("Ada")).toBeInTheDocument();
+      expect(within(section).getByText("haunting bassline")).toBeInTheDocument();
+      expect(within(section).getByText("Cal")).toBeInTheDocument();
+    });
+
+    it("Most Noted: a tie renders both winners as co-recognized", async () => {
+      setupClosed({
+        submissions: [
+          sub({ submission_id: "s1", title: "Bad Guy", vote_count: 2 }),
+          sub({ submission_id: "s2", title: "Vienna", artist: "Billy Joel", vote_count: 1 }),
+        ],
+        most_noted: {
+          note_count: 3,
+          winners: [
+            {
+              submission_id: "s1",
+              title: "Bad Guy",
+              artist: "Billie Eilish",
+              note_count: 3,
+              notes: [{ body: "loved it", author_display_name: "Ada", created_at: "x" }],
+            },
+            {
+              submission_id: "s2",
+              title: "Vienna",
+              artist: "Billy Joel",
+              note_count: 3,
+              notes: [{ body: "timeless", author_display_name: "Cal", created_at: "y" }],
+            },
+          ],
+        },
+      });
+      renderMix();
+
+      await screen.findByRole("heading", { name: /most noted/i });
+      const section = sectionFor(/most noted/i);
+      // plural framing copy for a tie
+      expect(within(section).getByText(/the picks that got everyone talking/i)).toBeInTheDocument();
+      // both winners present in the section
+      expect(within(section).getByText("Bad Guy")).toBeInTheDocument();
+      expect(within(section).getByText("Vienna")).toBeInTheDocument();
+      expect(within(section).getByText("loved it")).toBeInTheDocument();
+      expect(within(section).getByText("timeless")).toBeInTheDocument();
+    });
+
+    it("Most Noted: section is omitted entirely when there are no winners", async () => {
+      setupClosed({
+        submissions: [sub({ vote_count: 0 })],
+        most_noted: { note_count: 0, winners: [] },
+      });
+      renderMix();
+
+      // wait for the page to render the picks
+      await screen.findByRole("heading", { name: /the picks/i });
+      expect(screen.queryByRole("heading", { name: /most noted/i })).not.toBeInTheDocument();
+      expect(screen.queryByText(/got everyone talking/i)).not.toBeInTheDocument();
+    });
+
+    // ----- Winner(s) by votes (MYS-71) ------------------------------------ //
+
+    it("Winner: highlights the single top-voted song with submitter and vote count", async () => {
+      setupClosed({
+        submissions: [
+          sub({
+            submission_id: "s1",
+            user_id: "u-bo",
+            submitter_display_name: "Bo",
+            title: "Bad Guy",
+            vote_count: 3,
+          }),
+          sub({
+            submission_id: "s2",
+            user_id: "u-cal",
+            submitter_display_name: "Cal",
+            title: "Vienna",
+            artist: "Billy Joel",
+            vote_count: 1,
+          }),
+        ],
+      });
+      renderMix();
+
+      await screen.findByRole("heading", { name: /^winner$/i });
+      const section = sectionFor(/^winner$/i);
+      expect(within(section).getByText("the most votes this mystery mix")).toBeInTheDocument();
+      expect(within(section).getByText("Bad Guy")).toBeInTheDocument();
+      expect(within(section).getByText("3 votes")).toBeInTheDocument();
+      // the lower-voted song is not in the winner section
+      expect(within(section).queryByText("Vienna")).not.toBeInTheDocument();
+    });
+
+    it("Winner: a tie co-recognizes every top-voted song", async () => {
+      setupClosed({
+        submissions: [
+          sub({
+            submission_id: "s1",
+            user_id: "u-bo",
+            submitter_display_name: "Bo",
+            title: "Bad Guy",
+            vote_count: 2,
+          }),
+          sub({
+            submission_id: "s2",
+            user_id: "u-cal",
+            submitter_display_name: "Cal",
+            title: "Vienna",
+            artist: "Billy Joel",
+            vote_count: 2,
+          }),
+          sub({
+            submission_id: "s3",
+            user_id: "u-di",
+            submitter_display_name: "Di",
+            title: "Roygbiv",
+            artist: "Boards of Canada",
+            vote_count: 1,
+          }),
+        ],
+      });
+      renderMix();
+
+      await screen.findByRole("heading", { name: /^winners$/i });
+      const section = sectionFor(/^winners$/i);
+      expect(within(section).getByText("tied for the most votes this mystery mix")).toBeInTheDocument();
+      expect(within(section).getByText("Bad Guy")).toBeInTheDocument();
+      expect(within(section).getByText("Vienna")).toBeInTheDocument();
+      // the lower-voted song is not co-recognized
+      expect(within(section).queryByText("Roygbiv")).not.toBeInTheDocument();
+    });
+
+    it("Winner: section is omitted when no song drew a vote", async () => {
+      setupClosed({ submissions: [sub({ title: "Bad Guy", vote_count: 0 })] });
+      renderMix();
+
+      await screen.findByRole("heading", { name: /the picks/i });
+      expect(screen.queryByRole("heading", { name: /^winner$/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: /^winners$/i })).not.toBeInTheDocument();
+    });
+
+    // ----- Multi-song players (MYS-116 / MYS-143) -------------------------- //
+
+    it("multi-song player: one leaderboard row but a pick tile per song", async () => {
+      setupClosed({
+        submissions: [
+          sub({
+            submission_id: "a1",
+            user_id: "u-a",
+            submitter_display_name: "Ada",
+            title: "Ada One",
+            vote_count: 3,
+          }),
+          sub({
+            submission_id: "a2",
+            user_id: "u-a",
+            submitter_display_name: "Ada",
+            title: "Ada Two",
+            vote_count: 2,
+          }),
+          sub({
+            submission_id: "b1",
+            user_id: "u-bo",
+            submitter_display_name: "Bo",
+            title: "Bo Solo",
+            vote_count: 1,
+          }),
+        ],
+        // Backend already aggregates per player: Ada's two songs are one standing.
+        leaderboard: [
+          { user_id: "u-a", display_name: "Ada", vote_count: 5, rank: 1 },
+          { user_id: "u-bo", display_name: "Bo", vote_count: 1, rank: 2 },
+        ],
+      });
+      renderMix();
+
+      await screen.findByRole("heading", { name: /the picks/i });
+      // Every song is its own pick tile (3 songs → 3 tiles), each with its votes.
+      const picks = sectionFor(/the picks/i);
+      expect(within(picks).getByText("Ada One")).toBeInTheDocument();
+      expect(within(picks).getByText("Ada Two")).toBeInTheDocument();
+      expect(within(picks).getByText("Bo Solo")).toBeInTheDocument();
+      // The leaderboard reads as one row per player — Ada once, with her total.
+      const board = sectionFor(/leaderboard/i);
+      expect(within(board).getAllByRole("listitem")).toHaveLength(2);
+      expect(within(board).getByText("5 votes")).toBeInTheDocument();
+    });
+
+    it("Winner: reflects the per-player total, not a single highest-voted song", async () => {
+      setupClosed({
+        submissions: [
+          // Ada has two solid songs (3 + 3 = 6 total); Bo has one bigger song (5).
+          sub({
+            submission_id: "a1",
+            user_id: "u-a",
+            submitter_display_name: "Ada",
+            title: "Ada One",
+            vote_count: 3,
+          }),
+          sub({
+            submission_id: "a2",
+            user_id: "u-a",
+            submitter_display_name: "Ada",
+            title: "Ada Two",
+            vote_count: 3,
+          }),
+          sub({
+            submission_id: "b1",
+            user_id: "u-bo",
+            submitter_display_name: "Bo",
+            title: "Bo Big",
+            vote_count: 5,
+          }),
+        ],
+        leaderboard: [
+          { user_id: "u-a", display_name: "Ada", vote_count: 6, rank: 1 },
+          { user_id: "u-bo", display_name: "Bo", vote_count: 5, rank: 2 },
+        ],
+      });
+      renderMix();
+
+      await screen.findByRole("heading", { name: /^winner$/i });
+      const section = sectionFor(/^winner$/i);
+      // Ada wins on her 6-vote total, listing both songs under one standing…
+      expect(within(section).getByText("Ada")).toBeInTheDocument();
+      expect(within(section).getByText("6 votes")).toBeInTheDocument();
+      expect(within(section).getByText("Ada One")).toBeInTheDocument();
+      expect(within(section).getByText("Ada Two")).toBeInTheDocument();
+      // …even though Bo's single song (5) outscores any one of Ada's songs.
+      expect(within(section).queryByText("Bo Big")).not.toBeInTheDocument();
+    });
+
+    // ----- Leaderboard ----------------------------------------------------- //
+
+    it("Leaderboard: renders entries in order with rank, name, and vote count", async () => {
+      setupClosed({
+        submissions: [
+          sub({ submission_id: "s1", user_id: "u-bo", title: "Bad Guy", vote_count: 3 }),
+          sub({
+            submission_id: "s2",
+            user_id: "u-cal",
+            submitter_display_name: "Cal",
+            title: "Vienna",
+            artist: "Billy Joel",
+            vote_count: 1,
+          }),
+        ],
+        leaderboard: [
+          { user_id: "u-bo", display_name: "Bo", vote_count: 3, rank: 1 },
+          { user_id: "u-cal", display_name: "Cal", vote_count: 1, rank: 2 },
+        ],
+      });
+      renderMix();
+
+      await screen.findByRole("heading", { name: /leaderboard/i });
+      const section = sectionFor(/leaderboard/i);
+      const rows = within(section).getAllByRole("listitem");
+      expect(rows).toHaveLength(2);
+      // order: rank 1 then rank 2
+      expect(within(rows[0]).getByText("1")).toBeInTheDocument();
+      expect(within(rows[0]).getByText("Bo")).toBeInTheDocument();
+      expect(within(rows[0]).getByText("3 votes")).toBeInTheDocument();
+      expect(within(rows[1]).getByText("2")).toBeInTheDocument();
+      expect(within(rows[1]).getByText("Cal")).toBeInTheDocument();
+      expect(within(rows[1]).getByText("1 vote")).toBeInTheDocument();
+    });
+
+    it("Leaderboard: a vibing submitter (absent from leaderboard) does not appear in it", async () => {
+      setupClosed({
+        submissions: [
+          sub({ submission_id: "s1", user_id: "u-bo", title: "Bad Guy", vote_count: 2 }),
+          sub({
+            submission_id: "s2",
+            user_id: "u-vee",
+            submitter_display_name: "Vee",
+            title: "Ambient Drift",
+            artist: "Brian Eno",
+            vote_count: 0,
+          }),
+        ],
+        leaderboard: [{ user_id: "u-bo", display_name: "Bo", vote_count: 2, rank: 1 }],
+      });
+      renderMix();
+
+      await screen.findByRole("heading", { name: /leaderboard/i });
+      const section = sectionFor(/leaderboard/i);
+      expect(within(section).getByText("Bo")).toBeInTheDocument();
+      // the vibing submitter is in the picks but NOT on the leaderboard
+      expect(within(section).queryByText("Vee")).not.toBeInTheDocument();
+      expect(within(section).getAllByRole("listitem")).toHaveLength(1);
+    });
+
+    it("Leaderboard: section is omitted when there are no ranked players", async () => {
+      setupClosed({
+        submissions: [sub({ vote_count: 0 })],
+        leaderboard: [],
+      });
+      renderMix();
+
+      await screen.findByRole("heading", { name: /the picks/i });
+      expect(screen.queryByRole("heading", { name: /leaderboard/i })).not.toBeInTheDocument();
+    });
+
+    // ----- Submissions ----------------------------------------------------- //
+
+    it("Submissions: shows submitter name, vote count, the submitter note in quotes, and others' notes", async () => {
+      setupClosed({
+        submissions: [
+          sub({
+            submission_id: "s1",
+            user_id: OTHER,
+            submitter_display_name: "Bob",
+            title: "Bad Guy",
+            artist: "Billie Eilish",
+            submitter_note: "a banger",
+            vote_count: 2,
+            notes: [{ body: "this slaps", author_display_name: "Ada", created_at: "x" }],
+          }),
+        ],
+      });
+      renderMix();
+
+      const user = userEvent.setup();
+      await screen.findByRole("heading", { name: /the picks/i });
+      const card = cardFor("Bad Guy");
+      expect(within(card).getByText("Bob")).toBeInTheDocument();
+      expect(within(card).getByText("2 votes")).toBeInTheDocument();
+      // submitter note is rendered in curly quotes
+      expect(within(card).getByText(/a banger/)).toBeInTheDocument();
+      expect(within(card).getByText(/“a banger”/)).toBeInTheDocument();
+      // others' notes are collapsed by default — expand to read them
+      await user.click(within(card).getByRole("button", { name: /show 1 note/i }));
+      expect(within(card).getByText("this slaps")).toBeInTheDocument();
+      expect(within(card).getByText("Ada")).toBeInTheDocument();
+    });
+
+    it("Submissions: notes are collapsed by default and toggle open/closed (MYS-72)", async () => {
+      const user = userEvent.setup();
+      setupClosed({
+        submissions: [
+          sub({
+            title: "Bad Guy",
+            vote_count: 1,
+            notes: [
+              { body: "this slaps", author_display_name: "Ada", created_at: "x" },
+              { body: "on repeat", author_display_name: "Cal", created_at: "y" },
+            ],
+          }),
+        ],
+      });
+      renderMix();
+
+      await screen.findByRole("heading", { name: /the picks/i });
+      const card = cardFor("Bad Guy");
+      // collapsed by default: bodies hidden behind a "show N notes" toggle
+      expect(within(card).queryByText("this slaps")).not.toBeInTheDocument();
+      expect(within(card).getByRole("button", { name: /show 2 notes/i })).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
+
+      await user.click(within(card).getByRole("button", { name: /show 2 notes/i }));
+      expect(within(card).getByText("this slaps")).toBeInTheDocument();
+      expect(within(card).getByText("on repeat")).toBeInTheDocument();
+
+      // collapses again
+      await user.click(within(card).getByRole("button", { name: /hide 2 notes/i }));
+      expect(within(card).queryByText("this slaps")).not.toBeInTheDocument();
+    });
+
+    it("Submissions: the caller's own submission is labelled 'you'", async () => {
+      setupClosed({
+        submissions: [
+          sub({
+            submission_id: "s1",
+            user_id: ORGANIZER, // the authed user (setAuth(ORGANIZER) in beforeEach)
+            submitter_display_name: "Bob",
+            title: "Bad Guy",
+            vote_count: 1,
+          }),
+        ],
+      });
+      renderMix();
+
+      await screen.findByRole("heading", { name: /the picks/i });
+      const card = cardFor("Bad Guy");
+      expect(within(card).getByText("you")).toBeInTheDocument();
+      // their real display name is not shown for their own pick
+      expect(within(card).queryByText("Bob")).not.toBeInTheDocument();
+    });
+
+    it("Submissions: a single-vote pick reads '1 vote' (singular)", async () => {
+      setupClosed({
+        submissions: [sub({ title: "Bad Guy", vote_count: 1 })],
+      });
+      renderMix();
+
+      await screen.findByRole("heading", { name: /the picks/i });
+      const card = cardFor("Bad Guy");
+      expect(within(card).getByText("1 vote")).toBeInTheDocument();
+    });
+
+    it("Submissions: a pick tile shows per-song platform links (regression)", async () => {
+      setupClosed({
+        submissions: [
+          sub({
+            title: "Bad Guy",
+            platforms: { spotify: "https://open.spotify.com/track/x" },
+          }),
+        ],
+      });
+      renderMix();
+
+      await screen.findByRole("heading", { name: /the picks/i });
+      const card = cardFor("Bad Guy");
+      const link = within(card).getByRole("link", { name: /on Spotify/i });
+      expect(link).toHaveAttribute("href", "https://open.spotify.com/track/x");
+    });
+
+    it("Submissions: every pick shows its vote count and no vibing badge (MYS-112)", async () => {
+      setupClosed({
+        submissions: [
+          sub({ submission_id: "w1", title: "Top Song", artist: "A", vote_count: 5 }),
+          sub({ submission_id: "v1", title: "Ambient Drift", artist: "Brian Eno", vote_count: 1 }),
+        ],
+      });
+      renderMix();
+
+      await screen.findByRole("heading", { name: /the picks/i });
+      // "Ambient Drift" isn't the winner, so it only appears in the picks list.
+      const card = cardFor("Ambient Drift");
+      // The reveal never shows who vibed — just the score, like any other pick.
+      expect(within(card).getByText("1 vote")).toBeInTheDocument();
+      expect(within(card).queryByText(/just vibing/i)).not.toBeInTheDocument();
+    });
+
+    it("Submissions: a pick with no submitter note and no notes renders neither", async () => {
+      setupClosed({
+        submissions: [sub({ title: "Bad Guy", submitter_note: null, notes: [], vote_count: 4 })],
+      });
+      renderMix();
+
+      await screen.findByRole("heading", { name: /the picks/i });
+      const card = cardFor("Bad Guy");
+      // no curly-quoted note, no note authors
+      expect(within(card).queryByText(/“/)).not.toBeInTheDocument();
+      expect(within(card).getByText("4 votes")).toBeInTheDocument();
+    });
+
+    it("empty results (no submissions) shows the empty state", async () => {
+      setupClosed({ submissions: [], leaderboard: [], most_noted: { note_count: 0, winners: [] } });
+      renderMix();
+
+      expect(await screen.findByText(/no submissions/i)).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: /the picks/i })).not.toBeInTheDocument();
+    });
+
+    // ----- Data loading ---------------------------------------------------- //
+
+    it("closed mix shows a 'listen back' affordance when there are tracks (MYS-133)", async () => {
+      mockGetPlaylist.mockResolvedValue({
+        mix_id: "r1",
+        mix_number: 1,
+        theme: "t",
+        state: "closed",
+        entries: [entry({ submission_id: "p1", title: "Debaser" })],
+        youtube_playlist_url: "https://www.youtube.com/watch_videos?video_ids=a",
+        youtube_track_count: 1,
+        voting_eligible: 0,
+        voting_acted: 0,
+        vibing_count: 0,
+      });
+      setupClosed({ submissions: [sub({ title: "Debaser" })] });
+      renderMix();
+
+      expect(await screen.findByRole("heading", { name: /listen back/i })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /open playlist in youtube/i })).toBeInTheDocument();
+    });
+
+    it("calls getResults + getPlaylist for a closed mix, and not getMine", async () => {
+      setupClosed({ submissions: [sub({ title: "Bad Guy" })] });
+      renderMix();
+
+      await screen.findByRole("heading", { name: /the picks/i });
+      expect(mockGetResults).toHaveBeenCalledWith("r1");
+      // The closed view also pulls the playlist for the "listen back" affordance
+      // (MYS-133), but never the caller's own submission.
+      expect(mockGetPlaylist).toHaveBeenCalledWith("r1");
+      expect(mockGetMine).not.toHaveBeenCalled();
+    });
+
+    it("when getResults rejects with an ApiError, the page shows its error state", async () => {
+      const { ApiError } =
+        await vi.importActual<typeof import("../services/api")>("../services/api");
+      mockGetMix.mockResolvedValue(mix({ state: "closed" }));
+      mockGetResults.mockRejectedValue(new ApiError(409, "results are available once it closes"));
+      renderMix();
+
+      expect(await screen.findByText(/results are available once it closes/i)).toBeInTheDocument();
+      // nothing rendered for the picks
+      expect(screen.queryByRole("heading", { name: /the picks/i })).not.toBeInTheDocument();
+    });
+  });
+});

@@ -4,29 +4,56 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AuthProvider, useAuth } from "./useAuth";
 import {
+  getMe as apiGetMe,
   logout as apiLogout,
   logoutAll as apiLogoutAll,
   refresh as apiRefresh,
   setStoredAccessToken,
 } from "../services/api";
+import type { UserProfile } from "../services/api";
 
 vi.mock("../services/api", () => ({
   refresh: vi.fn(),
+  getMe: vi.fn(),
   logout: vi.fn(),
   logoutAll: vi.fn(),
   setStoredAccessToken: vi.fn(),
 }));
 
 const mockRefresh = vi.mocked(apiRefresh);
+const mockGetMe = vi.mocked(apiGetMe);
 const mockLogout = vi.mocked(apiLogout);
 const mockLogoutAll = vi.mocked(apiLogoutAll);
 const mockSetStored = vi.mocked(setStoredAccessToken);
 
+function profileWith(displayName: string): UserProfile {
+  return {
+    id: "11111111-1111-1111-1111-111111111111",
+    display_name: displayName,
+    email: "u@example.com",
+    preferred_service: null,
+    is_platform_admin: false,
+    tos_accepted: true,
+  };
+}
+
 function Probe() {
-  const { status, logout, logoutAll } = useAuth();
+  const {
+    status,
+    profileStatus,
+    needsOnboarding,
+    displayName,
+    userId,
+    logout,
+    logoutAll,
+  } = useAuth();
   return (
     <div>
       <span data-testid="status">{status}</span>
+      <span data-testid="profile-status">{profileStatus}</span>
+      <span data-testid="needs-onboarding">{String(needsOnboarding)}</span>
+      <span data-testid="display-name">{displayName ?? "<null>"}</span>
+      <span data-testid="user-id">{userId ?? "<null>"}</span>
       {/* Swallow rejections here: the provider clears state in a finally block
           but re-surfaces the original API rejection to the caller. The tests
           assert the cleared state; the rejection itself is expected. */}
@@ -66,6 +93,10 @@ function renderWithProviderStrict() {
 describe("AuthProvider / useAuth", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: an authenticated session loads an already-onboarded profile, so
+    // the profile-load effect that follows a successful refresh resolves to a
+    // ready, non-empty name. Tests that care about onboarding override this.
+    mockGetMe.mockResolvedValue(profileWith("ada"));
   });
 
   it("calls refresh exactly once on mount", async () => {
@@ -207,6 +238,106 @@ describe("AuthProvider / useAuth", () => {
       expect(screen.getByTestId("status")).toHaveTextContent("authenticated"),
     );
     expect(mockRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  // --- Profile load + onboarding gate (MYS-27) ---------------------------
+  // After a token lands (on-mount refresh or verify), the provider fetches the
+  // profile so the onboarding gate can read display_name. An empty name is the
+  // not-yet-onboarded sentinel; a non-empty one means onboarded.
+
+  it("profile load: empty display_name → needsOnboarding true, profile ready", async () => {
+    mockRefresh.mockResolvedValue({ access_token: "tok" });
+    mockGetMe.mockResolvedValue(profileWith(""));
+    renderWithProvider();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("profile-status")).toHaveTextContent("ready"),
+    );
+    expect(screen.getByTestId("needs-onboarding")).toHaveTextContent("true");
+    expect(mockGetMe).toHaveBeenCalledTimes(1);
+  });
+
+  it("profile load: non-empty display_name → needsOnboarding false, name exposed", async () => {
+    mockRefresh.mockResolvedValue({ access_token: "tok" });
+    mockGetMe.mockResolvedValue(profileWith("Ada"));
+    renderWithProvider();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("profile-status")).toHaveTextContent("ready"),
+    );
+    expect(screen.getByTestId("needs-onboarding")).toHaveTextContent("false");
+    expect(screen.getByTestId("display-name")).toHaveTextContent("Ada");
+  });
+
+  it("profile load failure → session cleared (unauthenticated, profile idle)", async () => {
+    mockRefresh.mockResolvedValue({ access_token: "tok" });
+    mockGetMe.mockRejectedValue(new Error("401"));
+    renderWithProvider();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated"),
+    );
+    expect(screen.getByTestId("profile-status")).toHaveTextContent("idle");
+    expect(screen.getByTestId("needs-onboarding")).toHaveTextContent("false");
+  });
+
+  it("profile is fetched exactly once per session", async () => {
+    mockRefresh.mockResolvedValue({ access_token: "tok" });
+    renderWithProvider();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("profile-status")).toHaveTextContent("ready"),
+    );
+    expect(mockGetMe).toHaveBeenCalledTimes(1);
+  });
+
+  // --- userId capture (MYS-15) -------------------------------------------
+  // The same profile fetch that populates display_name also captures the user's
+  // id, so club routes can compare it against club.organizer_id to decide
+  // organizer controls. It is null before the profile loads and is reset to null
+  // by clear() (logout / logout-all).
+
+  it("userId: null before the profile loads", () => {
+    // A pending refresh keeps status loading and the profile fetch from running,
+    // so userId must still be the null sentinel.
+    mockRefresh.mockReturnValue(new Promise(() => {}));
+    renderWithProvider();
+
+    expect(screen.getByTestId("user-id")).toHaveTextContent("<null>");
+  });
+
+  it("userId: equals the mocked profile id once the profile loads", async () => {
+    mockRefresh.mockResolvedValue({ access_token: "tok" });
+    mockGetMe.mockResolvedValue(profileWith("Ada"));
+    renderWithProvider();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("profile-status")).toHaveTextContent("ready"),
+    );
+    expect(screen.getByTestId("user-id")).toHaveTextContent(
+      "11111111-1111-1111-1111-111111111111",
+    );
+  });
+
+  it("userId: reset to null after logout clears the session", async () => {
+    mockRefresh.mockResolvedValue({ access_token: "tok" });
+    mockGetMe.mockResolvedValue(profileWith("Ada"));
+    mockLogout.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+
+    renderWithProvider();
+    await waitFor(() =>
+      expect(screen.getByTestId("user-id")).toHaveTextContent(
+        "11111111-1111-1111-1111-111111111111",
+      ),
+    );
+
+    await user.click(screen.getByRole("button", { name: "do-logout" }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated"),
+    );
+    expect(screen.getByTestId("user-id")).toHaveTextContent("<null>");
   });
 
   it("useAuth throws when used outside an AuthProvider", () => {

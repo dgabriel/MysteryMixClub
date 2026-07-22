@@ -1,3 +1,5 @@
+> Terminology: this document predates the July 2026 rename — "league" is now "club", "round" is now "mystery mix" (internal: mix).
+
 # MysteryMixClub — Product Requirements Document
 
 **Document type:** PRD  
@@ -53,10 +55,12 @@ Round themes are crowd-sourced. The league belongs to everyone in it, not just t
 Creates and manages the league. Sets round themes (in v1), manages invites, advances rounds. Has all player permissions plus admin controls.
 
 ### Player (Playing mode)
-Submits songs, votes on other players' submissions, receives scores, appears on the leaderboard.
+Submits a song, votes on the round's (anonymous) submissions, receives scores, appears on the leaderboard.
 
 ### Player (Just Vibing mode)
-Submits songs, does not vote, does not receive scores, is visible to the group as "Just Vibing." Eligible for Most Noted. Can be permanent (profile setting) or per-round.
+Submits a song that **competes like any other** — votable and eligible to win — but **does not cast votes**; they listen and may leave notes. Vibing is **private**: no one else can tell a submission came from a viber. Set as a **per-league** default (seeded from the league's default at join, changeable anytime) with a **per-round override**. At reveal a viber sees the winner(s), Most Noted, and the full tracklist with notes — but **not** the leaderboard or vote counts. Eligible for Most Noted.
+
+> **Decision — Just Vibing v2 (2026-06-26, MYS-112; refined by MYS-134).** This reverses the original model (a *visible, non-competitive* opt-out that received no votes and was excluded from the leaderboard). Vibing is now a *private voting opt-out*: the viber's song still competes, nobody sees who vibed, and the only differences are that the viber doesn't cast votes and sees a results view limited to winner + Most Noted + the unscored tracklist (no leaderboard, no vote counts — MYS-134). The §2.2 inclusion principle still holds — its expression shifts from "celebrated and seen" to "invisible and equal."
 
 ---
 
@@ -67,9 +71,10 @@ Submits songs, does not vote, does not receive scores, is visible to the group a
 - As an **Organizer**, I can create a new league with a name and description, so that my friend group has a home for our music rounds.
 - As an **Organizer**, I can generate a shareable invite link, so that friends can join without requiring a platform account.
 - As an **Organizer**, I can set the number of votes each player gets per round, so that I can tune the competitive dynamic for my group.
+- As an **Organizer**, I can set the league's default participation mode (Playing / Just Vibing) at creation, so that new members inherit the vibe I want for the group.
 - As a **Player**, I can join a league via an invite link without needing a Spotify account or any specific streaming service, so that platform preference is never a barrier.
 - As a **Player**, I can set my preferred streaming service once in my profile, so that playlist links always open in my app of choice.
-- As a **Player**, I can choose Just Vibing as my default participation mode in my profile, so that I never have to opt out round by round.
+- As a **Player**, I can set my Just Vibing default for a league (seeded from the league default, changeable anytime), so that I never have to opt out round by round.
 
 ### Round Flow
 
@@ -79,15 +84,16 @@ Submits songs, does not vote, does not receive scores, is visible to the group a
 - As a **Player**, I can add an optional note to my submission explaining why I chose this song, so that my submission has context and humanity.
 - As a **Player**, I can listen to the round playlist in my preferred streaming service once submissions close, so that I never have to use a service I don't want to.
 - As a **Player (Playing)**, I can vote for my favorite submissions after listening, so that scoring reflects genuine engagement with the music.
-- As a **Player (Just Vibing)**, I am prompted to leave a written note instead of a vote, so that I can still express appreciation without participating in scoring.
-- As a **Player**, I can see round results including scores, vote breakdowns, and who submitted what after voting closes, so that the reveal is a shared moment.
+- As a **Player (Just Vibing)**, I can leave notes on the songs I enjoy even though I don't cast votes, so that I can still express appreciation.
+- As a **Player (Playing)**, I can see full round results — scores, vote breakdowns, leaderboard, and who submitted what — after voting closes, so that the reveal is a shared moment.
 
 ### Just Vibing
 
-- As a **Player**, I can opt into Just Vibing mode for a single round without changing my permanent participation setting, so that I can honor emotionally difficult rounds without leaving the league.
-- As a **Player (Just Vibing)**, my submission is visually equal to all other submissions in the playlist, so that I never feel like a second-class participant.
-- As a **Player (Just Vibing)**, I can see that other players left notes on my song even though I didn't receive votes, so that I feel seen and appreciated.
-- As a **Player (Playing)**, when I would normally vote for a Just Vibing player's song, I am prompted to leave a written note instead, so that the appreciation mechanic works naturally without breaking the voting flow.
+- As a **Player**, I can opt into Just Vibing for a single round without changing my per-league setting, so that I can honor emotionally difficult rounds without leaving the league.
+- As a **Player (Just Vibing)**, my submission is **indistinguishable** from every other in the playlist — no one can tell I'm vibing — so that I never feel like a second-class participant.
+- As a **Player (Just Vibing)**, my song still competes and can win, so that opting out of voting doesn't mean opting out of the game.
+- As a **Player (Just Vibing)**, I can see the notes left on my song at reveal, so that I feel appreciated even though I don't see the vote counts.
+- As a **Player (Just Vibing)**, my reveal shows the winner(s), Most Noted, and notes but not the leaderboard or vote counts, so that my round stays about resonance rather than ranking.
 
 ### Most Noted
 
@@ -150,19 +156,22 @@ Each submission stores:
 
 ### 5.3 Participation Modes
 
+> **Decision — Just Vibing v2 (2026-06-26, MYS-112).** Vibing is a *private voting opt-out*, not a non-competitive one. A viber's song competes and can win; the viber simply doesn't cast votes, and nobody can tell who vibed. See the callout in §3 for what changed from the original model.
+
+Modes are set per-league (a league default, seeded onto each member at join and changeable anytime) with a per-round override ("Just Vibes for this Round"). Precedence: round override → per-league member setting → league default.
+
 **Playing (default)**
 - Full submission, voting, and scoring
-- Appears on leaderboard
-- Can vote for any Playing player's submission
-- Cannot vote for Just Vibing players' submissions — prompted to leave a note instead
+- Appears on the leaderboard
+- Votes on the round's anonymous submissions — every song is votable (vibers' included; you can't tell which are theirs), except your own
 
 **Just Vibing**
-- Full song submission, equal weight in playlist
-- No voting, no scores received
-- Visible to group with warm, inclusive language ("Just Vibing this round" / "Vibing")
-- Available as permanent profile setting or per-round opt-in
-- Per-round opt-in available until submission deadline
-- Can return to Playing mode any subsequent round with zero friction
+- Full song submission — **competes equally**, votable, eligible to win on votes
+- Does **not** cast votes; may leave notes
+- **Private** — no badge or label exposes a viber to anyone, during voting or at reveal
+- Per-round override available until the submission deadline; per-league default changeable anytime
+- Can return to Playing any subsequent round with zero friction
+- Reveal is limited to winner(s) + Most Noted + the full tracklist with notes (no leaderboard, no vote counts — MYS-134)
 - Eligible for Most Noted
 
 ### 5.4 Most Noted
@@ -180,7 +189,8 @@ Each submission stores:
 - Votes are blind during the voting period — no vote counts visible until reveal
 - Submissions are anonymous during voting — submitter revealed at round close
 - Scores accumulate across rounds on a league leaderboard
-- Just Vibing players do not appear on the leaderboard
+- All submitters compete, including Just Vibing players — a viber's song can place on the leaderboard and win (they simply don't cast votes themselves)
+- The reveal is gated by the viewer's mode for the round: Playing sees the full reveal (leaderboard, vote counts, all picks); Just Vibing sees winner(s) + Most Noted + the full tracklist with notes, but no leaderboard or vote counts (MYS-134)
 
 ### 5.6 Round Management
 
@@ -200,9 +210,10 @@ Each submission stores:
 
 - Display name
 - Preferred streaming service (used for playback link defaults)
-- Default participation mode (Playing / Just Vibing)
 - Round history (leagues and participation — visible to self only by default)
 - Account deletion — full data removal, no residual records
+
+> Participation mode is **per-league**, not a profile-wide setting (see §5.3) — it lives on league membership, with a per-round override. There is no account-level default participation mode.
 
 ### 5.9 Monetization
 

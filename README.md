@@ -1,11 +1,6 @@
 # MysteryMixClub
 
-A platform-agnostic, emotionally inclusive music league for close-knit friend groups.
-
-> **⚠️ Pre-launch — not yet in production.** MysteryMixClub has **not** been
-> deployed to prod. Active development lives on the **`develop`** branch; `main`
-> lags behind and is **not** the source of truth. After cloning, switch first:
-> `git checkout develop`.
+A platform-agnostic, emotionally inclusive music club for close-knit friend groups.
 
 > **🎧 Live staging:** https://staging.mysterymixclub.com — email [dgabriel@gmail.com](mailto:dgabriel@gmail.com) for access.
 
@@ -13,7 +8,7 @@ A platform-agnostic, emotionally inclusive music league for close-knit friend gr
 
 ## What This Is
 
-MysteryMixClub is a music sharing and discovery game where friends submit songs around themed rounds, listen together, and respond. Competitively or not, depending on how they want to play.
+MysteryMixClub is a music sharing and discovery game where friends submit songs around themed mystery mixes, listen together, and respond. Competitively or not, depending on how they want to play.
 
 It is built for the people who were left out of Music League: those who won't use Spotify on principle, those who felt punished by scoring, and those who just want to share music with people they love without it becoming a competition.
 
@@ -44,13 +39,13 @@ Defines what we're building and how.
 2. **Inclusion is a design constraint:** every decision is evaluated against the question: would this keep the Outsider in the room?
 3. **Privacy by architecture:** no opt-out AI features, ever; right to be forgotten is absolute
 4. **Resonance over consensus:** Most Noted exists because emotional response is as valid as taste alignment
-5. **The community owns the experience:** round themes are crowd-sourced; the league belongs to everyone
+5. **The community owns the experience:** mystery mix themes are crowd-sourced; the club belongs to everyone
 
 ---
 
 ## MVP in One Sentence
 
-A web app where a friend group can run music league rounds across Spotify, YouTube, Deezer, and Apple Music, with a Just Vibing mode for players who want to participate without scoring, and a Most Noted mechanic that celebrates resonance alongside competition.
+A web app where a friend group can run music club mystery mixes across Spotify, YouTube, Deezer, and Apple Music, with a Just Vibing mode for players who want to participate without scoring, and a Most Noted mechanic that celebrates resonance alongside competition.
 
 ---
 
@@ -59,7 +54,7 @@ A web app where a friend group can run music league rounds across Spotify, YouTu
 - Frontend: React / TypeScript
 - Backend: Python / FastAPI
 - Song identity: ISRC, resolved via keyless provider lookups (Deezer + iTunes), with cross-service links assembled in-app
-- Hosting: DigitalOcean — production on App Platform, staging on a self-managed Droplet
+- Hosting: DigitalOcean — production and staging both run on self-managed Droplets (ADR 0002)
 
 ---
 
@@ -196,35 +191,36 @@ Deploys are **automated through the pipeline — you do not deploy by hand.**
 |-------------|-------------------------------------|----------------------------------|
 | `feature/*` | nothing (open a PR)                 | PR → `develop` runs CI           |
 | `develop`   | staging (self-managed DO **Droplet**) | merge → auto-deploys via SSH   |
-| `main`      | production (DO **App Platform**, `mysterymixclub-prod`) | merge → manual approval gate |
+| `main`      | production (self-managed DO **Droplet**, `mysterymixclub-prod`) | merge → manual approval gate, then auto-deploys via SSH |
 
-> Staging and production deliberately diverge: staging runs on an Ubuntu Droplet
-> (Nginx + systemd + local Postgres), production on DO App Platform with managed
-> Postgres. Staging runbook: [`docs/staging-setup.md`](docs/staging-setup.md).
+> Staging and production run the same self-managed pattern — Ubuntu Droplet,
+> Nginx + systemd + local Postgres (ADR 0002: [`docs/adr/0002-prod-platform-self-managed-droplet.md`](docs/adr/0002-prod-platform-self-managed-droplet.md)).
+> Runbooks: [`docs/staging-setup.md`](docs/staging-setup.md) /
+> [`docs/prod-setup.md`](docs/prod-setup.md).
 
 Flow: branch `feature/*` off `develop` → PR into `develop` (CI must pass) →
 merge ships to staging → PR `develop` → `main` → approve → ships to prod.
 
-Full details — git hooks, GitHub Actions, DigitalOcean App Platform specs, and
-how to add a secret — are in [`docs/ci-cd.md`](docs/ci-cd.md).
+Full details — git hooks, GitHub Actions, and how to add a secret — are in
+[`docs/ci-cd.md`](docs/ci-cd.md).
 
 ---
 
 ## Status
 
 PDLC Definition phase complete (Discovery, PRD, and technical design all done).
-**MVP build is well underway** — the end-to-end league loop runs. Merged on
+**MVP build is well underway** — the end-to-end club loop runs. Merged on
 `develop`:
 
 - **Auth:** magic-link sign-in, JWT + refresh-token sessions, log-out-of-all-devices, account deletion.
-- **Leagues:** create / read / manage, member management, invite + join flow (with frontend screens).
-- **Rounds:** auto-generated round slate, forward-only state machine (pending → submission → voting → closed), organizer controls, auto-advance to the next round on close.
+- **Clubs:** create / read / manage, member management, invite + join flow (with frontend screens).
+- **Mystery mixes:** auto-generated mix slate, forward-only state machine (pending → submission → voting → closed), organizer controls, auto-advance to the next mix on close.
 - **Submissions:** paste-a-link and search, ISRC resolution, and cross-service playback links (Spotify, YouTube, Deezer, Apple Music) assembled keyless.
-- **Voting & scoring:** voting with a configurable per-round budget, **Just Vibing** mode, self-vote prevention, anonymous shuffled playlist, the **Most Noted** mechanic, and results / reveal.
+- **Voting & scoring:** voting with a configurable per-mix budget, **Just Vibing** mode, self-vote prevention, anonymous shuffled playlist, the **Most Noted** mechanic, and results / reveal.
 - **Playlist generation:** one-click YouTube playlist link (keyless) and per-user Spotify OAuth saved playlists. (Deezer playlist creation is a confirmed dead end — links only; Apple Music playlists are spiked and gated on an Apple Developer membership.)
-- **Notifications:** round-lifecycle email notifications (Resend) with per-user preference + one-click unsubscribe.
+- **Notifications:** mystery-mix-lifecycle email notifications (Resend) with per-user preference + one-click unsubscribe.
 - **Hardening:** security response headers and application-layer tenant isolation.
 
-Active work — Apple Music playlists, round progress indicators, live state polling,
+Active work — Apple Music playlists, mystery mix progress indicators, live state polling,
 a profile/settings screen, and more — is tracked in Linear (team **MysteryMixClub**,
 project **MysteryMixClub MVP**). `develop` leads `main` and deploys to staging.

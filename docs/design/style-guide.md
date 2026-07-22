@@ -18,17 +18,23 @@
 | Name        | Hex       | Role                                              |
 |-------------|-----------|---------------------------------------------------|
 | Cream       | `#F0EDE6` | Primary background                                |
-| Sage        | `#7A9E82` | Primary surface, buttons, active states           |
+| Sage        | `#506755` | Primary surface, buttons, active states           |
 | Sage Light  | `#A8C4AD` | Hover states, secondary surfaces                  |
 | Sage Pale   | `#D4E3D7` | Badges, tags, subtle backgrounds                  |
 | Rust        | `#B5533C` | Single accent — one use per screen/composition    |
+| Gold        | `#C9A028` | Achievement signal — winner and most-noted moments |
+| Vinyl       | `#6B7EB5` | Avatar illustrations only — the 5 music hardware icons |
 | Ink         | `#2E2B27` | Primary text, headings                            |
-| Muted       | `#8A8680` | Secondary text, labels, placeholders              |
+| Muted       | `#6D6A66` | Secondary text, labels, placeholders              |
 | Border      | `#D6D2CA` | Dividers, input underlines, card borders          |
 
 ### Usage rules
 
 - **Rust is a signal.** Use it for the single most important piece of information or action on a screen — a status badge, a card accent line, a CTA arrow. Never use it twice in the same view.
+  - **Exception — the nav brand mark.** The concentric-rings mark in the shared top nav may carry its single off-center Rust dot ("the fish") as persistent *brand identity*. Because the nav is global chrome, this dot does **not** count against a screen's one-Rust budget: a screen may still use Rust once in its own content. This is the only standing exception to the one-use rule.
+- **Gold is an achievement signal.** Use it exclusively for achievement moments: winner and most-noted reveals (the crown icon on section headings) and a **completed club** (the crown + thin left accent on a finished club's card). Do not use Gold decoratively or expand it to other contexts without updating this guide.
+- **Vinyl is for avatar illustrations only.** The five music hardware SVG avatars (cassette, record, boom box, walkman, flying V) use Vinyl as their stroke/fill. Do not use Vinyl outside of avatar illustration contexts.
+- **Ink as a surface is a time signal.** An Ink-filled chip with Cream text is reserved for time-critical information — deadlines and countdowns (see Badges → Time signal). One per screen; never decorative.
 - **No pure black or pure white.** Cream is the lightest surface; Ink is the darkest text.
 - **Sage family handles hierarchy.** Sage for primary, Sage Light for hover/secondary, Sage Pale for background tags.
 
@@ -38,7 +44,7 @@
 
 | Role            | Font                  | Size   | Weight  | Treatment                        |
 |-----------------|-----------------------|--------|---------|----------------------------------|
-| Display         | DM Serif Display      | 32–40px | Regular | Headlines, round names, page titles |
+| Display         | DM Serif Display      | 32–40px | Regular | Headlines, mystery mix names, page titles |
 | Display Italic  | DM Serif Display      | 24–32px | Italic  | Subheads, taglines, flavor text  |
 | Body            | DM Mono               | 13px   | 300     | Descriptions, paragraph text     |
 | Label           | DM Mono               | 9–11px | 400     | ALL CAPS, letter-spacing 0.15em  |
@@ -78,7 +84,7 @@ Page horizontal padding: `32px` (desktop), `16px` (mobile)
 ### Buttons
 
 **Primary**
-- Background: Sage `#7A9E82`
+- Background: Sage `#506755`
 - Text: Cream `#F0EDE6`
 - Font: DM Mono, 11px, ALL CAPS, letter-spacing 0.12em
 - Padding: `10px 22px`
@@ -105,8 +111,8 @@ Page horizontal padding: `32px` (desktop), `16px` (mobile)
 - Background: transparent
 - Font: DM Mono, 13px
 - Label above: DM Mono, 9px, ALL CAPS, letter-spacing 0.15em, Muted color
-- Placeholder: Muted `#8A8680`
-- Focus state: underline color shifts to Sage `#7A9E82`
+- Placeholder: Muted `#6D6A66`
+- Focus state: underline color shifts to Sage `#506755`
 
 ---
 
@@ -116,7 +122,7 @@ Page horizontal padding: `32px` (desktop), `16px` (mobile)
 - Border: `1px solid #D6D2CA`
 - Border radius: `3px`
 - Padding: `20px 24px`
-- Optional left accent bar: `3px wide`, Rust `#B5533C` — only when the card requires special attention (active round, your submission due, etc.)
+- Optional left accent bar: `3px wide`, Rust `#B5533C` — only when the card requires special attention (active mystery mix, your submission due, etc.)
 
 **Card anatomy (top to bottom):**
 1. Eyebrow — Label style, Muted
@@ -131,7 +137,7 @@ Page horizontal padding: `32px` (desktop), `16px` (mobile)
 
 **Default (Sage)**
 - Background: Sage Pale `#D4E3D7`
-- Text: Sage `#7A9E82`
+- Text: Sage `#506755`
 - Font: DM Mono, 9px, ALL CAPS, letter-spacing 0.15em
 - Padding: `4px 10px`
 - Border radius: `1px`
@@ -141,6 +147,19 @@ Page horizontal padding: `32px` (desktop), `16px` (mobile)
 - Border: `1px solid #B5533C`
 - Text: Rust `#B5533C`
 - Same font/padding as default badge
+
+**Time signal (Ink) — time-critical information only**
+- Background: Ink `#2E2B27`
+- Text: Cream `#F0EDE6`
+- Font: DM Mono, 11px, ALL CAPS, letter-spacing 0.12em
+- Padding: `4px 10px`
+- Border radius: `1px`
+- May carry one small line icon (12px, stroke `currentColor`)
+- Reserved for the moment a player must act by — deadlines and countdowns.
+  Never for status, achievement, or decoration. Like Rust, it is a signal:
+  **one time-signal chip per screen.** (Added Jul 2026 — the palette's only
+  sanctioned Ink-filled surface; it exists because the Sage family cannot
+  produce enough contrast for time-critical info without stealing Rust.)
 
 ---
 
@@ -180,10 +199,15 @@ The rings use the Sage color family (Sage Pale → Sage Light → Sage → Sage)
 
 - Short, confident, lowercase where possible
 - No exclamation marks
-- Round names can be poetic — *Late Summer Feels*, *The One That Got Away*
+- No em dashes in UI copy — use a period, comma, or parentheses instead
+- Mystery mix names can be poetic, e.g. *Late Summer Feels*, *The One That Got Away*
 - Status labels are plain: `open`, `voting`, `closed`, `reveal`
-- Error messages: direct and calm — "That link didn't work. Try another." not "Oops!"
+- Error messages: direct and calm, e.g. "That link didn't work. Try another." not "Oops!"
 
 ---
 
-*Last updated: May 2026*
+*Last updated: July 2026 — Sage and Muted darkened for WCAG 2.1 AA text contrast
+(MYS-186): Sage `#7A9E82` → `#506755`, Muted `#8A8680` → `#6D6A66`. Both now clear
+4.5:1 against Cream and, for Sage, against Sage Pale (the badge background).
+Sage Light and Sage Pale are unchanged — they're never used as text color. Added
+the Time signal (Ink) badge variant*

@@ -11,8 +11,14 @@ vi.mock("../hooks/useAuth", () => ({
 const mockUseAuth = vi.mocked(useAuth);
 
 type Status = "loading" | "authenticated" | "unauthenticated";
+type ProfileStatus = "idle" | "loading" | "ready";
 
-function setStatus(status: Status) {
+function setStatus(
+  status: Status,
+  overrides: { profileStatus?: ProfileStatus; needsOnboarding?: boolean } = {},
+) {
+  const profileStatus =
+    overrides.profileStatus ?? (status === "authenticated" ? "ready" : "idle");
   mockUseAuth.mockReturnValue({
     status,
     isAuthenticated: status === "authenticated",
@@ -20,6 +26,16 @@ function setStatus(status: Status) {
     clear: vi.fn(),
     logout: vi.fn(),
     logoutAll: vi.fn(),
+    displayName: status === "authenticated" ? "ada" : null,
+    email: status === "authenticated" ? "ada@example.com" : null,
+    userId: status === "authenticated" ? "11111111-1111-1111-1111-111111111111" : null,
+    profileStatus,
+    needsOnboarding: overrides.needsOnboarding ?? false,
+    isPlatformAdmin: false,
+    applyDisplayName: vi.fn(),
+    preferredService: null,
+    tosAccepted: true,
+    applyTosAccepted: vi.fn(),
   });
 }
 
@@ -36,6 +52,7 @@ function renderProtected() {
           }
         />
         <Route path="/login" element={<div>LOGIN CONTENT</div>} />
+        <Route path="/onboarding" element={<div>ONBOARDING CONTENT</div>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -68,6 +85,34 @@ describe("ProtectedRoute", () => {
     renderProtected();
 
     expect(screen.getByText("PROTECTED CHILD")).toBeInTheDocument();
+    expect(screen.queryByText("LOGIN CONTENT")).not.toBeInTheDocument();
+  });
+
+  it("authenticated + profile ready + needsOnboarding false: renders the child", () => {
+    setStatus("authenticated", { profileStatus: "ready", needsOnboarding: false });
+    renderProtected();
+
+    expect(screen.getByText("PROTECTED CHILD")).toBeInTheDocument();
+    expect(screen.queryByText("ONBOARDING CONTENT")).not.toBeInTheDocument();
+    expect(screen.queryByText("LOGIN CONTENT")).not.toBeInTheDocument();
+  });
+
+  it("authenticated + profile loading: renders the loading motif, not the child, no redirect", () => {
+    setStatus("authenticated", { profileStatus: "loading" });
+    renderProtected();
+
+    expect(screen.getByText(/verifying/i)).toBeInTheDocument();
+    expect(screen.queryByText("PROTECTED CHILD")).not.toBeInTheDocument();
+    expect(screen.queryByText("ONBOARDING CONTENT")).not.toBeInTheDocument();
+    expect(screen.queryByText("LOGIN CONTENT")).not.toBeInTheDocument();
+  });
+
+  it("authenticated + needsOnboarding true: redirects to /onboarding", () => {
+    setStatus("authenticated", { profileStatus: "ready", needsOnboarding: true });
+    renderProtected();
+
+    expect(screen.getByText("ONBOARDING CONTENT")).toBeInTheDocument();
+    expect(screen.queryByText("PROTECTED CHILD")).not.toBeInTheDocument();
     expect(screen.queryByText("LOGIN CONTENT")).not.toBeInTheDocument();
   });
 });

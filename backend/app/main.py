@@ -4,8 +4,25 @@ import sys
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import auth, health
+from app.api.routes import (
+    admin,
+    apple_music,
+    auth,
+    clubs,
+    health,
+    invites,
+    mixes,
+    notes,
+    notifications,
+    spotify,
+    submissions,
+    users,
+    votes,
+    waitlist,
+)
 from app.config import get_settings
+from app.middleware.security_headers import SecurityHeadersMiddleware
+from app.routers import songs
 
 
 def _configure_dev_logging() -> None:
@@ -32,6 +49,8 @@ def create_app() -> FastAPI:
         _configure_dev_logging()
     app = FastAPI(title="MysteryMixClub API", version="0.0.0")
 
+    app.add_middleware(SecurityHeadersMiddleware)
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins or ["http://localhost:5173"],
@@ -42,6 +61,19 @@ def create_app() -> FastAPI:
 
     app.include_router(health.router, prefix="/api/v1")
     app.include_router(auth.router, prefix="/api/v1")
+    app.include_router(users.router, prefix="/api/v1")
+    app.include_router(clubs.router, prefix="/api/v1")
+    app.include_router(invites.router, prefix="/api/v1")
+    app.include_router(mixes.router, prefix="/api/v1")
+    app.include_router(submissions.router, prefix="/api/v1")
+    app.include_router(votes.router, prefix="/api/v1")
+    app.include_router(notes.router, prefix="/api/v1")
+    app.include_router(notifications.router, prefix="/api/v1")
+    app.include_router(spotify.router, prefix="/api/v1")
+    app.include_router(apple_music.router, prefix="/api/v1")
+    app.include_router(songs.router, prefix="/api/v1")
+    app.include_router(admin.router, prefix="/api/v1")
+    app.include_router(waitlist.router, prefix="/api/v1")
 
     return app
 

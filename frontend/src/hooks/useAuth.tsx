@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import {
+  getMe,
   logout as apiLogout,
   logoutAll as apiLogoutAll,
   refresh as apiRefresh,
@@ -27,6 +28,7 @@ import {
  */
 
 type AuthStatus = "loading" | "authenticated" | "unauthenticated";
+type ProfileStatus = "idle" | "loading" | "ready";
 
 type AuthContextValue = {
   status: AuthStatus;
@@ -39,6 +41,35 @@ type AuthContextValue = {
   logout: () => Promise<void>;
   /** Invalidate all sessions server-side, then clear locally. */
   logoutAll: () => Promise<void>;
+  /** Current user's display name once the profile loads; null while unloaded. */
+  displayName: string | null;
+  /** Current user's email once the profile loads; null while unloaded. Shown on
+   *  the profile screen as read-only account identity. */
+  email: string | null;
+  /** Current user's id once the profile loads; null while unloaded. Club
+   *  routes compare it against club.organizer_id to gate organizer controls. */
+  userId: string | null;
+  /** True once the profile loads and the user is a platform admin. Gates the
+   *  /admin route and its nav entry; false while the profile is unloaded. */
+  isPlatformAdmin: boolean;
+  /** Lifecycle of the profile fetch that follows authentication. */
+  profileStatus: ProfileStatus;
+  /** True only when authenticated and profile loaded, and either the display
+   *  name is the empty-string sentinel (never onboarded) or the Terms of
+   *  Service / Privacy Policy haven't been accepted yet (MYS-183) — covers
+   *  both a brand-new user and an already-onboarded user who predates the
+   *  consent requirement. Either case routes to /onboarding. */
+  needsOnboarding: boolean;
+  /** True once the current profile has accepted the Terms/Privacy Policy. */
+  tosAccepted: boolean;
+  /** Apply a new display name locally (after a successful PATCH) so the
+   *  onboarding gate flips false without a refetch. */
+  applyDisplayName: (name: string) => void;
+  /** Apply Terms/Privacy acceptance locally (after a successful PATCH) so the
+   *  consent gate flips false without a refetch. */
+  applyTosAccepted: () => void;
+  /** User's preferred streaming service from their profile; null if unset. */
+  preferredService: string | null;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -46,7 +77,15 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [status, setStatus] = useState<AuthStatus>("loading");
+  const [displayName, setDisplayName] = useState<string | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
+  const [preferredService, setPreferredService] = useState<string | null>(null);
+  const [tosAccepted, setTosAccepted] = useState(false);
+  const [profileStatus, setProfileStatus] = useState<ProfileStatus>("idle");
   const didInit = useRef(false);
+  const didLoadProfile = useRef(false);
 
   const setAccessToken = useCallback((next: string) => {
     setStoredAccessToken(next);
@@ -58,6 +97,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStoredAccessToken(null);
     setToken(null);
     setStatus("unauthenticated");
+    setDisplayName(null);
+    setEmail(null);
+    setUserId(null);
+    setIsPlatformAdmin(false);
+    setPreferredService(null);
+    setTosAccepted(false);
+    setProfileStatus("idle");
+  }, []);
+
+  const applyDisplayName = useCallback((name: string) => {
+    setDisplayName(name);
+  }, []);
+
+  const applyTosAccepted = useCallback(() => {
+    setTosAccepted(true);
   }, []);
 
   // On mount: attempt a silent refresh to restore the session from the cookie.
@@ -84,6 +138,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
   }, []);
 
+  // Once a token is in memory (from on-mount refresh OR magic-link verify),
+  // load the profile so the onboarding gate can read the display name. A GET is
+  // idempotent, so the StrictMode double-invoke is harmless; the didLoadProfile
+  // ref still keeps us to a single fetch per session. On failure we treat the
+  // session as unauthenticated — authenticatedRequest already attempted a silent
+  // refresh, so a failure here means there is no recoverable session. clear()
+  // resets the profile refs implicitly via its state changes; the guard below
+  // prevents a stale resolution from overwriting a session we've since cleared.
+  useEffect(() => {
+    if (token === null || didLoadProfile.current) return;
+    didLoadProfile.current = true;
+    setProfileStatus("loading");
+
+    void (async () => {
+      try {
+        const profile = await getMe();
+        setDisplayName(profile.display_name);
+        setEmail(profile.email);
+        setUserId(profile.id);
+        setIsPlatformAdmin(profile.is_platform_admin);
+        setPreferredService(profile.preferred_service);
+        setTosAccepted(profile.tos_accepted);
+        setProfileStatus("ready");
+      } catch {
+        didLoadProfile.current = false;
+        clear();
+      }
+    })();
+  }, [token, clear]);
+
   const logout = useCallback(async () => {
     try {
       await apiLogout();
@@ -100,6 +184,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [clear]);
 
+  const needsOnboarding =
+    status === "authenticated" &&
+    profileStatus === "ready" &&
+    (displayName === "" || !tosAccepted);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       status,
@@ -108,8 +197,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clear,
       logout,
       logoutAll,
+      displayName,
+      email,
+      userId,
+      isPlatformAdmin,
+      preferredService,
+      tosAccepted,
+      profileStatus,
+      needsOnboarding,
+      applyDisplayName,
+      applyTosAccepted,
     }),
-    [status, token, setAccessToken, clear, logout, logoutAll],
+    [
+      status,
+      token,
+      setAccessToken,
+      clear,
+      logout,
+      logoutAll,
+      displayName,
+      email,
+      userId,
+      isPlatformAdmin,
+      preferredService,
+      tosAccepted,
+      profileStatus,
+      needsOnboarding,
+      applyDisplayName,
+      applyTosAccepted,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

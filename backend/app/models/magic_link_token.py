@@ -11,9 +11,7 @@ from app.db.base import Base
 class MagicLinkToken(Base):
     __tablename__ = "magic_link_tokens"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(String, nullable=False, index=True)
     token_hash: Mapped[str] = mapped_column(String, nullable=False, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

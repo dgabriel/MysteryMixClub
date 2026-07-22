@@ -86,6 +86,11 @@ unless you flag it first.
 - **No placeholder logic.** If you'd write a `// TODO`, ask instead.
 - **Flag design drift.** If a request would violate the style guide, say so before proceeding.
 - **Update Linear when done.** When an issue is complete, note it so the status can be updated.
+- **Record every major decision as an ADR.** Full process: `docs/adr/README.md`.
+  Applies to PM and developers alike, Claude Code included — a tech/vendor/hosting
+  choice, an architectural pattern other work builds on, or any tradeoff that
+  overrides the "obvious" approach gets a numbered ADR at decision time, not
+  after the fact.
 
 ---
 
@@ -174,6 +179,7 @@ docs/
   git-hygiene.md            ← Read before ANY git work. Non-negotiable git rules
   feature-flags.md          ← Env-driven feature flags: registry + how to add one
   adr/                      ← Architecture decision records (why, not just what)
+    README.md               ← ADR process: who writes one, when, format
   security/
     breach-notification-runbook.md  ← What to do if user data is exposed (MYS-187)
     data-residency.md         ← DO hosting region + EU transfer safeguard (MYS-188)

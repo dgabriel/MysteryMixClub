@@ -39,8 +39,8 @@ variable "droplet_tags" {
 
 variable "user_data" {
   type        = string
-  description = "cloud-init user data. Empty on imported droplets (DO does not return it)."
-  default     = ""
+  description = "cloud-init user data. Null on imported droplets (DO does not return it) — the provider rejects an empty string here, it must be null or omitted."
+  default     = null
 }
 
 variable "enable_backups" {

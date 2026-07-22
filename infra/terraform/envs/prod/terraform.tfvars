@@ -18,9 +18,9 @@ droplet_tags = ["prod", "mysterymixclub"]
 
 enable_backups = true # ~$3.60/mo (20% of $18). Fast full-box recovery.
 
-# REPLACE with your real admin IP(s) before apply. 0.0.0.0/0 here would recreate
-# staging's mistake of exposing SSH to the whole internet.
-ssh_allowed_cidrs = ["203.0.113.0/32"] # placeholder — Dawn's admin IP/CIDR
+# Dawn's admin machine — the only device she SSHes into DO from (confirmed
+# 2026-07-22). Revisit if/when a second device or network is added.
+ssh_allowed_cidrs = ["141.157.247.49/32"]
 
 domain         = "mysterymixclub.com"
 dns_a_names    = ["@", "www"] # apex + www (ties to MYS-174 domain migration)

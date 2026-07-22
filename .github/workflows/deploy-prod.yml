@@ -13,38 +13,38 @@ concurrency:
 jobs:
   deploy:
     name: Deploy to production Droplet
-    runs-on: ubuntu-latest
+    # Runs on a self-hosted runner living ON the prod Droplet itself (registered
+    # via scripts/bootstrap-droplet-prod.sh-adjacent setup, systemd service
+    # `actions.runner.*`, user mysterymixclub). GitHub-hosted runners can't reach
+    # this box at all — the cloud firewall restricts SSH to a single admin CIDR
+    # (MYS-224's fix carried into prod from day one), and GitHub's runner IP
+    # ranges are too broad/volatile to safely allowlist. Running the job directly
+    # on the box sidesteps needing inbound SSH from GitHub entirely.
+    runs-on: [self-hosted, prod]
     # The `production` environment gates this job behind a manual approval.
     # Configure required reviewers under Settings → Environments → production.
     environment: production
     steps:
-      # SSH into the Droplet and run the deploy script that lives in the checkout
-      # at /home/mysterymixclub/app (placed there by scripts/bootstrap-droplet-prod.sh).
-      # Mirrors deploy-staging.yml — see ADR 0002 (docs/adr/0002-prod-platform-self-managed-droplet.md)
+      # No actions/checkout here — deploy-prod.sh manages its own persistent
+      # clone at /home/mysterymixclub/app (placed there by
+      # bootstrap-droplet-prod.sh) and syncs it to origin/main itself, so a
+      # deploy never executes a stale copy of the script that then changes
+      # underneath it. See ADR 0002 (docs/adr/0002-prod-platform-self-managed-droplet.md)
       # for why prod moved off App Platform onto this same droplet pattern.
-      - name: Deploy over SSH
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.PROD_HOST }}
-          username: ${{ secrets.PROD_SSH_USER }}
-          key: ${{ secrets.PROD_SSH_KEY }}
-          script_stop: true
-          script: |
-            cd /home/mysterymixclub/app
-            # Sync the checkout (including deploy-prod.sh itself) to
-            # origin/main BEFORE invoking it, so a deploy never executes a
-            # stale copy of the script that then changes underneath it.
-            git fetch --prune origin
-            git checkout -f -B main origin/main
-            ./scripts/deploy-prod.sh
+      - name: Deploy
+        run: |
+          cd /home/mysterymixclub/app
+          git fetch --prune origin
+          git checkout -f -B main origin/main
+          ./scripts/deploy-prod.sh
 
       # Simple pass/fail notification (Actions log only, for now).
       - name: Report result
         if: always()
         run: |
           if [ "${{ job.status }}" = "success" ]; then
-            echo "✅ Production deploy to ${{ secrets.PROD_HOST }} succeeded"
+            echo "✅ Production deploy succeeded"
           else
-            echo "❌ Production deploy to ${{ secrets.PROD_HOST }} failed"
+            echo "❌ Production deploy failed"
             exit 1
           fi

@@ -150,10 +150,19 @@ timer.
 
 ## 5. Wire up the GitHub Actions deploy
 
-The `Deploy Production` workflow (`.github/workflows/deploy-prod.yml`) SSHes
-into the Droplet on every push to `main` — gated behind the `production`
-GitHub environment's required-reviewer approval — and runs
-`scripts/deploy-prod.sh`.
+The `Deploy Production` workflow (`.github/workflows/deploy-prod.yml`) runs on
+a **self-hosted GitHub Actions runner living on the Droplet itself** — gated
+behind the `production` GitHub environment's required-reviewer approval — and
+runs `scripts/deploy-prod.sh` directly.
+
+**Why self-hosted, not SSH-in like staging:** the prod cloud firewall (and
+this Droplet's host `ufw`) restrict inbound SSH to a single admin CIDR (fixing
+the anti-pattern flagged on staging, MYS-224) — from day one, not after the
+fact. GitHub-hosted runners connect from constantly-changing IP ranges too
+broad and volatile to safely allowlist, so `appleboy/ssh-action` (staging's
+approach) can never reach this box. A self-hosted runner sidesteps the problem
+entirely: it long-polls GitHub over an outbound connection, so no inbound
+firewall rule is needed at all.
 
 **Sudoers** — the deploy script restarts the service and keeps the
 deadline-job units current via sudo (the web root is owned by the deploy user,
@@ -171,25 +180,38 @@ EOF
 chmod 440 /etc/sudoers.d/mysterymixclub-deploy
 ```
 
-**GitHub secrets** (Settings → Secrets and variables → Actions → environment
-`production`):
-
-| Secret          | Value                                                        |
-|-----------------|---------------------------------------------------------------|
-| `PROD_HOST`     | Droplet public (reserved) IP or hostname                     |
-| `PROD_SSH_USER` | `mysterymixclub`                                              |
-| `PROD_SSH_KEY`  | a **private** key whose public half is in `mysterymixclub`'s `~/.ssh/authorized_keys` |
-
-Create a deploy key on the Droplet and authorize it:
+**Register the runner** (as the `mysterymixclub` user — reuses the sudoers
+grant above, matches the app's own file ownership):
 
 ```bash
-sudo -u mysterymixclub ssh-keygen -t ed25519 -f /home/mysterymixclub/.ssh/deploy -N ''
-sudo -u mysterymixclub bash -c 'cat /home/mysterymixclub/.ssh/deploy.pub >> /home/mysterymixclub/.ssh/authorized_keys'
-sudo cat /home/mysterymixclub/.ssh/deploy   # paste this private key into PROD_SSH_KEY
+# Get a registration token (needs repo-admin access; expires in ~1h):
+gh api -X POST repos/dgabriel/MysteryMixClub/actions/runners/registration-token --jq .token
+
+# On the Droplet, as mysterymixclub:
+mkdir -p ~/actions-runner && cd ~/actions-runner
+curl -o actions-runner-linux-x64.tar.gz -L \
+  https://github.com/actions/runner/releases/download/v<VERSION>/actions-runner-linux-x64-<VERSION>.tar.gz
+tar xzf actions-runner-linux-x64.tar.gz && rm actions-runner-linux-x64.tar.gz
+./config.sh --url https://github.com/dgabriel/MysteryMixClub --token <TOKEN> \
+  --name mysterymixclub-prod --labels prod --work _work --unattended --replace
+
+# As root, install + start it as a systemd service running under mysterymixclub:
+cd /home/mysterymixclub/actions-runner
+./svc.sh install mysterymixclub
+./svc.sh start
 ```
 
-Use a **different** deploy keypair than staging's — don't reuse the same
-private key across environments.
+Confirm it's online: `gh api repos/dgabriel/MysteryMixClub/actions/runners --jq '.runners[] | {name, status}'`.
+The workflow targets it via `runs-on: [self-hosted, prod]` — the `prod` label
+is what scopes deploy jobs to this specific runner (relevant once/if staging
+ever gets its own self-hosted runner too).
+
+**No SSH secrets needed** — `PROD_HOST`/`PROD_SSH_USER`/`PROD_SSH_KEY` were
+used by the old SSH-based workflow and are no longer referenced. Safe to
+delete from the `production` environment's secrets, or just leave them unused.
+
+**If the Droplet is ever rebuilt**, the runner registration is lost with it —
+re-run the registration steps above on the new box before the first deploy.
 
 Then push to `main` (or re-run the workflow) to trigger a deploy. Remember:
 per `docs/git-hygiene.md`, `main` only receives deliberate promotion PRs from

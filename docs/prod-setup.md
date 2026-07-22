@@ -24,7 +24,7 @@ for the tracking ticket.
 | Runtime env file | `/etc/mysterymixclub/prod.env`                   |
 | systemd unit     | `mysterymixclub-api` (uvicorn on `127.0.0.1:8000`) |
 | Nginx site       | `/etc/nginx/sites-available/mysterymixclub-prod` |
-| Canonical host   | `www.mysterymixclub.com` (apex 301s to it — MYS-174) |
+| Canonical host   | `mysterymixclub.com` (apex — matches technical-design.md §5; `www` 301s to it) |
 
 This doc covers the Droplet's OS-level setup. The Droplet, firewall, reserved
 IP, and DNS records themselves are provisioned by Terraform —
@@ -90,7 +90,7 @@ Fill in at least:
 - `APPLE_MUSIC_TEAM_ID` / `APPLE_MUSIC_KEY_ID` / `APPLE_MUSIC_PRIVATE_KEY` —
   optional, but all three or none. See "Enabling Apple Music" in
   `staging-setup.md` — the process is identical, just against prod's env file.
-- `ALLOWED_ORIGINS` / `APP_BASE_URL` — `https://www.mysterymixclub.com`.
+- `ALLOWED_ORIGINS` / `APP_BASE_URL` — `https://mysterymixclub.com`.
 - `VITE_API_BASE_URL` — leave **empty** (same-origin, as staging).
 
 Lock it down:
@@ -140,7 +140,7 @@ sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t && sudo systemctl reload nginx
 
 # Only once DNS for both names actually resolves to this Droplet:
-sudo certbot --nginx -d www.mysterymixclub.com -d mysterymixclub.com
+sudo certbot --nginx -d mysterymixclub.com -d www.mysterymixclub.com
 ```
 
 Certbot rewrites the `ssl_certificate` directives and installs an auto-renew

@@ -1,0 +1,23 @@
+# MysteryMixClub deadline force-advance job — production (MYS-145/162).
+# Runs `python -m app.jobs.advance_mixes` once: stamps missing deadlines, sends
+# the 12h submit/vote warnings, and force-advances or closes mixes whose deadline
+# has passed. Driven by the paired .timer (mysterymixclub-advance-mixes.timer),
+# not enabled directly.
+# Install on the Droplet AS mysterymixclub-advance-mixes.service (same unit name
+# as staging uses on its own box):
+#   sudo cp scripts/mysterymixclub-advance-mixes-prod.service /etc/systemd/system/mysterymixclub-advance-mixes.service
+#   sudo cp scripts/mysterymixclub-advance-mixes-prod.timer   /etc/systemd/system/mysterymixclub-advance-mixes.timer
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now mysterymixclub-advance-mixes.timer
+[Unit]
+Description=MysteryMixClub deadline force-advance job (production)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=oneshot
+User=mysterymixclub
+Group=mysterymixclub
+WorkingDirectory=/home/mysterymixclub/app/backend
+EnvironmentFile=/etc/mysterymixclub/prod.env
+ExecStart=/home/mysterymixclub/app/backend/.venv/bin/python -m app.jobs.advance_mixes

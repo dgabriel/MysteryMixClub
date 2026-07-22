@@ -86,6 +86,11 @@ unless you flag it first.
 - **No placeholder logic.** If you'd write a `// TODO`, ask instead.
 - **Flag design drift.** If a request would violate the style guide, say so before proceeding.
 - **Update Linear when done.** When an issue is complete, note it so the status can be updated.
+- **Record every major decision as an ADR.** Full process: `docs/adr/README.md`.
+  Applies to PM and developers alike, Claude Code included — a tech/vendor/hosting
+  choice, an architectural pattern other work builds on, or any tradeoff that
+  overrides the "obvious" approach gets a numbered ADR at decision time, not
+  after the fact.
 
 ---
 
@@ -97,17 +102,25 @@ Full spec: `docs/ci-cd.md`
 
 | Branch        | Deploys to                 | How                                  |
 |---------------|----------------------------|--------------------------------------|
-| `main`        | **production** (`mysterymixclub-prod`, DO App Platform) | push → `deploy-prod.yml` (manual approval gate) |
+| `main`        | **production** (self-managed **Droplet**, IaaS — MYS-225, cutover pending) | push → `deploy-prod.yml` (manual approval gate) SSHes in and runs `scripts/deploy-prod.sh` |
 | `develop`     | **staging** (DO **Droplet**, IaaS) | push → `deploy-staging.yml` SSHes in and runs `scripts/deploy-staging.sh` |
 | `feature/*`   | nothing — open a PR        | PR → `develop` runs `ci.yml`         |
 
 Flow: branch `feature/*` off `develop` → PR into `develop` (CI must pass) →
 merge deploys to staging → PR `develop` → `main` → approve → deploys to prod.
 
-> **Note — environments diverge.** Staging runs on a self-managed Ubuntu Droplet
-> (Nginx + systemd + local Postgres); production still runs on DO App Platform.
-> Staging setup/runbook: `docs/staging-setup.md`. The `.do/app.staging.yaml` spec
-> is retained for reference but is **not** used by the staging deploy.
+> **Note — prod is mid-migration off App Platform.** Per **ADR 0002**
+> (`docs/adr/0002-prod-platform-self-managed-droplet.md`), production moves to
+> the same self-managed model as staging (Nginx + systemd + local Postgres) —
+> `deploy-prod.yml` and the scripts below already target the Droplet, but no
+> prod Droplet has actually been applied/cut over yet (MYS-225 tracks it;
+> `PROD_HOST`/`PROD_SSH_USER`/`PROD_SSH_KEY` don't exist as secrets yet, so a
+> push to `main` today would fail at the deploy step, not silently succeed
+> against something stale). `.do/app.prod.yaml` is retained only until that
+> cutover happens, then should be deleted outright, not kept as a fallback.
+> Staging setup/runbook: `docs/staging-setup.md`; prod runbook:
+> `docs/prod-setup.md`. The `.do/app.staging.yaml` spec is retained for
+> reference but is **not** used by the staging deploy.
 
 **Local hook chain** (Husky v9, `core.hooksPath=.husky/_`)
 
@@ -127,32 +140,39 @@ Re-install hooks after a fresh clone with `npm install` (runs `prepare` → `hus
   `scripts/staging.env.example` (runtime env template). Runbook in
   `docs/staging-setup.md`. Deploy needs GitHub secrets `STAGING_HOST`,
   `STAGING_SSH_USER`, `STAGING_SSH_KEY`.
-- **Prod (App Platform):** `.do/app.prod.yaml` — DO App Platform spec (api
-  service + frontend static site + managed Postgres 15). `deploy-prod.yml` stages
-  it into `.do/app.yaml` (gitignored) before deploying; needs
-  `DIGITALOCEAN_ACCESS_TOKEN`. `.do/app.staging.yaml` is retained for reference
-  only (staging moved to the Droplet).
+- **Prod (Droplet, MYS-225 — pending cutover):** `scripts/bootstrap-droplet-prod.sh`
+  (one-time provision), `scripts/deploy-prod.sh` (deploy),
+  `scripts/mysterymixclub-api-prod.service` (systemd, installed as
+  `mysterymixclub-api.service`), `scripts/nginx-mysterymixclub-prod.conf`
+  (Nginx, real Let's Encrypt cert, no basic auth), `scripts/prod.env.example`
+  (runtime env template). Runbook in `docs/prod-setup.md`. Deploy needs GitHub
+  secrets `PROD_HOST`, `PROD_SSH_USER`, `PROD_SSH_KEY` (not yet set — no prod
+  Droplet exists yet). Infra itself is Terraform: `infra/terraform/envs/prod/`.
+  `.do/app.prod.yaml` (old App Platform spec) is reference-only until cutover,
+  then should be deleted.
 
 **Adding a new secret**
 
-Staging and prod take secrets by **different routes** — staging is a Droplet,
-prod is App Platform. Doing only one leaves the other silently unconfigured,
-which for an optional integration looks like "the feature doesn't work" rather
-than an error.
+Staging and prod now take secrets by the **same route** — both are Droplets
+(ADR 0002). Until MYS-225's cutover, though, prod's route is theoretical: the
+Droplet, its env file, and its systemd service don't exist yet.
 
 1. Add the key to `.env.example` (no value) so the contract is documented.
 2. **Staging (Droplet):** add the key to `scripts/staging.env.example` (no
    value); set the real value in `/etc/mysterymixclub/staging.env` on the
    Droplet, then `sudo systemctl restart mysterymixclub-api` — settings are
    cached per process, so editing the file alone changes nothing.
-3. **Prod (App Platform):** add an `envs:` entry to `.do/app.prod.yaml`
-   (`type: SECRET`) and set its value in the DO dashboard or via
-   `doctl apps update`. `.do/app.staging.yaml` is reference-only and is **not**
-   used by the staging deploy — adding a secret there has no effect.
+3. **Prod (Droplet, once cut over):** add the key to `scripts/prod.env.example`
+   (no value); set the real value in `/etc/mysterymixclub/prod.env` on the prod
+   Droplet, then `sudo systemctl restart mysterymixclub-api`. Same mechanism as
+   staging, different box, different secret values — never share a value
+   (`SECRET_KEY` especially) across environments.
 4. Only if a *workflow* needs it (not the app at runtime): GitHub → Settings →
    Secrets and variables → Actions.
-5. Never commit real secret values. The only pipeline secret today is
-   `DIGITALOCEAN_ACCESS_TOKEN`.
+5. Never commit real secret values. Once MYS-225 ships, `DIGITALOCEAN_ACCESS_TOKEN`
+   is needed only for `terraform apply`, not for app deploys — those go through
+   `PROD_HOST`/`PROD_SSH_USER`/`PROD_SSH_KEY` instead, same shape as staging's
+   `STAGING_*` secrets.
 
 Worked example (Apple Music): `docs/ci-cd.md` → "Adding a new secret";
 `docs/staging-setup.md` → "Enabling Apple Music".
@@ -174,6 +194,7 @@ docs/
   git-hygiene.md            ← Read before ANY git work. Non-negotiable git rules
   feature-flags.md          ← Env-driven feature flags: registry + how to add one
   adr/                      ← Architecture decision records (why, not just what)
+    README.md               ← ADR process: who writes one, when, format
   security/
     breach-notification-runbook.md  ← What to do if user data is exposed (MYS-187)
     data-residency.md         ← DO hosting region + EU transfer safeguard (MYS-188)

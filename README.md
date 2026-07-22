@@ -54,7 +54,7 @@ A web app where a friend group can run music club mystery mixes across Spotify, 
 - Frontend: React / TypeScript
 - Backend: Python / FastAPI
 - Song identity: ISRC, resolved via keyless provider lookups (Deezer + iTunes), with cross-service links assembled in-app
-- Hosting: DigitalOcean — production on App Platform, staging on a self-managed Droplet
+- Hosting: DigitalOcean — production and staging both run on self-managed Droplets (ADR 0002)
 
 ---
 
@@ -191,17 +191,18 @@ Deploys are **automated through the pipeline — you do not deploy by hand.**
 |-------------|-------------------------------------|----------------------------------|
 | `feature/*` | nothing (open a PR)                 | PR → `develop` runs CI           |
 | `develop`   | staging (self-managed DO **Droplet**) | merge → auto-deploys via SSH   |
-| `main`      | production (DO **App Platform**, `mysterymixclub-prod`) | merge → manual approval gate |
+| `main`      | production (self-managed DO **Droplet**, `mysterymixclub-prod`) | merge → manual approval gate, then auto-deploys via SSH |
 
-> Staging and production deliberately diverge: staging runs on an Ubuntu Droplet
-> (Nginx + systemd + local Postgres), production on DO App Platform with managed
-> Postgres. Staging runbook: [`docs/staging-setup.md`](docs/staging-setup.md).
+> Staging and production run the same self-managed pattern — Ubuntu Droplet,
+> Nginx + systemd + local Postgres (ADR 0002: [`docs/adr/0002-prod-platform-self-managed-droplet.md`](docs/adr/0002-prod-platform-self-managed-droplet.md)).
+> Runbooks: [`docs/staging-setup.md`](docs/staging-setup.md) /
+> [`docs/prod-setup.md`](docs/prod-setup.md).
 
 Flow: branch `feature/*` off `develop` → PR into `develop` (CI must pass) →
 merge ships to staging → PR `develop` → `main` → approve → ships to prod.
 
-Full details — git hooks, GitHub Actions, DigitalOcean App Platform specs, and
-how to add a secret — are in [`docs/ci-cd.md`](docs/ci-cd.md).
+Full details — git hooks, GitHub Actions, and how to add a secret — are in
+[`docs/ci-cd.md`](docs/ci-cd.md).
 
 ---
 

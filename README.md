@@ -8,7 +8,7 @@ A platform-agnostic, emotionally inclusive music club for close-knit friend grou
 
 ## What This Is
 
-MysteryMixClub is a music sharing and discovery game where friends submit songs around themed mystery mixes, listen together, and respond. Competitively or not, depending on how they want to play.
+MysteryMixClub is a music sharing and discovery experience where friends submit songs around themed mystery mixes, listen together, and respond. Competitively or not, depending on how they want to play.
 
 It is built for the people who were left out of Music League: those who won't use Spotify on principle, those who felt punished by scoring, and those who just want to share music with people they love without it becoming a competition.
 

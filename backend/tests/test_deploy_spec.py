@@ -1,12 +1,11 @@
 """MYS-37 — DigitalOcean deploy specs must run DB migrations on deploy.
 
-Today neither `.do/app.staging.yaml` nor `.do/app.prod.yaml` runs
-`alembic upgrade head`, so deployed environments never receive the schema.
-The fix adds a DigitalOcean PRE_DEPLOY job to each spec that runs the
-migrations against the same managed DB the `api` service uses.
+`.do/app.staging.yaml` runs `alembic upgrade head` via a DigitalOcean
+PRE_DEPLOY job against the same managed DB the `api` service uses.
+`.do/app.prod.yaml` was removed once prod cut over to the self-managed
+droplet (MYS-225) — it no longer applies.
 
-These tests assert that contract. They are TDD-first and are expected to
-FAIL until the PRE_DEPLOY migrate job is added to each spec.
+These tests assert that contract.
 """
 
 from pathlib import Path
@@ -17,7 +16,7 @@ import yaml
 # `.do` lives two levels up from backend/tests/.
 DO_DIR = Path(__file__).resolve().parents[2] / ".do"
 
-SPEC_FILES = ["app.staging.yaml", "app.prod.yaml"]
+SPEC_FILES = ["app.staging.yaml"]
 
 
 def _load_spec(filename: str) -> dict:

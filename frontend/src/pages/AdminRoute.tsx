@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useSearchParams } from "react-router-dom";
 import { AdminScreen } from "./AdminScreen";
 import {
   ApiError,
@@ -8,7 +8,10 @@ import {
   adminInviteFromWaitlist,
   adminListWaitlist,
   adminSearchUsers,
+  connectSpotify,
+  getSpotifyStatus,
   type AdminUser,
+  type SpotifyStatus,
   type WaitlistEntry,
 } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
@@ -41,6 +44,52 @@ export function AdminRoute() {
   const [waitlistLoading, setWaitlistLoading] = useState(true);
   const [waitlistError, setWaitlistError] = useState<string | null>(null);
   const [invitingEntryId, setInvitingEntryId] = useState<string | null>(null);
+
+  // Spotify shared-account connect (MYS-169): ops-only, (re)links the one
+  // dedicated MysteryMixClub Spotify account playlist generation runs under.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [spotifyStatus, setSpotifyStatus] = useState<SpotifyStatus | null>(null);
+  const [spotifyStatusLoading, setSpotifyStatusLoading] = useState(true);
+  const [connectingSpotify, setConnectingSpotify] = useState(false);
+  const [spotifyError, setSpotifyError] = useState<string | null>(null);
+  // Set once, from the ?spotify= flag the OAuth callback lands back with;
+  // cleared from the URL immediately so a refresh doesn't repeat it.
+  const [spotifyResult] = useState(() => searchParams.get("spotify"));
+
+  useEffect(() => {
+    if (!spotifyResult) return;
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.delete("spotify");
+        return next;
+      },
+      { replace: true },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!isPlatformAdmin) return;
+    let active = true;
+    getSpotifyStatus()
+      .then((status) => {
+        if (active) setSpotifyStatus(status);
+      })
+      .catch((err: unknown) => {
+        if (active) {
+          setSpotifyError(
+            err instanceof ApiError ? err.message : "couldn't load spotify status.",
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setSpotifyStatusLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [isPlatformAdmin]);
 
   useEffect(() => {
     if (!isPlatformAdmin) return;
@@ -117,6 +166,20 @@ export function AdminRoute() {
     }
   }
 
+  async function handleConnectSpotify() {
+    setConnectingSpotify(true);
+    setSpotifyError(null);
+    try {
+      const { authorize_url } = await connectSpotify("/admin");
+      window.location.href = authorize_url;
+    } catch (err) {
+      setSpotifyError(
+        err instanceof ApiError ? err.message : "couldn't start the spotify connection. try again.",
+      );
+      setConnectingSpotify(false);
+    }
+  }
+
   async function handleGenerateInvite() {
     setGeneratingInvite(true);
     setInviteError(null);
@@ -154,6 +217,12 @@ export function AdminRoute() {
       waitlistError={waitlistError}
       invitingEntryId={invitingEntryId}
       onInviteFromWaitlist={handleInviteFromWaitlist}
+      spotifyStatus={spotifyStatus}
+      spotifyStatusLoading={spotifyStatusLoading}
+      connectingSpotify={connectingSpotify}
+      spotifyError={spotifyError}
+      spotifyResult={spotifyResult}
+      onConnectSpotify={handleConnectSpotify}
     />
   );
 }

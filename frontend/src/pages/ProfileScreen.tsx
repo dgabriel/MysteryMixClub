@@ -116,7 +116,7 @@ export function ProfileScreen({
 
           <section className="mt-12 border-t border-border pt-10">
             <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">security</h2>
-            <p className="mt-2 font-mono text-[11px] font-light text-muted">
+            <p className="mt-2 font-mono text-[13px] font-light text-muted">
               signs you out on every device and browser.
             </p>
             <div className="mt-4">
@@ -168,7 +168,7 @@ function NameForm({
   return (
     <section>
       <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">display name</h2>
-      <form onSubmit={handleSubmit} className="mt-4 space-y-6">
+      <form onSubmit={handleSubmit} noValidate className="mt-4 space-y-6">
         <TextField
           id="profile-display-name"
           label="name"
@@ -179,9 +179,10 @@ function NameForm({
           onChange={(e) => setName(e.target.value)}
           disabled={saving}
           aria-invalid={saveError ? true : undefined}
+          aria-describedby={saveError ? "profile-display-name-error" : undefined}
         />
         {saveError ? (
-          <p role="alert" className="font-mono text-[11px] text-ink">
+          <p id="profile-display-name-error" role="alert" className="font-mono text-[13px] text-ink">
             {saveError}
           </p>
         ) : null}
@@ -226,7 +227,7 @@ function PreferredServicePicker({
         </h2>
         <HelpLink anchor="listening-playlists" />
       </span>
-      <p className="mt-1 font-mono text-[11px] font-light text-muted">
+      <p className="mt-1 font-mono text-[13px] font-light text-muted">
         platform links show this service first.
       </p>
       <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2">
@@ -239,7 +240,7 @@ function PreferredServicePicker({
               disabled={saving || isActive}
               onClick={() => onSave(value)}
               className={[
-                "font-mono uppercase tracking-ui text-[11px] transition-colors duration-150",
+                "py-1.5 font-mono uppercase tracking-ui text-[11px] transition-colors duration-150",
                 isActive
                   ? "text-ink underline underline-offset-[3px] cursor-default"
                   : "text-muted hover:text-ink disabled:opacity-50",
@@ -254,7 +255,7 @@ function PreferredServicePicker({
         ) : null}
       </div>
       {saveError ? (
-        <p role="alert" className="mt-2 font-mono text-[11px] text-ink">
+        <p role="alert" className="mt-2 font-mono text-[13px] text-ink">
           {saveError}
         </p>
       ) : null}
@@ -325,11 +326,11 @@ function ExportDataSection({
   return (
     <section className="mt-12 border-t border-border pt-10">
       <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">your data</h2>
-      <p className="mt-2 font-mono text-[11px] font-light text-muted">
+      <p className="mt-2 font-mono text-[13px] font-light text-muted">
         download a copy of everything tied to your account: profile, submissions, votes, and
         notes.
       </p>
-      <p className="mt-2 font-mono text-[11px] font-light text-muted">
+      <p className="mt-2 font-mono text-[13px] font-light text-muted">
         we provide this to meet gdpr's right of access (article 15) and data portability (article
         20).
       </p>
@@ -339,7 +340,7 @@ function ExportDataSection({
         </Button>
       </div>
       {exportDataError ? (
-        <p role="alert" className="mt-3 font-mono text-[11px] text-ink">
+        <p role="alert" className="mt-3 font-mono text-[13px] text-ink">
           {exportDataError}
         </p>
       ) : null}
@@ -371,7 +372,7 @@ function DeleteAccountSection({
         </div>
       ) : (
         <div className="mt-4 space-y-4">
-          <p className="font-mono text-[12px] font-light text-ink">
+          <p className="font-mono text-[13px] font-light text-ink">
             this permanently deletes your account and all your data. are you sure?
           </p>
           <div className="flex items-center gap-4">
@@ -387,7 +388,7 @@ function DeleteAccountSection({
               type="button"
               onClick={() => setConfirming(false)}
               disabled={deletingAccount}
-              className="font-mono uppercase tracking-ui text-[11px] text-muted hover:text-ink disabled:opacity-50"
+              className="py-1.5 font-mono uppercase tracking-ui text-[11px] text-muted hover:text-ink disabled:opacity-50"
             >
               cancel
             </button>
@@ -395,7 +396,7 @@ function DeleteAccountSection({
         </div>
       )}
       {deleteAccountError ? (
-        <p role="alert" className="mt-3 font-mono text-[11px] text-ink">
+        <p role="alert" className="mt-3 font-mono text-[13px] text-ink">
           {deleteAccountError}
         </p>
       ) : null}

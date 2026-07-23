@@ -232,16 +232,16 @@ export function HelpRoute() {
           <ConcentricRings size={72} accent className="mx-auto" />
 
           <h1 className="mt-8 text-center font-serif text-[34px] leading-tight">help</h1>
-          <p className="mt-2 text-center font-mono text-[11px] font-light text-muted">
+          <p className="mt-2 text-center font-mono text-[13px] font-light text-muted">
             everything from signing in to your first reveal
           </p>
 
           <div className="mt-10 space-y-10">
             {SECTIONS.map((section) => (
               <section key={section.slug} id={section.slug} className="scroll-mt-8">
-                <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
+                <h2 className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
                   {section.label}
-                </p>
+                </h2>
                 <div className="mt-4 space-y-5">
                   {section.items.map((item) => (
                     <div key={item.q}>

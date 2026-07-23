@@ -43,7 +43,7 @@ export function WaitlistForm() {
 
   if (joined) {
     return (
-      <p className="mt-10 text-center font-mono text-[11px] font-light text-muted">
+      <p className="mt-10 text-center font-mono text-[13px] font-light text-muted">
         you&apos;re on the waitlist. we&apos;ll email you when a spot opens up.
       </p>
     );
@@ -51,8 +51,8 @@ export function WaitlistForm() {
 
   return (
     <div className="mt-10 text-center">
-      <p className="font-mono text-[11px] font-light text-muted">no invite yet? join the waitlist.</p>
-      <form onSubmit={handleSubmit} className="mt-3 flex items-end justify-center gap-3">
+      <p className="font-mono text-[13px] font-light text-muted">no invite yet? join the waitlist.</p>
+      <form onSubmit={handleSubmit} noValidate className="mt-3 flex items-end justify-center gap-3">
         <div className="w-full max-w-[220px] text-left">
           <TextField
             id="waitlist-email"
@@ -66,6 +66,7 @@ export function WaitlistForm() {
             onChange={(e) => setEmail(e.target.value)}
             disabled={submitting}
             aria-invalid={error ? true : undefined}
+            aria-describedby={error ? "waitlist-email-error" : undefined}
           />
         </div>
         <Button type="submit" variant="ghost" disabled={submitting}>
@@ -73,7 +74,7 @@ export function WaitlistForm() {
         </Button>
       </form>
       {error ? (
-        <p role="alert" className="mt-2 font-mono text-[11px] text-ink">
+        <p id="waitlist-email-error" role="alert" className="mt-2 font-mono text-[13px] text-ink">
           {error}
         </p>
       ) : null}

@@ -52,7 +52,7 @@ export function MyClubsScreen({
                   </Button>
                 </div>
                 {error ? (
-                  <p role="alert" className="mt-6 font-mono text-[11px] text-ink">
+                  <p role="alert" className="mt-6 font-mono text-[13px] text-ink">
                     {error}
                   </p>
                 ) : null}
@@ -78,7 +78,7 @@ export function MyClubsScreen({
                 </div>
 
                 {error ? (
-                  <p role="alert" className="mt-6 font-mono text-[11px] text-ink">
+                  <p role="alert" className="mt-6 font-mono text-[13px] text-ink">
                     {error}
                   </p>
                 ) : null}
@@ -112,10 +112,9 @@ export function MyClubsScreen({
 
             {/* Permanent home-screen fixture, below the club list (MYS-45). */}
             <section className="mt-12 border-t border-border pt-10">
-                <h2 className="mt-1 font-serif lowercase text-[18px] leading-tight text-ink">
+                <p className="mt-1 font-serif lowercase text-[18px] leading-tight text-ink">
                   practice your song search skills here — no club required
-                </h2> 
-                <br/>             
+                </p>
               <SongSearchCard preferredService={preferredService} />
             </section>
           </div>

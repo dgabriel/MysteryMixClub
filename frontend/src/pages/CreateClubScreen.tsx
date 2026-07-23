@@ -45,6 +45,9 @@ export function CreateClubScreen({
   const [votingWindowDays, setVotingWindowDays] = useState(DEFAULT_WINDOW_DAYS);
   const [votingWindowHours, setVotingWindowHours] = useState(DEFAULT_WINDOW_HOURS);
   const [guard, setGuard] = useState<string | null>(null);
+  const [guardField, setGuardField] = useState<
+    "name" | "mixes" | "votes" | "songs" | "submission_window" | "voting_window" | null
+  >(null);
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -60,32 +63,39 @@ export function CreateClubScreen({
 
     if (!trimmedName) {
       setGuard("a club needs a name.");
+      setGuardField("name");
       return;
     }
     if (!Number.isFinite(mixes) || mixes < 1) {
       setGuard("a club needs at least one mystery mix.");
+      setGuardField("mixes");
       return;
     }
     if (!Number.isFinite(votes) || votes < 1) {
       setGuard("votes per player must be at least 1.");
+      setGuardField("votes");
       return;
     }
     if (!Number.isFinite(songs) || songs < 1 || songs > 5) {
       setGuard("songs per submission must be between 1 and 5.");
+      setGuardField("songs");
       return;
     }
     const submissionWindowError = validateWindowHours(submissionHours);
     if (submissionWindowError) {
       setGuard(`submission ${submissionWindowError}`);
+      setGuardField("submission_window");
       return;
     }
     const votingWindowError = validateWindowHours(votingHours);
     if (votingWindowError) {
       setGuard(`voting ${votingWindowError}`);
+      setGuardField("voting_window");
       return;
     }
 
     setGuard(null);
+    setGuardField(null);
     const trimmedDescription = description.trim();
     onSubmit({
       name: trimmedName,
@@ -107,7 +117,7 @@ export function CreateClubScreen({
 
         <h1 className="mt-8 text-center font-serif text-[34px] leading-tight">new club</h1>
 
-        <form onSubmit={handleSubmit} className="mt-10 space-y-8">
+        <form onSubmit={handleSubmit} noValidate className="mt-10 space-y-8">
           <TextField
             id="club-name"
             label="name"
@@ -116,6 +126,8 @@ export function CreateClubScreen({
             value={name}
             onChange={(e) => setName(e.target.value)}
             disabled={submitting}
+            aria-invalid={guardField === "name" || undefined}
+            aria-describedby={guardField === "name" ? "club-guard-error" : undefined}
           />
 
           <TextField
@@ -138,8 +150,10 @@ export function CreateClubScreen({
               value={totalMixes}
               onChange={(e) => setTotalMixes(e.target.value)}
               disabled={submitting}
+              aria-invalid={guardField === "mixes" || undefined}
+              aria-describedby={guardField === "mixes" ? "club-guard-error" : undefined}
             />
-            <p className="mt-2 font-mono text-[11px] font-light text-muted">
+            <p className="mt-2 font-mono text-[13px] font-light text-muted">
               we&apos;ll create this many mystery mixes for you — name each one later.
             </p>
           </div>
@@ -153,6 +167,8 @@ export function CreateClubScreen({
             value={votesPerPlayer}
             onChange={(e) => setVotesPerPlayer(e.target.value)}
             disabled={submitting}
+            aria-invalid={guardField === "votes" || undefined}
+            aria-describedby={guardField === "votes" ? "club-guard-error" : undefined}
           />
 
           <div>
@@ -165,8 +181,10 @@ export function CreateClubScreen({
               value={songsPerSubmission}
               onChange={(e) => setSongsPerSubmission(e.target.value)}
               disabled={submitting}
+              aria-invalid={guardField === "songs" || undefined}
+              aria-describedby={guardField === "songs" ? "club-guard-error" : undefined}
             />
-            <p className="mt-2 font-mono text-[11px] font-light text-muted">
+            <p className="mt-2 font-mono text-[13px] font-light text-muted">
               how many songs each player can submit per mystery mix — 1 to 5.
             </p>
           </div>
@@ -180,6 +198,8 @@ export function CreateClubScreen({
               onDaysChange={setSubmissionWindowDays}
               onHoursChange={setSubmissionWindowHours}
               disabled={submitting}
+              invalid={guardField === "submission_window"}
+              errorId="club-guard-error"
             />
             <DeadlineWindowField
               idPrefix="voting-window"
@@ -189,8 +209,10 @@ export function CreateClubScreen({
               onDaysChange={setVotingWindowDays}
               onHoursChange={setVotingWindowHours}
               disabled={submitting}
+              invalid={guardField === "voting_window"}
+              errorId="club-guard-error"
             />
-            <p className="font-mono text-[11px] font-light text-muted">
+            <p className="font-mono text-[13px] font-light text-muted">
               mystery mixes also close early if everyone finishes.
             </p>
           </div>
@@ -210,20 +232,20 @@ export function CreateClubScreen({
               </span>
               <HelpLink anchor="just-vibing" />
             </label>
-            <p className="mt-2 font-mono text-[11px] font-light text-muted">
+            <p className="mt-2 font-mono text-[13px] font-light text-muted">
               vibing means no voting or ranking — just songs and response notes. every
               member who joins starts out vibing.
             </p>
           </div>
 
           {guard ? (
-            <p role="alert" className="font-mono text-[11px] text-ink">
+            <p id="club-guard-error" role="alert" className="font-mono text-[13px] text-ink">
               {guard}
             </p>
           ) : null}
 
           {error ? (
-            <p role="alert" className="font-mono text-[11px] text-ink">
+            <p role="alert" className="font-mono text-[13px] text-ink">
               {error}
             </p>
           ) : null}

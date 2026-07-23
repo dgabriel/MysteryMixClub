@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Mix } from "../services/api";
 import { formatCountdown, formatDeadline } from "../utils/deadline";
 import { ClockIcon } from "./ClockIcon";
@@ -34,8 +34,19 @@ export function DeadlineChip({
   }, [showCountdown]);
 
   const label = formatDeadline(mix);
-  if (!label) return null;
   const countdown = showCountdown ? formatCountdown(mix, now) : null;
+  const closingSoon = countdown === "closing soon…";
+  const wasClosingSoon = useRef(false);
+  const [announcement, setAnnouncement] = useState("");
+
+  useEffect(() => {
+    if (closingSoon && !wasClosingSoon.current) {
+      setAnnouncement("this mystery mix is closing soon");
+    }
+    wasClosingSoon.current = closingSoon;
+  }, [closingSoon]);
+
+  if (!label) return null;
 
   return (
     <div className={className}>
@@ -43,6 +54,11 @@ export function DeadlineChip({
         <ClockIcon />
         {countdown ? `${label} · ${countdown}` : label}
       </span>
+      {showCountdown ? (
+        <p role="status" aria-live="polite" className="sr-only">
+          {announcement}
+        </p>
+      ) : null}
     </div>
   );
 }

@@ -50,7 +50,7 @@ export function OnboardingScreen({
             : "we've published a terms of service and privacy policy — please review and accept to continue."}
         </p>
 
-        <form onSubmit={handleSubmit} className="mt-10 space-y-8">
+        <form onSubmit={handleSubmit} noValidate className="mt-10 space-y-8">
           {needsDisplayName ? (
             <TextField
               id="display-name"
@@ -62,6 +62,7 @@ export function OnboardingScreen({
               onChange={(e) => setDisplayName(e.target.value)}
               disabled={submitting}
               aria-invalid={error ? true : undefined}
+              aria-describedby={error ? "onboarding-error" : undefined}
             />
           ) : null}
 
@@ -101,7 +102,7 @@ export function OnboardingScreen({
           ) : null}
 
           {error ? (
-            <p role="alert" className="font-mono text-[11px] text-ink">
+            <p id="onboarding-error" role="alert" className="font-mono text-[13px] text-ink">
               {error}
             </p>
           ) : null}

@@ -50,7 +50,7 @@ export function AboutRoute() {
             >
               see the code on github
             </a>
-            <p className="mt-4 font-mono text-[11px] font-light text-muted">
+            <p className="mt-4 font-mono text-[13px] font-light text-muted">
               built with{" "}
               <a
                 href="https://claude.com/claude-code"

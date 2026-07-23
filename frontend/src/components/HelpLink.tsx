@@ -25,7 +25,7 @@ export function HelpLink({ anchor, className = "" }: HelpLinkProps) {
       aria-label="what is this?"
       title="what is this?"
       className={[
-        "inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-border font-mono text-[10px] leading-none text-muted transition-colors duration-150 hover:border-sage hover:text-sage",
+        "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border font-mono text-[10px] leading-none text-muted transition-colors duration-150 hover:border-sage hover:text-sage",
         className,
       ]
         .filter(Boolean)

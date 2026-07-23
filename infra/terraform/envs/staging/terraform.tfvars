@@ -18,3 +18,6 @@ enable_monitoring = true  # metrics agent present
 domain      = "mysterymixclub.com"
 dns_a_names = ["staging"] # existing record id 1822275773 -> 67.207.81.183
 dns_ttl     = 3600
+
+# Dawn's admin machine — same CIDR used for prod's firewall (confirmed 2026-07-22).
+ssh_allowed_cidrs = ["141.157.247.49/32"]

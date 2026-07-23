@@ -34,9 +34,10 @@ module "staging" {
   enable_backups       = var.enable_backups
   enable_monitoring    = var.enable_monitoring
 
-  # Staging today has NO cloud firewall and NO reserved IP — matched here so a
-  # post-import plan is clean. See README for why these are prod-only.
-  create_firewall    = false
+  # MYS-224: SSH was reachable from 0.0.0.0/0 at the network edge. Firewall
+  # added to lock SSH to admin CIDRs; reserved IP stays prod-only (see README).
+  create_firewall    = true
+  ssh_allowed_cidrs  = var.ssh_allowed_cidrs
   create_reserved_ip = false
 
   domain      = var.domain

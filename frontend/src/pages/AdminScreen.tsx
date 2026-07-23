@@ -1,8 +1,23 @@
 import { type FormEvent, useState } from "react";
-import type { AdminUser, WaitlistEntry } from "../services/api";
+import type { AdminUser, SpotifyStatus, WaitlistEntry } from "../services/api";
+import { Badge } from "../components/Badge";
 import { Button } from "../components/Button";
 import { InviteShare } from "../components/InviteShare";
 import { TextField } from "../components/TextField";
+
+/** Copy for the one-time `?spotify=` flag the OAuth callback lands back with. */
+function spotifyResultMessage(flag: string | null): string | null {
+  switch (flag) {
+    case "connected":
+      return "spotify connected.";
+    case "denied":
+      return "spotify authorization was cancelled.";
+    case null:
+      return null;
+    default:
+      return "something went wrong connecting spotify. try again.";
+  }
+}
 
 type AdminScreenProps = {
   query: string;
@@ -28,6 +43,13 @@ type AdminScreenProps = {
   waitlistError?: string | null;
   invitingEntryId: string | null;
   onInviteFromWaitlist: (entryId: string) => void;
+  /** Spotify shared-account connect (MYS-169), ops-only. */
+  spotifyStatus: SpotifyStatus | null;
+  spotifyStatusLoading: boolean;
+  connectingSpotify: boolean;
+  spotifyError?: string | null;
+  spotifyResult: string | null;
+  onConnectSpotify: () => void;
 };
 
 /**
@@ -58,6 +80,12 @@ export function AdminScreen({
   waitlistError,
   invitingEntryId,
   onInviteFromWaitlist,
+  spotifyStatus,
+  spotifyStatusLoading,
+  connectingSpotify,
+  spotifyError,
+  spotifyResult,
+  onConnectSpotify,
 }: AdminScreenProps) {
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -168,6 +196,50 @@ export function AdminScreen({
               invitingEntryId={invitingEntryId}
               onInviteFromWaitlist={onInviteFromWaitlist}
             />
+          )}
+        </div>
+      </section>
+
+      <section className="mt-16">
+        <h2 className="font-serif lowercase text-[20px] leading-tight text-ink">spotify</h2>
+        <p className="mt-2 font-mono text-[13px] font-light text-muted">
+          connect the one shared mysterymixclub spotify account playlist generation runs under.
+        </p>
+
+        {spotifyResultMessage(spotifyResult) ? (
+          <p className="mt-4 font-mono text-[11px] text-ink">
+            {spotifyResultMessage(spotifyResult)}
+          </p>
+        ) : null}
+
+        {spotifyError ? (
+          <p role="alert" className="mt-4 font-mono text-[11px] text-ink">
+            {spotifyError}
+          </p>
+        ) : null}
+
+        <div className="mt-6">
+          {spotifyStatusLoading ? null : (
+            <div className="flex items-center gap-4">
+              <Badge>
+                {!spotifyStatus?.configured
+                  ? "not configured"
+                  : spotifyStatus.connected
+                    ? "connected"
+                    : "not connected"}
+              </Badge>
+              <Button
+                type="button"
+                onClick={onConnectSpotify}
+                disabled={connectingSpotify || !spotifyStatus?.configured}
+              >
+                {connectingSpotify
+                  ? "connecting…"
+                  : spotifyStatus?.connected
+                    ? "reconnect spotify"
+                    : "connect spotify"}
+              </Button>
+            </div>
           )}
         </div>
       </section>

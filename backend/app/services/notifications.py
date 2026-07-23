@@ -52,6 +52,17 @@ MixEvent = Literal[
 # The two deadline phases a mix can be warned about (MYS-162).
 DeadlinePhase = Literal["submission", "voting"]
 
+# Brand tokens (docs/design/style-guide.md). Email clients can't load the
+# real webfonts, so the display/body roles fall back to a close system stack
+# rather than naming DM Serif Display / DM Mono alone.
+_INK = "#2E2B27"
+_RUST = "#AD4F39"
+_MUTED = "#6D6A66"
+_BORDER = "#D6D2CA"
+_CREAM = "#F0EDE6"
+_FONT_BODY = "'DM Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace"
+_FONT_DISPLAY = "'DM Serif Display', Georgia, 'Times New Roman', serif"
+
 
 @dataclass(frozen=True)
 class Recipient:
@@ -103,11 +114,24 @@ def _format_deadline(deadline: datetime) -> str:
     return f"{d.strftime('%b')} {d.day}, {d.strftime('%H:%M')} UTC"
 
 
+def _link_html(url: str, text: str) -> str:
+    """A Rust-accent text link (style-guide "Accent" type role) — the one
+    Rust use in the email, matching the one-accent-per-screen rule."""
+    return (
+        f'<a href="{url}" style="color:{_RUST};text-decoration:underline;'
+        f'text-underline-offset:3px">{text}</a>'
+    )
+
+
+def _cta_link(club: Club, club_url: str) -> str:
+    return _link_html(club_url, f"Go to {club.name} →")
+
+
 def _subject_and_body(event: MixEvent, club: Club, mix_: Mix, club_url: str) -> tuple[str, str]:
     """Return (subject, body_html_fragment) for an event, sans the unsubscribe
     footer (added per-recipient)."""
     label = _mix_label(mix_)
-    link = f'<a href="{club_url}">Go to {club.name} →</a>'
+    link = _cta_link(club, club_url)
     if event == "submission_open":
         # MYS-162: include the concrete deadline when the mix has one stamped.
         by = (
@@ -117,8 +141,9 @@ def _subject_and_body(event: MixEvent, club: Club, mix_: Mix, club_url: str) -> 
         )
         return (
             f"{club.name} — {label} is open for submissions",
-            f"<p><strong>{label}</strong> is open in <strong>{club.name}</strong>. "
-            f"Pick your song and get it in.{by} {link}</p>",
+            f"<p><strong>{label}</strong> just opened in <strong>{club.name}</strong>. "
+            f"Time to pick a song and get it in before everyone else hears it.{by}</p>"
+            f"<p>{link}</p>",
         )
     if event == "voting_open":
         # MYS-162: include the concrete voting deadline when stamped.
@@ -129,15 +154,16 @@ def _subject_and_body(event: MixEvent, club: Club, mix_: Mix, club_url: str) -> 
         )
         return (
             f"{club.name} — voting is open for {label}",
-            f"<p>Submissions are in for <strong>{label}</strong> in "
-            f"<strong>{club.name}</strong>. Listen to the mix and cast your votes.{by} "
-            f"{link}</p>",
+            f"<p>All the submissions are in for <strong>{label}</strong> in "
+            f"<strong>{club.name}</strong>. Settle in, listen to the mix, and cast "
+            f"your votes.{by}</p><p>{link}</p>",
         )
     if event == "mix_closed":
         return (
             f"{club.name} — {label} results are in",
             f"<p><strong>{label}</strong> in <strong>{club.name}</strong> has closed. "
-            f"The results and reveal are ready — see who picked what. {link}</p>",
+            f"The results are in and the reveal is ready, see who picked what.</p>"
+            f"<p>{link}</p>",
         )
     if event == "voting_extended":
         # MYS-180: mix_.voting_deadline is always set by the time this fires —
@@ -145,21 +171,23 @@ def _subject_and_body(event: MixEvent, club: Club, mix_: Mix, club_url: str) -> 
         by = _format_deadline(mix_.voting_deadline) if mix_.voting_deadline else ""
         return (
             f"{club.name} — voting extended for {label}",
-            f"<p>Voting for <strong>{label}</strong> in <strong>{club.name}</strong> has been "
-            f"extended. New deadline: {by}. {link}</p>",
+            f"<p>Voting for <strong>{label}</strong> in <strong>{club.name}</strong> has "
+            f"been extended, there's a bit more time. New deadline: {by}.</p>"
+            f"<p>{link}</p>",
         )
     if event == "needs_theme":
         return (
             f"{club.name} — {label} needs a theme before it can open",
-            f"<p><strong>{label}</strong> in <strong>{club.name}</strong> was next in line to "
-            f"open, but it has no theme yet — mixes can't open without one. Set a theme, "
-            f"then open it yourself whenever you're ready. {link}</p>",
+            f"<p><strong>{label}</strong> in <strong>{club.name}</strong> was next up, "
+            f"but it still needs a theme before it can open. Set one whenever you're "
+            f"ready, then open the mix yourself.</p><p>{link}</p>",
         )
     # club_complete
     return (
         f"{club.name} — that's a wrap",
         f"<p><strong>{club.name}</strong> has wrapped after its final mystery mix. "
-        f"Check the standings for the final results. {link}</p>",
+        f"Thanks for playing, check the standings for the final results.</p>"
+        f"<p>{link}</p>",
     )
 
 
@@ -174,11 +202,22 @@ def _unsubscribe_url(settings: Settings, user_id: uuid.UUID) -> str:
 
 
 def _wrap_html(body: str, unsubscribe_url: str) -> str:
+    """Wrap a message body in the brand shell (wordmark + card surface) plus
+    the unsubscribe footer. One shell for every dispatch path so mix events,
+    deadline warnings, and the welcome email all read as the same product."""
     return (
+        f'<div style="background:{_CREAM};padding:32px 16px;font-family:{_FONT_BODY};'
+        f'color:{_INK};font-size:14px;line-height:1.6">'
+        f'<div style="max-width:480px;margin:0 auto;background:#ffffff;'
+        f'border:1px solid {_BORDER};border-radius:3px;padding:20px 24px">'
+        f'<div style="font-family:{_FONT_DISPLAY};font-size:22px;color:{_INK};'
+        f'padding-bottom:16px;margin-bottom:16px;border-bottom:1px solid {_BORDER}">'
+        f"MysteryMixClub</div>"
         f"{body}"
-        f'<p style="color:#8A8680;font-size:12px;margin-top:24px">'
+        f'<p style="color:{_MUTED};font-size:12px;margin-top:24px">'
         f"You're receiving this because you're in this club on MysteryMixClub. "
-        f'<a href="{unsubscribe_url}">Unsubscribe from these emails</a>.</p>'
+        f'<a href="{unsubscribe_url}" style="color:{_MUTED}">Unsubscribe from these '
+        f"emails</a>.</p></div></div>"
     )
 
 
@@ -273,7 +312,7 @@ def send_deadline_warning(
         return
     club_url = _club_url(settings, club.id)
     label = _mix_label(mix_)
-    link = f'<a href="{club_url}">Go to {club.name} →</a>'
+    link = _cta_link(club, club_url)
     if phase == "submission":
         subject = f"{club.name} — about 12 hours left to submit"
         action = f"submit to <strong>{label}</strong>"
@@ -281,8 +320,8 @@ def send_deadline_warning(
         subject = f"{club.name} — about 12 hours left to vote"
         action = f"vote in <strong>{label}</strong>"
     body = (
-        f"<p>You have about 12 hours to {action} in <strong>{club.name}</strong>. "
-        f"Whatever is in by the deadline counts. {link}</p>"
+        f"<p>About 12 hours left to {action} in <strong>{club.name}</strong>. "
+        f"Whatever's in by the deadline counts, so don't wait too long.</p><p>{link}</p>"
     )
     _send_direct(sender, settings, recipients, subject, body)
 
@@ -304,12 +343,13 @@ def send_empty_mix_notice(
         return
     club_url = _club_url(settings, club.id)
     label = _mix_label(mix_)
-    link = f'<a href="{club_url}">Go to {club.name} →</a>'
+    link = _cta_link(club, club_url)
     subject = f"{club.name} — {label} closed with no submissions"
     body = (
         f"<p>The submission deadline for <strong>{label}</strong> in "
-        f"<strong>{club.name}</strong> passed with no songs submitted. You can extend the "
-        f"deadline or advance the mix manually. {link}</p>"
+        f"<strong>{club.name}</strong> passed with no songs in. You can extend the "
+        f"deadline to give people more time, or advance the mix manually.</p>"
+        f"<p>{link}</p>"
     )
     _send_direct(sender, settings, recipients, subject, body)
 
@@ -348,8 +388,8 @@ def queue_club_joined(
     url = _club_url(settings, league_id)
     subject = f"You've joined {league_name}"
     body = (
-        f"<p>You're in! You've joined <strong>{league_name}</strong>. "
-        f'<a href="{url}">View {league_name} →</a></p>'
+        f"<p>You're in. You've joined <strong>{league_name}</strong>, welcome to "
+        f"the club.</p><p>{_link_html(url, f'View {league_name} →')}</p>"
     )
     html, headers = _html_and_headers(settings, user_id, body)
     background_tasks.add_task(_safe_send, sender, email, subject, html, headers)

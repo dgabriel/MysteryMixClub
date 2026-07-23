@@ -82,11 +82,13 @@ timer (`mysterymixclub-advance-mixes.timer`) — see
 | File                              | On                        | Does                                                        |
 |-----------------------------------|---------------------------|-------------------------------------------------------------|
 | `.github/workflows/ci.yml`        | PR → `main` or `develop`  | Frontend lint/typecheck/test; backend ruff/mypy/pytest+cov  |
-| `.github/workflows/deploy-staging.yml` | push → `develop`     | SSH to the staging Droplet → run `scripts/deploy-staging.sh` (`STAGING_HOST`/`STAGING_SSH_USER`/`STAGING_SSH_KEY`) |
-| `.github/workflows/deploy-prod.yml`    | push → `main`        | `environment: production` approval gate → stage `app.prod.yaml` → `mysterymixclub-prod` (`DIGITALOCEAN_ACCESS_TOKEN`) |
+| `.github/workflows/deploy-staging.yml` | push → `develop`     | Runs on a self-hosted runner living on the staging Droplet → `scripts/deploy-staging.sh` |
+| `.github/workflows/deploy-prod.yml`    | push → `main`        | `environment: production` approval gate → self-hosted runner on the prod Droplet → `scripts/deploy-prod.sh` |
 
-The prod deploy uses `secrets.DIGITALOCEAN_ACCESS_TOKEN`; the staging deploy uses
-the `STAGING_*` SSH secrets (see [`staging-setup.md`](staging-setup.md)).
+Both deploys run directly on their target Droplet via a self-hosted GitHub
+Actions runner (MYS-224/225) — no SSH secrets or `DIGITALOCEAN_ACCESS_TOKEN`
+needed for either one anymore. See [`staging-setup.md`](staging-setup.md) and
+[`prod-setup.md`](prod-setup.md) for runner registration.
 
 ---
 
@@ -145,12 +147,13 @@ GitHub → Settings → Branches → add rules:
 
 GitHub → Settings → Secrets and variables → Actions:
 
-| Secret                       | Used by                          | Where to get it                              |
-|------------------------------|----------------------------------|----------------------------------------------|
-| `DIGITALOCEAN_ACCESS_TOKEN`  | `deploy-prod.yml`                | DO → API → Tokens (write scope)              |
-| `STAGING_HOST`               | `deploy-staging.yml`             | staging Droplet public IP / hostname         |
-| `STAGING_SSH_USER`           | `deploy-staging.yml`             | `mysterymixclub`                             |
-| `STAGING_SSH_KEY`            | `deploy-staging.yml`             | private deploy key for the Droplet (see `staging-setup.md`) |
+Neither deploy workflow needs GitHub Actions secrets anymore — both run
+directly on their target Droplet via a self-hosted runner (see the workflows
+table above). `DIGITALOCEAN_ACCESS_TOKEN` is only needed locally for
+`terraform apply`, not by any workflow; `STAGING_HOST`/`STAGING_SSH_USER`/
+`STAGING_SSH_KEY` were used by the old SSH-based `deploy-staging.yml` and are
+no longer referenced (safe to delete from the `staging` environment's
+secrets, or just leave them unused).
 
 ### DigitalOcean app secrets
 

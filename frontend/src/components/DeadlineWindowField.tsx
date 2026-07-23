@@ -8,6 +8,11 @@ type DeadlineWindowFieldProps = {
   onDaysChange: (value: string) => void;
   onHoursChange: (value: string) => void;
   disabled?: boolean;
+  /** Mark both the days and hours inputs invalid — set when a validation
+   *  error refers to this window (MYS-121). */
+  invalid?: boolean;
+  /** id of the error message describing why this window is invalid. */
+  errorId?: string;
 };
 
 /**
@@ -24,6 +29,8 @@ export function DeadlineWindowField({
   onDaysChange,
   onHoursChange,
   disabled,
+  invalid = false,
+  errorId,
 }: DeadlineWindowFieldProps) {
   return (
     <div>
@@ -42,6 +49,8 @@ export function DeadlineWindowField({
           value={days}
           onChange={(e) => onDaysChange(e.target.value)}
           disabled={disabled}
+          aria-invalid={invalid || undefined}
+          aria-describedby={invalid ? errorId : undefined}
         />
         <TextField
           id={`${idPrefix}-hours`}
@@ -54,6 +63,8 @@ export function DeadlineWindowField({
           value={hours}
           onChange={(e) => onHoursChange(e.target.value)}
           disabled={disabled}
+          aria-invalid={invalid || undefined}
+          aria-describedby={invalid ? errorId : undefined}
         />
       </div>
     </div>

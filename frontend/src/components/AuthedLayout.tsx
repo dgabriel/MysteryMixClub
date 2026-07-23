@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { Outlet, useOutletContext } from "react-router-dom";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Outlet, useLocation, useOutletContext } from "react-router-dom";
 import { TopNav } from "./TopNav";
 
 /** A contextual back target for the shared nav (e.g. mix → its club). */
@@ -25,11 +25,28 @@ type AuthedOutletContext = {
 export function AuthedLayout() {
   const [navBack, setNavBack] = useState<NavBack | null>(null);
   const setNavBackCb = useCallback((back: NavBack | null) => setNavBack(back), []);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const { pathname } = useLocation();
+
+  // Move focus to the new page's content on every client-side navigation, so
+  // keyboard/AT users get a cue that the "page" changed instead of focus
+  // silently staying on whatever nav link was just activated.
+  useEffect(() => {
+    contentRef.current?.focus();
+  }, [pathname]);
 
   return (
     <div className="min-h-screen flex flex-col">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-[2px] focus:bg-ink focus:px-4 focus:py-2 focus:font-mono focus:text-[11px] focus:uppercase focus:tracking-ui focus:text-cream"
+      >
+        skip to content
+      </a>
       <TopNav back={navBack ?? undefined} />
-      <Outlet context={{ setNavBack: setNavBackCb } satisfies AuthedOutletContext} />
+      <div id="main-content" ref={contentRef} tabIndex={-1} className="flex flex-1 flex-col outline-none">
+        <Outlet context={{ setNavBack: setNavBackCb } satisfies AuthedOutletContext} />
+      </div>
     </div>
   );
 }

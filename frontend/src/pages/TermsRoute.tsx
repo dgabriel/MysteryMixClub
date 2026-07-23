@@ -20,7 +20,7 @@ export function TermsRoute() {
           <h1 className="mt-8 text-center font-serif text-[34px] leading-tight">
             terms of service
           </h1>
-          <p className="mt-2 text-center font-mono text-[11px] font-light text-muted">
+          <p className="mt-2 text-center font-mono text-[13px] font-light text-muted">
             last updated july 2026
           </p>
 

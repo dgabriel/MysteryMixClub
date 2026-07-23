@@ -304,7 +304,7 @@ function WaitlistList({
               onClick={() => setStatus(option)}
               aria-pressed={status === option}
               className={[
-                "font-mono uppercase tracking-ui text-[11px] transition-colors duration-150",
+                "py-1.5 font-mono uppercase tracking-ui text-[11px] transition-colors duration-150",
                 status === option
                   ? "text-sage underline underline-offset-[3px]"
                   : "text-muted hover:text-ink",
@@ -358,7 +358,9 @@ function WaitlistRow({
   return (
     <div className="flex items-center justify-between gap-4">
       <span className="min-w-0">
-        <span className="block truncate font-mono text-[13px] text-ink">{entry.email}</span>
+        <span className="block truncate font-mono text-[13px] text-ink" title={entry.email}>
+          {entry.email}
+        </span>
         <span className="mt-0.5 block font-mono text-[11px] font-light text-muted">
           joined {joined}
           {entry.invited_at
@@ -405,7 +407,9 @@ function AdminUserRow({
     <div className="flex flex-col gap-3">
       <div className="flex items-start justify-between gap-4">
         <span className="min-w-0">
-          <span className="block truncate font-mono text-[13px] text-ink">{user.email}</span>
+          <span className="block truncate font-mono text-[13px] text-ink" title={user.email}>
+            {user.email}
+          </span>
           <span className="mt-0.5 block font-mono text-[11px] font-light text-muted">
             {user.display_name || "—"}
           </span>
@@ -414,7 +418,7 @@ function AdminUserRow({
           <button
             type="button"
             onClick={() => setConfirming(true)}
-            className="shrink-0 font-mono uppercase tracking-ui text-[11px] text-ink underline underline-offset-[3px] hover:text-sage"
+            className="shrink-0 py-1.5 font-mono uppercase tracking-ui text-[11px] text-ink underline underline-offset-[3px] hover:text-sage"
           >
             delete
           </button>
@@ -423,7 +427,7 @@ function AdminUserRow({
 
       {confirming ? (
         <div className="space-y-3 border-l border-border pl-4">
-          <p className="font-mono text-[11px] font-light text-muted">
+          <p className="font-mono text-[13px] font-light text-muted">
             type the email to confirm. this can't be undone.
           </p>
           <TextField

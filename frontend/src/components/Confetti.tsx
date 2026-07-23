@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 const COLORS = [
   "#7A9E82", // sage
-  "#C9A028", // gold
+  "#83681A", // gold
   "#A8C4AD", // sage-light
   "#D4E3D7", // sage-pale
   "#2E2B27", // ink
@@ -34,17 +34,24 @@ function makeParticles(): Particle[] {
   }));
 }
 
-/** One-shot CSS confetti burst. Fires on mount, unmounts itself after ~3.5s. */
+/** One-shot CSS confetti burst. Fires on mount, unmounts itself after ~3.5s.
+ *  Skips entirely for prefers-reduced-motion (MYS-121) — a full-viewport
+ *  particle burst is exactly the kind of motion that setting opts out of. */
 export function Confetti() {
   const [particles] = useState(makeParticles);
   const [visible, setVisible] = useState(true);
+  const [reducedMotion] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
 
   useEffect(() => {
     const t = setTimeout(() => setVisible(false), 3500);
     return () => clearTimeout(t);
   }, []);
 
-  if (!visible) return null;
+  if (!visible || reducedMotion) return null;
 
   return (
     <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-50 overflow-hidden">

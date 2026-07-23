@@ -81,7 +81,7 @@ export function TopNav({ back }: TopNavProps) {
   }
 
   const linkClass =
-    "font-mono uppercase tracking-ui text-[11px] text-ink transition-colors duration-150 hover:text-sage disabled:opacity-50 disabled:cursor-not-allowed";
+    "py-1.5 font-mono uppercase tracking-ui text-[11px] text-ink transition-colors duration-150 hover:text-sage disabled:opacity-50 disabled:cursor-not-allowed";
   // Links that pair a line icon with their label sit on one baseline.
   const iconLinkClass = `inline-flex items-center gap-1.5 ${linkClass}`;
 

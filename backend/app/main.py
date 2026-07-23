@@ -19,6 +19,7 @@ from app.api.routes import (
     users,
     votes,
     waitlist,
+    webhooks,
 )
 from app.config import get_settings
 from app.middleware.security_headers import SecurityHeadersMiddleware
@@ -74,6 +75,7 @@ def create_app() -> FastAPI:
     app.include_router(songs.router, prefix="/api/v1")
     app.include_router(admin.router, prefix="/api/v1")
     app.include_router(waitlist.router, prefix="/api/v1")
+    app.include_router(webhooks.router, prefix="/api/v1")
 
     return app
 

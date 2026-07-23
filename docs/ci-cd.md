@@ -167,6 +167,7 @@ These are runtime app config, set per app in the DO dashboard or via
 | `ENVIRONMENT`  | GENERAL  | `production` / `staging`                           |
 | `RESEND_API_KEY`, `ODESLI_API_KEY`, `ALLOWED_ORIGINS`, `APP_BASE_URL` | SECRET/GENERAL | see `.env.example` |
 | `APPLE_MUSIC_TEAM_ID`, `APPLE_MUSIC_KEY_ID`, `APPLE_MUSIC_PRIVATE_KEY` | SECRET | Apple Music (MYS-104). **All three or none** — any missing and the Apple UI hides itself and links fall back to keyless iTunes. Provisioning walkthrough in `staging-setup.md` → "Enabling Apple Music". |
+| `RESEND_WEBHOOK_SECRET`, `INBOUND_EMAIL_FORWARD_TO` | SECRET/GENERAL | Inbound mail forwarding (MYS-242). Prod-only in practice — Resend Inbound's MX is on the apex domain, which prod serves. Empty `RESEND_WEBHOOK_SECRET` = the webhook route 503s rather than accepting unsigned requests. |
 
 ### Adding a new secret (the routine)
 

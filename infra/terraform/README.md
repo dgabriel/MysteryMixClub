@@ -6,7 +6,7 @@ Infrastructure-as-code for the DigitalOcean droplets that host MMC. Structure:
 infra/terraform/
   modules/droplet-app/   shared module: droplet + firewall + reserved IP + DNS + monitor alerts + project
   envs/staging/          wires the module to the *existing* staging droplet (id 577618725)
-  envs/prod/             PROPOSED droplet-shaped prod (MYS-213) — NOT App Platform, NOT yet applied
+  envs/prod/             droplet-shaped prod (MYS-213/MYS-225) — NOT App Platform, applied and live
 ```
 
 Both environments consume the same module; the only differences are data
@@ -68,7 +68,7 @@ deliberate rebuild, not an in-place edit.
 | Backups / snapshots | **none** |
 | Monitor alerts | **none configured** |
 | DNS (app) | `staging` A → 67.207.81.183 (record 1822275773) |
-| DNS (email) | Resend DKIM, SES MX/SPF, DMARC — left unmanaged by TF |
+| DNS (email) | Resend DKIM, SES MX/SPF, DMARC, Resend Inbound MX — now Terraform-managed in `envs/prod` (ADR 0003, MYS-242), imported rather than left hand-managed |
 
 ### Staging patterns NOT carried into prod (deliberately)
 

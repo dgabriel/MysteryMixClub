@@ -1636,7 +1636,7 @@ function VotingSection({
                     </span>
                   </div>
                   {entry.artist ? (
-                    <p className="mt-1 font-mono text-[11px] font-light text-muted">
+                    <p className="mt-1 font-mono text-[11px] font-light text-sage">
                       {entry.artist}
                     </p>
                   ) : null}
@@ -1650,7 +1650,7 @@ function VotingSection({
                       &ldquo;{entry.submitter_note}&rdquo;
                     </p>
                   ) : null}
-                  <p className="mt-2 font-mono text-[11px] font-light text-muted">
+                  <p className="mt-2 font-mono text-[11px] font-light text-sage">
                     you can&apos;t vote for your own song
                   </p>
                   <PlatformLinks
@@ -1682,7 +1682,7 @@ function VotingSection({
                   disabled={disabled}
                   onClick={() => toggle(entry.submission_id)}
                   className={[
-                    "block w-full px-6 pt-5 pb-3 text-left",
+                    "group block w-full px-6 pt-5 pb-3 text-left",
                     disabled ? "cursor-not-allowed" : "cursor-pointer",
                     !isSelected && !disabled ? "hover:bg-sage-pale/60" : "",
                   ].join(" ")}
@@ -1694,7 +1694,7 @@ function VotingSection({
                     </span>
                   </div>
                   {entry.artist ? (
-                    <p className="mt-1 font-mono text-[11px] font-light text-muted">
+                    <p className="mt-1 font-mono text-[11px] font-light text-muted group-hover:text-sage">
                       {entry.artist}
                     </p>
                   ) : null}
@@ -1794,14 +1794,24 @@ function VotingTally({
               ].join(" ")}
             >
               <div className="flex items-center gap-3 overflow-hidden">
-                <span className="w-6 shrink-0 font-mono text-[13px] font-light text-muted">
+                <span
+                  className={[
+                    "w-6 shrink-0 font-mono text-[13px] font-light",
+                    isVoted ? "text-muted" : "text-sage",
+                  ].join(" ")}
+                >
                   #{i + 1}
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="font-serif text-[16px] leading-tight text-ink truncate">
                     {entry.title}
                   </p>
-                  <p className="font-mono text-[11px] font-light text-muted truncate">
+                  <p
+                    className={[
+                      "font-mono text-[11px] font-light truncate",
+                      isVoted ? "text-muted" : "text-sage",
+                    ].join(" ")}
+                  >
                     {entry.artist}
                   </p>
                 </div>

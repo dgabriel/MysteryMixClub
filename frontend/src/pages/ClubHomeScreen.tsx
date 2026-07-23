@@ -583,7 +583,12 @@ function MixRow({
       <button type="button" onClick={onOpen} className="block w-full text-left">
         <div className="flex items-start justify-between gap-4">
           <span className="min-w-0">
-            <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
+            <span
+              className={[
+                "block font-mono uppercase tracking-label text-[9px]",
+                active ? "text-sage" : "text-muted",
+              ].join(" ")}
+            >
               mystery mix {mix.mix_number}
             </span>
             {named ? (
@@ -591,7 +596,12 @@ function MixRow({
                 {mix.theme}
               </span>
             ) : isAdmin ? (
-              <span className="mt-0.5 block truncate font-mono text-[13px] font-light italic text-muted">
+              <span
+                className={[
+                  "mt-0.5 block truncate font-mono text-[13px] font-light italic",
+                  active ? "text-sage" : "text-muted",
+                ].join(" ")}
+              >
                 untitled — add a theme
               </span>
             ) : null}
@@ -601,19 +611,34 @@ function MixRow({
           </span>
         </div>
         {mix.description ? (
-          <p className="mt-2 font-mono text-[11px] font-light leading-relaxed text-muted">
+          <p
+            className={[
+              "mt-2 font-mono text-[11px] font-light leading-relaxed",
+              active ? "text-sage" : "text-muted",
+            ].join(" ")}
+          >
             {mix.description}
           </p>
         ) : null}
         {/* Submission progress while the mix is open for submissions (MYS-101). */}
         {mix.state === "open_submission" && mix.member_count > 0 ? (
-          <p className="mt-2 font-mono uppercase tracking-label text-[9px] text-muted">
+          <p
+            className={[
+              "mt-2 font-mono uppercase tracking-label text-[9px]",
+              active ? "text-sage" : "text-muted",
+            ].join(" ")}
+          >
             {mix.submission_count} of {mix.member_count} submitted
           </p>
         ) : null}
         {/* Voting progress while the mix is open for voting (MYS-110). */}
         {mix.state === "open_voting" && mix.voting_eligible_count > 0 ? (
-          <p className="mt-2 font-mono uppercase tracking-label text-[9px] text-muted">
+          <p
+            className={[
+              "mt-2 font-mono uppercase tracking-label text-[9px]",
+              active ? "text-sage" : "text-muted",
+            ].join(" ")}
+          >
             {mix.voted_count} of {mix.voting_eligible_count} voted
           </p>
         ) : null}

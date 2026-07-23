@@ -284,21 +284,21 @@ function ArchivedClubs({
                   completed club only (index 0). */}
               <Card
                 accent={index === 0}
-                className="transition-colors duration-150 hover:bg-sage-pale"
+                className="group transition-colors duration-150 hover:bg-sage-pale"
               >
                 <button
                   type="button"
                   onClick={() => onOpenClub(club.id)}
                   className="block w-full text-left"
                 >
-                  <span className="font-mono uppercase tracking-label text-[9px] text-muted">
+                  <span className="font-mono uppercase tracking-label text-[9px] text-muted group-hover:text-sage">
                     club
                   </span>
                   <h3 className="mt-1 font-serif text-[20px] leading-tight text-ink">
                     {club.name}
                   </h3>
                   <div className="mt-3 flex items-center justify-between">
-                    <span className="font-mono text-[11px] font-light text-muted">
+                    <span className="font-mono text-[11px] font-light text-muted group-hover:text-sage">
                       {club.total_mixes} mixes
                     </span>
                     <Badge>{club.state}</Badge>

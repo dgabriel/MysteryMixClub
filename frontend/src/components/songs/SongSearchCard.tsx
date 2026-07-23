@@ -355,7 +355,7 @@ export function SongSearchCard({
                   value={service}
                   onChange={(e) => setService(e.target.value as PasteSourceKey)}
                   disabled={loading}
-                  className="mt-1 w-full border-b border-border bg-transparent font-mono text-[13px] text-ink focus:border-sage focus:outline-none disabled:opacity-50"
+                  className="mt-1 w-full border-b border-ink bg-transparent font-mono text-[13px] text-ink focus:border-sage focus:outline-none disabled:opacity-50"
                 >
                   {SERVICES.map((s) => (
                     <option key={s.key} value={s.key}>
@@ -477,13 +477,13 @@ function ResultRow({ track, onSelect }: { track: SongSearchTrack; onSelect: () =
     <button
       type="button"
       onClick={onSelect}
-      className="flex w-full items-center gap-3 rounded-[2px] px-2 py-2 text-left transition-colors duration-150 hover:bg-sage-pale"
+      className="group flex w-full items-center gap-3 rounded-[2px] px-2 py-2 text-left transition-colors duration-150 hover:bg-sage-pale"
     >
       <Thumb url={track.thumbnail_url} alt={`${track.title} album art`} size={40} />
       <span className="min-w-0">
         <span className="block truncate font-mono text-[13px] text-ink">{track.title}</span>
         {track.artist ? (
-          <span className="block truncate font-mono text-[11px] font-light text-muted">
+          <span className="block truncate font-mono text-[11px] font-light text-muted group-hover:text-sage">
             {track.artist}
           </span>
         ) : null}
@@ -516,7 +516,7 @@ function SourceOnlyConfirm({
       <SourceBadge source={source} />
       <h3 className="mt-3 font-serif text-[18px] leading-tight text-ink">{song.title}</h3>
       {song.artist ? (
-        <p className="mt-1 font-mono text-[11px] font-light text-muted">{song.artist}</p>
+        <p className="mt-1 font-mono text-[11px] font-light text-sage">{song.artist}</p>
       ) : null}
       <p className="mt-4 font-mono text-[12px] font-light leading-relaxed text-ink">
         this one lives on {sourceLabel} only, so it won&apos;t be on the auto-generated Spotify or
@@ -627,7 +627,7 @@ function ResultView({
             rows={2}
             disabled={submitting}
             placeholder="why this song?"
-            className="mt-2 w-full resize-none border-b border-border bg-transparent font-mono text-[12px] font-light text-ink placeholder:text-muted focus:border-ink focus:outline-none disabled:opacity-50"
+            className="mt-2 w-full resize-none border-b border-ink bg-transparent font-mono text-[12px] font-light text-ink placeholder:text-muted focus:border-ink focus:outline-none disabled:opacity-50"
           />
         </div>
       ) : null}

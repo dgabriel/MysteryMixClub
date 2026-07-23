@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 const COLORS = [
   "#7A9E82", // sage
-  "#C9A028", // gold
+  "#83681A", // gold
   "#A8C4AD", // sage-light
   "#D4E3D7", // sage-pale
   "#2E2B27", // ink

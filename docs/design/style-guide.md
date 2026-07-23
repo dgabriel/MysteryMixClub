@@ -21,8 +21,8 @@
 | Sage        | `#506755` | Primary surface, buttons, active states           |
 | Sage Light  | `#A8C4AD` | Hover states, secondary surfaces                  |
 | Sage Pale   | `#D4E3D7` | Badges, tags, subtle backgrounds                  |
-| Rust        | `#B5533C` | Single accent — one use per screen/composition    |
-| Gold        | `#C9A028` | Achievement signal — winner and most-noted moments |
+| Rust        | `#AD4F39` | Single accent — one use per screen/composition    |
+| Gold        | `#83681A` | Achievement signal — winner and most-noted moments |
 | Vinyl       | `#6B7EB5` | Avatar illustrations only — the 5 music hardware icons |
 | Ink         | `#2E2B27` | Primary text, headings                            |
 | Muted       | `#6D6A66` | Secondary text, labels, placeholders              |
@@ -99,7 +99,7 @@ Page horizontal padding: `32px` (desktop), `16px` (mobile)
 
 **Text / Link**
 - Background: none
-- Color: Rust `#B5533C`
+- Color: Rust `#AD4F39`
 - Underline with `text-underline-offset: 3px`
 - Use for tertiary actions only
 
@@ -122,7 +122,7 @@ Page horizontal padding: `32px` (desktop), `16px` (mobile)
 - Border: `1px solid #D6D2CA`
 - Border radius: `3px`
 - Padding: `20px 24px`
-- Optional left accent bar: `3px wide`, Rust `#B5533C` — only when the card requires special attention (active mystery mix, your submission due, etc.)
+- Optional left accent bar: `3px wide`, Rust `#AD4F39` — only when the card requires special attention (active mystery mix, your submission due, etc.)
 
 **Card anatomy (top to bottom):**
 1. Eyebrow — Label style, Muted
@@ -144,8 +144,8 @@ Page horizontal padding: `32px` (desktop), `16px` (mobile)
 
 **Accent (Rust) — one per screen**
 - Background: transparent
-- Border: `1px solid #B5533C`
-- Text: Rust `#B5533C`
+- Border: `1px solid #AD4F39`
+- Text: Rust `#AD4F39`
 - Same font/padding as default badge
 
 **Time signal (Ink) — time-critical information only**
@@ -211,3 +211,12 @@ The rings use the Sage color family (Sage Pale → Sage Light → Sage → Sage)
 4.5:1 against Cream and, for Sage, against Sage Pale (the badge background).
 Sage Light and Sage Pale are unchanged — they're never used as text color. Added
 the Time signal (Ink) badge variant*
+
+*Updated again July 2026 — Rust and Gold darkened for WCAG 2.1 AA contrast
+(MYS-121): Rust `#B5533C` → `#AD4F39` (4.21:1 → 4.54:1 against Cream), Gold
+`#C9A028` → `#83681A` (2.10:1 → 4.54:1 against Cream, since Gold's only use —
+the achievement crown icon — needs to clear the 3:1 non-text minimum with
+headroom). Muted text sitting on a Sage Pale background (badges, active-state
+cards, hover tints) now renders as Sage instead of Muted, since Muted-on-Sage-Pale
+was 4.04:1 (fails 4.5:1) while Sage-on-Sage-Pale is the palette's established,
+already-compliant combo (4.62:1).*

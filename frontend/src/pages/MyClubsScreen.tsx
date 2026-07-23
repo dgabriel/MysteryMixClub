@@ -139,18 +139,18 @@ function ClubCard({
 }) {
   return (
     <Card
-      className={`transition-colors duration-150 hover:bg-sage-pale${
+      className={`group transition-colors duration-150 hover:bg-sage-pale${
         complete ? " border-l-[3px] border-l-gold" : ""
       }`}
     >
       <button type="button" onClick={() => onOpen(club.id)} className="block w-full text-left">
-        <span className="flex items-center gap-1.5 font-mono uppercase tracking-label text-[9px] text-muted">
+        <span className="flex items-center gap-1.5 font-mono uppercase tracking-label text-[9px] text-muted group-hover:text-sage">
           {complete ? <CrownIcon className="text-gold" /> : null}
           club
         </span>
         <h2 className="mt-1 font-serif text-[20px] leading-tight text-ink">{club.name}</h2>
         <div className="mt-3 flex items-center justify-between">
-          <span className="font-mono text-[11px] font-light text-muted">
+          <span className="font-mono text-[11px] font-light text-muted group-hover:text-sage">
             mix {club.current_mix} of {club.total_mixes}
           </span>
           <Badge>{club.state}</Badge>

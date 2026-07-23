@@ -45,7 +45,7 @@ Defines what we're building and how.
 
 ## MVP in One Sentence
 
-A web app where a friend group can run music club mystery mixes across Spotify, YouTube, Deezer, and Apple Music, with a Just Vibing mode for players who want to participate without scoring, and a Most Noted mechanic that celebrates resonance alongside competition.
+A web app where a friend group can run music club mystery mixes across Spotify, YouTube, Deezer, and Apple Music, with a casual mode for players who want to participate without scoring, and a Most Noted mechanic that celebrates resonance alongside competition.
 
 ---
 
@@ -216,7 +216,7 @@ PDLC Definition phase complete (Discovery, PRD, and technical design all done).
 - **Clubs:** create / read / manage, member management, invite + join flow (with frontend screens).
 - **Mystery mixes:** auto-generated mix slate, forward-only state machine (pending → submission → voting → closed), organizer controls, auto-advance to the next mix on close.
 - **Submissions:** paste-a-link and search, ISRC resolution, and cross-service playback links (Spotify, YouTube, Deezer, Apple Music) assembled keyless.
-- **Voting & scoring:** voting with a configurable per-mix budget, **Just Vibing** mode, self-vote prevention, anonymous shuffled playlist, the **Most Noted** mechanic, and results / reveal.
+- **Voting & scoring:** voting with a configurable per-mix budget, competitive/casual mode, self-vote prevention, anonymous shuffled playlist, the **Most Noted** mechanic, and results / reveal.
 - **Playlist generation:** one-click YouTube playlist link (keyless) and per-user Spotify OAuth saved playlists. (Deezer playlist creation is a confirmed dead end — links only; Apple Music playlists are spiked and gated on an Apple Developer membership.)
 - **Notifications:** mystery-mix-lifecycle email notifications (Resend) with per-user preference + one-click unsubscribe.
 - **Hardening:** security response headers and application-layer tenant isolation.

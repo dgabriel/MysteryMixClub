@@ -97,7 +97,7 @@ async def cast_votes(
     if is_vibing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="just vibing players don't cast votes — leave a note instead",
+            detail="casual mode players don't cast votes (leave a note instead)",
         )
 
     target_ids = payload.submission_ids

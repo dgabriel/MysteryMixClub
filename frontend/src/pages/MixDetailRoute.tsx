@@ -119,13 +119,13 @@ export function MixDetailRoute() {
   // parity with the fixed organizer on mix-management controls (see isAdmin).
   const [members, setMembers] = useState<ClubMember[]>([]);
   const [mySubmissions, setMySubmissions] = useState<SubmissionResult[]>([]);
-  // Per-mix "Just Vibes for this Mix" toggle (MYS-60), seeded from the
-  // existing submission's mode, else the caller's per-club vibe setting.
+  // Per-mix "Casual Mode for this Mix" toggle (MYS-60), seeded from the
+  // existing submission's mode, else the caller's per-club default.
   const [mixVibe, setMixVibe] = useState(false);
   const [playlist, setPlaylist] = useState<PlaylistEntry[]>([]);
   const [youtubePlaylistUrl, setYoutubePlaylistUrl] = useState<string | null>(null);
   const [youtubeTrackCount, setYoutubeTrackCount] = useState(0);
-  // Voting progress (MYS-102): X of Y voted or noted · Z just vibing.
+  // Voting progress (MYS-102): X of Y competitive mode voted or noted · Z casual mode.
   const [votingEligible, setVotingEligible] = useState(0);
   const [votingActed, setVotingActed] = useState(0);
   const [vibingCount, setVibingCount] = useState(0);
@@ -1240,7 +1240,7 @@ function ComposerSlot({
  * club allows (`cap`): a filled slot is a song card with change/remove, an
  * empty slot is a submit composer — so a 2-song club shows two submit cards up
  * front, no "add another" button. At cap 1 it's the classic single submit/edit.
- * The "just vibes" stance is a club-level setting chosen by the organizer at
+ * The casual-mode stance is a club-level setting chosen by the organizer at
  * club creation; there is no per-player toggle here, so the stance is uniform
  * across all of a player's songs.
  *
@@ -1428,10 +1428,11 @@ function YouTubePlaylistLink({
 }
 
 /**
- * Voting progress (MYS-102): "X of Y voted or noted · Z just vibing". A quiet
- * muted label so the room can see how participation is filling in. No Rust —
- * the voting screen reserves its single Rust signal for the selected-vote
- * outline. Renders nothing until there are eligible (playing) voters.
+ * Voting progress (MYS-102, terminology updated MYS-238): "X of Y competitive
+ * mode voted or noted · Z casual mode". A quiet muted label so the room can
+ * see how participation is filling in. No Rust — the voting screen reserves
+ * its single Rust signal for the selected-vote outline. Renders nothing until
+ * there are eligible (playing) voters.
  */
 function VotingProgress({
   acted,
@@ -1445,8 +1446,8 @@ function VotingProgress({
   if (eligible <= 0) return null;
   return (
     <p className="mb-6 font-mono uppercase tracking-label text-[9px] text-muted">
-      {acted} of {eligible} voted or noted
-      {vibing > 0 ? ` · ${vibing} just vibing` : ""}
+      {acted} of {eligible} competitive mode voted or noted
+      {vibing > 0 ? ` · ${vibing} casual mode` : ""}
     </p>
   );
 }
@@ -1579,7 +1580,8 @@ function VotingSection({
       <>
         <VotingProgress acted={votingActed} eligible={votingEligible} vibing={vibingCount} />
         <p className="font-mono text-[13px] font-light text-muted">
-          you&apos;re just vibing this one, so you sit voting out — settle in and enjoy the mix.
+          you&apos;re in casual mode for this one, so you sit voting out. settle in and enjoy
+          the mix.
         </p>
         <h2 className="mt-8 font-mono uppercase tracking-label text-[9px] text-muted">
           playlist ({entries.length})

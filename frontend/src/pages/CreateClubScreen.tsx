@@ -228,13 +228,14 @@ export function CreateClubScreen({
                 className="h-4 w-4 rounded-[2px] border border-ink accent-sage"
               />
               <span className="font-mono uppercase tracking-ui text-[11px] text-ink">
-                just vibing by default
+                casual mode by default
               </span>
-              <HelpLink anchor="just-vibing" />
+              <HelpLink anchor="casual-mode" />
             </label>
             <p className="mt-2 font-mono text-[13px] font-light text-muted">
-              vibing means no voting or ranking — just songs and response notes. every
-              member who joins starts out vibing.
+              casual mode means no voting or ranking, just songs and response notes.
+              competitive mode means voting and a spot on the leaderboard. every member
+              who joins starts out in the mode you pick here.
             </p>
           </div>
 

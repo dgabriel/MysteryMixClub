@@ -556,10 +556,11 @@ async def _submission_id(db_session, mix_id, user_id):
 
 
 async def test_playlist_reports_voting_progress(client, db_session):
-    """X of Y voted-or-noted · Z just vibing.
+    """X of Y voted-or-noted, Z casual mode (frontend renders this as
+    "X of Y competitive mode voted or noted · Z casual mode", MYS-238).
 
     Four playing submitters (Y=4): one votes, one leaves a note (acted X=2),
-    two do nothing. One vibing submitter (Z=1) sits voting out.
+    two do nothing. One casual-mode submitter (Z=1) sits voting out.
     """
     organizer = await _seed_user(db_session, "o@example.com")
     mix_ = await _seed_mix(db_session, organizer)

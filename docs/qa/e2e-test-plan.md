@@ -171,12 +171,13 @@ Out of scope: load/perf, automated tests, prod deploy gate.
 
 ## 5. Known Gaps to Flag (not yet testable by click)
 
-- **No "just vibing" UI** — `participation_mode` only comes from
+- **No "casual mode" UI** — `participation_mode` only comes from
   `users.default_vibe_mode`, which nothing in the UI sets (onboarding captures
-  display name only; there is no profile/settings screen). The vibing-participant
-  voting/reveal paths (sit-out, "just vibing" badges) exist in code but are
-  unreachable by click. To test E/G vibing branches, seed `default_vibe_mode=true`
-  in the DB for one player, or expose a toggle.
+  display name only; there is no profile/settings screen). The casual-mode
+  voting/reveal paths (sit-out message, "casual mode" labels — renamed from
+  "vibing" in MYS-238) exist in code but are unreachable by click. To test
+  E/G casual-mode branches, seed `default_vibe_mode=true` in the DB for one
+  player, or expose a toggle.
 - **No profile/settings screen** in the route map — `preferred_service` (which
   platform link is surfaced first) and account deletion (`DELETE /users/me`) have
   no UI to exercise.

@@ -29,7 +29,7 @@ describe("HelpRoute", () => {
     const scrollIntoView = vi.fn();
     Element.prototype.scrollIntoView = scrollIntoView;
 
-    renderAt("/help#just-vibing");
+    renderAt("/help#casual-mode");
 
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth" });
   });
@@ -55,7 +55,7 @@ describe("HelpRoute", () => {
         "mystery-mixes",
         "submitting-a-song",
         "voting-results",
-        "just-vibing",
+        "casual-mode",
         "listening-playlists",
         "notifications",
         "your-account",

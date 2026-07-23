@@ -53,3 +53,58 @@ module "prod" {
   create_monitor_alerts = true
   alert_emails          = var.alert_emails
 }
+
+# Email DNS (ADR 0003) — previously hand-added via the Resend/DO dashboards,
+# now imported so the apex domain's email routing lives in code like every
+# other record here. Changing value/priority on any of these is a real
+# production email change (SPF/DKIM/MX), not a cosmetic edit.
+
+# Resend outbound DKIM signing key.
+resource "digitalocean_record" "txt_resend_dkim" {
+  domain = var.domain
+  type   = "TXT"
+  name   = "resend._domainkey"
+  value  = "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC+EGvaMbPq0oBhCay/V0fXm8jmLngcMaz3XYZVIILc497zgGVUrblorx9UCjohiNgf5Lhg1u6HKvXOj3r6kBynOKv4b3RdyV2DdhjMB2go6xV+IeF9bYFfQOrAMIoNY7RZjt7XIrZSX22Cx5O2G2m9jwj0fwyN5GONkSVLWLmhiwIDAQAB"
+  ttl    = var.dns_ttl
+}
+
+# Resend/SES outbound bounce + feedback tracking (not a receiving MX).
+resource "digitalocean_record" "mx_send" {
+  domain   = var.domain
+  type     = "MX"
+  name     = "send"
+  value    = "feedback-smtp.us-east-1.amazonses.com."
+  priority = 10
+  ttl      = 14400 # matches the record's actual TTL as set outside TF originally
+}
+
+resource "digitalocean_record" "txt_send_spf" {
+  domain = var.domain
+  type   = "TXT"
+  name   = "send"
+  value  = "v=spf1 include:amazonses.com ~all"
+  ttl    = var.dns_ttl
+}
+
+resource "digitalocean_record" "txt_dmarc" {
+  domain = var.domain
+  type   = "TXT"
+  name   = "_dmarc"
+  value  = "v=DMARC1; p=none;"
+  ttl    = var.dns_ttl
+}
+
+# Resend Inbound (MYS-242) — routes every address at the apex domain to
+# Resend's inbound webhook pipeline; the backend relays to
+# mysterymixclubspotify@gmail.com. Apex, not a subdomain, is deliberate: the
+# goal is catching [anything]@mysterymixclub.com, and the apex carried no
+# prior MX record, so there's no conflict to avoid (Resend's own docs warn
+# to use a subdomain only when one would otherwise collide).
+resource "digitalocean_record" "mx_inbound" {
+  domain   = var.domain
+  type     = "MX"
+  name     = "@"
+  value    = "inbound-smtp.us-east-1.amazonaws.com."
+  priority = 10
+  ttl      = var.dns_ttl
+}

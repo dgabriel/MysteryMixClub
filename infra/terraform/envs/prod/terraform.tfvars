@@ -1,6 +1,6 @@
-# PROPOSED prod config — a droplet-shaped prod per MYS-213 (NOT App Platform).
-# This is a design proposal for review, not yet applied. Sizing/backup choices
-# and their tradeoffs are documented in infra/terraform/README.md.
+# Prod config — a droplet-shaped prod per MYS-213 (NOT App Platform), applied
+# and live (MYS-225). Sizing/backup choices and their tradeoffs are documented
+# in infra/terraform/README.md.
 
 droplet_name = "mysterymixclub-prod"
 region       = "nyc1"

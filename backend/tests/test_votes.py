@@ -173,7 +173,7 @@ async def test_cast_when_own_submission_is_vibing_409(client, db_session):
         headers=_auth(voter.id),
     )
     assert resp.status_code == 409
-    assert resp.json()["detail"] == "just vibing players don't cast votes — leave a note instead"
+    assert resp.json()["detail"] == "casual mode players don't cast votes (leave a note instead)"
 
 
 # --------------------------------------------------------------------------- #
@@ -195,7 +195,7 @@ async def test_cast_non_submitter_vibing_membership_409(client, db_session):
         headers=_auth(voter.id),
     )
     assert resp.status_code == 409
-    assert resp.json()["detail"] == "just vibing players don't cast votes — leave a note instead"
+    assert resp.json()["detail"] == "casual mode players don't cast votes (leave a note instead)"
 
 
 async def test_cast_non_submitter_playing_persists_and_counts(client, db_session):

@@ -1,4 +1,4 @@
-import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useBlocker, useNavigate, useParams } from "react-router-dom";
 import {
   ApiError,
@@ -66,6 +66,31 @@ const STATE_LABEL: Record<MixState, string> = {
   closed: "closed",
 };
 
+/**
+ * Announces mix.state transitions to screen readers (MYS-121) — the poll
+ * that refreshes this data has no visual "page changed" cue of its own, so
+ * without this a phase change (e.g. submissions -> voting) is silent to AT
+ * users. Visually hidden; only fires on an actual state change, not on every
+ * poll tick with an unchanged state.
+ */
+function MixStateAnnouncer({ state }: { state: MixState }) {
+  const previous = useRef(state);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    if (previous.current !== state) {
+      previous.current = state;
+      setMessage(`this mystery mix is now ${STATE_LABEL[state]}`);
+    }
+  }, [state]);
+
+  return (
+    <p role="status" aria-live="polite" className="sr-only">
+      {message}
+    </p>
+  );
+}
+
 const PLATFORM_LABELS: { key: string; label: string }[] = [
   { key: "spotify", label: "Spotify" },
   { key: "appleMusic", label: "Apple Music" },
@@ -94,13 +119,13 @@ export function MixDetailRoute() {
   // parity with the fixed organizer on mix-management controls (see isAdmin).
   const [members, setMembers] = useState<ClubMember[]>([]);
   const [mySubmissions, setMySubmissions] = useState<SubmissionResult[]>([]);
-  // Per-mix "Just Vibes for this Mix" toggle (MYS-60), seeded from the
-  // existing submission's mode, else the caller's per-club vibe setting.
+  // Per-mix "Casual Mode for this Mix" toggle (MYS-60), seeded from the
+  // existing submission's mode, else the caller's per-club default.
   const [mixVibe, setMixVibe] = useState(false);
   const [playlist, setPlaylist] = useState<PlaylistEntry[]>([]);
   const [youtubePlaylistUrl, setYoutubePlaylistUrl] = useState<string | null>(null);
   const [youtubeTrackCount, setYoutubeTrackCount] = useState(0);
-  // Voting progress (MYS-102): X of Y voted or noted · Z just vibing.
+  // Voting progress (MYS-102): X of Y competitive mode voted or noted · Z casual mode.
   const [votingEligible, setVotingEligible] = useState(0);
   const [votingActed, setVotingActed] = useState(0);
   const [vibingCount, setVibingCount] = useState(0);
@@ -560,6 +585,7 @@ export function MixDetailRoute() {
             <Badge>{STATE_LABEL[mix.state]}</Badge>
           </div>
         </div>
+        <MixStateAnnouncer state={mix.state} />
         {mix.description ? (
           <p className="mt-3 font-mono text-[13px] font-light leading-relaxed text-muted">
             {mix.description}
@@ -597,12 +623,12 @@ export function MixDetailRoute() {
         ) : null}
 
         {actionError ? (
-          <p role="alert" className="mt-6 font-mono text-[13px] text-rust">
+          <p role="alert" className="mt-6 font-mono text-[13px] text-ink">
             {actionError}
           </p>
         ) : null}
         {clubRepeatWarning && !actionError ? (
-          <p className="mt-6 font-mono text-[11px] text-muted">
+          <p className="mt-6 font-mono text-[13px] text-muted">
             this song was submitted in a previous mystery mix — submitted anyway.
           </p>
         ) : null}
@@ -972,7 +998,11 @@ function EditMixForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mt-6 space-y-6 border-t border-border pt-6">
+    <form
+      onSubmit={handleSubmit}
+      noValidate
+      className="mt-6 space-y-6 border-t border-border pt-6"
+    >
       <div>
         <TextField
           id="edit-mix-theme"
@@ -982,6 +1012,8 @@ function EditMixForm({
           onChange={(e) => setTheme(e.target.value)}
           disabled={saving}
           autoComplete="off"
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? "edit-mix-error" : undefined}
         />
       </div>
 
@@ -1000,7 +1032,7 @@ function EditMixForm({
       </label>
 
       {error ? (
-        <p role="alert" className="font-mono text-[11px] text-ink">
+        <p id="edit-mix-error" role="alert" className="font-mono text-[13px] text-ink">
           {error}
         </p>
       ) : null}
@@ -1026,7 +1058,11 @@ function EditMixForm({
 function SubmissionProgress({ submitted, total }: { submitted: number; total: number }) {
   if (total <= 0) return null;
   return (
-    <p className="mb-6 font-mono uppercase tracking-label text-[9px] text-muted">
+    <p
+      role="status"
+      aria-live="polite"
+      className="mb-6 font-mono uppercase tracking-label text-[9px] text-muted"
+    >
       {submitted} of {total} submitted
     </p>
   );
@@ -1073,7 +1109,7 @@ function SubmittedSongCard({
   return (
     <Card>
       <span className="font-mono uppercase tracking-label text-[9px] text-muted">{eyebrow}</span>
-      <h2 className="mt-1 font-serif text-[20px] leading-tight text-ink">{submission.title}</h2>
+      <h3 className="mt-1 font-serif text-[20px] leading-tight text-ink">{submission.title}</h3>
       {submission.artist ? (
         <p className="mt-1 font-mono text-[11px] font-light text-muted">{submission.artist}</p>
       ) : null}
@@ -1090,7 +1126,7 @@ function SubmittedSongCard({
             // above) — a disclosure pattern, not an unannounced page-load focus jump.
             // eslint-disable-next-line jsx-a11y/no-autofocus
             autoFocus
-            className="w-full resize-none border-b border-ink bg-transparent font-mono text-[12px] font-light text-ink placeholder:text-muted focus:border-sage focus:outline-none"
+            className="w-full resize-none border-b border-ink bg-transparent font-mono text-[13px] font-light text-ink placeholder:text-muted focus:border-sage focus:outline-none"
           />
           <div className="mt-2 flex items-center gap-4">
             <button
@@ -1114,7 +1150,7 @@ function SubmittedSongCard({
       ) : (
         <>
           {submission.note ? (
-            <p className="mt-3 border-l-2 border-sage pl-3 font-mono text-[12px] font-light text-ink">
+            <p className="mt-3 border-l-2 border-sage pl-3 font-mono text-[13px] font-light text-ink">
               &ldquo;{submission.note}&rdquo;
             </p>
           ) : null}
@@ -1204,7 +1240,7 @@ function ComposerSlot({
  * club allows (`cap`): a filled slot is a song card with change/remove, an
  * empty slot is a submit composer — so a 2-song club shows two submit cards up
  * front, no "add another" button. At cap 1 it's the classic single submit/edit.
- * The "just vibes" stance is a club-level setting chosen by the organizer at
+ * The casual-mode stance is a club-level setting chosen by the organizer at
  * club creation; there is no per-player toggle here, so the stance is uniform
  * across all of a player's songs.
  *
@@ -1249,9 +1285,9 @@ function SubmissionManager({
   return (
     <>
       {numbered && submissions.length > 0 ? (
-        <p className="mb-4 font-mono uppercase tracking-label text-[9px] text-muted">
+        <h2 className="mb-4 font-mono uppercase tracking-label text-[9px] text-muted">
           your songs · {submissions.length} of {cap}
-        </p>
+        </h2>
       ) : null}
 
       <ul className="space-y-4">
@@ -1346,7 +1382,7 @@ function PlatformLinks({
             target="_blank"
             rel="noopener noreferrer"
             aria-label={`open ${title} on ${p.label} (opens in a new tab)`}
-            className="inline-flex items-center rounded-[2px] border border-border px-2.5 py-1 font-mono uppercase tracking-ui text-[11px] text-ink transition-colors duration-150 hover:bg-sage-pale"
+            className="inline-flex items-center rounded-[2px] border border-border px-2.5 py-1.5 font-mono uppercase tracking-ui text-[11px] text-ink transition-colors duration-150 hover:bg-sage-pale"
           >
             {p.label}
           </a>
@@ -1392,10 +1428,11 @@ function YouTubePlaylistLink({
 }
 
 /**
- * Voting progress (MYS-102): "X of Y voted or noted · Z just vibing". A quiet
- * muted label so the room can see how participation is filling in. No Rust —
- * the voting screen reserves its single Rust signal for the selected-vote
- * outline. Renders nothing until there are eligible (playing) voters.
+ * Voting progress (MYS-102, terminology updated MYS-238): "X of Y competitive
+ * mode voted or noted · Z casual mode". A quiet muted label so the room can
+ * see how participation is filling in. No Rust — the voting screen reserves
+ * its single Rust signal for the selected-vote outline. Renders nothing until
+ * there are eligible (playing) voters.
  */
 function VotingProgress({
   acted,
@@ -1409,8 +1446,8 @@ function VotingProgress({
   if (eligible <= 0) return null;
   return (
     <p className="mb-6 font-mono uppercase tracking-label text-[9px] text-muted">
-      {acted} of {eligible} voted or noted
-      {vibing > 0 ? ` · ${vibing} just vibing` : ""}
+      {acted} of {eligible} competitive mode voted or noted
+      {vibing > 0 ? ` · ${vibing} casual mode` : ""}
     </p>
   );
 }
@@ -1543,7 +1580,8 @@ function VotingSection({
       <>
         <VotingProgress acted={votingActed} eligible={votingEligible} vibing={vibingCount} />
         <p className="font-mono text-[13px] font-light text-muted">
-          you&apos;re just vibing this one, so you sit voting out — settle in and enjoy the mix.
+          you&apos;re in casual mode for this one, so you sit voting out. settle in and enjoy
+          the mix.
         </p>
         <h2 className="mt-8 font-mono uppercase tracking-label text-[9px] text-muted">
           playlist ({entries.length})
@@ -1572,7 +1610,7 @@ function VotingSection({
                   </div>
                 ) : null}
                 {entry.submitter_note ? (
-                  <p className="mt-3 border-l-2 border-sage pl-3 font-mono text-[12px] font-light text-ink">
+                  <p className="mt-3 border-l-2 border-sage pl-3 font-mono text-[13px] font-light text-ink">
                     &ldquo;{entry.submitter_note}&rdquo;
                   </p>
                 ) : null}
@@ -1636,7 +1674,7 @@ function VotingSection({
                     </span>
                   </div>
                   {entry.artist ? (
-                    <p className="mt-1 font-mono text-[11px] font-light text-muted">
+                    <p className="mt-1 font-mono text-[11px] font-light text-sage">
                       {entry.artist}
                     </p>
                   ) : null}
@@ -1646,11 +1684,11 @@ function VotingSection({
                     </div>
                   ) : null}
                   {entry.submitter_note ? (
-                    <p className="mt-3 border-l-2 border-sage pl-3 font-mono text-[12px] font-light text-ink">
+                    <p className="mt-3 border-l-2 border-sage pl-3 font-mono text-[13px] font-light text-ink">
                       &ldquo;{entry.submitter_note}&rdquo;
                     </p>
                   ) : null}
-                  <p className="mt-2 font-mono text-[11px] font-light text-muted">
+                  <p className="mt-2 font-mono text-[11px] font-light text-sage">
                     you can&apos;t vote for your own song
                   </p>
                   <PlatformLinks
@@ -1682,7 +1720,7 @@ function VotingSection({
                   disabled={disabled}
                   onClick={() => toggle(entry.submission_id)}
                   className={[
-                    "block w-full px-6 pt-5 pb-3 text-left",
+                    "group block w-full px-6 pt-5 pb-3 text-left",
                     disabled ? "cursor-not-allowed" : "cursor-pointer",
                     !isSelected && !disabled ? "hover:bg-sage-pale/60" : "",
                   ].join(" ")}
@@ -1694,7 +1732,7 @@ function VotingSection({
                     </span>
                   </div>
                   {entry.artist ? (
-                    <p className="mt-1 font-mono text-[11px] font-light text-muted">
+                    <p className="mt-1 font-mono text-[11px] font-light text-muted group-hover:text-sage">
                       {entry.artist}
                     </p>
                   ) : null}
@@ -1704,7 +1742,7 @@ function VotingSection({
                     </div>
                   ) : null}
                   {entry.submitter_note ? (
-                    <p className="mt-3 border-l-2 border-sage pl-3 font-mono text-[12px] font-light text-ink">
+                    <p className="mt-3 border-l-2 border-sage pl-3 font-mono text-[13px] font-light text-ink">
                       &ldquo;{entry.submitter_note}&rdquo;
                     </p>
                   ) : null}
@@ -1773,6 +1811,7 @@ function VotingTally({
   // the tally sorts (a song you voted for that isn't currently leading still
   // gets marked).
   const votedIds = new Set(myVotes);
+  const totalVotes = voteCounts.reduce((sum, entry) => sum + entry.vote_count, 0);
 
   return (
     <>
@@ -1782,6 +1821,9 @@ function VotingTally({
       <h2 className="mt-8 font-mono uppercase tracking-label text-[9px] text-muted">
         vote tally ({voteCounts.length} songs)
       </h2>
+      <p role="status" aria-live="polite" className="sr-only">
+        {totalVotes} votes counted so far
+      </p>
       <div className="mt-4 space-y-3">
         {sorted.map((entry, i) => {
           const isVoted = votedIds.has(entry.submission_id);
@@ -1794,14 +1836,27 @@ function VotingTally({
               ].join(" ")}
             >
               <div className="flex items-center gap-3 overflow-hidden">
-                <span className="w-6 shrink-0 font-mono text-[13px] font-light text-muted">
+                <span
+                  className={[
+                    "w-6 shrink-0 font-mono text-[13px] font-light",
+                    isVoted ? "text-muted" : "text-sage",
+                  ].join(" ")}
+                >
                   #{i + 1}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="font-serif text-[16px] leading-tight text-ink truncate">
+                  <p
+                    className="font-serif text-[16px] leading-snug text-ink truncate"
+                    title={entry.title}
+                  >
                     {entry.title}
                   </p>
-                  <p className="font-mono text-[11px] font-light text-muted truncate">
+                  <p
+                    className={[
+                      "font-mono text-[11px] font-light leading-normal truncate",
+                      isVoted ? "text-muted" : "text-sage",
+                    ].join(" ")}
+                  >
                     {entry.artist}
                   </p>
                 </div>

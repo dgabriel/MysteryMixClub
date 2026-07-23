@@ -200,22 +200,45 @@ chmod 440 /etc/sudoers.d/mysterymixclub-deploy
 > (its target module is gone) until this grant is applied by hand on the
 > **live staging Droplet** — do this before or at the next deploy off `develop`.
 
-**GitHub secrets** (Settings → Secrets and variables → Actions → environment
-`staging`):
-
-| Secret            | Value                                                        |
-|-------------------|-------------------------------------------------------------|
-| `STAGING_HOST`    | Droplet public IP or hostname                               |
-| `STAGING_SSH_USER`| `mysterymixclub`                                            |
-| `STAGING_SSH_KEY` | a **private** key whose public half is in `mysterymixclub`'s `~/.ssh/authorized_keys` |
-
-Create a deploy key on the Droplet and authorize it:
+**Deploy via a self-hosted GitHub Actions runner living on the Droplet itself**
+(added MYS-224, replacing the `appleboy/ssh-action` approach below it used to
+use). Once MYS-224 restricted the cloud firewall's inbound SSH to a single
+admin CIDR, a GitHub-hosted runner's constantly-changing IP could no longer
+reach this box at all — the same tradeoff prod already made (see
+`docs/prod-setup.md` §5), just applied to staging a little after the fact.
+A self-hosted runner long-polls GitHub over an outbound connection, so no
+inbound firewall rule is needed:
 
 ```bash
-sudo -u mysterymixclub ssh-keygen -t ed25519 -f /home/mysterymixclub/.ssh/deploy -N ''
-sudo -u mysterymixclub bash -c 'cat /home/mysterymixclub/.ssh/deploy.pub >> /home/mysterymixclub/.ssh/authorized_keys'
-sudo cat /home/mysterymixclub/.ssh/deploy   # paste this private key into STAGING_SSH_KEY
+# Get a registration token (needs repo-admin access; expires in ~1h):
+gh api -X POST repos/dgabriel/MysteryMixClub/actions/runners/registration-token --jq .token
+
+# On the Droplet, as mysterymixclub (reuses this user's existing sudoers
+# grant above, matches the app's own file ownership):
+mkdir -p ~/actions-runner && cd ~/actions-runner
+curl -o actions-runner-linux-x64.tar.gz -L \
+  https://github.com/actions/runner/releases/download/v<VERSION>/actions-runner-linux-x64-<VERSION>.tar.gz
+tar xzf actions-runner-linux-x64.tar.gz && rm actions-runner-linux-x64.tar.gz
+./config.sh --url https://github.com/dgabriel/MysteryMixClub --token <TOKEN> \
+  --name mysterymixclub-staging --labels staging --work _work --unattended --replace
+
+# As root, install + start it as a systemd service running under mysterymixclub:
+cd /home/mysterymixclub/actions-runner
+./svc.sh install mysterymixclub
+./svc.sh start
 ```
+
+Confirm it's online: `gh api repos/dgabriel/MysteryMixClub/actions/runners --jq '.runners[] | {name, status}'`.
+The workflow targets it via `runs-on: [self-hosted, staging]` — the `staging`
+label is what scopes deploy jobs to this specific runner, separate from
+prod's `prod`-labeled one.
+
+**No SSH secrets needed** — `STAGING_HOST`/`STAGING_SSH_USER`/`STAGING_SSH_KEY`
+were used by the old SSH-based workflow and are no longer referenced. Safe to
+delete from the `staging` environment's secrets, or just leave them unused.
+
+**If the Droplet is ever rebuilt**, the runner registration is lost with it —
+re-run the registration steps above on the new box before the first deploy.
 
 Then push to `develop` (or re-run the workflow) to trigger a deploy.
 

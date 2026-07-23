@@ -19,7 +19,7 @@ Before writing a single line, read:
 | Sage       | #7A9E82   | Primary accent                             |
 | Sage Light | #A8C4AD   | Secondary accent                           |
 | Sage Pale  | #D4E3D7   | Backgrounds, hover states                  |
-| Rust       | #B5533C   | Signal color — ONE use per screen maximum  |
+| Rust       | #AD4F39   | Signal color — ONE use per screen maximum  |
 | Muted      | #8A8680   | Supporting text                            |
 
 **Rust rule — this is the most important rule you have**

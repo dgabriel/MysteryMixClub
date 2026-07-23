@@ -54,7 +54,7 @@ export function CheckEmailScreen({ email, onBack }: CheckEmailScreenProps) {
           <WaitlistForm />
         ) : (
           <>
-            <p className="mt-6 font-mono text-[11px] font-light text-muted">
+            <p className="mt-6 font-mono text-[13px] font-light text-muted">
               no account yet? you won&apos;t receive anything — you&apos;ll need an invite.{" "}
               <ContactEmail
                 user="info"

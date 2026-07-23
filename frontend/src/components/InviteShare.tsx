@@ -49,7 +49,7 @@ export function InviteShare({ inviteUrl }: { inviteUrl: string }) {
           className="mt-2 w-full bg-transparent font-mono text-[13px] text-ink border-0 border-b border-ink rounded-none px-0 py-1 focus:outline-none focus:border-sage"
         />
       </label>
-      <p className="mt-3 font-mono text-[11px] font-light text-muted">
+      <p className="mt-3 font-mono text-[13px] font-light text-muted">
         this link expires in 48 hours.
       </p>
       <div className="mt-4 flex items-center gap-4">

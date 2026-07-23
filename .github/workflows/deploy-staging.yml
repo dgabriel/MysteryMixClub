@@ -13,26 +13,31 @@ concurrency:
 jobs:
   deploy:
     name: Deploy to staging Droplet
-    runs-on: ubuntu-latest
+    # Runs on a self-hosted runner living ON the staging Droplet itself
+    # (registered manually, systemd service `actions.runner.*`, user
+    # mysterymixclub). GitHub-hosted runners can no longer reach this box:
+    # MYS-224 restricted the cloud firewall's inbound SSH to a single admin
+    # CIDR, and GitHub's runner IP ranges are too broad/volatile to safely
+    # allowlist — appleboy/ssh-action (this job's previous approach) started
+    # timing out the moment that firewall went live. Running the job directly
+    # on the box sidesteps needing inbound SSH from GitHub entirely, mirroring
+    # the pattern deploy-prod.yml already uses (see its comments, and
+    # docs/prod-setup.md §5, which flagged this as "relevant once/if staging
+    # ever gets its own self-hosted runner too").
+    runs-on: [self-hosted, staging]
     environment: staging
     steps:
-      # SSH into the Droplet and run the deploy script that lives in the checkout
-      # at /home/mysterymixclub/app (placed there by scripts/bootstrap-droplet.sh).
-      - name: Deploy over SSH
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.STAGING_HOST }}
-          username: ${{ secrets.STAGING_SSH_USER }}
-          key: ${{ secrets.STAGING_SSH_KEY }}
-          script_stop: true
-          script: |
-            cd /home/mysterymixclub/app
-            # Sync the checkout (including deploy-staging.sh itself) to
-            # origin/develop BEFORE invoking it, so a deploy never executes a
-            # stale copy of the script that then changes underneath it.
-            git fetch --prune origin
-            git checkout -f -B develop origin/develop
-            ./scripts/deploy-staging.sh
+      # No actions/checkout here — deploy-staging.sh manages its own
+      # persistent clone at /home/mysterymixclub/app (placed there by
+      # scripts/bootstrap-droplet.sh) and syncs it to origin/develop itself,
+      # so a deploy never executes a stale copy of the script that then
+      # changes underneath it.
+      - name: Deploy
+        run: |
+          cd /home/mysterymixclub/app
+          git fetch --prune origin
+          git checkout -f -B develop origin/develop
+          ./scripts/deploy-staging.sh
 
       # Simple pass/fail notification (Actions log only, for now).
       - name: Report result

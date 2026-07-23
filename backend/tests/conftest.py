@@ -145,6 +145,15 @@ def waitlist_enabled() -> bool:
     return False
 
 
+@pytest.fixture
+def resend_webhook_secret() -> str:
+    """Resend Inbound's Svix signing secret (MYS-242) injected into the
+    ``client`` fixture's settings. Defaults to empty (route 503s); the
+    webhook test module overrides it to exercise real signature
+    verification."""
+    return ""
+
+
 class _OfflineYouTubeResolver:
     """Default resolver for the shared client fixture: never hits the real
     YouTube Data API. Tests that need resolution behaviour override this with
@@ -161,6 +170,7 @@ async def client(
     seed_admin_emails: str,
     max_users: int,
     waitlist_enabled: bool,
+    resend_webhook_secret: str,
 ) -> AsyncGenerator[AsyncClient, None]:
     """AsyncClient over the ASGI app with get_db / get_email_sender overridden."""
     app = create_app()
@@ -181,6 +191,7 @@ async def client(
         seed_admin_emails=seed_admin_emails,
         max_users=max_users,
         waitlist_enabled=waitlist_enabled,
+        resend_webhook_secret=resend_webhook_secret,
     )
 
     def override_get_settings() -> Settings:

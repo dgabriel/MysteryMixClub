@@ -246,7 +246,7 @@ export function ClubHomeScreen({
                           onChangeMemberRole(entry.user_id, member.is_admin ? "member" : "admin")
                         }
                         disabled={changingRoleUserId === entry.user_id}
-                        className="font-mono uppercase tracking-ui text-[11px] text-ink underline underline-offset-[3px] hover:text-sage disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="py-1.5 font-mono uppercase tracking-ui text-[11px] text-ink underline underline-offset-[3px] hover:text-sage disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {changingRoleUserId === entry.user_id
                           ? "saving…"
@@ -260,7 +260,7 @@ export function ClubHomeScreen({
                         type="button"
                         onClick={() => onRemoveMember(entry.user_id)}
                         disabled={removingUserId === entry.user_id}
-                        className="font-mono uppercase tracking-ui text-[11px] text-ink underline underline-offset-[3px] hover:text-sage disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="py-1.5 font-mono uppercase tracking-ui text-[11px] text-ink underline underline-offset-[3px] hover:text-sage disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {removingUserId === entry.user_id ? "removing…" : "remove"}
                       </button>
@@ -271,12 +271,12 @@ export function ClubHomeScreen({
             })}
           </ul>
           {roleChangeError ? (
-            <p role="alert" className="mt-3 font-mono text-[11px] text-ink">
+            <p role="alert" className="mt-3 font-mono text-[13px] text-ink">
               {roleChangeError}
             </p>
           ) : null}
           {removeError ? (
-            <p role="alert" className="mt-3 font-mono text-[11px] text-ink">
+            <p role="alert" className="mt-3 font-mono text-[13px] text-ink">
               {removeError}
             </p>
           ) : null}
@@ -294,14 +294,14 @@ export function ClubHomeScreen({
                 <Button type="button" onClick={onGenerateInvite} disabled={generatingInvite}>
                   {generatingInvite ? "generating…" : "invite"}
                 </Button>
-                <p className="mt-3 font-mono text-[11px] font-light text-muted">
+                <p className="mt-3 font-mono text-[13px] font-light text-muted">
                   a shareable link, good for 48 hours.
                 </p>
               </>
             )}
           </div>
           {inviteError ? (
-            <p role="alert" className="mt-3 font-mono text-[11px] text-ink">
+            <p role="alert" className="mt-3 font-mono text-[13px] text-ink">
               {inviteError}
             </p>
           ) : null}
@@ -391,7 +391,7 @@ function DeleteClubSection({
       )}
 
       {deleteClubError ? (
-        <p role="alert" className="mt-3 font-mono text-[11px] text-ink">
+        <p role="alert" className="mt-3 font-mono text-[13px] text-ink">
           {deleteClubError}
         </p>
       ) : null}
@@ -456,7 +456,7 @@ function LeaveClubSection({
       )}
 
       {leaveClubError ? (
-        <p role="alert" className="mt-3 font-mono text-[11px] text-ink">
+        <p role="alert" className="mt-3 font-mono text-[13px] text-ink">
           {leaveClubError}
         </p>
       ) : null}
@@ -583,15 +583,28 @@ function MixRow({
       <button type="button" onClick={onOpen} className="block w-full text-left">
         <div className="flex items-start justify-between gap-4">
           <span className="min-w-0">
-            <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
+            <span
+              className={[
+                "block font-mono uppercase tracking-label text-[9px]",
+                active ? "text-sage" : "text-muted",
+              ].join(" ")}
+            >
               mystery mix {mix.mix_number}
             </span>
             {named ? (
-              <span className="mt-0.5 block truncate font-serif text-[16px] text-ink">
+              <span
+                className="mt-0.5 block truncate font-serif text-[16px] text-ink"
+                title={mix.theme ?? undefined}
+              >
                 {mix.theme}
               </span>
             ) : isAdmin ? (
-              <span className="mt-0.5 block truncate font-mono text-[13px] font-light italic text-muted">
+              <span
+                className={[
+                  "mt-0.5 block truncate font-mono text-[13px] font-light italic",
+                  active ? "text-sage" : "text-muted",
+                ].join(" ")}
+              >
                 untitled — add a theme
               </span>
             ) : null}
@@ -601,19 +614,34 @@ function MixRow({
           </span>
         </div>
         {mix.description ? (
-          <p className="mt-2 font-mono text-[11px] font-light leading-relaxed text-muted">
+          <p
+            className={[
+              "mt-2 font-mono text-[11px] font-light leading-relaxed",
+              active ? "text-sage" : "text-muted",
+            ].join(" ")}
+          >
             {mix.description}
           </p>
         ) : null}
         {/* Submission progress while the mix is open for submissions (MYS-101). */}
         {mix.state === "open_submission" && mix.member_count > 0 ? (
-          <p className="mt-2 font-mono uppercase tracking-label text-[9px] text-muted">
+          <p
+            className={[
+              "mt-2 font-mono uppercase tracking-label text-[9px]",
+              active ? "text-sage" : "text-muted",
+            ].join(" ")}
+          >
             {mix.submission_count} of {mix.member_count} submitted
           </p>
         ) : null}
         {/* Voting progress while the mix is open for voting (MYS-110). */}
         {mix.state === "open_voting" && mix.voting_eligible_count > 0 ? (
-          <p className="mt-2 font-mono uppercase tracking-label text-[9px] text-muted">
+          <p
+            className={[
+              "mt-2 font-mono uppercase tracking-label text-[9px]",
+              active ? "text-sage" : "text-muted",
+            ].join(" ")}
+          >
             {mix.voted_count} of {mix.voting_eligible_count} voted
           </p>
         ) : null}
@@ -641,7 +669,7 @@ function MixRow({
               {named ? "edit" : "add a theme"}
             </button>
           ) : (
-            <p className="font-mono text-[11px] font-light text-muted">
+            <p className="font-mono text-[13px] font-light text-muted">
               theme locks once a mystery mix opens
             </p>
           )}
@@ -757,8 +785,10 @@ function MixEditForm({
     onSave(input);
   }
 
+  const errorId = `mix-edit-error-${mix.id}`;
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
+    <form onSubmit={handleSubmit} noValidate className="space-y-5">
       <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
         mystery mix {mix.mix_number}
       </span>
@@ -772,6 +802,8 @@ function MixEditForm({
         onChange={(e) => setTheme(e.target.value)}
         disabled={saving}
         autoComplete="off"
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? errorId : undefined}
       />
 
       <label htmlFor={`mix-description-${mix.id}`} className="block">
@@ -790,7 +822,7 @@ function MixEditForm({
       </label>
 
       {error ? (
-        <p role="alert" className="font-mono text-[11px] text-ink">
+        <p id={errorId} role="alert" className="font-mono text-[13px] text-ink">
           {error}
         </p>
       ) : null}
@@ -833,6 +865,9 @@ function OrganizerEdit({
   const [votingWindowDays, setVotingWindowDays] = useState(String(initialVotingWindow.days));
   const [votingWindowHours, setVotingWindowHours] = useState(String(initialVotingWindow.hours));
   const [windowError, setWindowError] = useState<string | null>(null);
+  const [windowErrorField, setWindowErrorField] = useState<
+    "submission_window" | "voting_window" | null
+  >(null);
 
   function openForm() {
     setName(club.name);
@@ -880,14 +915,17 @@ function OrganizerEdit({
     const submissionWindowValidationError = validateWindowHours(submissionHours);
     if (submissionWindowValidationError) {
       setWindowError(`submission ${submissionWindowValidationError}`);
+      setWindowErrorField("submission_window");
       return;
     }
     const votingWindowValidationError = validateWindowHours(votingHours);
     if (votingWindowValidationError) {
       setWindowError(`voting ${votingWindowValidationError}`);
+      setWindowErrorField("voting_window");
       return;
     }
     setWindowError(null);
+    setWindowErrorField(null);
     if (submissionHours !== club.submission_window_hours) {
       input.submission_window_hours = submissionHours;
     }
@@ -909,7 +947,7 @@ function OrganizerEdit({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mt-6 space-y-6 border-t border-border pt-6">
+    <form onSubmit={handleSubmit} noValidate className="mt-6 space-y-6 border-t border-border pt-6">
       <TextField
         id="edit-club-name"
         label="name"
@@ -944,6 +982,8 @@ function OrganizerEdit({
         onDaysChange={setSubmissionWindowDays}
         onHoursChange={setSubmissionWindowHours}
         disabled={updating}
+        invalid={windowErrorField === "submission_window"}
+        errorId="edit-club-window-error"
       />
       <DeadlineWindowField
         idPrefix="edit-voting-window"
@@ -953,19 +993,21 @@ function OrganizerEdit({
         onDaysChange={setVotingWindowDays}
         onHoursChange={setVotingWindowHours}
         disabled={updating}
+        invalid={windowErrorField === "voting_window"}
+        errorId="edit-club-window-error"
       />
-      <p className="font-mono text-[11px] font-light text-muted">
+      <p className="font-mono text-[13px] font-light text-muted">
         this only applies going forward — a mystery mix already collecting submissions or
         votes keeps its current deadline. it takes effect the next time a mystery mix (or
         its next phase) opens.
       </p>
       {windowError ? (
-        <p role="alert" className="font-mono text-[11px] text-ink">
+        <p id="edit-club-window-error" role="alert" className="font-mono text-[13px] text-ink">
           {windowError}
         </p>
       ) : null}
       {updateError ? (
-        <p role="alert" className="font-mono text-[11px] text-ink">
+        <p role="alert" className="font-mono text-[13px] text-ink">
           {updateError}
         </p>
       ) : null}

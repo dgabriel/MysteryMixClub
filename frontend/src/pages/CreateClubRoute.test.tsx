@@ -119,8 +119,8 @@ describe("CreateClubRoute", () => {
 
     renderCreate();
 
-    await user.type(screen.getByLabelText(/^name$/i), "Vibes Only");
-    await user.click(screen.getByLabelText(/just vibing by default/i));
+    await user.type(screen.getByLabelText(/^name$/i), "Casual Club");
+    await user.click(screen.getByLabelText(/casual mode by default/i));
     await user.click(screen.getByRole("button", { name: /^create$/i }));
 
     expect(await screen.findByText("CLUB DETAIL CONTENT")).toBeInTheDocument();

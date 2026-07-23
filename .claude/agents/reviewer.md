@@ -24,7 +24,7 @@ Before reviewing anything, read:
 
 **Style guide compliance**
 - No raw hex values in components — only named tokens
-- Rust (`#B5533C`) appears at most once per screen
+- Rust (`#AD4F39`) appears at most once per screen
 - Only DM Serif Display for headings, DM Mono for everything else
 - Inputs use underline style only — no border boxes
 - No new colors, fonts, or patterns not already in the style guide

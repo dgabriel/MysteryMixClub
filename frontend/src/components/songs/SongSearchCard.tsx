@@ -332,7 +332,7 @@ export function SongSearchCard({
       ) : (
         <>
           {/* Mode toggle — search leads (the default), paste-a-link second. */}
-          <div role="tablist" aria-label="search mode" className="mt-4 flex gap-6">
+          <div aria-label="search mode" className="mt-4 flex gap-6">
             <ModeTab active={mode === "search"} onClick={() => switchMode("search")}>
               search by title
             </ModeTab>
@@ -342,7 +342,7 @@ export function SongSearchCard({
           </div>
 
           {mode === "link" ? (
-            <form onSubmit={handleResolveLink} className="mt-5">
+            <form onSubmit={handleResolveLink} noValidate className="mt-5">
               <div>
                 <label
                   htmlFor={`${idPrefix}-service`}
@@ -355,7 +355,7 @@ export function SongSearchCard({
                   value={service}
                   onChange={(e) => setService(e.target.value as PasteSourceKey)}
                   disabled={loading}
-                  className="mt-1 w-full border-b border-border bg-transparent font-mono text-[13px] text-ink focus:border-sage focus:outline-none disabled:opacity-50"
+                  className="mt-1 w-full border-b border-ink bg-transparent font-mono text-[13px] text-ink focus:border-sage focus:outline-none disabled:opacity-50"
                 >
                   {SERVICES.map((s) => (
                     <option key={s.key} value={s.key}>
@@ -374,8 +374,10 @@ export function SongSearchCard({
                   disabled={loading}
                   inputMode="url"
                   autoComplete="off"
+                  aria-invalid={error ? true : undefined}
+                  aria-describedby={error ? `${idPrefix}-search-error` : undefined}
                 />
-                <p className="mt-2 font-mono text-[11px] font-light text-muted">
+                <p className="mt-2 font-mono text-[13px] font-light text-muted">
                   paste any link — we'll detect the service automatically
                 </p>
               </div>
@@ -386,7 +388,7 @@ export function SongSearchCard({
               </div>
             </form>
           ) : (
-            <form onSubmit={handleSearch} className="mt-5 space-y-5">
+            <form onSubmit={handleSearch} noValidate className="mt-5 space-y-5">
               <TextField
                 id={`${idPrefix}-title`}
                 label="song title"
@@ -396,6 +398,8 @@ export function SongSearchCard({
                 disabled={loading}
                 autoComplete="off"
                 required
+                aria-invalid={error ? true : undefined}
+                aria-describedby={error ? `${idPrefix}-search-error` : undefined}
               />
               <TextField
                 id={`${idPrefix}-artist`}
@@ -415,7 +419,11 @@ export function SongSearchCard({
           {loading ? <Loader label={loadingLabel} /> : null}
 
           {error ? (
-            <p role="alert" className="mt-5 font-mono text-[11px] font-light text-ink">
+            <p
+              id={`${idPrefix}-search-error`}
+              role="alert"
+              className="mt-5 font-mono text-[13px] font-light text-ink"
+            >
               {error}
             </p>
           ) : null}
@@ -457,11 +465,10 @@ function ModeTab({
   return (
     <button
       type="button"
-      role="tab"
-      aria-selected={active}
+      aria-pressed={active}
       onClick={onClick}
       className={[
-        "font-mono uppercase tracking-ui text-[11px] pb-1 transition-colors duration-150",
+        "py-1.5 font-mono uppercase tracking-ui text-[11px] pb-1 transition-colors duration-150",
         active
           ? "text-ink border-b border-sage"
           : "text-muted border-b border-transparent hover:text-ink",
@@ -477,13 +484,15 @@ function ResultRow({ track, onSelect }: { track: SongSearchTrack; onSelect: () =
     <button
       type="button"
       onClick={onSelect}
-      className="flex w-full items-center gap-3 rounded-[2px] px-2 py-2 text-left transition-colors duration-150 hover:bg-sage-pale"
+      className="group flex w-full items-center gap-3 rounded-[2px] px-2 py-2 text-left transition-colors duration-150 hover:bg-sage-pale"
     >
       <Thumb url={track.thumbnail_url} alt={`${track.title} album art`} size={40} />
       <span className="min-w-0">
-        <span className="block truncate font-mono text-[13px] text-ink">{track.title}</span>
+        <span className="block truncate font-mono text-[13px] text-ink" title={track.title}>
+          {track.title}
+        </span>
         {track.artist ? (
-          <span className="block truncate font-mono text-[11px] font-light text-muted">
+          <span className="block truncate font-mono text-[11px] font-light text-muted group-hover:text-sage">
             {track.artist}
           </span>
         ) : null}
@@ -516,9 +525,9 @@ function SourceOnlyConfirm({
       <SourceBadge source={source} />
       <h3 className="mt-3 font-serif text-[18px] leading-tight text-ink">{song.title}</h3>
       {song.artist ? (
-        <p className="mt-1 font-mono text-[11px] font-light text-muted">{song.artist}</p>
+        <p className="mt-1 font-mono text-[11px] font-light text-sage">{song.artist}</p>
       ) : null}
-      <p className="mt-4 font-mono text-[12px] font-light leading-relaxed text-ink">
+      <p className="mt-4 font-mono text-[13px] font-light leading-relaxed text-ink">
         this one lives on {sourceLabel} only, so it won&apos;t be on the auto-generated Spotify or
         Apple Music playlists. everyone can still play it from its link.
       </p>
@@ -564,7 +573,9 @@ function ResultView({
       <div className="flex items-start gap-4">
         <Thumb url={song.thumbnail_url} alt={`${song.title} album art`} size={72} />
         <div className="min-w-0">
-          <h3 className="truncate font-serif text-[18px] leading-tight text-ink">{song.title}</h3>
+          <h3 className="truncate font-serif text-[18px] leading-tight text-ink" title={song.title}>
+            {song.title}
+          </h3>
           {song.artist ? (
             <p className="mt-1 truncate font-mono text-[11px] font-light text-muted">
               {song.artist}
@@ -596,7 +607,7 @@ function ResultView({
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label={`open ${song.title} on ${p.label} (opens in a new tab)`}
-                  className="inline-flex items-center gap-1.5 rounded-[2px] border border-border px-2.5 py-1 font-mono uppercase tracking-ui text-[11px] text-ink transition-colors duration-150 hover:bg-sage-pale"
+                  className="inline-flex items-center gap-1.5 rounded-[2px] border border-border px-2.5 py-1.5 font-mono uppercase tracking-ui text-[11px] text-ink transition-colors duration-150 hover:bg-sage-pale"
                 >
                   <ExternalLinkIcon />
                   {p.label}
@@ -606,7 +617,7 @@ function ResultView({
           </ul>
         </div>
       ) : (
-        <p className="mt-5 font-mono text-[11px] font-light text-muted">
+        <p className="mt-5 font-mono text-[13px] font-light text-muted">
           no streaming links available for this song
         </p>
       )}
@@ -627,7 +638,7 @@ function ResultView({
             rows={2}
             disabled={submitting}
             placeholder="why this song?"
-            className="mt-2 w-full resize-none border-b border-border bg-transparent font-mono text-[12px] font-light text-ink placeholder:text-muted focus:border-ink focus:outline-none disabled:opacity-50"
+            className="mt-2 w-full resize-none border-b border-ink bg-transparent font-mono text-[13px] font-light text-ink placeholder:text-muted focus:border-ink focus:outline-none disabled:opacity-50"
           />
         </div>
       ) : null}

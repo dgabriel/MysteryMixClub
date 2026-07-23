@@ -7,3 +7,13 @@
     @apply bg-cream text-ink font-mono antialiased;
   }
 }
+
+/* MYS-121: the concentric-ring loader and the reveal fade-in are decorative
+   motion on top of state already announced via text/aria-live — safe to
+   still convey via a static frame for reduced-motion users. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-rotate-rings,
+  .animate-fade-in {
+    animation: none;
+  }
+}

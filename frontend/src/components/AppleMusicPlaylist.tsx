@@ -28,7 +28,7 @@ const LINK_CLASS =
   "inline-flex items-center gap-1.5 font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink";
 const BUTTON_CLASS =
   "inline-flex items-center gap-1.5 font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink disabled:cursor-default disabled:text-muted disabled:no-underline";
-const NOTE_CLASS = "font-mono text-[11px] font-light text-muted";
+const NOTE_CLASS = "font-mono text-[13px] font-light text-muted";
 
 /**
  * True on a mobile OS with a native Apple Music app — where a direct

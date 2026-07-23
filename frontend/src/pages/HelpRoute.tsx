@@ -118,20 +118,20 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
     ],
   },
   {
-    slug: "just-vibing",
-    label: "just vibing",
+    slug: "casual-mode",
+    label: "casual mode",
     items: [
       {
-        q: "what is just vibing?",
-        a: "a non-competitive mode a club's organizer can turn on by default when creating the club. your song still gets submitted, shuffled in, and is fully eligible to win or get most noted — you just don't cast votes.",
+        q: "what's the difference between competitive mode and casual mode?",
+        a: "competitive mode means voting and a spot on the leaderboard. casual mode means skipping voting (a club's organizer can set this as the default when creating the club). either way, your song still gets submitted, shuffled in, and is fully eligible to win or get most noted.",
       },
       {
-        q: "will people know i'm vibing?",
+        q: "can other members tell i'm in casual mode?",
         a: "no. it's invisible to everyone else, during voting and at reveal.",
       },
       {
-        q: "do i see the leaderboard if i'm vibing?",
-        a: "not the vote counts or leaderboard — you'll still see the winner, most noted, and every submission with its notes.",
+        q: "do i see the leaderboard if i'm playing casual?",
+        a: "not the vote counts or leaderboard. you'll still see the winner, most noted, and every submission with its notes.",
       },
     ],
   },
@@ -207,7 +207,7 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
  * collapses to a login-only nav for signed-out visitors.
  *
  * Each section carries a stable `id` so it can be deep-linked as context help
- * from elsewhere in the app (e.g. /help#just-vibing) — see HelpLink.tsx.
+ * from elsewhere in the app (e.g. /help#casual-mode) — see HelpLink.tsx.
  *
  * Client-side route changes don't get the browser's native #hash scroll (that
  * only fires on a real document navigation), so this scrolls to the target
@@ -232,16 +232,16 @@ export function HelpRoute() {
           <ConcentricRings size={72} accent className="mx-auto" />
 
           <h1 className="mt-8 text-center font-serif text-[34px] leading-tight">help</h1>
-          <p className="mt-2 text-center font-mono text-[11px] font-light text-muted">
+          <p className="mt-2 text-center font-mono text-[13px] font-light text-muted">
             everything from signing in to your first reveal
           </p>
 
           <div className="mt-10 space-y-10">
             {SECTIONS.map((section) => (
               <section key={section.slug} id={section.slug} className="scroll-mt-8">
-                <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
+                <h2 className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
                   {section.label}
-                </p>
+                </h2>
                 <div className="mt-4 space-y-5">
                   {section.items.map((item) => (
                     <div key={item.q}>

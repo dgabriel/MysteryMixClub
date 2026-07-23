@@ -11,7 +11,7 @@ MMC's visual identity is inspired by Marcel Duchamp's Rotorelief series — conc
 
 Four named tokens: **Cream**, **Sage**, **Rust**, **Ink**.
 
-- **Rust (`#B5533C`)** is a signal color, not a decorative one. It appears **exactly once per screen** — reserved for the single most important element (e.g. one CTA, one active state indicator). If a screen has zero or multiple Rust elements, that's a design system violation worth flagging.
+- **Rust (`#AD4F39`)** is a signal color, not a decorative one. It appears **exactly once per screen** — reserved for the single most important element (e.g. one CTA, one active state indicator). If a screen has zero or multiple Rust elements, that's a design system violation worth flagging.
 - Cream, Sage, and Ink handle background, surface, and text/ink roles respectively — treat them as the neutral palette that Rust punctuates.
 - **Always reference and use the named Tailwind tokens** (e.g. `bg-cream`, `text-ink`, `border-sage`) — never raw hex values or arbitrary Tailwind color utilities (`bg-[#...]`, `text-orange-600`, etc.). If exact hex values for Cream/Sage/Ink are needed, pull them from the project's `tailwind.config` rather than guessing.
 

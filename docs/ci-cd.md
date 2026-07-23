@@ -82,11 +82,13 @@ timer (`mysterymixclub-advance-mixes.timer`) — see
 | File                              | On                        | Does                                                        |
 |-----------------------------------|---------------------------|-------------------------------------------------------------|
 | `.github/workflows/ci.yml`        | PR → `main` or `develop`  | Frontend lint/typecheck/test; backend ruff/mypy/pytest+cov  |
-| `.github/workflows/deploy-staging.yml` | push → `develop`     | SSH to the staging Droplet → run `scripts/deploy-staging.sh` (`STAGING_HOST`/`STAGING_SSH_USER`/`STAGING_SSH_KEY`) |
-| `.github/workflows/deploy-prod.yml`    | push → `main`        | `environment: production` approval gate → stage `app.prod.yaml` → `mysterymixclub-prod` (`DIGITALOCEAN_ACCESS_TOKEN`) |
+| `.github/workflows/deploy-staging.yml` | push → `develop`     | Runs on a self-hosted runner living on the staging Droplet → `scripts/deploy-staging.sh` |
+| `.github/workflows/deploy-prod.yml`    | push → `main`        | `environment: production` approval gate → self-hosted runner on the prod Droplet → `scripts/deploy-prod.sh` |
 
-The prod deploy uses `secrets.DIGITALOCEAN_ACCESS_TOKEN`; the staging deploy uses
-the `STAGING_*` SSH secrets (see [`staging-setup.md`](staging-setup.md)).
+Both deploys run directly on their target Droplet via a self-hosted GitHub
+Actions runner (MYS-224/225) — no SSH secrets or `DIGITALOCEAN_ACCESS_TOKEN`
+needed for either one anymore. See [`staging-setup.md`](staging-setup.md) and
+[`prod-setup.md`](prod-setup.md) for runner registration.
 
 ---
 
@@ -145,12 +147,13 @@ GitHub → Settings → Branches → add rules:
 
 GitHub → Settings → Secrets and variables → Actions:
 
-| Secret                       | Used by                          | Where to get it                              |
-|------------------------------|----------------------------------|----------------------------------------------|
-| `DIGITALOCEAN_ACCESS_TOKEN`  | `deploy-prod.yml`                | DO → API → Tokens (write scope)              |
-| `STAGING_HOST`               | `deploy-staging.yml`             | staging Droplet public IP / hostname         |
-| `STAGING_SSH_USER`           | `deploy-staging.yml`             | `mysterymixclub`                             |
-| `STAGING_SSH_KEY`            | `deploy-staging.yml`             | private deploy key for the Droplet (see `staging-setup.md`) |
+Neither deploy workflow needs GitHub Actions secrets anymore — both run
+directly on their target Droplet via a self-hosted runner (see the workflows
+table above). `DIGITALOCEAN_ACCESS_TOKEN` is only needed locally for
+`terraform apply`, not by any workflow; `STAGING_HOST`/`STAGING_SSH_USER`/
+`STAGING_SSH_KEY` were used by the old SSH-based `deploy-staging.yml` and are
+no longer referenced (safe to delete from the `staging` environment's
+secrets, or just leave them unused).
 
 ### DigitalOcean app secrets
 
@@ -164,6 +167,7 @@ These are runtime app config, set per app in the DO dashboard or via
 | `ENVIRONMENT`  | GENERAL  | `production` / `staging`                           |
 | `RESEND_API_KEY`, `ODESLI_API_KEY`, `ALLOWED_ORIGINS`, `APP_BASE_URL` | SECRET/GENERAL | see `.env.example` |
 | `APPLE_MUSIC_TEAM_ID`, `APPLE_MUSIC_KEY_ID`, `APPLE_MUSIC_PRIVATE_KEY` | SECRET | Apple Music (MYS-104). **All three or none** — any missing and the Apple UI hides itself and links fall back to keyless iTunes. Provisioning walkthrough in `staging-setup.md` → "Enabling Apple Music". |
+| `RESEND_WEBHOOK_SECRET`, `INBOUND_EMAIL_FORWARD_TO` | SECRET/GENERAL | Inbound mail forwarding (MYS-242). Prod-only in practice — Resend Inbound's MX is on the apex domain, which prod serves. Empty `RESEND_WEBHOOK_SECRET` = the webhook route 503s rather than accepting unsigned requests. |
 
 ### Adding a new secret (the routine)
 

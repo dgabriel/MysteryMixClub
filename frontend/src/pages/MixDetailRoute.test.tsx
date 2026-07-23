@@ -421,7 +421,7 @@ describe("MixDetailRoute", () => {
     renderMix();
     expect(await screen.findByText("0 of 5 submitted")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("tab", { name: /paste a link/i }));
+    await user.click(screen.getByRole("button", { name: /paste a link/i }));
     await user.type(screen.getByLabelText(/paste a link/i), "https://x");
     await user.click(screen.getByRole("button", { name: /^resolve$/i }));
     await user.click(await screen.findByRole("button", { name: /submit this song/i }));
@@ -464,7 +464,7 @@ describe("MixDetailRoute", () => {
     async function composeAndSubmit(user: ReturnType<typeof userEvent.setup>, slot?: HTMLElement) {
       const q = slot ? within(slot) : screen;
       // Search is the default tab now; switch to paste-a-link for the link flow.
-      await user.click(q.getByRole("tab", { name: /paste a link/i }));
+      await user.click(q.getByRole("button", { name: /paste a link/i }));
       await user.type(q.getByLabelText(/paste a link/i), "https://x");
       await user.click(q.getByRole("button", { name: /^resolve$/i }));
       await user.click(await q.findByRole("button", { name: /submit this song/i }));
@@ -1346,7 +1346,7 @@ describe("MixDetailRoute", () => {
       expect(screen.queryByText(/on YouTube/i)).not.toBeInTheDocument();
     });
 
-    it("voting progress: shows X of Y voted or noted · Z just vibing (MYS-102)", async () => {
+    it("voting progress: shows X of Y competitive mode voted or noted · Z casual mode (MYS-102, MYS-238)", async () => {
       setupVoting({
         entries: [entry({ submission_id: "p1", title: "Debaser" })],
         myVotes: [],
@@ -1356,10 +1356,12 @@ describe("MixDetailRoute", () => {
       });
       renderMix();
 
-      expect(await screen.findByText("2 of 4 voted or noted · 1 just vibing")).toBeInTheDocument();
+      expect(
+        await screen.findByText("2 of 4 competitive mode voted or noted · 1 casual mode"),
+      ).toBeInTheDocument();
     });
 
-    it("voting progress: omits the vibing clause when nobody is vibing (MYS-102)", async () => {
+    it("voting progress: omits the casual-mode clause when nobody is in casual mode (MYS-102, MYS-238)", async () => {
       setupVoting({
         entries: [entry({ submission_id: "p1", title: "Debaser" })],
         myVotes: [],
@@ -1369,8 +1371,8 @@ describe("MixDetailRoute", () => {
       });
       renderMix();
 
-      expect(await screen.findByText("1 of 3 voted or noted")).toBeInTheDocument();
-      expect(screen.queryByText(/just vibing/i)).not.toBeInTheDocument();
+      expect(await screen.findByText("1 of 3 competitive mode voted or noted")).toBeInTheDocument();
+      expect(screen.queryByText(/casual mode/i)).not.toBeInTheDocument();
     });
 
     it("voting progress: refreshes after casting votes (MYS-102)", async () => {
@@ -1420,7 +1422,7 @@ describe("MixDetailRoute", () => {
       }));
       renderMix();
 
-      expect(await screen.findByText("1 of 4 voted or noted")).toBeInTheDocument();
+      expect(await screen.findByText("1 of 4 competitive mode voted or noted")).toBeInTheDocument();
       await user.click(await screen.findByRole("button", { name: /Debaser/i }));
       await user.click(screen.getByRole("button", { name: /cast votes/i }));
 

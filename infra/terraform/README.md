@@ -6,7 +6,7 @@ Infrastructure-as-code for the DigitalOcean droplets that host MMC. Structure:
 infra/terraform/
   modules/droplet-app/   shared module: droplet + firewall + reserved IP + DNS + monitor alerts + project
   envs/staging/          wires the module to the *existing* staging droplet (id 577618725)
-  envs/prod/             PROPOSED droplet-shaped prod (MYS-213) — NOT App Platform, NOT yet applied
+  envs/prod/             droplet-shaped prod (MYS-213/MYS-225) — NOT App Platform, applied and live
 ```
 
 Both environments consume the same module; the only differences are data
@@ -63,25 +63,22 @@ deliberate rebuild, not an in-place edit.
 | Public IPs | v4 `67.207.81.183`, v6 `2604:a880:400:d1:0:4:96b0:f001` |
 | VPC | `default-nyc1` `d89b15d3-...` (10.116.0.0/20) |
 | Features | monitoring, ipv6, private_networking |
-| Cloud firewall | **none** |
+| Cloud firewall | SSH locked to admin CIDRs, 80/443 open (MYS-224, 2026-07-23) |
 | Reserved IP | **none** |
 | Backups / snapshots | **none** |
 | Monitor alerts | **none configured** |
 | DNS (app) | `staging` A → 67.207.81.183 (record 1822275773) |
-| DNS (email) | Resend DKIM, SES MX/SPF, DMARC — left unmanaged by TF |
+| DNS (email) | Resend DKIM, SES MX/SPF, DMARC, Resend Inbound MX — now Terraform-managed in `envs/prod` (ADR 0003, MYS-242), imported rather than left hand-managed |
 
 ### Staging patterns NOT carried into prod (deliberately)
 
-1. **No cloud firewall** → SSH (22) is reachable from anywhere at the network
-   edge; only on-box `ufw` guards it. Prod sets `create_firewall = true` with
-   `ssh_allowed_cidrs` locked to admin IPs.
-2. **No backups, no offsite copy** → total data-loss risk. Prod enables weekly
+1. **No backups, no offsite copy** → total data-loss risk. Prod enables weekly
    droplet backups *and* a separate offsite `pg_dump` (see below).
-3. **No reserved IP** → a rebuild changes the public IP and churns DNS. Prod
+2. **No reserved IP** → a rebuild changes the public IP and churns DNS. Prod
    allocates a reserved IP that apex/www point at.
-4. **No monitor alerts** → failures are discovered by users. Prod adds
+3. **No monitor alerts** → failures are discovered by users. Prod adds
    CPU/memory/disk alert policies.
-5. Self-signed cert + basic auth is a staging-only stopgap; prod uses a real
+4. Self-signed cert + basic auth is a staging-only stopgap; prod uses a real
    Let's Encrypt cert on the apex domain (handled by certbot on-box, not TF).
 
 ---

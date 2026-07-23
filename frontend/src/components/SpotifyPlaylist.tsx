@@ -18,7 +18,7 @@ import { getSpotifyPlaylistLink } from "../services/api";
 
 const LINK_CLASS =
   "inline-flex items-center gap-1.5 font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink";
-const NOTE_CLASS = "font-mono text-[11px] font-light text-muted";
+const NOTE_CLASS = "font-mono text-[13px] font-light text-muted";
 
 export function SpotifyPlaylist({ mixId }: { mixId: string }) {
   const [playlistUrl, setPlaylistUrl] = useState<string | null | undefined>(undefined);

@@ -61,7 +61,7 @@ export function EmailEntryScreen({
           invite-only. sign in with your email.
         </p>
 
-        <form onSubmit={handleSubmit} className="mt-10 space-y-8">
+        <form onSubmit={handleSubmit} noValidate className="mt-10 space-y-8">
           <TextField
             id="email"
             label="email"
@@ -74,10 +74,11 @@ export function EmailEntryScreen({
             onChange={(e) => setEmail(e.target.value)}
             disabled={submitting}
             aria-invalid={error ? true : undefined}
+            aria-describedby={error ? "email-entry-error" : undefined}
           />
 
           {error ? (
-            <p role="alert" className="font-mono text-[11px] text-ink">
+            <p id="email-entry-error" role="alert" className="font-mono text-[13px] text-ink">
               {error}
             </p>
           ) : null}
@@ -93,7 +94,7 @@ export function EmailEntryScreen({
         {waitlistEnabled ? (
           <WaitlistForm />
         ) : waitlistEnabled === undefined ? null : (
-          <p className="mt-10 text-center font-mono text-[11px] font-light text-muted">
+          <p className="mt-10 text-center font-mono text-[13px] font-light text-muted">
             no invite yet?{" "}
             <ContactEmail
               user="info"

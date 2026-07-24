@@ -356,7 +356,7 @@ PATCH  /clubs/:id/members/:userId/role  Promote/demote an active member to/from 
 
 ### Invites
 ```
-POST   /clubs/:id/invites     Generate invite link (organizer or member)
+POST   /clubs/:id/invites     Generate invite link (organizer or co-organizer only — MYS-246)
 GET    /invites/:token        Validate invite token, return club preview
 POST   /invites/:token/accept Join club via invite
 ```

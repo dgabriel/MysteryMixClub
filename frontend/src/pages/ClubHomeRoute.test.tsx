@@ -268,6 +268,15 @@ describe("ClubHomeRoute", () => {
     expect(screen.queryByRole("button", { name: /^remove$/i })).not.toBeInTheDocument();
   });
 
+  it("MYS-246: a plain (non-admin) member never sees the invite section", async () => {
+    setAuth(MEMBER_ID);
+    renderClub();
+
+    await screen.findByText("Friday Mixtape");
+    expect(screen.queryByRole("heading", { name: /^invite$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^invite$/i })).not.toBeInTheDocument();
+  });
+
   it("error: getClub rejecting with 403 shows a calm error and does not crash", async () => {
     mockGetClub.mockRejectedValue(new ApiError(403, "forbidden"));
     renderClub();
@@ -522,6 +531,14 @@ describe("ClubHomeRoute", () => {
 
       expect(screen.getByRole("button", { name: /^delete club$/i })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /^leave club$/i })).toBeInTheDocument();
+    });
+
+    it("MYS-246: a co-organizer viewer sees the invite section", async () => {
+      renderClub();
+      await screen.findByText("Friday Mixtape");
+
+      expect(screen.getByRole("heading", { name: /^invite$/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /^invite$/i })).toBeInTheDocument();
     });
   });
 

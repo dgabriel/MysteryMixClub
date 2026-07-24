@@ -1,10 +1,12 @@
-"""Tests for MYS-13 + MYS-126: POST/DELETE /api/v1/clubs/{id}/invites.
+"""Tests for MYS-13 + MYS-126 + MYS-246: POST/DELETE /api/v1/clubs/{id}/invites.
 
 A v2 invite is a single anonymous shareable link with a 48h expiry (MYS-126).
-Covers auth (401), missing club (404), non-member rejection (403), happy-path
-response shape, the URL-safe crypto-random token, two calls return different
-tokens, persistence, the ~48h expires_at, and organizer-only revoke. See
-technical-design.md §6 (invites) and §7 (Invites API).
+Creation is organizer/co-organizer only (MYS-246) — a plain member can no
+longer generate or revoke a club's invite link. Covers auth (401), missing
+club (404), non-admin rejection (403), happy-path response shape, the
+URL-safe crypto-random token, two calls return different tokens, persistence,
+the ~48h expires_at, and organizer-only revoke. See technical-design.md §6
+(invites) and §7 (Invites API).
 """
 
 import uuid
@@ -122,7 +124,7 @@ async def test_create_invite_for_missing_club_returns_404(client, db_session):
 
 
 # --------------------------------------------------------------------------- #
-# Authorization — non-member rejected
+# Authorization — non-member and non-admin member rejected (MYS-246)
 # --------------------------------------------------------------------------- #
 
 
@@ -173,7 +175,7 @@ async def test_organizer_creates_invite_returns_201_and_shape(client, db_session
     assert len(data["token"]) >= 20
 
 
-async def test_active_non_organizer_member_can_create_invite_returns_201(client, db_session):
+async def test_active_non_admin_member_cannot_create_invite_returns_403(client, db_session):
     organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
     club = await _seed_club(db_session, organizer)
     member = await _seed_user(db_session, email="member@example.com", display_name="Member")
@@ -181,8 +183,19 @@ async def test_active_non_organizer_member_can_create_invite_returns_201(client,
 
     resp = await client.post(_invites_url(club.id), headers=_auth_header(member.id))
 
+    assert resp.status_code == 403, resp.text
+
+
+async def test_co_organizer_can_create_invite_returns_201(client, db_session):
+    organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
+    club = await _seed_club(db_session, organizer)
+    co_organizer = await _seed_user(db_session, email="co@example.com", display_name="Co")
+    await _seed_member(db_session, club, co_organizer, role="admin")
+
+    resp = await client.post(_invites_url(club.id), headers=_auth_header(co_organizer.id))
+
     assert resp.status_code == 201, resp.text
-    assert resp.json()["created_by"] == str(member.id)
+    assert resp.json()["created_by"] == str(co_organizer.id)
 
 
 # --------------------------------------------------------------------------- #

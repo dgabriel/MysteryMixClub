@@ -1554,7 +1554,17 @@ function VotingSection({
 
   // If votes are locked, show the vote counts tally instead of voting controls
   if (isVotesLocked) {
-    return <VotingTally voteCounts={voteCounts} votesSaved={votesSaved} myVotes={myVotes} />;
+    return (
+      <VotingTally
+        mixId={mixId}
+        entries={entries}
+        voteCounts={voteCounts}
+        votesSaved={votesSaved}
+        myVotes={myVotes}
+        youtubePlaylistUrl={youtubePlaylistUrl}
+        youtubeTrackCount={youtubeTrackCount}
+      />
+    );
   }
 
   if (entries.length === 0) {
@@ -1788,15 +1798,26 @@ function VotingSection({
  * This replaces the voting controls after a player has cast their votes.
  * The vote counts update automatically as others vote, but notes remain hidden
  * until the mix closes (MYS-72 - notes revealed only in the reveal).
+ *
+ * Keeps the playlist links visible (MYS-236) — locking in a vote shouldn't cut
+ * a player off from actually listening to the mix.
  */
 function VotingTally({
+  mixId,
+  entries,
   voteCounts,
   votesSaved,
   myVotes,
+  youtubePlaylistUrl,
+  youtubeTrackCount,
 }: {
+  mixId: string;
+  entries: PlaylistEntry[];
   voteCounts: VoteCountEntry[];
   votesSaved: boolean;
   myVotes: string[];
+  youtubePlaylistUrl: string | null;
+  youtubeTrackCount: number;
 }) {
   // Sort by vote count desc, then title asc for deterministic order
   const sorted = [...voteCounts].sort((a, b) => {
@@ -1818,6 +1839,19 @@ function VotingTally({
       <p className="font-mono text-[13px] font-light text-muted">
         you&apos;ve locked in your votes — check back to see how the voting goes.
       </p>
+      <h2 className="mt-8 font-mono uppercase tracking-label text-[9px] text-muted">
+        playlist ({entries.length})
+      </h2>
+      <div className="mt-4">
+        <YouTubePlaylistLink
+          youtubePlaylistUrl={youtubePlaylistUrl}
+          youtubeTrackCount={youtubeTrackCount}
+          entryCount={entries.length}
+        />
+        <SourceOnlyTracks tracks={toSourceOnly(entries)} />
+        <SpotifyPlaylist mixId={mixId} />
+        <AppleMusicPlaylist mixId={mixId} />
+      </div>
       <h2 className="mt-8 font-mono uppercase tracking-label text-[9px] text-muted">
         vote tally ({voteCounts.length} songs)
       </h2>

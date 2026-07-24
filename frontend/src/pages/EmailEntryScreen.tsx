@@ -1,5 +1,6 @@
 import { type FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { Badge } from "../components/Badge";
 import { Button } from "../components/Button";
 import { ContactEmail } from "../components/ContactEmail";
 import { TextField } from "../components/TextField";
@@ -54,8 +55,9 @@ export function EmailEntryScreen({
         {/* Motif — the screen's single Rust use lives in the off-center ring dot. */}
         <ConcentricRings size={72} accent className="mx-auto" />
 
-        <h1 className="mt-8 text-center font-serif text-[34px] leading-tight">
+        <h1 className="mt-8 flex items-center justify-center gap-3 text-center font-serif text-[34px] leading-tight">
           mysterymixclub
+          <Badge>beta</Badge>
         </h1>
         <p className="mt-2 text-center font-mono text-[13px] font-light text-muted">
           invite-only. sign in with your email.

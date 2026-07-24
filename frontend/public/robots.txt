@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /clubs/
+Disallow: /mixes/
+Disallow: /profile
+Disallow: /onboarding
+Disallow: /auth/
+Disallow: /invite/
+Disallow: /join/

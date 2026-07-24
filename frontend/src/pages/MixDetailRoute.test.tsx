@@ -1726,6 +1726,8 @@ describe("MixDetailRoute", () => {
       voteCounts: { submission_id: string; title: string; artist: string; vote_count: number }[];
       myVotes: string[];
       votesPerPlayer?: number;
+      youtubePlaylistUrl?: string | null;
+      youtubeTrackCount?: number;
     }) {
       const vpp = opts.votesPerPlayer ?? 3;
       mockGetMix.mockResolvedValue(mix({ state: "open_voting", votes_per_player: vpp }));
@@ -1737,8 +1739,8 @@ describe("MixDetailRoute", () => {
         entries: opts.voteCounts.map((v) =>
           entry({ submission_id: v.submission_id, title: v.title, artist: v.artist }),
         ),
-        youtube_playlist_url: null,
-        youtube_track_count: 0,
+        youtube_playlist_url: opts.youtubePlaylistUrl ?? null,
+        youtube_track_count: opts.youtubeTrackCount ?? 0,
         voting_eligible: 0,
         voting_acted: 0,
         vibing_count: 0,
@@ -1904,6 +1906,28 @@ describe("MixDetailRoute", () => {
           /your votes are locked — they will be revealed when the mystery mix closes/i,
         ),
       ).toBeInTheDocument();
+    });
+
+    it("keeps the playlist links visible after votes lock (MYS-236)", async () => {
+      setupLockedTally({
+        voteCounts: [
+          { submission_id: "p1", title: "Debaser", artist: "Pixies", vote_count: 2 },
+          { submission_id: "p2", title: "Hey", artist: "Pixies", vote_count: 1 },
+        ],
+        myVotes: ["p1"],
+        youtubePlaylistUrl: "https://www.youtube.com/watch_videos?video_ids=a,b",
+        youtubeTrackCount: 2,
+      });
+      renderMix();
+
+      await screen.findByText(/vote tally/i);
+
+      const link = screen.getByRole("link", { name: /open playlist in youtube/i });
+      expect(link).toHaveAttribute(
+        "href",
+        "https://www.youtube.com/watch_videos?video_ids=a,b",
+      );
+      expect(screen.getByText("2 of 2 on YouTube")).toBeInTheDocument();
     });
   });
 

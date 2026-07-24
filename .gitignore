@@ -55,3 +55,6 @@ build/
 
 # Scratch / temp files
 tmp/
+
+# Local ticket-tracking reference (not synced to repo, see TICKETS.md workflow)
+TICKETS.md

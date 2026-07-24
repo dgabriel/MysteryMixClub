@@ -78,8 +78,8 @@ export function AboutRoute() {
               support
             </p>
             <p className="mt-3 font-mono text-[13px] font-light leading-relaxed text-ink">
-              i will never make you look at an ad.  i won't use ai to scrape your data and sell it.
-              for most people, the app is free, but it does cost me a lil money to run.  the
+              i will never *make* you look at an ad.  i won't use ai to scrape your data and sell it.
+              for many people, the app is free, but it does cost me a lil money to run.  the
               total cost for developing this app was about $220 including hosting on digital ocean,
                domain registration, apple developer program, apple music, and extra claude usage tokens.
                monthly ongoing cost is just hosting and claude tokens, which is about $30-$40.  annual costs
@@ -102,7 +102,7 @@ export function AboutRoute() {
               thanks
             </p>
             <p className="mt-3 font-mono text-[13px] font-light leading-relaxed text-ink">
-              thanks to my dear slam family pals, and my lovely family here in brooklyn.
+              thanks to my dear slam family pals, nv pals, and my lovely family here in brooklyn.
             </p>
             <a
               href="https://youtu.be/kfV0WHgHQhI"

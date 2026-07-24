@@ -985,8 +985,7 @@ function OrganizerEdit({
         onDaysChange={setSubmissionWindowDays}
         onHoursChange={setSubmissionWindowHours}
         disabled={updating}
-        invalid={windowErrorField === "submission_window"}
-        errorId="edit-club-window-error"
+        error={windowErrorField === "submission_window" ? windowError : null}
       />
       <DeadlineWindowField
         idPrefix="edit-voting-window"
@@ -996,19 +995,13 @@ function OrganizerEdit({
         onDaysChange={setVotingWindowDays}
         onHoursChange={setVotingWindowHours}
         disabled={updating}
-        invalid={windowErrorField === "voting_window"}
-        errorId="edit-club-window-error"
+        error={windowErrorField === "voting_window" ? windowError : null}
       />
       <p className="font-mono text-[13px] font-light text-muted">
         this only applies going forward — a mystery mix already collecting submissions or
         votes keeps its current deadline. it takes effect the next time a mystery mix (or
         its next phase) opens.
       </p>
-      {windowError ? (
-        <p id="edit-club-window-error" role="alert" className="font-mono text-[13px] text-ink">
-          {windowError}
-        </p>
-      ) : null}
       {updateError ? (
         <p role="alert" className="font-mono text-[13px] text-ink">
           {updateError}

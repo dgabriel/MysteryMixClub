@@ -125,7 +125,10 @@ describe("CreateClubScreen — per-field validation consistency (MYS-121, MYS-23
       /a club needs at least one mystery mix\./i,
     );
     expect(getInput("club-total-mixes")).toHaveAttribute("aria-invalid", "true");
-    expect(getInput("club-total-mixes")).toHaveAttribute("aria-describedby", "club-guard-error");
+    expect(getInput("club-total-mixes")).toHaveAttribute(
+      "aria-describedby",
+      "club-total-mixes-error",
+    );
     expect(onSubmit).not.toHaveBeenCalled();
   });
 

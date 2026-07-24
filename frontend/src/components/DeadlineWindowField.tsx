@@ -1,4 +1,5 @@
 import { TextField } from "./TextField";
+import { WarningIcon } from "./WarningIcon";
 
 type DeadlineWindowFieldProps = {
   idPrefix: string;
@@ -7,12 +8,12 @@ type DeadlineWindowFieldProps = {
   hours: string;
   onDaysChange: (value: string) => void;
   onHoursChange: (value: string) => void;
+  onBlur?: () => void;
   disabled?: boolean;
-  /** Mark both the days and hours inputs invalid — set when a validation
-   *  error refers to this window (MYS-121). */
-  invalid?: boolean;
-  /** id of the error message describing why this window is invalid. */
-  errorId?: string;
+  /** Calm, window-specific validation message, or null/undefined if valid.
+   *  Marks both the days and hours inputs Rust and renders once below the
+   *  pair (ADR 0004) rather than duplicating the message under each input. */
+  error?: string | null;
 };
 
 /**
@@ -28,10 +29,12 @@ export function DeadlineWindowField({
   hours,
   onDaysChange,
   onHoursChange,
+  onBlur,
   disabled,
-  invalid = false,
-  errorId,
+  error,
 }: DeadlineWindowFieldProps) {
+  const invalid = Boolean(error);
+  const errorId = error ? `${idPrefix}-error` : undefined;
   return (
     <div>
       <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
@@ -48,9 +51,10 @@ export function DeadlineWindowField({
           step={1}
           value={days}
           onChange={(e) => onDaysChange(e.target.value)}
+          onBlur={onBlur}
           disabled={disabled}
-          aria-invalid={invalid || undefined}
-          aria-describedby={invalid ? errorId : undefined}
+          invalid={invalid}
+          aria-describedby={errorId}
         />
         <TextField
           id={`${idPrefix}-hours`}
@@ -62,11 +66,22 @@ export function DeadlineWindowField({
           step={1}
           value={hours}
           onChange={(e) => onHoursChange(e.target.value)}
+          onBlur={onBlur}
           disabled={disabled}
-          aria-invalid={invalid || undefined}
-          aria-describedby={invalid ? errorId : undefined}
+          invalid={invalid}
+          aria-describedby={errorId}
         />
       </div>
+      {error ? (
+        <p
+          id={errorId}
+          role="alert"
+          className="mt-2 flex items-center gap-1.5 font-mono text-[13px] text-rust"
+        >
+          <WarningIcon className="shrink-0" />
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }

@@ -116,6 +116,9 @@ export function CreateClubScreen({
         <ConcentricRings size={72} accent className="mx-auto" />
 
         <h1 className="mt-8 text-center font-serif text-[34px] leading-tight">new club</h1>
+        <p className="mt-2 text-center font-mono text-[13px] font-light text-muted">
+          anyone you invite skips the waitlist and joins straight in.
+        </p>
 
         <form onSubmit={handleSubmit} noValidate className="mt-10 space-y-8">
           <TextField

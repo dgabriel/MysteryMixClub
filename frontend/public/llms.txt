@@ -1,0 +1,22 @@
+# MysteryMixClub
+
+> A platform-agnostic music club for close-knit friend groups — an invite-only alternative to Music League.
+
+MysteryMixClub is a place for friends to trade songs, discover what everyone's
+been listening to, and put their taste on the line. A club runs a series of
+"mystery mixes": members submit songs anonymously, vote on their favorites,
+and reveal who picked what together. Songs can be searched and verified
+across Spotify, Apple Music, Deezer, YouTube, YouTube Music, and Bandcamp, and
+playlists are auto-generated on Spotify, Apple Music, and YouTube — no single
+streaming service required.
+
+MysteryMixClub is invite-only: joining a club requires an invite link from an
+existing member, or joining the waitlist to request one.
+
+## Pages
+
+- [Sign in / join the waitlist](https://mysterymixclub.com/login): request a magic-link sign-in, or join the waitlist if you don't have an invite
+- [About](https://mysterymixclub.com/about): what MysteryMixClub is, who built it, and how to reach out
+- [Help](https://mysterymixclub.com/help): frequently asked questions
+- [Terms of Service](https://mysterymixclub.com/terms)
+- [Privacy Policy](https://mysterymixclub.com/privacy)

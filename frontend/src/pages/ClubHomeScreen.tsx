@@ -282,30 +282,33 @@ export function ClubHomeScreen({
           ) : null}
         </section>
 
-        {/* Invite share — a single shareable link, visible to any member. The
-            link expires after 48h; calm copy says so. */}
-        <section className="mt-12">
-          <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">invite</h2>
-          <div className="mt-4">
-            {inviteUrl ? (
-              <InviteShare inviteUrl={inviteUrl} />
-            ) : (
-              <>
-                <Button type="button" onClick={onGenerateInvite} disabled={generatingInvite}>
-                  {generatingInvite ? "generating…" : "invite"}
-                </Button>
-                <p className="mt-3 font-mono text-[13px] font-light text-muted">
-                  a shareable link, good for 48 hours.
-                </p>
-              </>
-            )}
-          </div>
-          {inviteError ? (
-            <p role="alert" className="mt-3 font-mono text-[13px] text-ink">
-              {inviteError}
-            </p>
-          ) : null}
-        </section>
+        {/* Invite share — a single shareable link. Admin-only (MYS-246): the
+            backend now rejects a non-admin's create-invite call, so a plain
+            member must not even see the option. */}
+        {isAdmin ? (
+          <section className="mt-12">
+            <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">invite</h2>
+            <div className="mt-4">
+              {inviteUrl ? (
+                <InviteShare inviteUrl={inviteUrl} />
+              ) : (
+                <>
+                  <Button type="button" onClick={onGenerateInvite} disabled={generatingInvite}>
+                    {generatingInvite ? "generating…" : "invite"}
+                  </Button>
+                  <p className="mt-3 font-mono text-[13px] font-light text-muted">
+                    a shareable link, good for 48 hours.
+                  </p>
+                </>
+              )}
+            </div>
+            {inviteError ? (
+              <p role="alert" className="mt-3 font-mono text-[13px] text-ink">
+                {inviteError}
+              </p>
+            ) : null}
+          </section>
+        ) : null}
 
         {/* Destructive actions (MYS-99): any admin (fixed organizer or
             co-organizer) can delete the club outright. The fixed organizer

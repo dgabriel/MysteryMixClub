@@ -73,6 +73,24 @@ describe("SongSearchCard", () => {
     );
   });
 
+  it("shows an auto-detected service label instead of a picker, updating as the link is typed (MYS-255)", async () => {
+    const user = userEvent.setup();
+    render(<SongSearchCard />);
+
+    await user.click(screen.getByRole("button", { name: /paste a link/i }));
+
+    // No interactive service picker left at all.
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+
+    // Defaults to Spotify (no preferredService passed) before anything is typed.
+    expect(screen.getByText("Spotify")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(/paste a link/i), "https://www.youtube.com/watch?v=z");
+    expect(screen.getByText("YouTube")).toBeInTheDocument();
+    expect(screen.queryByText("Spotify")).not.toBeInTheDocument();
+  });
+
   it("resolves a pasted link and renders the result card with platform links", async () => {
     mockResolve.mockResolvedValue(SONG);
     const user = userEvent.setup();

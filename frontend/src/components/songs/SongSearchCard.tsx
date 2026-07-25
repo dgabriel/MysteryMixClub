@@ -344,25 +344,12 @@ export function SongSearchCard({
           {mode === "link" ? (
             <form onSubmit={handleResolveLink} noValidate className="mt-5">
               <div>
-                <label
-                  htmlFor={`${idPrefix}-service`}
-                  className="block font-mono uppercase tracking-label text-[9px] text-muted"
-                >
+                <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
                   service
-                </label>
-                <select
-                  id={`${idPrefix}-service`}
-                  value={service}
-                  onChange={(e) => setService(e.target.value as PasteSourceKey)}
-                  disabled={loading}
-                  className="mt-1 w-full border-b border-ink bg-transparent font-mono text-[13px] text-ink focus:border-sage focus:outline-none disabled:opacity-50"
-                >
-                  {SERVICES.map((s) => (
-                    <option key={s.key} value={s.key}>
-                      {s.label}
-                    </option>
-                  ))}
-                </select>
+                </span>
+                <p className="mt-1 font-mono text-[13px] text-ink">
+                  {SERVICES.find((s) => s.key === service)?.label ?? "auto-detected"}
+                </p>
               </div>
               <div className="mt-5">
                 <TextField

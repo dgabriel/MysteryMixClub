@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Button } from "./Button";
 import { MusicNoteIcon } from "./MusicNoteIcon";
 import {
   ApiError,
@@ -56,6 +57,7 @@ export function AppleMusicPlaylist({ mixId }: { mixId: string }) {
   const [playlistName, setPlaylistName] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showSignInModal, setShowSignInModal] = useState(false);
   // Computed once — the OS doesn't change mid-session.
   const [isMobile] = useState(isAppleMobileOS);
 
@@ -92,11 +94,14 @@ export function AppleMusicPlaylist({ mixId }: { mixId: string }) {
 
   async function handleGenerate() {
     if (!developerToken) return;
+    setShowSignInModal(false);
     setBusy(true);
     setError(null);
     try {
       // Apple's popup must open from the click, so authorize before any await
-      // on our own API.
+      // on our own API. Called from the modal's own "continue" button, which
+      // is itself a fresh user gesture — the popup-blocker-safe requirement
+      // survives the extra step.
       const musicUserToken = await authorizeAppleMusic(developerToken);
       const result = await createApplePlaylist(mixId, musicUserToken);
       setPlaylistUrl(result.playlist_url);
@@ -156,10 +161,12 @@ export function AppleMusicPlaylist({ mixId }: { mixId: string }) {
         </>
       ) : (
         <>
-          <p className={NOTE_CLASS}>
-            opens apple&apos;s own sign-in. we never see or store your apple id password.
-          </p>
-          <button type="button" onClick={handleGenerate} disabled={busy} className={BUTTON_CLASS}>
+          <button
+            type="button"
+            onClick={() => setShowSignInModal(true)}
+            disabled={busy}
+            className={BUTTON_CLASS}
+          >
             <MusicNoteIcon />
             {busy ? "building playlist…" : "build this mystery mix in Apple Music"}
           </button>
@@ -167,6 +174,26 @@ export function AppleMusicPlaylist({ mixId }: { mixId: string }) {
         </>
       )}
       {error ? <p className={NOTE_CLASS}>{error}</p> : null}
+      {showSignInModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 px-4">
+          <div className="w-full max-w-sm border border-border bg-cream p-6">
+            <p className="font-mono text-[13px] font-light text-ink">
+              opens apple&apos;s own sign-in. we never see or store your apple id password.
+            </p>
+            <p className="mt-3 font-mono text-[13px] font-light text-ink">
+              before you sign in, check that the page&apos;s address reads apple.com.
+            </p>
+            <div className="mt-6 flex gap-4">
+              <Button type="button" onClick={handleGenerate}>
+                continue to apple music
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => setShowSignInModal(false)}>
+                cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

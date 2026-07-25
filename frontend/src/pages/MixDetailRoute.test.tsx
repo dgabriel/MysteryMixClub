@@ -7,6 +7,7 @@ import {
   addNote,
   castVotes,
   deleteSubmission,
+  editNote,
   editSubmission,
   extendVotingDeadline,
   getClub,
@@ -55,6 +56,7 @@ vi.mock("../services/api", async () => {
     castVotes: vi.fn(),
     getNotes: vi.fn(),
     addNote: vi.fn(),
+    editNote: vi.fn(),
     getSpotifyStatus: vi.fn(),
     getVoteCounts: vi.fn(),
   };
@@ -76,6 +78,7 @@ const mockGetMyVotes = vi.mocked(getMyVotes);
 const mockCastVotes = vi.mocked(castVotes);
 const mockGetNotes = vi.mocked(getNotes);
 const mockAddNote = vi.mocked(addNote);
+const mockEditNote = vi.mocked(editNote);
 const mockGetSpotifyStatus = vi.mocked(getSpotifyStatus);
 const mockGetVoteCounts = vi.mocked(getVoteCounts);
 const mockResolveSong = vi.mocked(resolveSong);
@@ -334,6 +337,43 @@ describe("MixDetailRoute", () => {
     );
     renderMix();
     expect(await screen.findByText(/^closes /i)).toBeInTheDocument();
+  });
+
+  it("open_submission, partial submission: leave-warning nudges toward the deadline when one is set — MYS-250", async () => {
+    mockGetMix.mockResolvedValue(
+      mix({ state: "open_submission", submission_deadline: "2026-07-05T12:00:00Z" }),
+    );
+    mockGetClub.mockResolvedValue({ ...club(), songs_per_submission: 3 });
+    mockGetMine.mockResolvedValue([mine({ id: "s-mine" })]); // 1 of 3 submitted
+    const user = userEvent.setup();
+    renderMix();
+
+    // Wait for the partial-submission state itself to be loaded (mine + club
+    // both async) before clicking, or the blocker's condition isn't armed
+    // yet and the navigation goes through unblocked.
+    await screen.findByRole("heading", { name: /submit song 2/i });
+    await user.click(screen.getByRole("button", { name: /Friday Mixtape/i }));
+
+    expect(
+      await screen.findByText(
+        "you've submitted 1 of 3 songs. come back before the deadline to submit your final 2 songs.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("open_submission, partial submission: leave-warning falls back to the plain count with no deadline — MYS-250", async () => {
+    mockGetMix.mockResolvedValue(mix({ state: "open_submission", submission_deadline: null }));
+    mockGetClub.mockResolvedValue({ ...club(), songs_per_submission: 3 });
+    mockGetMine.mockResolvedValue([mine({ id: "s-mine" })]);
+    const user = userEvent.setup();
+    renderMix();
+
+    await screen.findByRole("heading", { name: /submit song 2/i });
+    await user.click(screen.getByRole("button", { name: /Friday Mixtape/i }));
+
+    expect(
+      await screen.findByText("you've submitted 1 of 3 songs. leave anyway?"),
+    ).toBeInTheDocument();
   });
 
   it("closed: does not render the static deadline line — MYS-161", async () => {
@@ -658,19 +698,44 @@ describe("MixDetailRoute", () => {
   it("organizer can open voting; advancing calls updateMix", async () => {
     const user = userEvent.setup();
     renderMix();
-    const btn = await screen.findByRole("button", { name: /open voting/i });
+    const btn = await screen.findByRole("button", { name: /open mystery mix voting/i });
     await user.click(btn);
     expect(mockUpdateMix).toHaveBeenCalledWith("r1", { state: "open_voting" });
+  });
+
+  it("casual-mode club: the open_submission → open_voting button reads 'reveal the mystery mix' — MYS-256", async () => {
+    mockGetClub.mockResolvedValue({ ...club(), default_vibe_mode: true });
+    const user = userEvent.setup();
+    renderMix();
+
+    expect(
+      screen.queryByRole("button", { name: /open mystery mix voting/i }),
+    ).not.toBeInTheDocument();
+    const btn = await screen.findByRole("button", { name: /reveal the mystery mix/i });
+    await user.click(btn);
+    expect(mockUpdateMix).toHaveBeenCalledWith("r1", { state: "open_voting" });
+  });
+
+  it("competitive club: the open_submission → open_voting button reads 'open mystery mix voting' — MYS-256", async () => {
+    mockGetClub.mockResolvedValue({ ...club(), default_vibe_mode: false });
+    renderMix();
+
+    expect(
+      await screen.findByRole("button", { name: /^open mystery mix voting$/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /reveal the mystery mix/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("advance button resets after a successful open (not stuck on 'opening…') — MYS-95", async () => {
     const user = userEvent.setup();
     renderMix();
-    await user.click(await screen.findByRole("button", { name: /open voting/i }));
+    await user.click(await screen.findByRole("button", { name: /open mystery mix voting/i }));
     expect(mockUpdateMix).toHaveBeenCalled();
     // After success the button returns to its label; it must not stay "opening…".
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /open voting/i })).toBeInTheDocument(),
+      expect(screen.getByRole("button", { name: /open mystery mix voting/i })).toBeInTheDocument(),
     );
     expect(screen.queryByRole("button", { name: /opening/i })).not.toBeInTheDocument();
   });
@@ -679,7 +744,9 @@ describe("MixDetailRoute", () => {
     setAuth(OTHER);
     renderMix();
     await screen.findByText("late summer feels");
-    expect(screen.queryByRole("button", { name: /open voting/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /open mystery mix voting/i }),
+    ).not.toBeInTheDocument();
   });
 
   // --- Co-organizer parity (MYS-99): isAdmin (isOrganizer OR own row's
@@ -691,7 +758,9 @@ describe("MixDetailRoute", () => {
     setAuth(CO_ORGANIZER);
     renderMix();
     await screen.findByText("late summer feels");
-    expect(await screen.findByRole("button", { name: /open voting/i })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: /open mystery mix voting/i }),
+    ).toBeInTheDocument();
   });
 
   it("co-organizer viewer: sees EditMixForm (edit mix) on a pending mix", async () => {
@@ -1031,7 +1100,7 @@ describe("MixDetailRoute", () => {
 
   it("'reopen submissions' is never rendered while the mix is open_submission", async () => {
     renderMix(); // default mix() state is open_submission
-    await screen.findByRole("button", { name: "open voting" });
+    await screen.findByRole("button", { name: "open mystery mix voting" });
     expect(screen.queryByRole("button", { name: "reopen submissions" })).not.toBeInTheDocument();
   });
 
@@ -1726,6 +1795,8 @@ describe("MixDetailRoute", () => {
       voteCounts: { submission_id: string; title: string; artist: string; vote_count: number }[];
       myVotes: string[];
       votesPerPlayer?: number;
+      youtubePlaylistUrl?: string | null;
+      youtubeTrackCount?: number;
     }) {
       const vpp = opts.votesPerPlayer ?? 3;
       mockGetMix.mockResolvedValue(mix({ state: "open_voting", votes_per_player: vpp }));
@@ -1737,8 +1808,8 @@ describe("MixDetailRoute", () => {
         entries: opts.voteCounts.map((v) =>
           entry({ submission_id: v.submission_id, title: v.title, artist: v.artist }),
         ),
-        youtube_playlist_url: null,
-        youtube_track_count: 0,
+        youtube_playlist_url: opts.youtubePlaylistUrl ?? null,
+        youtube_track_count: opts.youtubeTrackCount ?? 0,
         voting_eligible: 0,
         voting_acted: 0,
         vibing_count: 0,
@@ -1905,6 +1976,28 @@ describe("MixDetailRoute", () => {
         ),
       ).toBeInTheDocument();
     });
+
+    it("keeps the playlist links visible after votes lock (MYS-236)", async () => {
+      setupLockedTally({
+        voteCounts: [
+          { submission_id: "p1", title: "Debaser", artist: "Pixies", vote_count: 2 },
+          { submission_id: "p2", title: "Hey", artist: "Pixies", vote_count: 1 },
+        ],
+        myVotes: ["p1"],
+        youtubePlaylistUrl: "https://www.youtube.com/watch_videos?video_ids=a,b",
+        youtubeTrackCount: 2,
+      });
+      renderMix();
+
+      await screen.findByText(/vote tally/i);
+
+      const link = screen.getByRole("link", { name: /open playlist in youtube/i });
+      expect(link).toHaveAttribute(
+        "href",
+        "https://www.youtube.com/watch_videos?video_ids=a,b",
+      );
+      expect(screen.getByText("2 of 2 on YouTube")).toBeInTheDocument();
+    });
   });
 
   describe("open_voting notes UX (MYS-21)", () => {
@@ -2030,9 +2123,57 @@ describe("MixDetailRoute", () => {
       // the new note appears
       expect(await within(card).findByText("great taste")).toBeInTheDocument();
       expect(within(card).getByText("Bob")).toBeInTheDocument();
-      // composer collapsed: textarea gone, leave-a-note affordance back
+      // composer collapsed: textarea gone. MYS-257: one note per player per
+      // song, so "leave a note" is replaced by "edit note".
       expect(within(card).queryByRole("textbox")).not.toBeInTheDocument();
-      expect(within(card).getByRole("button", { name: /leave a note/i })).toBeInTheDocument();
+      expect(within(card).queryByRole("button", { name: /^leave a note$/i })).not.toBeInTheDocument();
+      expect(within(card).getByRole("button", { name: /edit note/i })).toBeInTheDocument();
+    });
+
+    it("a player who already has a note gets an edit composer pre-filled with it, and saving calls editNote (MYS-257)", async () => {
+      const user = userEvent.setup();
+      setupVoting({ entries: [entry({ submission_id: "p1", title: "Debaser" })] });
+      mockGetNotes.mockResolvedValue([
+        {
+          id: "n1",
+          submission_id: "p1",
+          mix_id: "r1",
+          author_id: OTHER,
+          author_display_name: "Bob",
+          body: "already said my piece",
+          created_at: "2026-01-01T00:00:00Z",
+        },
+      ]);
+      mockEditNote.mockResolvedValue({
+        id: "n1",
+        submission_id: "p1",
+        mix_id: "r1",
+        author_id: OTHER,
+        author_display_name: "Bob",
+        body: "actually, revised",
+        created_at: "2026-01-01T00:00:00Z",
+      });
+      renderMix();
+
+      await screen.findByRole("button", { name: /Debaser/i });
+      const card = cardFor("Debaser");
+      // Only affordance visible before loading is "leave a note"; clicking it
+      // discovers the existing note (voting-open GET only ever returns the
+      // caller's own) and opens a composer pre-filled with it, not read-only.
+      await user.click(within(card).getByRole("button", { name: /leave a note/i }));
+
+      expect(mockGetNotes).toHaveBeenCalledWith("p1");
+      const textarea = await within(card).findByRole("textbox");
+      expect(textarea).toHaveValue("already said my piece");
+
+      await user.clear(textarea);
+      await user.type(textarea, "actually, revised");
+      await user.click(within(card).getByRole("button", { name: /save note/i }));
+
+      expect(mockEditNote).toHaveBeenCalledWith("p1", "actually, revised");
+      expect(mockAddNote).not.toHaveBeenCalled();
+      expect(await within(card).findByText("actually, revised")).toBeInTheDocument();
+      expect(within(card).queryByRole("textbox")).not.toBeInTheDocument();
     });
 
     it("an addNote ApiError surfaces in the actionError alert region", async () => {
@@ -2198,22 +2339,89 @@ describe("MixDetailRoute", () => {
           },
         ],
       });
+      // A vibing viewer's picks render the live SongNotes composer/list
+      // (MYS-256 follow-up: notes can still be left/edited after the reveal),
+      // not the read-only results-embedded notes array.
+      mockGetNotes.mockResolvedValue([
+        {
+          id: "n1",
+          submission_id: "mine",
+          mix_id: "r1",
+          author_id: OTHER,
+          author_display_name: "Ada",
+          body: "this one got me",
+          created_at: "2026-01-01T00:00:00Z",
+        },
+      ]);
       renderMix();
 
-      // Winner named (no count) and the full tracklist is visible, with notes
-      // behind the collapsible toggle. "Winning Song" shows in both the winner
-      // highlight and the tracklist.
+      // Winner named (no count) and the full tracklist is visible.
+      // "Winning Song" shows in both the winner highlight and the tracklist.
       expect(await screen.findByRole("heading", { name: /the picks/i })).toBeInTheDocument();
       expect(screen.getAllByText("Winning Song").length).toBeGreaterThanOrEqual(2);
       expect(screen.getByText("My Quiet Pick")).toBeInTheDocument();
       // The tracklist tiles are playable (regression — MYS-134 tiles need links).
       expect(screen.getByRole("link", { name: /on Spotify/i })).toBeInTheDocument();
+
       const user = userEvent.setup();
-      await user.click(screen.getByRole("button", { name: /show 1 note/i }));
-      expect(screen.getByText("this one got me")).toBeInTheDocument();
+      const card = cardFor("My Quiet Pick");
+      await user.click(within(card).getByRole("button", { name: /^notes$/i }));
+      expect(mockGetNotes).toHaveBeenCalledWith("mine");
+      expect(await within(card).findByText("this one got me")).toBeInTheDocument();
+      expect(within(card).getByText("Ada")).toBeInTheDocument();
+      // Still able to edit the note post-reveal (MYS-256 follow-up); a
+      // pre-existing note (mocked above) means the affordance reads "edit
+      // note" rather than "leave a note" (MYS-257).
+      expect(within(card).getByRole("button", { name: /edit note/i })).toBeInTheDocument();
+
       // No leaderboard and no vote tallies for a viber.
       expect(screen.queryByRole("heading", { name: /leaderboard/i })).not.toBeInTheDocument();
       expect(screen.queryByText(/\bvotes?\b/i)).not.toBeInTheDocument();
+    });
+
+    it("vibing viewer can leave a new note on a pick after the reveal (MYS-256 follow-up)", async () => {
+      setupClosed({
+        viewer_is_vibing: true,
+        submissions: [],
+        leaderboard: [],
+        winners: [],
+        picks: [
+          {
+            submission_id: "mine",
+            submitter_display_name: "Vera",
+            title: "My Quiet Pick",
+            artist: "Me",
+            source: null,
+            source_url: null,
+            platforms: {},
+            submitter_note: null,
+            notes: [],
+          },
+        ],
+      });
+      mockGetNotes.mockResolvedValue([]); // no note yet
+      mockAddNote.mockResolvedValue({
+        id: "n1",
+        submission_id: "mine",
+        mix_id: "r1",
+        author_id: ORGANIZER,
+        author_display_name: "Org",
+        body: "glad I finally caught this one",
+        created_at: "2026-01-01T00:00:00Z",
+      });
+      renderMix();
+
+      const user = userEvent.setup();
+      await screen.findByText("My Quiet Pick");
+      const card = cardFor("My Quiet Pick");
+      await user.click(within(card).getByRole("button", { name: /leave a note/i }));
+      await user.type(within(card).getByRole("textbox"), "glad I finally caught this one");
+      await user.click(within(card).getByRole("button", { name: /^leave note$/i }));
+
+      expect(mockAddNote).toHaveBeenCalledWith("mine", "glad I finally caught this one");
+      expect(
+        await within(card).findByText("glad I finally caught this one"),
+      ).toBeInTheDocument();
     });
 
     // ----- Most Noted ------------------------------------------------------ //

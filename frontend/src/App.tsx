@@ -1,21 +1,43 @@
+import { Suspense, lazy, type ReactNode } from "react";
 import { Navigate, RouterProvider, createBrowserRouter, useParams } from "react-router-dom";
 import { AuthProvider } from "./hooks/useAuth";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { LoginRoute } from "./pages/LoginRoute";
-import { AboutRoute } from "./pages/AboutRoute";
-import { TermsRoute } from "./pages/TermsRoute";
-import { PrivacyRoute } from "./pages/PrivacyRoute";
-import { HelpRoute } from "./pages/HelpRoute";
-import { VerifyRoute } from "./pages/VerifyRoute";
-import { HomeRoute } from "./pages/HomeRoute";
-import { OnboardingRoute } from "./pages/OnboardingRoute";
-import { CreateClubRoute } from "./pages/CreateClubRoute";
-import { ClubHomeRoute } from "./pages/ClubHomeRoute";
-import { MixDetailRoute } from "./pages/MixDetailRoute";
-import { JoinClubRoute } from "./pages/JoinClubRoute";
-import { AdminRoute } from "./pages/AdminRoute";
-import { ProfileRoute } from "./pages/ProfileRoute";
 import { AuthedLayout } from "./components/AuthedLayout";
+import { RouteFallback } from "./components/RouteFallback";
+
+// Lazy-loaded (MYS-240): everything except the /login entry point itself,
+// which is the page Lighthouse audits and the one that must not wait on
+// chunks it doesn't need. Cuts unused JS out of that first bundle.
+const AboutRoute = lazy(() => import("./pages/AboutRoute").then((m) => ({ default: m.AboutRoute })));
+const TermsRoute = lazy(() => import("./pages/TermsRoute").then((m) => ({ default: m.TermsRoute })));
+const PrivacyRoute = lazy(() =>
+  import("./pages/PrivacyRoute").then((m) => ({ default: m.PrivacyRoute })),
+);
+const HelpRoute = lazy(() => import("./pages/HelpRoute").then((m) => ({ default: m.HelpRoute })));
+const VerifyRoute = lazy(() =>
+  import("./pages/VerifyRoute").then((m) => ({ default: m.VerifyRoute })),
+);
+const HomeRoute = lazy(() => import("./pages/HomeRoute").then((m) => ({ default: m.HomeRoute })));
+const OnboardingRoute = lazy(() =>
+  import("./pages/OnboardingRoute").then((m) => ({ default: m.OnboardingRoute })),
+);
+const CreateClubRoute = lazy(() =>
+  import("./pages/CreateClubRoute").then((m) => ({ default: m.CreateClubRoute })),
+);
+const ClubHomeRoute = lazy(() =>
+  import("./pages/ClubHomeRoute").then((m) => ({ default: m.ClubHomeRoute })),
+);
+const MixDetailRoute = lazy(() =>
+  import("./pages/MixDetailRoute").then((m) => ({ default: m.MixDetailRoute })),
+);
+const JoinClubRoute = lazy(() =>
+  import("./pages/JoinClubRoute").then((m) => ({ default: m.JoinClubRoute })),
+);
+const AdminRoute = lazy(() => import("./pages/AdminRoute").then((m) => ({ default: m.AdminRoute })));
+const ProfileRoute = lazy(() =>
+  import("./pages/ProfileRoute").then((m) => ({ default: m.ProfileRoute })),
+);
 
 /**
  * Route map:
@@ -64,15 +86,22 @@ function LegacyPathRedirect({ prefix }: { prefix: "clubs" | "mixes" }) {
   return <Navigate to={`/${prefix}/${id}`} replace />;
 }
 
+/** Wraps a lazy-loaded route element in its own Suspense boundary (MYS-240) so
+ *  only that route's content shows the loading motif — a lazy child inside
+ *  AuthedLayout never unmounts the persistent TopNav around it. */
+function withSuspense(element: ReactNode) {
+  return <Suspense fallback={<RouteFallback />}>{element}</Suspense>;
+}
+
 const router = createBrowserRouter([
   { path: "/", element: <Navigate to="/login" replace /> },
   { path: "/login", element: <LoginRoute /> },
-  { path: "/about", element: <AboutRoute /> },
-  { path: "/terms", element: <TermsRoute /> },
-  { path: "/privacy", element: <PrivacyRoute /> },
-  { path: "/help", element: <HelpRoute /> },
-  { path: "/auth/verify", element: <VerifyRoute /> },
-  { path: "/onboarding", element: <OnboardingRoute /> },
+  { path: "/about", element: withSuspense(<AboutRoute />) },
+  { path: "/terms", element: withSuspense(<TermsRoute />) },
+  { path: "/privacy", element: withSuspense(<PrivacyRoute />) },
+  { path: "/help", element: withSuspense(<HelpRoute />) },
+  { path: "/auth/verify", element: withSuspense(<VerifyRoute />) },
+  { path: "/onboarding", element: withSuspense(<OnboardingRoute />) },
 
   // Authed screens share the TopNav via AuthedLayout (mounted once).
   {
@@ -82,30 +111,26 @@ const router = createBrowserRouter([
       </ProtectedRoute>
     ),
     children: [
-      { path: "/home", element: <HomeRoute /> },
-      { path: "/clubs/:id", element: <ClubHomeRoute /> },
-      { path: "/mixes/:id", element: <MixDetailRoute /> },
+      { path: "/home", element: withSuspense(<HomeRoute />) },
+      { path: "/clubs/:id", element: withSuspense(<ClubHomeRoute />) },
+      { path: "/mixes/:id", element: withSuspense(<MixDetailRoute />) },
       // Permanent legacy redirects — old emails link these shapes forever.
       { path: "/leagues/:id", element: <LegacyPathRedirect prefix="clubs" /> },
       { path: "/rounds/:id", element: <LegacyPathRedirect prefix="mixes" /> },
-      { path: "/profile", element: <ProfileRoute /> },
-      { path: "/admin", element: <AdminRoute /> },
+      { path: "/profile", element: withSuspense(<ProfileRoute />) },
+      { path: "/admin", element: withSuspense(<AdminRoute />) },
     ],
   },
 
   // Authed but outside the nav shell — a focused create form.
   {
     path: "/clubs/new",
-    element: (
-      <ProtectedRoute>
-        <CreateClubRoute />
-      </ProtectedRoute>
-    ),
+    element: <ProtectedRoute>{withSuspense(<CreateClubRoute />)}</ProtectedRoute>,
   },
   { path: "/leagues/new", element: <Navigate to="/clubs/new" replace /> },
 
-  { path: "/invite/:token", element: <JoinClubRoute /> },
-  { path: "/join/:token", element: <JoinClubRoute /> },
+  { path: "/invite/:token", element: withSuspense(<JoinClubRoute />) },
+  { path: "/join/:token", element: withSuspense(<JoinClubRoute />) },
   { path: "*", element: <Navigate to="/login" replace /> },
 ]);
 

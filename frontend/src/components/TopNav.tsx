@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { ConcentricRings } from "./ConcentricRings";
+import { Badge } from "./Badge";
 
 type TopNavProps = {
   /** Optional back affordance shown on the far left after the ring mark — used by
@@ -88,14 +89,17 @@ export function TopNav({ back }: TopNavProps) {
   if (!authed) {
     return (
       <header className="flex items-center justify-between px-4 py-4 sm:px-8">
-        <button
-          type="button"
-          onClick={() => navigate("/login")}
-          aria-label="login"
-          className="transition-opacity duration-150 hover:opacity-70"
-        >
-          <ConcentricRings size={28} accent />
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => navigate("/login")}
+            aria-label="login"
+            className="transition-opacity duration-150 hover:opacity-70"
+          >
+            <ConcentricRings size={28} accent />
+          </button>
+          <Badge>beta</Badge>
+        </div>
         <nav className="flex items-center gap-4">
           <button type="button" onClick={() => navigate("/login")} className={linkClass}>
             login
@@ -118,6 +122,7 @@ export function TopNav({ back }: TopNavProps) {
               from the one-Rust-per-screen rule (see style guide). */}
           <ConcentricRings size={28} accent />
         </button>
+        <Badge>beta</Badge>
         {back ? (
           <button type="button" onClick={() => navigate(back.to)} className={iconLinkClass}>
             <BackIcon />

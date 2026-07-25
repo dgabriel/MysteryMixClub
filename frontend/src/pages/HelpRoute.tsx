@@ -17,7 +17,7 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
       },
       {
         q: "what's the waitlist?",
-        a: "if you don't have an invite yet, some pages offer a waitlist join box instead. add your email, and we'll email you when a spot opens up.",
+        a: "if you don't have an invite yet, some pages offer a waitlist join box instead. add your email, and we'll email you when a spot opens up. an invite from a club skips the waitlist entirely, so if a friend invites you, you're in right away.",
       },
       {
         q: "how do i log in?",

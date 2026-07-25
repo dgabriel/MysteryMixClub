@@ -5,6 +5,7 @@ import {
   addNote,
   castVotes,
   deleteSubmission,
+  editNote,
   editSubmission,
   extendVotingDeadline,
   getClub,
@@ -99,6 +100,18 @@ const PLATFORM_LABELS: { key: string; label: string }[] = [
   { key: "youtubeMusic", label: "YouTube Music" },
   { key: "bandcamp", label: "Bandcamp" },
 ];
+
+/** Partial-submission leave-warning copy (MYS-250) — the submitted/cap count
+ *  alone didn't convey the deadline pressure, so a deadline nudge replaces
+ *  the closing question when the mix has an active submission deadline;
+ *  falls back to the original phrasing when it doesn't. */
+function leaveWarningMessage(mix: Mix, submitted: number, cap: number): string {
+  const base = `you've submitted ${submitted} of ${cap} songs.`;
+  if (!mix.submission_deadline) return `${base} leave anyway?`;
+  const remaining = cap - submitted;
+  const song = remaining === 1 ? "song" : "songs";
+  return `${base} come back before the deadline to submit your final ${remaining} ${song}.`;
+}
 
 /**
  * Mix detail (`/mixes/:id`). State-aware:
@@ -547,7 +560,7 @@ export function MixDetailRoute() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 px-4">
           <div className="w-full max-w-sm border border-border bg-cream p-6">
             <p className="font-mono text-[13px] font-light text-ink">
-              you&apos;ve submitted {mySubmissions.length} of {submissionCap} songs. leave anyway?
+              {leaveWarningMessage(mix, mySubmissions.length, submissionCap)}
             </p>
             <div className="mt-6 flex gap-4">
               <Button type="button" onClick={() => blocker.proceed()}>
@@ -611,6 +624,7 @@ export function MixDetailRoute() {
               onExtendVoting={handleExtendVoting}
               extendingVoting={extendingVoting}
               totalVotes={voteCounts.reduce((sum, entry) => sum + entry.vote_count, 0)}
+              casualClub={!!club?.default_vibe_mode}
             />
             <EditMixForm
               mix={mix}
@@ -695,7 +709,7 @@ export function MixDetailRoute() {
                     : []
                 }
               />
-              <ResultsSection results={results} userId={userId} />
+              <ResultsSection results={results} userId={userId} onActionError={setActionError} />
             </>
           )}
         </section>
@@ -716,6 +730,7 @@ function OrganizerControls({
   onExtendVoting,
   extendingVoting,
   totalVotes,
+  casualClub,
 }: {
   state: MixState;
   hasTheme: boolean;
@@ -728,10 +743,16 @@ function OrganizerControls({
   onExtendVoting: (localDatetime: string) => Promise<boolean | undefined>;
   extendingVoting: boolean;
   totalVotes: number;
+  /** Club-wide casual mode (MYS-256) — no real competitive voting happens for
+   *  an all-vibing club, so the open_submission → open_voting transition
+   *  reads as revealing the mystery mix rather than "opening voting". Notes
+   *  are unaffected either way — they're never gated by vibe mode. */
+  casualClub: boolean;
 }) {
   // Closing is the one forward transition that cascades and can't be undone
-  // in-app (MYS-170) — gated behind an explicit second step. "open mix" /
-  // "open voting" stay one-click; they're lower-risk and easy to reason about.
+  // in-app (MYS-170) — gated behind an explicit second step. Opening the mix
+  // / opening voting stay one-click; they're lower-risk and easy to reason
+  // about.
   const [confirmingClose, setConfirmingClose] = useState(false);
   // The one sanctioned backward step (MYS-168) — same two-step treatment,
   // since it discards any votes already cast.
@@ -754,9 +775,12 @@ function OrganizerControls({
     state === "pending"
       ? "open mix"
       : state === "open_submission"
-        ? "open voting"
+        ? casualClub
+          ? "reveal the mystery mix"
+          : "open mystery mix voting"
         : "close mix";
-  const busyLabel = next === "closed" ? "closing…" : "opening…";
+  const busyLabel =
+    next === "closed" ? "closing…" : casualClub && next === "open_voting" ? "revealing…" : "opening…";
   const busy = advancing || rollingBack || extendingVoting;
 
   // Bounds for the extend picker: must be after the current deadline, and no
@@ -1554,7 +1578,17 @@ function VotingSection({
 
   // If votes are locked, show the vote counts tally instead of voting controls
   if (isVotesLocked) {
-    return <VotingTally voteCounts={voteCounts} votesSaved={votesSaved} myVotes={myVotes} />;
+    return (
+      <VotingTally
+        mixId={mixId}
+        entries={entries}
+        voteCounts={voteCounts}
+        votesSaved={votesSaved}
+        myVotes={myVotes}
+        youtubePlaylistUrl={youtubePlaylistUrl}
+        youtubeTrackCount={youtubeTrackCount}
+      />
+    );
   }
 
   if (entries.length === 0) {
@@ -1788,15 +1822,26 @@ function VotingSection({
  * This replaces the voting controls after a player has cast their votes.
  * The vote counts update automatically as others vote, but notes remain hidden
  * until the mix closes (MYS-72 - notes revealed only in the reveal).
+ *
+ * Keeps the playlist links visible (MYS-236) — locking in a vote shouldn't cut
+ * a player off from actually listening to the mix.
  */
 function VotingTally({
+  mixId,
+  entries,
   voteCounts,
   votesSaved,
   myVotes,
+  youtubePlaylistUrl,
+  youtubeTrackCount,
 }: {
+  mixId: string;
+  entries: PlaylistEntry[];
   voteCounts: VoteCountEntry[];
   votesSaved: boolean;
   myVotes: string[];
+  youtubePlaylistUrl: string | null;
+  youtubeTrackCount: number;
 }) {
   // Sort by vote count desc, then title asc for deterministic order
   const sorted = [...voteCounts].sort((a, b) => {
@@ -1818,6 +1863,19 @@ function VotingTally({
       <p className="font-mono text-[13px] font-light text-muted">
         you&apos;ve locked in your votes — check back to see how the voting goes.
       </p>
+      <h2 className="mt-8 font-mono uppercase tracking-label text-[9px] text-muted">
+        playlist ({entries.length})
+      </h2>
+      <div className="mt-4">
+        <YouTubePlaylistLink
+          youtubePlaylistUrl={youtubePlaylistUrl}
+          youtubeTrackCount={youtubeTrackCount}
+          entryCount={entries.length}
+        />
+        <SourceOnlyTracks tracks={toSourceOnly(entries)} />
+        <SpotifyPlaylist mixId={mixId} />
+        <AppleMusicPlaylist mixId={mixId} />
+      </div>
       <h2 className="mt-8 font-mono uppercase tracking-label text-[9px] text-muted">
         vote tally ({voteCounts.length} songs)
       </h2>
@@ -1934,20 +1992,69 @@ function SongNotes({
     }
   }, [open, loaded, submissionId, onActionError]);
 
+  // MYS-257: one note per player per song. While voting is open, GET only
+  // ever returns the caller's own notes, so a non-empty loaded list here
+  // means they already have theirs — open the composer pre-filled with it
+  // (edit) instead of a blank one (leave). If we haven't loaded yet, load
+  // first to find out; this also covers a second tab / stale-state 409/404
+  // as a fallback.
+  async function startComposing() {
+    if (!loaded) {
+      try {
+        const fetched = await getNotes(submissionId);
+        setNotes(fetched);
+        setLoaded(true);
+        if (fetched.length > 0) {
+          setDraft(fetched[0].body);
+        }
+      } catch (err) {
+        onActionError(err instanceof ApiError ? err.message : "couldn't load notes.");
+        return;
+      }
+    } else if (notes.length > 0) {
+      setDraft(notes[0].body);
+    }
+    setComposing(true);
+    setOpen(true);
+  }
+
+  const ownNote = loaded && notes.length > 0 ? notes[0] : null;
+
   async function submit() {
     const body = draft.trim();
     if (!body || body.length > NOTE_MAX || posting) return;
     setPosting(true);
     onActionError(null);
     try {
-      const created = await addNote(submissionId, body);
-      setNotes((current) => [...current, created]);
-      setLoaded(true);
+      if (ownNote) {
+        const updated = await editNote(submissionId, body);
+        setNotes((current) => current.map((n) => (n.id === updated.id ? updated : n)));
+      } else {
+        const created = await addNote(submissionId, body);
+        setNotes((current) => [...current, created]);
+        setLoaded(true);
+      }
       setDraft("");
       setComposing(false);
       setOpen(true);
     } catch (err) {
-      onActionError(err instanceof ApiError ? err.message : "couldn't leave your note. try again.");
+      if (err instanceof ApiError && (err.status === 409 || err.status === 404)) {
+        // Out of sync with the server (race with another tab/session, or the
+        // note we thought we had is gone) — refresh so the UI reflects
+        // reality instead of leaving a dead composer open.
+        setComposing(false);
+        try {
+          setNotes(await getNotes(submissionId));
+          setLoaded(true);
+        } catch {
+          // best-effort refresh; the error message below still surfaces.
+        }
+      }
+      onActionError(
+        err instanceof ApiError
+          ? err.message
+          : `couldn't ${ownNote ? "save your edit" : "leave your note"}. try again.`,
+      );
     } finally {
       setPosting(false);
     }
@@ -1970,13 +2077,10 @@ function SongNotes({
         {!composing ? (
           <button
             type="button"
-            onClick={() => {
-              setComposing(true);
-              setOpen(true);
-            }}
+            onClick={() => void startComposing()}
             className="font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink"
           >
-            leave a note
+            {ownNote ? "edit note" : "leave a note"}
           </button>
         ) : null}
       </div>
@@ -2019,14 +2123,14 @@ function SongNotes({
                     cancel
                   </button>
                   <Button type="button" onClick={() => void submit()} disabled={submitDisabled}>
-                    {posting ? "posting…" : "leave note"}
+                    {posting ? "saving…" : ownNote ? "save note" : "leave note"}
                   </Button>
                 </div>
               </div>
             </div>
           ) : null}
 
-          {loaded && notes.length > 0 ? (
+          {loaded && notes.length > 0 && !composing ? (
             <ul className="mt-4 space-y-3 border-t border-border pt-4">
               {notes.map((note) => (
                 <li key={note.id}>
@@ -2152,9 +2256,11 @@ function CollapsibleNotes({ notes }: { notes: ResultNote[] }) {
 function ResultsSection({
   results,
   userId,
+  onActionError,
 }: {
   results: MixResults | null;
   userId: string | null;
+  onActionError: (message: string | null) => void;
 }) {
   if (!results) {
     return <p className="font-mono text-[13px] font-light text-muted">no submissions</p>;
@@ -2163,7 +2269,7 @@ function ResultsSection({
   // A vibing viewer gets the trimmed reveal — winner(s) + Most Noted + their own
   // song's notes, no rankings or vote counts (MYS-112).
   if (results.viewer_is_vibing) {
-    return <VibingReveal results={results} />;
+    return <VibingReveal results={results} onActionError={onActionError} />;
   }
 
   if (results.submissions.length === 0) {
@@ -2289,7 +2395,13 @@ function RankBadge({ rank }: { rank: number }) {
  * one Rust signal), the winner(s) by votes — named, no counts — and the full
  * tracklist with notes but NO scores or leaderboard.
  */
-function VibingReveal({ results }: { results: MixResults }) {
+function VibingReveal({
+  results,
+  onActionError,
+}: {
+  results: MixResults;
+  onActionError: (message: string | null) => void;
+}) {
   const { most_noted, winners, picks } = results;
   return (
     <div className="animate-fade-in space-y-12">
@@ -2297,7 +2409,9 @@ function VibingReveal({ results }: { results: MixResults }) {
 
       {winners.length > 0 ? <VibeWinnersSection winners={winners} /> : null}
 
-      {picks.length > 0 ? <VibePicksSection picks={picks} /> : null}
+      {picks.length > 0 ? (
+        <VibePicksSection picks={picks} onActionError={onActionError} />
+      ) : null}
     </div>
   );
 }
@@ -2335,8 +2449,17 @@ function VibeWinnersSection({ winners }: { winners: WinnerReveal[] }) {
 
 /** The full tracklist as a vibing viewer sees it (MYS-134): every submitted song
  *  with its submitter and notes, but NO vote counts or ranking — so they can see
- *  what was in the mix without any scores. */
-function VibePicksSection({ picks }: { picks: RevealPick[] }) {
+ *  what was in the mix without any scores. A vibing viewer may keep leaving or
+ *  editing their own note on any pick even after the reveal (MYS-256
+ *  follow-up), so this renders the live SongNotes composer+list rather than
+ *  the read-only CollapsibleNotes used elsewhere on the reveal. */
+function VibePicksSection({
+  picks,
+  onActionError,
+}: {
+  picks: RevealPick[];
+  onActionError: (message: string | null) => void;
+}) {
   return (
     <section>
       <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
@@ -2364,7 +2487,7 @@ function VibePicksSection({ picks }: { picks: RevealPick[] }) {
                 </p>
               ) : null}
               <PlatformLinks platforms={p.platforms} title={p.title} source={p.source} />
-              {p.notes.length > 0 ? <CollapsibleNotes notes={p.notes} /> : null}
+              <SongNotes submissionId={p.submission_id} onActionError={onActionError} />
             </Card>
           </li>
         ))}

@@ -202,6 +202,7 @@ async def test_counts_are_per_submission_not_global(db_session):
     # The winner's note_count reflects only its own notes, not the mix total.
     organizer = await _seed_user(db_session, "o@example.com")
     member = await _seed_user(db_session, "m@example.com")
+    third = await _seed_user(db_session, "t@example.com")
     mix_ = await _seed_mix(db_session, organizer)
     sub_win = await _seed_submission(db_session, mix_, organizer, title="Winner")
     sub_other = await _seed_submission(db_session, mix_, member, title="Other")
@@ -209,7 +210,7 @@ async def test_counts_are_per_submission_not_global(db_session):
 
     await _add_note(db_session, mix_id, win_id, organizer.id, "w1")
     await _add_note(db_session, mix_id, win_id, member.id, "w2")
-    await _add_note(db_session, mix_id, win_id, member.id, "w3")
+    await _add_note(db_session, mix_id, win_id, third.id, "w3")
     await _add_note(db_session, mix_id, other_id, organizer.id, "o1")
 
     result = await compute_most_noted(mix_id, db_session)

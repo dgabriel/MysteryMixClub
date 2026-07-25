@@ -91,7 +91,10 @@ Related: branch model in `docs/ci-cd.md`. Hook PATH gotcha at the bottom of this
 - Feature branch → PR into `develop`; CI (`ruff · mypy · pytest` + frontend
   typecheck) must be green before merge.
 - `develop → main` is a separate, deliberate promotion PR with a manual approval
-  gate (deploys to prod).
+  gate (deploys to prod). **Always merge it with "Create a merge commit" — never
+  squash, never rebase.** A GitHub ruleset on `main` enforces this (merge-only;
+  `develop` is untouched and still squash-friendly for feature PRs). See "Why
+  promotions must be a real merge" below for what happens if this is skipped.
 - **Always target `develop`** when creating a PR. Pass `--base develop` explicitly
   (`gh pr create --base develop …`) — never let the CLI default to `main`.
 - Keep the branch current with `git pull --rebase` (your own branch) or a merge
@@ -125,6 +128,30 @@ branch looks merged, the code is gone. Rules:
 3. **Recover, don't recreate.** A "lost" feature is almost always still reachable
    via `git log --all` / `git reflog` on its original branch. Port the missing
    hunks forward; never rewrite the feature from scratch.
+
+### Why promotions must be a real merge
+
+On 2026-07-25, two `develop → main` promotion PRs (#175, #182) were squash-merged.
+A squash collapses the source branch's commits into one flattened commit on the
+target — so `main` never recorded those `develop` commits as ancestors. `git
+merge-base main develop` stayed pinned at the point *before* the first-ever
+promotion, months earlier.
+
+The practical effect: the next promotion PR showed conflicts in files that had
+been touched again on `develop` after the squash (MYS-239's form-validation
+rework), even though there was no real disagreement — `main`'s side was just
+stale pre-MYS-239 code sitting at the wrong point in git's history. Fixed by a
+one-time real merge of `main` into `develop` (restoring the ancestor link) before
+the next promotion could go through cleanly. Full incident + diagnosis in the
+PR that fixed it (`chore/heal-main-develop-history`).
+
+**A squash or rebase merge into `main` will silently reintroduce this** — the
+next promotion after it will show phantom conflicts again, for the same
+structural reason. This is why the merge method is enforced by a GitHub ruleset
+on `main` (`allowed_merge_methods: ["merge"]`), not just this doc — don't work
+around it by merging outside `gh pr merge`; if a promotion PR is not
+fast-forwardable and `gh pr merge --merge` refuses, stop and reconcile the
+history first (see above), don't reach for `--squash` as the fast way out.
 
 ---
 

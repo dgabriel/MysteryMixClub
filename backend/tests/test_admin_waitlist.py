@@ -14,6 +14,7 @@ test_auth_request.py / test_auth_verify.py.
 """
 
 import uuid
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from sqlalchemy import select
@@ -25,6 +26,7 @@ from app.models.waitlist_entry import WaitlistEntry
 
 ADMIN_EMAIL = "admin@example.com"
 LIST_URL = "/api/v1/admin/waitlist"
+VERIFY_URL = "/api/v1/auth/verify"
 
 
 @pytest.fixture
@@ -150,6 +152,37 @@ async def test_invite_mints_a_clubless_invite_and_emails_it(client, db_session, 
     to, _subject, html = email_spy.sends[0]
     assert to == "waiting@example.com"
     assert invites[0].token in html
+
+
+async def test_invite_email_link_signs_in_directly_like_a_first_magic_link(
+    client, db_session, email_spy
+):
+    """The emailed link must be a one-click /auth/verify sign-in — not the
+    /invite/:token preview page, which would force a "sign in" detour back
+    through /login (retype email, wait for a second email). Regression for
+    the confusing double-email flow this replaced."""
+    admin = await _seed_admin(db_session)
+    entry = await _seed_entry(db_session, "waiting@example.com")
+
+    resp = await client.post(_invite_url(entry.id), headers=_auth(admin.id))
+    assert resp.status_code == 200, resp.text
+
+    _to, _subject, html = email_spy.sends[0]
+    href = html.split('href="')[1].split('"')[0]
+    parsed = urlparse(href)
+    assert parsed.path == "/auth/verify"
+    params = parse_qs(parsed.query)
+    assert "token" in params
+    assert "invite" in params
+
+    verify_resp = await client.get(
+        VERIFY_URL, params={"token": params["token"][0], "invite": params["invite"][0]}
+    )
+    assert verify_resp.status_code == 200, verify_resp.text
+    assert "access_token" in verify_resp.json()
+
+    user = await db_session.scalar(select(User).where(User.email == "waiting@example.com"))
+    assert user is not None
 
 
 class _FailingEmailSender:

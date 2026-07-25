@@ -177,9 +177,10 @@ async def test_intruder_cannot_patch_club(client, db_session):
 
 
 async def test_intruder_cannot_create_invite(client, db_session):
+    # Organizer-gated since MYS-246 (previously member-gated).
     s = await _build(db_session, mix_a_state="open_voting")
     resp = await client.post(f"/api/v1/clubs/{s.club_a_id}/invites", headers=_auth(s.intruder_id))
-    _assert_blocked(resp)
+    _assert_blocked(resp, organizer_gated=True)
 
 
 async def test_intruder_cannot_create_mix(client, db_session):

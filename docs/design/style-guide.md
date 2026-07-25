@@ -32,6 +32,7 @@
 
 - **Rust is a signal.** Use it for the single most important piece of information or action on a screen — a status badge, a card accent line, a CTA arrow. Never use it twice in the same view.
   - **Exception — the nav brand mark.** The concentric-rings mark in the shared top nav may carry its single off-center Rust dot ("the fish") as persistent *brand identity*. Because the nav is global chrome, this dot does **not** count against a screen's one-Rust budget: a screen may still use Rust once in its own content. This is the only standing exception to the one-use rule.
+  - **Exception — form validation errors (ADR 0004).** Invalid form fields are their own Rust category, separate from a screen's one decorative/informational use: every invalid field on a form may show Rust (underline + inline error text, with a small warning icon) at the same time, however many fields are currently invalid. A screen with a form does not also get to spend Rust decoratively — drop any decorative Rust (e.g. a `ConcentricRings` accent dot) on screens where form errors can appear. Do not extend Rust to a third category without stopping to ask first.
 - **Gold is an achievement signal.** Use it exclusively for achievement moments: winner and most-noted reveals (the crown icon on section headings) and a **completed club** (the crown + thin left accent on a finished club's card). Do not use Gold decoratively or expand it to other contexts without updating this guide.
 - **Vinyl is for avatar illustrations only.** The five music hardware SVG avatars (cassette, record, boom box, walkman, flying V) use Vinyl as their stroke/fill. Do not use Vinyl outside of avatar illustration contexts.
 - **Ink as a surface is a time signal.** An Ink-filled chip with Cream text is reserved for time-critical information — deadlines and countdowns (see Badges → Time signal). One per screen; never decorative.
@@ -113,6 +114,7 @@ Page horizontal padding: `32px` (desktop), `16px` (mobile)
 - Label above: DM Mono, 9px, ALL CAPS, letter-spacing 0.15em, Muted color
 - Placeholder: Muted `#6D6A66`
 - Focus state: underline color shifts to Sage `#506755`
+- **Invalid state (ADR 0004):** underline color shifts to Rust `#AD4F39`. Error copy appears directly below the field: DM Mono, 13px, Rust text, with a small 12px warning-triangle line icon inline before the message. Multiple fields may show this at once — see the Rust usage exception above.
 
 ---
 

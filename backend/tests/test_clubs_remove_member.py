@@ -298,24 +298,26 @@ async def test_non_member_self_leave_returns_403(client, db_session):
     assert resp.status_code == 403, resp.text
 
 
-async def test_removed_member_loses_access_to_invites(client, db_session):
+async def test_removed_co_organizer_loses_access_to_invites(client, db_session):
+    # Invite creation is organizer/co-organizer only (MYS-246), so this needs
+    # an admin member to have access to lose in the first place.
     organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
     club = await _seed_club(db_session, organizer)
-    member = await _seed_user(db_session, email="member@example.com", display_name="Member")
-    await _seed_member(db_session, club, member)
+    co_organizer = await _seed_user(db_session, email="co@example.com", display_name="Co")
+    await _seed_member(db_session, club, co_organizer, role="admin")
 
-    # Sanity: while active, the member CAN generate an invite.
-    pre = await client.post(_invites_url(club.id), headers=_auth_header(member.id))
+    # Sanity: while active, the co-organizer CAN generate an invite.
+    pre = await client.post(_invites_url(club.id), headers=_auth_header(co_organizer.id))
     assert pre.status_code == 201, pre.text
 
-    # Organizer removes the member.
+    # Organizer removes the co-organizer.
     removed = await client.delete(
-        _remove_url(club.id, member.id),
+        _remove_url(club.id, co_organizer.id),
         headers=_auth_header(organizer.id),
     )
     assert removed.status_code == 204, removed.text
 
-    # The removed member can no longer generate invites — the active-member gate
-    # now rejects them.
-    post = await client.post(_invites_url(club.id), headers=_auth_header(member.id))
+    # The removed co-organizer can no longer generate invites — the
+    # active-admin gate now rejects them.
+    post = await client.post(_invites_url(club.id), headers=_auth_header(co_organizer.id))
     assert post.status_code == 403, post.text

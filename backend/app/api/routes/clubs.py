@@ -666,21 +666,11 @@ async def create_invite(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> InviteResponse:
-    club = await db.scalar(select(Club).where(Club.id == league_id))
-    if club is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="club not found")
-
-    # Only an active member (removed_at IS NULL) may generate invites. The
-    # organizer has such a row from club creation, so the organizer passes.
-    membership = await db.scalar(
-        select(ClubMember).where(
-            ClubMember.club_id == league_id,
-            ClubMember.user_id == current_user.id,
-            ClubMember.removed_at.is_(None),
-        )
+    # Only an organizer or co-organizer may generate invites (MYS-246) — a
+    # regular member should not see or reach this route.
+    await _load_club_as_organizer(
+        league_id, current_user, db, "only an organizer or co-organizer can create invites"
     )
-    if membership is None:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="not a member")
 
     # Shareable-link invite with a 48h expiry (MYS-126); after that the organizer
     # must generate a fresh link.

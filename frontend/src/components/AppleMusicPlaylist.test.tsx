@@ -45,6 +45,51 @@ describe("AppleMusicPlaylist", () => {
     expect(screen.getByText(/requires apple music subscription/i)).toBeInTheDocument();
   });
 
+  it("shows a reassurance modal before authorizing — Apple's own sign-in, password-free, check the url (MYS-254)", async () => {
+    render(<AppleMusicPlaylist mixId="r1" />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /build this mystery mix in apple music/i }),
+    );
+
+    expect(
+      screen.getByText(/opens apple's own sign-in\. we never see or store your apple id password\./i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/check that the page's address reads apple\.com/i),
+    ).toBeInTheDocument();
+    // Not yet authorized — the modal is an interstitial, not an auto-trigger.
+    expect(mockAuthorize).not.toHaveBeenCalled();
+  });
+
+  it("cancelling the reassurance modal closes it without authorizing", async () => {
+    render(<AppleMusicPlaylist mixId="r1" />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /build this mystery mix in apple music/i }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+
+    expect(
+      screen.queryByText(/opens apple's own sign-in/i),
+    ).not.toBeInTheDocument();
+    expect(mockAuthorize).not.toHaveBeenCalled();
+  });
+
+  it("continuing from the reassurance modal authorizes and closes it", async () => {
+    render(<AppleMusicPlaylist mixId="r1" />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /build this mystery mix in apple music/i }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: /continue to apple music/i }));
+
+    await waitFor(() => expect(mockAuthorize).toHaveBeenCalledWith("dev-token"));
+    expect(
+      screen.queryByText(/opens apple's own sign-in/i),
+    ).not.toBeInTheDocument();
+  });
+
   it("shows the personal link when one was already generated (no direct url)", async () => {
     // No direct_playlist_url (e.g. a pre-MYS-214 row): falls back to the
     // library link and "look for it by name" prompt on every platform.
@@ -189,6 +234,7 @@ describe("AppleMusicPlaylist", () => {
     await userEvent.click(
       await screen.findByRole("button", { name: /build this mystery mix in apple music/i }),
     );
+    await userEvent.click(screen.getByRole("button", { name: /continue to apple music/i }));
 
     await waitFor(() => expect(mockAuthorize).toHaveBeenCalledWith("dev-token"));
     expect(mockCreate).toHaveBeenCalledWith("r1", "mut-123");
@@ -206,6 +252,7 @@ describe("AppleMusicPlaylist", () => {
     await userEvent.click(
       await screen.findByRole("button", { name: /build this mystery mix in apple music/i }),
     );
+    await userEvent.click(screen.getByRole("button", { name: /continue to apple music/i }));
 
     expect(await screen.findByText(/connection expired/i)).toBeInTheDocument();
     // Still offering the retry, not a dead end.
@@ -221,6 +268,7 @@ describe("AppleMusicPlaylist", () => {
     await userEvent.click(
       await screen.findByRole("button", { name: /build this mystery mix in apple music/i }),
     );
+    await userEvent.click(screen.getByRole("button", { name: /continue to apple music/i }));
 
     expect(await screen.findByText(/couldn't build the playlist/i)).toBeInTheDocument();
   });

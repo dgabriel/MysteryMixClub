@@ -58,7 +58,7 @@ import { MedalIcon } from "../components/MedalIcon";
 import { MusicNoteIcon } from "../components/MusicNoteIcon";
 import { DeadlineChip } from "../components/DeadlineChip";
 import { HelpLink } from "../components/HelpLink";
-import { toDatetimeLocalValue } from "../utils/deadline";
+import { formatCountdown, toDatetimeLocalValue } from "../utils/deadline";
 
 const STATE_LABEL: Record<MixState, string> = {
   pending: "upcoming",
@@ -100,6 +100,23 @@ const PLATFORM_LABELS: { key: string; label: string }[] = [
   { key: "youtubeMusic", label: "YouTube Music" },
   { key: "bandcamp", label: "Bandcamp" },
 ];
+
+/** Partial-submission leave-warning copy (MYS-250) — the submitted/cap count
+ *  alone didn't convey the deadline pressure, so a time clause is inserted
+ *  when the mix has an active submission deadline; omitted (falls back to the
+ *  original phrasing) when it doesn't. */
+function leaveWarningMessage(mix: Mix, submitted: number, cap: number): string {
+  const base = `you've submitted ${submitted} of ${cap} songs.`;
+  const countdown = formatCountdown(mix);
+  if (!countdown) return `${base} leave anyway?`;
+  const remaining = cap - submitted;
+  const song = remaining === 1 ? "song" : "songs";
+  const clause =
+    countdown === "closing soon…"
+      ? "submissions close soon."
+      : `${countdown} to submit your final ${remaining} ${song}.`;
+  return `${base} ${clause} leave anyway?`;
+}
 
 /**
  * Mix detail (`/mixes/:id`). State-aware:
@@ -548,7 +565,7 @@ export function MixDetailRoute() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 px-4">
           <div className="w-full max-w-sm border border-border bg-cream p-6">
             <p className="font-mono text-[13px] font-light text-ink">
-              you&apos;ve submitted {mySubmissions.length} of {submissionCap} songs. leave anyway?
+              {leaveWarningMessage(mix, mySubmissions.length, submissionCap)}
             </p>
             <div className="mt-6 flex gap-4">
               <Button type="button" onClick={() => blocker.proceed()}>

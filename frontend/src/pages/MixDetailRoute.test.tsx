@@ -339,6 +339,48 @@ describe("MixDetailRoute", () => {
     expect(await screen.findByText(/^closes /i)).toBeInTheDocument();
   });
 
+  it("open_submission, partial submission: leave-warning conveys time pressure when a deadline is set — MYS-250", async () => {
+    // A real (not faked) near-future deadline, with a wide-enough tolerance
+    // regex that a few ms of test execution can't flip the expected hour —
+    // fake timers here fought react-router's useBlocker (see git history for
+    // why that approach was dropped).
+    const deadline = new Date(Date.now() + 3 * 60 * 60 * 1000 + 12 * 60 * 1000);
+    mockGetMix.mockResolvedValue(
+      mix({ state: "open_submission", submission_deadline: deadline.toISOString() }),
+    );
+    mockGetClub.mockResolvedValue({ ...club(), songs_per_submission: 3 });
+    mockGetMine.mockResolvedValue([mine({ id: "s-mine" })]); // 1 of 3 submitted
+    const user = userEvent.setup();
+    renderMix();
+
+    // Wait for the partial-submission state itself to be loaded (mine + club
+    // both async) before clicking, or the blocker's condition isn't armed
+    // yet and the navigation goes through unblocked.
+    await screen.findByRole("heading", { name: /submit song 2/i });
+    await user.click(screen.getByRole("button", { name: /Friday Mixtape/i }));
+
+    expect(
+      await screen.findByText(
+        /^you've submitted 1 of 3 songs\. 3h \d+m remaining to submit your final 2 songs\. leave anyway\?$/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("open_submission, partial submission: leave-warning falls back to the plain count with no deadline — MYS-250", async () => {
+    mockGetMix.mockResolvedValue(mix({ state: "open_submission", submission_deadline: null }));
+    mockGetClub.mockResolvedValue({ ...club(), songs_per_submission: 3 });
+    mockGetMine.mockResolvedValue([mine({ id: "s-mine" })]);
+    const user = userEvent.setup();
+    renderMix();
+
+    await screen.findByRole("heading", { name: /submit song 2/i });
+    await user.click(screen.getByRole("button", { name: /Friday Mixtape/i }));
+
+    expect(
+      await screen.findByText("you've submitted 1 of 3 songs. leave anyway?"),
+    ).toBeInTheDocument();
+  });
+
   it("closed: does not render the static deadline line — MYS-161", async () => {
     mockGetMix.mockResolvedValue(
       mix({

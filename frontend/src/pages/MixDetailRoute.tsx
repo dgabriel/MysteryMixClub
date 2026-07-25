@@ -58,7 +58,7 @@ import { MedalIcon } from "../components/MedalIcon";
 import { MusicNoteIcon } from "../components/MusicNoteIcon";
 import { DeadlineChip } from "../components/DeadlineChip";
 import { HelpLink } from "../components/HelpLink";
-import { formatCountdown, toDatetimeLocalValue } from "../utils/deadline";
+import { toDatetimeLocalValue } from "../utils/deadline";
 
 const STATE_LABEL: Record<MixState, string> = {
   pending: "upcoming",
@@ -102,20 +102,15 @@ const PLATFORM_LABELS: { key: string; label: string }[] = [
 ];
 
 /** Partial-submission leave-warning copy (MYS-250) — the submitted/cap count
- *  alone didn't convey the deadline pressure, so a time clause is inserted
- *  when the mix has an active submission deadline; omitted (falls back to the
- *  original phrasing) when it doesn't. */
+ *  alone didn't convey the deadline pressure, so a deadline nudge replaces
+ *  the closing question when the mix has an active submission deadline;
+ *  falls back to the original phrasing when it doesn't. */
 function leaveWarningMessage(mix: Mix, submitted: number, cap: number): string {
   const base = `you've submitted ${submitted} of ${cap} songs.`;
-  const countdown = formatCountdown(mix);
-  if (!countdown) return `${base} leave anyway?`;
+  if (!mix.submission_deadline) return `${base} leave anyway?`;
   const remaining = cap - submitted;
   const song = remaining === 1 ? "song" : "songs";
-  const clause =
-    countdown === "closing soon…"
-      ? "submissions close soon."
-      : `${countdown} to submit your final ${remaining} ${song}.`;
-  return `${base} ${clause} leave anyway?`;
+  return `${base} come back before the deadline to submit your final ${remaining} ${song}.`;
 }
 
 /**

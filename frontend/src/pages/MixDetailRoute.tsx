@@ -1968,6 +1968,33 @@ function SongNotes({
     }
   }, [open, loaded, submissionId, onActionError]);
 
+  // MYS-257: one note per player per song. While voting is open, GET only
+  // ever returns the caller's own notes, so a non-empty loaded list here
+  // means they already have theirs — open the (read-only) list instead of a
+  // composer for a second one. If we haven't loaded yet, load first to find
+  // out; this also covers a second tab / stale-state 409 as a fallback.
+  async function startLeavingNote() {
+    if (!loaded) {
+      try {
+        const fetched = await getNotes(submissionId);
+        setNotes(fetched);
+        setLoaded(true);
+        if (fetched.length > 0) {
+          setOpen(true);
+          return;
+        }
+      } catch (err) {
+        onActionError(err instanceof ApiError ? err.message : "couldn't load notes.");
+        return;
+      }
+    } else if (notes.length > 0) {
+      setOpen(true);
+      return;
+    }
+    setComposing(true);
+    setOpen(true);
+  }
+
   async function submit() {
     const body = draft.trim();
     if (!body || body.length > NOTE_MAX || posting) return;
@@ -1981,6 +2008,17 @@ function SongNotes({
       setComposing(false);
       setOpen(true);
     } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        // Already has a note (race with another tab/session) — refresh the
+        // list so it renders instead of leaving a dead composer open.
+        setComposing(false);
+        try {
+          setNotes(await getNotes(submissionId));
+          setLoaded(true);
+        } catch {
+          // best-effort refresh; the error message below still surfaces.
+        }
+      }
       onActionError(err instanceof ApiError ? err.message : "couldn't leave your note. try again.");
     } finally {
       setPosting(false);
@@ -2001,13 +2039,10 @@ function SongNotes({
         >
           notes{loaded ? ` (${notes.length})` : ""}
         </button>
-        {!composing ? (
+        {!composing && !(loaded && notes.length > 0) ? (
           <button
             type="button"
-            onClick={() => {
-              setComposing(true);
-              setOpen(true);
-            }}
+            onClick={() => void startLeavingNote()}
             className="font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink"
           >
             leave a note

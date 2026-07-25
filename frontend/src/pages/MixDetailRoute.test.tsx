@@ -2054,9 +2054,39 @@ describe("MixDetailRoute", () => {
       // the new note appears
       expect(await within(card).findByText("great taste")).toBeInTheDocument();
       expect(within(card).getByText("Bob")).toBeInTheDocument();
-      // composer collapsed: textarea gone, leave-a-note affordance back
+      // composer collapsed: textarea gone. MYS-257: one note per player per
+      // song, so the "leave a note" affordance does NOT come back.
       expect(within(card).queryByRole("textbox")).not.toBeInTheDocument();
-      expect(within(card).getByRole("button", { name: /leave a note/i })).toBeInTheDocument();
+      expect(within(card).queryByRole("button", { name: /leave a note/i })).not.toBeInTheDocument();
+    });
+
+    it("a player who already has a note on a submission does not get a composer (MYS-257)", async () => {
+      const user = userEvent.setup();
+      setupVoting({ entries: [entry({ submission_id: "p1", title: "Debaser" })] });
+      mockGetNotes.mockResolvedValue([
+        {
+          id: "n1",
+          submission_id: "p1",
+          mix_id: "r1",
+          author_id: OTHER,
+          author_display_name: "Bob",
+          body: "already said my piece",
+          created_at: "2026-01-01T00:00:00Z",
+        },
+      ]);
+      renderMix();
+
+      await screen.findByRole("button", { name: /Debaser/i });
+      const card = cardFor("Debaser");
+      // Only affordance visible before loading is "leave a note"; clicking it
+      // discovers the existing note (voting-open GET only ever returns the
+      // caller's own) and shows it instead of a composer.
+      await user.click(within(card).getByRole("button", { name: /leave a note/i }));
+
+      expect(mockGetNotes).toHaveBeenCalledWith("p1");
+      expect(await within(card).findByText("already said my piece")).toBeInTheDocument();
+      expect(within(card).queryByRole("textbox")).not.toBeInTheDocument();
+      expect(within(card).queryByRole("button", { name: /leave a note/i })).not.toBeInTheDocument();
     });
 
     it("an addNote ApiError surfaces in the actionError alert region", async () => {

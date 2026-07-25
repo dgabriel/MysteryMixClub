@@ -11,9 +11,9 @@ own notes (others' stay hidden so notes can't sway votes, MYS-67); the full set
 is revealed once the mix is closed.
 Self-notes are allowed, and every submission is eligible regardless of its
 ``participation_mode`` (playing or vibing) — a vibing player who can't vote
-leaves notes instead. There is no per-author cap: multiple notes per author per
-submission are allowed. The 280-char limit is enforced here (Pydantic),
-mirroring how ``submissions.note`` is handled.
+leaves notes instead. Each author may leave at most one note per submission
+(MYS-257) — a second POST is rejected with 409. The 280-char limit is
+enforced here (Pydantic), mirroring how ``submissions.note`` is handled.
 """
 
 import uuid
@@ -88,6 +88,15 @@ async def leave_note(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="notes can be left while voting is open",
+        )
+
+    existing = await db.scalar(
+        select(Note).where(Note.submission_id == submission.id, Note.author_id == current_user.id)
+    )
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="you've already left a note on this song",
         )
 
     note = Note(

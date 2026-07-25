@@ -5,7 +5,8 @@ gate, and Pydantic body validation (1..280 chars, whitespace stripped). Also
 asserts the product rules: self-notes are allowed, vibing submissions are
 eligible, GET is gated by mix state (during voting a member sees only their
 own notes; the full set is revealed once closed — MYS-67), GET returns [] when
-empty, multiple notes by the same author persist, GET is ordered by created_at
+empty, a second note from the same author on the same submission is rejected
+(MYS-257, one note per author per submission), GET is ordered by created_at
 asc, and author_display_name is joined correctly.
 """
 
@@ -206,8 +207,8 @@ async def test_post_note_on_vibing_submission_allowed(client, db_session):
     assert resp.status_code == 201, resp.text
 
 
-async def test_post_multiple_notes_same_author_allowed(client, db_session):
-    # No unique constraint: multiple notes per author per submission persist.
+async def test_post_second_note_same_author_409(client, db_session):
+    # MYS-257: one note per author per submission — a second POST is rejected.
     organizer = await _seed_user(db_session, "o@example.com")
     mix_ = await _seed_club_with_mix(db_session, organizer)
     sub = await _seed_submission(db_session, mix_, organizer)
@@ -219,12 +220,25 @@ async def test_post_multiple_notes_same_author_allowed(client, db_session):
         _url(sub_id), json={"body": "second thought"}, headers=_auth(organizer.id)
     )
     assert r1.status_code == 201
-    assert r2.status_code == 201
+    assert r2.status_code == 409
+    assert r2.json()["detail"] == "you've already left a note on this song"
 
     db_session.expire_all()
     rows = (await db_session.scalars(select(Note).where(Note.submission_id == sub_id))).all()
-    assert len(rows) == 2
-    assert {n.body for n in rows} == {"first thought", "second thought"}
+    assert len(rows) == 1
+    assert rows[0].body == "first thought"
+
+
+async def test_post_note_allowed_on_different_submission(client, db_session):
+    # The one-note cap is per submission, not global to the mix.
+    organizer = await _seed_user(db_session, "o@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    sub_a = await _seed_submission(db_session, mix_, organizer, title="A")
+    sub_b = await _seed_submission(db_session, mix_, organizer, title="B")
+    r1 = await client.post(_url(sub_a.id), json={"body": "for A"}, headers=_auth(organizer.id))
+    r2 = await client.post(_url(sub_b.id), json={"body": "for B"}, headers=_auth(organizer.id))
+    assert r1.status_code == 201
+    assert r2.status_code == 201
 
 
 # --------------------------------------------------------------------------- #
@@ -273,15 +287,18 @@ async def test_get_empty_returns_empty_list(client, db_session):
 async def test_get_returns_notes_ordered_by_created_at_asc(client, db_session):
     organizer = await _seed_user(db_session, "o@example.com", name="Org")
     member = await _seed_user(db_session, "m@example.com", name="Mara")
+    third = await _seed_user(db_session, "t@example.com", name="Theo")
     mix_ = await _seed_club_with_mix(db_session, organizer)
     mix_id = mix_.id
     await _add_member(db_session, mix_.club_id, member)
+    await _add_member(db_session, mix_.club_id, third)
     sub = await _seed_submission(db_session, mix_, organizer)
     sub_id = sub.id
-    # POST three notes in order; created_at is server-assigned per insert.
+    # POST three notes in order (one per author — MYS-257 caps at one each);
+    # created_at is server-assigned per insert.
     await client.post(_url(sub_id), json={"body": "one"}, headers=_auth(organizer.id))
     await client.post(_url(sub_id), json={"body": "two"}, headers=_auth(member.id))
-    await client.post(_url(sub_id), json={"body": "three"}, headers=_auth(organizer.id))
+    await client.post(_url(sub_id), json={"body": "three"}, headers=_auth(third.id))
 
     # Close the mix so the full multi-author set is visible (during voting a
     # member would only see their own — see test_get_hides_others_notes...).
@@ -294,7 +311,7 @@ async def test_get_returns_notes_ordered_by_created_at_asc(client, db_session):
     notes = resp.json()
     assert [n["body"] for n in notes] == ["one", "two", "three"]
     # author_display_name joined correctly to the author of each note.
-    assert [n["author_display_name"] for n in notes] == ["Org", "Mara", "Org"]
+    assert [n["author_display_name"] for n in notes] == ["Org", "Mara", "Theo"]
 
 
 async def test_get_hides_others_notes_during_voting(client, db_session):

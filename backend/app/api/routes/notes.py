@@ -6,13 +6,19 @@ Leaving, editing, and reading free-form appreciation notes on a submission:
 * ``PATCH /api/v1/submissions/:id/notes`` — edit the caller's own note
 * ``GET   /api/v1/submissions/:id/notes`` — read the notes on a submission
 
-Notes may be left or edited only while the mix is in ``open_voting`` (frozen
-at close) — this covers editing right up until the mix closes, including
-after the editing player has cast their own votes (MYS-257 follow-up: votes
-are per-player and don't close the mix for anyone else). Reading is gated by
-mix state: while voting is open a member sees only their own notes (others'
-stay hidden so notes can't sway votes, MYS-67); the full set is revealed once
-the mix is closed.
+Notes may be left or edited while the mix is in ``open_voting`` — this covers
+editing right up until the mix closes, including after the editing player has
+cast their own votes (MYS-257 follow-up: votes are per-player and don't close
+the mix for anyone else) — or, once the mix is ``closed``, if the author was
+vibing (participation_mode == "vibing" on their own submission in this mix,
+same definition ``GET /mixes/:id/results`` uses for ``viewer_is_vibing``).
+There's no real competition left to protect once a casual/vibing player's
+mystery mix is revealed, so their conversation about it can keep going; a
+non-vibing (playing) author still can't touch notes after close (MYS-256
+follow-up). Reading is gated by mix state: while voting is open a member sees
+only their own notes (others' stay hidden so notes can't sway votes, MYS-67);
+the full set is revealed once the mix is closed, with no further restriction
+on GET.
 Self-notes are allowed, and every submission is eligible regardless of its
 ``participation_mode`` (playing or vibing) — a vibing player who can't vote
 leaves notes instead. Each author may leave at most one note per submission
@@ -36,6 +42,7 @@ from app.api.routes.clubs import _load_club_as_member
 from app.api.routes.mixes import _load_mix
 from app.auth.deps import get_current_user
 from app.db.session import get_db
+from app.models.mix import Mix
 from app.models.note import Note
 from app.models.submission import Submission
 from app.models.user import User
@@ -82,6 +89,22 @@ async def _load_submission(submission_id: uuid.UUID, db: AsyncSession) -> Submis
     return submission
 
 
+async def _author_was_vibing(mix_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession) -> bool:
+    """Same definition as ``viewer_is_vibing`` on ``GET /mixes/:id/results``:
+    the author's own submission in this mix (if any) was vibing, not playing.
+    A non-submitter is treated as not vibing, same as the results endpoint."""
+    own_sub = await db.scalar(
+        select(Submission).where(Submission.mix_id == mix_id, Submission.user_id == user_id)
+    )
+    return own_sub is not None and own_sub.participation_mode == "vibing"
+
+
+async def _notes_open(mix_: Mix, author_id: uuid.UUID, db: AsyncSession) -> bool:
+    if mix_.state == "open_voting":
+        return True
+    return mix_.state == "closed" and await _author_was_vibing(mix_.id, author_id, db)
+
+
 @router.post("/submissions/{submission_id}/notes", status_code=201, response_model=NoteResponse)
 async def leave_note(
     submission_id: uuid.UUID,
@@ -93,10 +116,10 @@ async def leave_note(
     mix_ = await _load_mix(submission.mix_id, db)
     await _load_club_as_member(mix_.club_id, current_user, db)
 
-    if mix_.state != "open_voting":
+    if not await _notes_open(mix_, current_user.id, db):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="notes can be left while voting is open",
+            detail="notes can be left while voting is open (or after the reveal, in casual mode)",
         )
 
     existing = await db.scalar(
@@ -131,10 +154,10 @@ async def edit_note(
     mix_ = await _load_mix(submission.mix_id, db)
     await _load_club_as_member(mix_.club_id, current_user, db)
 
-    if mix_.state != "open_voting":
+    if not await _notes_open(mix_, current_user.id, db):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="notes can be edited while voting is open",
+            detail="notes can be edited while voting is open (or after the reveal, in casual mode)",
         )
 
     note = await db.scalar(

@@ -2339,22 +2339,89 @@ describe("MixDetailRoute", () => {
           },
         ],
       });
+      // A vibing viewer's picks render the live SongNotes composer/list
+      // (MYS-256 follow-up: notes can still be left/edited after the reveal),
+      // not the read-only results-embedded notes array.
+      mockGetNotes.mockResolvedValue([
+        {
+          id: "n1",
+          submission_id: "mine",
+          mix_id: "r1",
+          author_id: OTHER,
+          author_display_name: "Ada",
+          body: "this one got me",
+          created_at: "2026-01-01T00:00:00Z",
+        },
+      ]);
       renderMix();
 
-      // Winner named (no count) and the full tracklist is visible, with notes
-      // behind the collapsible toggle. "Winning Song" shows in both the winner
-      // highlight and the tracklist.
+      // Winner named (no count) and the full tracklist is visible.
+      // "Winning Song" shows in both the winner highlight and the tracklist.
       expect(await screen.findByRole("heading", { name: /the picks/i })).toBeInTheDocument();
       expect(screen.getAllByText("Winning Song").length).toBeGreaterThanOrEqual(2);
       expect(screen.getByText("My Quiet Pick")).toBeInTheDocument();
       // The tracklist tiles are playable (regression — MYS-134 tiles need links).
       expect(screen.getByRole("link", { name: /on Spotify/i })).toBeInTheDocument();
+
       const user = userEvent.setup();
-      await user.click(screen.getByRole("button", { name: /show 1 note/i }));
-      expect(screen.getByText("this one got me")).toBeInTheDocument();
+      const card = cardFor("My Quiet Pick");
+      await user.click(within(card).getByRole("button", { name: /^notes$/i }));
+      expect(mockGetNotes).toHaveBeenCalledWith("mine");
+      expect(await within(card).findByText("this one got me")).toBeInTheDocument();
+      expect(within(card).getByText("Ada")).toBeInTheDocument();
+      // Still able to edit the note post-reveal (MYS-256 follow-up); a
+      // pre-existing note (mocked above) means the affordance reads "edit
+      // note" rather than "leave a note" (MYS-257).
+      expect(within(card).getByRole("button", { name: /edit note/i })).toBeInTheDocument();
+
       // No leaderboard and no vote tallies for a viber.
       expect(screen.queryByRole("heading", { name: /leaderboard/i })).not.toBeInTheDocument();
       expect(screen.queryByText(/\bvotes?\b/i)).not.toBeInTheDocument();
+    });
+
+    it("vibing viewer can leave a new note on a pick after the reveal (MYS-256 follow-up)", async () => {
+      setupClosed({
+        viewer_is_vibing: true,
+        submissions: [],
+        leaderboard: [],
+        winners: [],
+        picks: [
+          {
+            submission_id: "mine",
+            submitter_display_name: "Vera",
+            title: "My Quiet Pick",
+            artist: "Me",
+            source: null,
+            source_url: null,
+            platforms: {},
+            submitter_note: null,
+            notes: [],
+          },
+        ],
+      });
+      mockGetNotes.mockResolvedValue([]); // no note yet
+      mockAddNote.mockResolvedValue({
+        id: "n1",
+        submission_id: "mine",
+        mix_id: "r1",
+        author_id: ORGANIZER,
+        author_display_name: "Org",
+        body: "glad I finally caught this one",
+        created_at: "2026-01-01T00:00:00Z",
+      });
+      renderMix();
+
+      const user = userEvent.setup();
+      await screen.findByText("My Quiet Pick");
+      const card = cardFor("My Quiet Pick");
+      await user.click(within(card).getByRole("button", { name: /leave a note/i }));
+      await user.type(within(card).getByRole("textbox"), "glad I finally caught this one");
+      await user.click(within(card).getByRole("button", { name: /^leave note$/i }));
+
+      expect(mockAddNote).toHaveBeenCalledWith("mine", "glad I finally caught this one");
+      expect(
+        await within(card).findByText("glad I finally caught this one"),
+      ).toBeInTheDocument();
     });
 
     // ----- Most Noted ------------------------------------------------------ //

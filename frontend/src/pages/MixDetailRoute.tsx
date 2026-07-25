@@ -101,6 +101,18 @@ const PLATFORM_LABELS: { key: string; label: string }[] = [
   { key: "bandcamp", label: "Bandcamp" },
 ];
 
+/** Partial-submission leave-warning copy (MYS-250) — the submitted/cap count
+ *  alone didn't convey the deadline pressure, so a deadline nudge replaces
+ *  the closing question when the mix has an active submission deadline;
+ *  falls back to the original phrasing when it doesn't. */
+function leaveWarningMessage(mix: Mix, submitted: number, cap: number): string {
+  const base = `you've submitted ${submitted} of ${cap} songs.`;
+  if (!mix.submission_deadline) return `${base} leave anyway?`;
+  const remaining = cap - submitted;
+  const song = remaining === 1 ? "song" : "songs";
+  return `${base} come back before the deadline to submit your final ${remaining} ${song}.`;
+}
+
 /**
  * Mix detail (`/mixes/:id`). State-aware:
  *  - open_submission → submit/replace your song (organizer can open voting)
@@ -548,7 +560,7 @@ export function MixDetailRoute() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 px-4">
           <div className="w-full max-w-sm border border-border bg-cream p-6">
             <p className="font-mono text-[13px] font-light text-ink">
-              you&apos;ve submitted {mySubmissions.length} of {submissionCap} songs. leave anyway?
+              {leaveWarningMessage(mix, mySubmissions.length, submissionCap)}
             </p>
             <div className="mt-6 flex gap-4">
               <Button type="button" onClick={() => blocker.proceed()}>

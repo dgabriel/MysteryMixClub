@@ -339,6 +339,43 @@ describe("MixDetailRoute", () => {
     expect(await screen.findByText(/^closes /i)).toBeInTheDocument();
   });
 
+  it("open_submission, partial submission: leave-warning nudges toward the deadline when one is set — MYS-250", async () => {
+    mockGetMix.mockResolvedValue(
+      mix({ state: "open_submission", submission_deadline: "2026-07-05T12:00:00Z" }),
+    );
+    mockGetClub.mockResolvedValue({ ...club(), songs_per_submission: 3 });
+    mockGetMine.mockResolvedValue([mine({ id: "s-mine" })]); // 1 of 3 submitted
+    const user = userEvent.setup();
+    renderMix();
+
+    // Wait for the partial-submission state itself to be loaded (mine + club
+    // both async) before clicking, or the blocker's condition isn't armed
+    // yet and the navigation goes through unblocked.
+    await screen.findByRole("heading", { name: /submit song 2/i });
+    await user.click(screen.getByRole("button", { name: /Friday Mixtape/i }));
+
+    expect(
+      await screen.findByText(
+        "you've submitted 1 of 3 songs. come back before the deadline to submit your final 2 songs.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("open_submission, partial submission: leave-warning falls back to the plain count with no deadline — MYS-250", async () => {
+    mockGetMix.mockResolvedValue(mix({ state: "open_submission", submission_deadline: null }));
+    mockGetClub.mockResolvedValue({ ...club(), songs_per_submission: 3 });
+    mockGetMine.mockResolvedValue([mine({ id: "s-mine" })]);
+    const user = userEvent.setup();
+    renderMix();
+
+    await screen.findByRole("heading", { name: /submit song 2/i });
+    await user.click(screen.getByRole("button", { name: /Friday Mixtape/i }));
+
+    expect(
+      await screen.findByText("you've submitted 1 of 3 songs. leave anyway?"),
+    ).toBeInTheDocument();
+  });
+
   it("closed: does not render the static deadline line — MYS-161", async () => {
     mockGetMix.mockResolvedValue(
       mix({

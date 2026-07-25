@@ -1,16 +1,17 @@
 # CI/CD — MysteryMixClub
 
-Configuration-as-code pipeline: Husky git hooks → GitHub Actions → DigitalOcean
-App Platform. Everything here lives in the repo; nothing is clicked together by
-hand except secrets and branch-protection rules (documented below).
+Configuration-as-code pipeline: Husky git hooks → GitHub Actions → self-hosted
+runners on self-managed DigitalOcean Droplets (staging and production alike).
+Everything here lives in the repo; nothing is clicked together by hand except
+branch-protection rules and the one-time Droplet/runner provisioning
+(documented below).
 
 ---
 
 ## Pipeline diagram
 
 ```
- Developer machine                GitHub                         DigitalOcean
- ─────────────────                ──────                         ────────────
+ Developer machine                GitHub                    DigitalOcean Droplets
 
  git commit
    ├─ pre-commit  → lint-staged (eslint/prettier, ruff)
@@ -27,16 +28,21 @@ hand except secrets and branch-protection rules (documented below).
    └─────────────────────────────────────────────────────────┘
         │ merge
         ▼
-   push to develop ─► deploy-staging.yml ─► ssh ─► scripts/deploy-staging.sh
-                                              └─► staging Droplet (Nginx + systemd)
+   push to develop ─► deploy-staging.yml (self-hosted runner
+                       living ON the staging Droplet) ──────► scripts/deploy-staging.sh
+                                                               (Nginx + systemd)
         │ PR develop → main, merge (real merge commit only — see
         │ docs/git-hygiene.md "Why promotions must be a real merge";
         │ enforced by a GitHub ruleset on main, squash/rebase not offered)
         ▼
    push to main ───► deploy-prod.yml ─► [environment: production]
-                          (manual approval gate)
-                              └─► app_action/deploy ─► mysterymixclub-prod
+                          (manual approval gate, then self-hosted runner
+                           living ON the prod Droplet) ──────► scripts/deploy-prod.sh
+                                                                (Nginx + systemd)
 ```
+
+Both deploy workflows run directly on their target Droplet — no SSH from
+GitHub, no DigitalOcean App Platform involved for either environment.
 
 ---
 
@@ -44,15 +50,18 @@ hand except secrets and branch-protection rules (documented below).
 
 | Branch        | Purpose            | Deploys to    | Trigger                          |
 |---------------|--------------------|---------------|----------------------------------|
-| `main`        | production-ready   | `mysterymixclub-prod` (DO App Platform) | push → `deploy-prod.yml` (gated) |
-| `develop`     | integration        | staging **Droplet** (IaaS) | push → `deploy-staging.yml` (SSH) |
+| `main`        | production-ready   | prod **Droplet** (IaaS) | push → `deploy-prod.yml` (gated, self-hosted runner) |
+| `develop`     | integration        | staging **Droplet** (IaaS) | push → `deploy-staging.yml` (self-hosted runner) |
 | `feature/*`   | one unit of work   | —             | PR → `develop` runs `ci.yml`     |
 
-> **Staging and prod use different infrastructure.** Staging is a self-managed
-> Ubuntu Droplet (Nginx + systemd + local Postgres); production is DO App
-> Platform. Staging provisioning and the deploy contract are documented in
-> [`staging-setup.md`](staging-setup.md). `.do/app.staging.yaml` is kept for
-> reference but no longer drives the staging deploy.
+> **Staging and prod now use the same infrastructure shape** (ADR 0002,
+> MYS-225 shipped 2026-07-23): each is a self-managed Ubuntu Droplet (Nginx +
+> systemd + local Postgres), provisioned via Terraform
+> (`infra/terraform/envs/{staging,prod}/`). Provisioning and deploy contracts
+> are documented in [`staging-setup.md`](staging-setup.md) and
+> [`prod-setup.md`](prod-setup.md). `.do/app.staging.yaml` is kept for
+> reference but no longer drives the staging deploy; the equivalent prod spec,
+> `.do/app.prod.yaml`, has been deleted outright now that the cutover is done.
 
 Lifecycle: `feature/*` off `develop` → PR into `develop` (CI green required) →
 merge auto-deploys staging → smoke-test staging → PR `develop` → `main` →
@@ -65,17 +74,13 @@ approve the `production` environment → prod deploy.
 The backend ships two standalone jobs run outside the request path:
 `python -m app.jobs.purge_accounts` (right-to-be-forgotten hard purge) and
 `python -m app.jobs.advance_mixes` (deadline force-advance + 12h warnings,
-MYS-145/162). On **staging** the deadline job runs every 15 minutes via a systemd
-timer (`mysterymixclub-advance-mixes.timer`) — see
-[`staging-setup.md` §7](staging-setup.md).
-
-> **Prod follow-up (not yet wired).** Production runs on DO App Platform, which
-> has no systemd; the deadline job must be scheduled there before deadline-based
-> closing works in prod. Options: a DO App Platform **Job** component with a cron
-> schedule (e.g. `*/15 * * * *`) running `python -m app.jobs.advance_mixes`
-> against the managed Postgres, added to `.do/app.prod.yaml`; or an external
-> scheduler hitting the same entrypoint. Until then, prod mystery mixes close on
-> quorum only. Tracked as a deploy-prod follow-up to this PR.
+MYS-145/162). On **both staging and prod** the deadline job runs every 15
+minutes via a systemd timer (`mysterymixclub-advance-mixes.timer`) — bootstrap
+installs and arms it, and each deploy refreshes the unit files and re-runs
+`enable --now`. See [`staging-setup.md` §7](staging-setup.md) for the full
+behavior explanation and [`prod-setup.md` §6](prod-setup.md) for what differs
+on prod (unit files sourced from the `-prod`-suffixed scripts, same on-disk
+unit names).
 
 ---
 
@@ -157,40 +162,47 @@ table above). `DIGITALOCEAN_ACCESS_TOKEN` is only needed locally for
 no longer referenced (safe to delete from the `staging` environment's
 secrets, or just leave them unused).
 
-### DigitalOcean app secrets
+### App runtime secrets (Droplet env files)
 
-These are runtime app config, set per app in the DO dashboard or via
-`doctl apps update <app-id> --spec .do/app.<env>.yaml` (then fill SECRET values in the UI):
+Both environments are self-managed Droplets now, so runtime app config is set
+the same way on each — an env file on the box, read by the systemd service,
+never in GitHub or DigitalOcean's dashboard:
 
 | Key            | Type     | Notes                                              |
-|----------------|----------|----------------------------------------------------|
-| `DATABASE_URL` | SECRET   | bound to the managed Postgres component (`${db.DATABASE_URL}`) |
-| `SECRET_KEY`   | SECRET   | JWT signing key — `python -c "import secrets; print(secrets.token_urlsafe(64))"` |
+|----------------|----------|-----------------------------------------------------|
+| `DATABASE_URL` | SECRET   | points at the box's local Postgres                 |
+| `SECRET_KEY`   | SECRET   | JWT signing key — `python -c "import secrets; print(secrets.token_urlsafe(64))"`; never share a value across environments |
 | `ENVIRONMENT`  | GENERAL  | `production` / `staging`                           |
-| `RESEND_API_KEY`, `ODESLI_API_KEY`, `ALLOWED_ORIGINS`, `APP_BASE_URL` | SECRET/GENERAL | see `.env.example` |
-| `APPLE_MUSIC_TEAM_ID`, `APPLE_MUSIC_KEY_ID`, `APPLE_MUSIC_PRIVATE_KEY` | SECRET | Apple Music (MYS-104). **All three or none** — any missing and the Apple UI hides itself and links fall back to keyless iTunes. Provisioning walkthrough in `staging-setup.md` → "Enabling Apple Music". |
+| `RESEND_API_KEY`, `ALLOWED_ORIGINS`, `APP_BASE_URL` | SECRET/GENERAL | see `.env.example` |
+| `APPLE_MUSIC_TEAM_ID`, `APPLE_MUSIC_KEY_ID`, `APPLE_MUSIC_PRIVATE_KEY` | SECRET | Apple Music (MYS-104/105-108). **All three or none** — any missing and the Apple UI hides itself and links fall back to keyless iTunes. Provisioning walkthrough in `staging-setup.md` → "Enabling Apple Music". |
 | `RESEND_WEBHOOK_SECRET`, `INBOUND_EMAIL_FORWARD_TO` | SECRET/GENERAL | Inbound mail forwarding (MYS-242). Prod-only in practice — Resend Inbound's MX is on the apex domain, which prod serves. Empty `RESEND_WEBHOOK_SECRET` = the webhook route 503s rather than accepting unsigned requests. |
 
 ### Adding a new secret (the routine)
 
-**Staging and production take secrets by different routes** — staging is a
-self-managed Droplet, production is App Platform. Doing only one leaves the other
-silently unconfigured, which for optional integrations looks exactly like the
-feature "not working" rather than an error.
+**Staging and production now take secrets by the same route** — both are
+Droplets (ADR 0002). Doing only one still leaves the other silently
+unconfigured, which for optional integrations looks exactly like the feature
+"not working" rather than an error, so always do both when a key is
+environment-agnostic.
 
 1. Document the key (no value) in `.env.example`.
-2. **Staging (Droplet):** add the key to `scripts/staging.env.example` (no
-   value), then set the real value in `/etc/mysterymixclub/staging.env` on the
-   Droplet and `sudo systemctl restart mysterymixclub-api`. Settings are cached
-   per process, so an edit without the restart changes nothing.
-3. **Production (App Platform):** add an `envs:` entry to `.do/app.prod.yaml`
-   (`type: SECRET`), then set the value in the DO dashboard or via `doctl`.
+2. **Staging:** add the key to `scripts/staging.env.example` (no value), then
+   set the real value in `/etc/mysterymixclub/staging.env` on the Droplet and
+   `sudo systemctl restart mysterymixclub-api`. Settings are cached per
+   process, so an edit without the restart changes nothing.
+3. **Production:** add the key to `scripts/prod.env.example` (no value), then
+   set the real value in `/etc/mysterymixclub/prod.env` on the prod Droplet
+   and `sudo systemctl restart mysterymixclub-api`. Same mechanism, different
+   box — some keys are environment-specific rather than copy-paste (e.g. a
+   redirect URI tied to the domain, or a foreign key into that environment's
+   own `users` table); check whether a value is safe to reuse verbatim before
+   copying it over.
 4. If a *workflow* needs it (not the app at runtime), add it as a GitHub Actions
-   secret instead.
+   secret instead — neither deploy workflow itself needs any secrets today.
 
 > `.do/app.staging.yaml` is **reference only** — staging moved to the Droplet
-> (MYS-39) and that spec is not used by the staging deploy. Adding a secret there
-> has no effect; use step 2.
+> (MYS-39) and that spec is not used by the staging deploy. `.do/app.prod.yaml`
+> no longer exists at all (deleted after the prod cutover, MYS-225).
 
 ---
 

@@ -698,7 +698,7 @@ describe("MixDetailRoute", () => {
   it("organizer can open voting; advancing calls updateMix", async () => {
     const user = userEvent.setup();
     renderMix();
-    const btn = await screen.findByRole("button", { name: /open voting/i });
+    const btn = await screen.findByRole("button", { name: /open mystery mix voting/i });
     await user.click(btn);
     expect(mockUpdateMix).toHaveBeenCalledWith("r1", { state: "open_voting" });
   });
@@ -709,18 +709,20 @@ describe("MixDetailRoute", () => {
     renderMix();
 
     expect(
-      screen.queryByRole("button", { name: /^open voting$/i }),
+      screen.queryByRole("button", { name: /open mystery mix voting/i }),
     ).not.toBeInTheDocument();
     const btn = await screen.findByRole("button", { name: /reveal the mystery mix/i });
     await user.click(btn);
     expect(mockUpdateMix).toHaveBeenCalledWith("r1", { state: "open_voting" });
   });
 
-  it("competitive club: the open_submission → open_voting button still reads 'open voting' — MYS-256", async () => {
+  it("competitive club: the open_submission → open_voting button reads 'open mystery mix voting' — MYS-256", async () => {
     mockGetClub.mockResolvedValue({ ...club(), default_vibe_mode: false });
     renderMix();
 
-    expect(await screen.findByRole("button", { name: /^open voting$/i })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: /^open mystery mix voting$/i }),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /reveal the mystery mix/i }),
     ).not.toBeInTheDocument();
@@ -729,11 +731,11 @@ describe("MixDetailRoute", () => {
   it("advance button resets after a successful open (not stuck on 'opening…') — MYS-95", async () => {
     const user = userEvent.setup();
     renderMix();
-    await user.click(await screen.findByRole("button", { name: /open voting/i }));
+    await user.click(await screen.findByRole("button", { name: /open mystery mix voting/i }));
     expect(mockUpdateMix).toHaveBeenCalled();
     // After success the button returns to its label; it must not stay "opening…".
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /open voting/i })).toBeInTheDocument(),
+      expect(screen.getByRole("button", { name: /open mystery mix voting/i })).toBeInTheDocument(),
     );
     expect(screen.queryByRole("button", { name: /opening/i })).not.toBeInTheDocument();
   });
@@ -742,7 +744,9 @@ describe("MixDetailRoute", () => {
     setAuth(OTHER);
     renderMix();
     await screen.findByText("late summer feels");
-    expect(screen.queryByRole("button", { name: /open voting/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /open mystery mix voting/i }),
+    ).not.toBeInTheDocument();
   });
 
   // --- Co-organizer parity (MYS-99): isAdmin (isOrganizer OR own row's
@@ -754,7 +758,9 @@ describe("MixDetailRoute", () => {
     setAuth(CO_ORGANIZER);
     renderMix();
     await screen.findByText("late summer feels");
-    expect(await screen.findByRole("button", { name: /open voting/i })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: /open mystery mix voting/i }),
+    ).toBeInTheDocument();
   });
 
   it("co-organizer viewer: sees EditMixForm (edit mix) on a pending mix", async () => {
@@ -1094,7 +1100,7 @@ describe("MixDetailRoute", () => {
 
   it("'reopen submissions' is never rendered while the mix is open_submission", async () => {
     renderMix(); // default mix() state is open_submission
-    await screen.findByRole("button", { name: "open voting" });
+    await screen.findByRole("button", { name: "open mystery mix voting" });
     expect(screen.queryByRole("button", { name: "reopen submissions" })).not.toBeInTheDocument();
   });
 

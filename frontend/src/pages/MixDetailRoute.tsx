@@ -750,8 +750,9 @@ function OrganizerControls({
   casualClub: boolean;
 }) {
   // Closing is the one forward transition that cascades and can't be undone
-  // in-app (MYS-170) — gated behind an explicit second step. "open mix" /
-  // "open voting" stay one-click; they're lower-risk and easy to reason about.
+  // in-app (MYS-170) — gated behind an explicit second step. Opening the mix
+  // / opening voting stay one-click; they're lower-risk and easy to reason
+  // about.
   const [confirmingClose, setConfirmingClose] = useState(false);
   // The one sanctioned backward step (MYS-168) — same two-step treatment,
   // since it discards any votes already cast.
@@ -776,7 +777,7 @@ function OrganizerControls({
       : state === "open_submission"
         ? casualClub
           ? "reveal the mystery mix"
-          : "open voting"
+          : "open mystery mix voting"
         : "close mix";
   const busyLabel =
     next === "closed" ? "closing…" : casualClub && next === "open_voting" ? "revealing…" : "opening…";

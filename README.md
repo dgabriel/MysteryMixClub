@@ -2,7 +2,7 @@
 
 A platform-agnostic, emotionally inclusive music club for close-knit friend groups.
 
-> **🎧 Live staging:** https://staging.mysterymixclub.com — email [dgabriel@gmail.com](mailto:dgabriel@gmail.com) for access.
+> **🎧 Live:** https://mysterymixclub.com (production) · https://staging.mysterymixclub.com (staging) — email [dgabriel@gmail.com](mailto:dgabriel@gmail.com) for access.
 
 ---
 
@@ -216,11 +216,14 @@ PDLC Definition phase complete (Discovery, PRD, and technical design all done).
 - **Clubs:** create / read / manage, member management, invite + join flow (with frontend screens).
 - **Mystery mixes:** auto-generated mix slate, forward-only state machine (pending → submission → voting → closed), organizer controls, auto-advance to the next mix on close.
 - **Submissions:** paste-a-link and search, ISRC resolution, and cross-service playback links (Spotify, YouTube, Deezer, Apple Music) assembled keyless.
-- **Voting & scoring:** voting with a configurable per-mix budget, competitive/casual mode, self-vote prevention, anonymous shuffled playlist, the **Most Noted** mechanic, and results / reveal.
-- **Playlist generation:** one-click YouTube playlist link (keyless) and per-user Spotify OAuth saved playlists. (Deezer playlist creation is a confirmed dead end — links only; Apple Music playlists are spiked and gated on an Apple Developer membership.)
-- **Notifications:** mystery-mix-lifecycle email notifications (Resend) with per-user preference + one-click unsubscribe.
-- **Hardening:** security response headers and application-layer tenant isolation.
+- **Voting & scoring:** voting with a configurable per-mix budget, competitive/casual mode, self-vote prevention, anonymous shuffled playlist, the **Most Noted** mechanic, results / reveal, and post-reveal notes players can leave on any submission (one per song, editable while voting is still open).
+- **Playlist generation:** one-click YouTube playlist link (keyless), a shared-account Spotify saved playlist (one ops-connected account, linked via a one-time OAuth flow — MYS-169/234), and per-player Apple Music library playlists via MusicKit (each member builds their own copy; Apple has no API path to a shareable link, so this is intentionally not Spotify parity). Deezer playlist creation is a confirmed dead end — links only.
+- **Notifications:** mystery-mix-lifecycle email notifications (Resend, with inbound-mail forwarding) with per-user preference + one-click unsubscribe.
+- **Beta gate:** a pre-launch waitlist + email-locked invite flow exists end-to-end (currently dormant — off in every environment) alongside a permanent "beta" badge in the nav while the product is pre-wide-release.
+- **Hardening:** security response headers, application-layer tenant isolation, and a WCAG 2.2 AA accessibility remediation pass (contrast, forms, semantics, keyboard, motion, touch targets).
 
-Active work — Apple Music playlists, mystery mix progress indicators, live state polling,
-a profile/settings screen, and more — is tracked in Linear (team **MysteryMixClub**,
-project **MysteryMixClub MVP**). `develop` leads `main` and deploys to staging.
+Active work — Spotify shared-playlist expiration handling, a profile/settings screen
+(photo upload), scaling strategy, observability, and a Doppler secrets-manager
+migration, among others — is tracked in Linear (team **MysteryMixClub**, project
+**MysteryMixClub MVP**). `develop` leads `main`; both `develop` and `main` deploy
+automatically (staging and production respectively) on merge.

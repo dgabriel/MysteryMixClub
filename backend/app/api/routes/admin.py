@@ -16,10 +16,12 @@ from app.api.routes.clubs import (
     _to_invite_response,
 )
 from app.auth.deps import get_platform_admin
+from app.auth.tokens import generate_token, hash_token
 from app.config import Settings, get_settings
 from app.db.session import get_db
 from app.jobs.purge_accounts import hard_delete_users
 from app.models.invite import Invite
+from app.models.magic_link_token import MagicLinkToken
 from app.models.user import User
 from app.models.waitlist_entry import WaitlistEntry
 from app.services.email import EmailSender, get_email_sender
@@ -159,9 +161,17 @@ async def invite_from_waitlist(
     48h-expiry invite like POST /admin/invites already creates, but locked to
     this entry's email (MYS-215) so only that address can redeem it.
 
+    The email links straight to /auth/verify (a pre-minted magic-link token,
+    TTL extended to match the invite's 48h instead of the usual 15m), not the
+    /invite/:token preview page. That page's "sign in" CTA sends the
+    recipient to /login to retype their email and wait on a *second* email —
+    confusing, and not what "you're off the waitlist" should feel like. This
+    makes the one link in that email behave exactly like a first-time sign-in
+    magic link: click it, land in the app, signed in.
+
     Resendable: inviting an already-invited entry is allowed and mints a
-    fresh invite (the original link may have expired unused), re-stamping
-    invited_at/invited_by to the latest send.
+    fresh invite + magic-link token (the originals may have expired unused),
+    re-stamping invited_at/invited_by to the latest send.
 
     Sends before persisting anything: the email is the only way the
     recipient learns their invite exists, so a delivery failure must not
@@ -174,10 +184,15 @@ async def invite_from_waitlist(
             status_code=status.HTTP_404_NOT_FOUND, detail="waitlist entry not found"
         )
 
-    token = secrets.token_urlsafe(_INVITE_TOKEN_BYTES)
-    invite_url = f"{settings.app_base_url.rstrip('/')}/invite/{token}"
+    now = datetime.now(timezone.utc)
+    invite_token = secrets.token_urlsafe(_INVITE_TOKEN_BYTES)
+    raw_magic_token = generate_token()
+    signin_url = (
+        f"{settings.app_base_url.rstrip('/')}/auth/verify"
+        f"?token={raw_magic_token}&invite={invite_token}"
+    )
     try:
-        send_waitlist_invite(sender, settings, entry.email, invite_url)
+        send_waitlist_invite(sender, settings, entry.email, signin_url)
     except Exception:
         logger.exception("failed to send waitlist invite email to %s", entry.email)
         raise HTTPException(
@@ -188,14 +203,26 @@ async def invite_from_waitlist(
     invite = Invite(
         club_id=None,
         created_by=admin.id,
-        token=token,
-        expires_at=datetime.now(timezone.utc) + _INVITE_TTL,
+        token=invite_token,
+        expires_at=now + _INVITE_TTL,
         # Locks redemption to the waitlisted address (MYS-215) — a link that
         # leaks or gets forwarded can't be used by someone else.
         email=entry.email,
     )
     db.add(invite)
-    entry.invited_at = datetime.now(timezone.utc)
+    db.add(
+        MagicLinkToken(
+            email=entry.email,
+            token_hash=hash_token(raw_magic_token),
+            created_at=now,
+            # Matches the invite's 48h window (and the email copy) rather than
+            # the usual 15m /auth/request TTL — this link needs to survive
+            # however long it takes someone to notice a waitlist email.
+            expires_at=now + _INVITE_TTL,
+            used=False,
+        )
+    )
+    entry.invited_at = now
     entry.invited_by = admin.id
     await db.commit()
     await db.refresh(entry)

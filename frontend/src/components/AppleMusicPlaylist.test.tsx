@@ -45,6 +45,17 @@ describe("AppleMusicPlaylist", () => {
     expect(screen.getByText(/requires apple music subscription/i)).toBeInTheDocument();
   });
 
+  it("reassures the player before the sign-in prompt that it's Apple's own, password-free (MYS-254)", async () => {
+    render(<AppleMusicPlaylist mixId="r1" />);
+
+    expect(
+      await screen.findByRole("button", { name: /build this mystery mix in apple music/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/opens apple's own sign-in\. we never see or store your apple id password\./i),
+    ).toBeInTheDocument();
+  });
+
   it("shows the personal link when one was already generated (no direct url)", async () => {
     // No direct_playlist_url (e.g. a pre-MYS-214 row): falls back to the
     // library link and "look for it by name" prompt on every platform.

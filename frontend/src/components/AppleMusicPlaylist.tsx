@@ -156,6 +156,9 @@ export function AppleMusicPlaylist({ mixId }: { mixId: string }) {
         </>
       ) : (
         <>
+          <p className={NOTE_CLASS}>
+            opens apple&apos;s own sign-in. we never see or store your apple id password.
+          </p>
           <button type="button" onClick={handleGenerate} disabled={busy} className={BUTTON_CLASS}>
             <MusicNoteIcon />
             {busy ? "building playlist…" : "build this mystery mix in Apple Music"}

@@ -29,7 +29,9 @@ hand except secrets and branch-protection rules (documented below).
         ▼
    push to develop ─► deploy-staging.yml ─► ssh ─► scripts/deploy-staging.sh
                                               └─► staging Droplet (Nginx + systemd)
-        │ PR develop → main, merge
+        │ PR develop → main, merge (real merge commit only — see
+        │ docs/git-hygiene.md "Why promotions must be a real merge";
+        │ enforced by a GitHub ruleset on main, squash/rebase not offered)
         ▼
    push to main ───► deploy-prod.yml ─► [environment: production]
                           (manual approval gate)

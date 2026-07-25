@@ -624,6 +624,7 @@ export function MixDetailRoute() {
               onExtendVoting={handleExtendVoting}
               extendingVoting={extendingVoting}
               totalVotes={voteCounts.reduce((sum, entry) => sum + entry.vote_count, 0)}
+              casualClub={!!club?.default_vibe_mode}
             />
             <EditMixForm
               mix={mix}
@@ -729,6 +730,7 @@ function OrganizerControls({
   onExtendVoting,
   extendingVoting,
   totalVotes,
+  casualClub,
 }: {
   state: MixState;
   hasTheme: boolean;
@@ -741,6 +743,11 @@ function OrganizerControls({
   onExtendVoting: (localDatetime: string) => Promise<boolean | undefined>;
   extendingVoting: boolean;
   totalVotes: number;
+  /** Club-wide casual mode (MYS-256) — no real competitive voting happens for
+   *  an all-vibing club, so the open_submission → open_voting transition
+   *  reads as revealing the mystery mix rather than "opening voting". Notes
+   *  are unaffected either way — they're never gated by vibe mode. */
+  casualClub: boolean;
 }) {
   // Closing is the one forward transition that cascades and can't be undone
   // in-app (MYS-170) — gated behind an explicit second step. "open mix" /
@@ -767,9 +774,12 @@ function OrganizerControls({
     state === "pending"
       ? "open mix"
       : state === "open_submission"
-        ? "open voting"
+        ? casualClub
+          ? "reveal the mystery mix"
+          : "open voting"
         : "close mix";
-  const busyLabel = next === "closed" ? "closing…" : "opening…";
+  const busyLabel =
+    next === "closed" ? "closing…" : casualClub && next === "open_voting" ? "revealing…" : "opening…";
   const busy = advancing || rollingBack || extendingVoting;
 
   // Bounds for the extend picker: must be after the current deadline, and no

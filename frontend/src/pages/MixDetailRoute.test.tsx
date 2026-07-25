@@ -703,6 +703,29 @@ describe("MixDetailRoute", () => {
     expect(mockUpdateMix).toHaveBeenCalledWith("r1", { state: "open_voting" });
   });
 
+  it("casual-mode club: the open_submission → open_voting button reads 'reveal the mystery mix' — MYS-256", async () => {
+    mockGetClub.mockResolvedValue({ ...club(), default_vibe_mode: true });
+    const user = userEvent.setup();
+    renderMix();
+
+    expect(
+      screen.queryByRole("button", { name: /^open voting$/i }),
+    ).not.toBeInTheDocument();
+    const btn = await screen.findByRole("button", { name: /reveal the mystery mix/i });
+    await user.click(btn);
+    expect(mockUpdateMix).toHaveBeenCalledWith("r1", { state: "open_voting" });
+  });
+
+  it("competitive club: the open_submission → open_voting button still reads 'open voting' — MYS-256", async () => {
+    mockGetClub.mockResolvedValue({ ...club(), default_vibe_mode: false });
+    renderMix();
+
+    expect(await screen.findByRole("button", { name: /^open voting$/i })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /reveal the mystery mix/i }),
+    ).not.toBeInTheDocument();
+  });
+
   it("advance button resets after a successful open (not stuck on 'opening…') — MYS-95", async () => {
     const user = userEvent.setup();
     renderMix();

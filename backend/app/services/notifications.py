@@ -355,9 +355,13 @@ def send_empty_mix_notice(
 
 
 def send_waitlist_invite(
-    sender: EmailSender, settings: Settings, email: str, invite_url: str
+    sender: EmailSender, settings: Settings, email: str, signin_url: str
 ) -> None:
     """Tell a waitlist entry their invite is ready (MYS-215, temporary).
+
+    ``signin_url`` is a direct /auth/verify link (pre-minted magic-link token
+    + invite token), not the /invite/:token preview page — one click and the
+    recipient is signed in, same as any other first-time magic link.
 
     Sent to an address with no User row yet — unlike every other notification
     here, there's no notification preference to check and no unsubscribe
@@ -368,8 +372,8 @@ def send_waitlist_invite(
     swallowed — same reasoning as auth.py's magic-link send."""
     subject = "you're off the mysterymixclub waitlist"
     body = (
-        "<p>a spot opened up, and you're in. here's your invite link:</p>"
-        f'<p><a href="{invite_url}">join mysterymixclub →</a></p>'
+        "<p>a spot opened up, and you're in. here's your sign-in link:</p>"
+        f'<p><a href="{signin_url}">join mysterymixclub →</a></p>'
         "<p>it expires in 48 hours.</p>"
     )
     sender.send(email, subject, body)

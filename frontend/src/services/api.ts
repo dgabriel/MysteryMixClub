@@ -1274,6 +1274,22 @@ export async function addNote(submissionId: string, body: string): Promise<Note>
   return (await res.json()) as Note;
 }
 
+/** Edit the caller's own note on a submission (body 1–280 chars). Mix must
+ *  still be open_voting; 404s if the caller has no note yet — POST first via
+ *  addNote (MYS-257: one note per player per song, PATCH is how they revise
+ *  it). Returns the updated Note. */
+export async function editNote(submissionId: string, body: string): Promise<Note> {
+  const res = await authenticatedRequest(`/api/v1/submissions/${submissionId}/notes`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ body }),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as Note;
+}
+
 /** Get the notes left on a submission, ordered oldest-first. */
 export async function getNotes(submissionId: string): Promise<Note[]> {
   const res = await authenticatedRequest(`/api/v1/submissions/${submissionId}/notes`);

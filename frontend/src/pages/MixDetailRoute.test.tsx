@@ -7,6 +7,7 @@ import {
   addNote,
   castVotes,
   deleteSubmission,
+  editNote,
   editSubmission,
   extendVotingDeadline,
   getClub,
@@ -55,6 +56,7 @@ vi.mock("../services/api", async () => {
     castVotes: vi.fn(),
     getNotes: vi.fn(),
     addNote: vi.fn(),
+    editNote: vi.fn(),
     getSpotifyStatus: vi.fn(),
     getVoteCounts: vi.fn(),
   };
@@ -76,6 +78,7 @@ const mockGetMyVotes = vi.mocked(getMyVotes);
 const mockCastVotes = vi.mocked(castVotes);
 const mockGetNotes = vi.mocked(getNotes);
 const mockAddNote = vi.mocked(addNote);
+const mockEditNote = vi.mocked(editNote);
 const mockGetSpotifyStatus = vi.mocked(getSpotifyStatus);
 const mockGetVoteCounts = vi.mocked(getVoteCounts);
 const mockResolveSong = vi.mocked(resolveSong);
@@ -2055,12 +2058,13 @@ describe("MixDetailRoute", () => {
       expect(await within(card).findByText("great taste")).toBeInTheDocument();
       expect(within(card).getByText("Bob")).toBeInTheDocument();
       // composer collapsed: textarea gone. MYS-257: one note per player per
-      // song, so the "leave a note" affordance does NOT come back.
+      // song, so "leave a note" is replaced by "edit note".
       expect(within(card).queryByRole("textbox")).not.toBeInTheDocument();
-      expect(within(card).queryByRole("button", { name: /leave a note/i })).not.toBeInTheDocument();
+      expect(within(card).queryByRole("button", { name: /^leave a note$/i })).not.toBeInTheDocument();
+      expect(within(card).getByRole("button", { name: /edit note/i })).toBeInTheDocument();
     });
 
-    it("a player who already has a note on a submission does not get a composer (MYS-257)", async () => {
+    it("a player who already has a note gets an edit composer pre-filled with it, and saving calls editNote (MYS-257)", async () => {
       const user = userEvent.setup();
       setupVoting({ entries: [entry({ submission_id: "p1", title: "Debaser" })] });
       mockGetNotes.mockResolvedValue([
@@ -2074,19 +2078,36 @@ describe("MixDetailRoute", () => {
           created_at: "2026-01-01T00:00:00Z",
         },
       ]);
+      mockEditNote.mockResolvedValue({
+        id: "n1",
+        submission_id: "p1",
+        mix_id: "r1",
+        author_id: OTHER,
+        author_display_name: "Bob",
+        body: "actually, revised",
+        created_at: "2026-01-01T00:00:00Z",
+      });
       renderMix();
 
       await screen.findByRole("button", { name: /Debaser/i });
       const card = cardFor("Debaser");
       // Only affordance visible before loading is "leave a note"; clicking it
       // discovers the existing note (voting-open GET only ever returns the
-      // caller's own) and shows it instead of a composer.
+      // caller's own) and opens a composer pre-filled with it, not read-only.
       await user.click(within(card).getByRole("button", { name: /leave a note/i }));
 
       expect(mockGetNotes).toHaveBeenCalledWith("p1");
-      expect(await within(card).findByText("already said my piece")).toBeInTheDocument();
+      const textarea = await within(card).findByRole("textbox");
+      expect(textarea).toHaveValue("already said my piece");
+
+      await user.clear(textarea);
+      await user.type(textarea, "actually, revised");
+      await user.click(within(card).getByRole("button", { name: /save note/i }));
+
+      expect(mockEditNote).toHaveBeenCalledWith("p1", "actually, revised");
+      expect(mockAddNote).not.toHaveBeenCalled();
+      expect(await within(card).findByText("actually, revised")).toBeInTheDocument();
       expect(within(card).queryByRole("textbox")).not.toBeInTheDocument();
-      expect(within(card).queryByRole("button", { name: /leave a note/i })).not.toBeInTheDocument();
     });
 
     it("an addNote ApiError surfaces in the actionError alert region", async () => {

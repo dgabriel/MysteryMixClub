@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, func
+from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -10,9 +10,14 @@ from app.db.base import Base
 
 class Note(Base):
     __tablename__ = "notes"
-    # No unique constraint: a player may leave multiple notes on a submission
-    # (free-form appreciation). The 280-char limit is enforced at the API layer,
-    # mirroring how submissions.note is handled (technical-design §6).
+    # One note per author per submission (MYS-257) — a second POST from the
+    # same author on the same submission is rejected at the API layer; this
+    # constraint is the DB-level backstop. The 280-char limit is enforced at
+    # the API layer, mirroring how submissions.note is handled
+    # (technical-design §6).
+    __table_args__ = (
+        UniqueConstraint("author_id", "submission_id", name="uq_notes_author_submission"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     mix_id: Mapped[uuid.UUID] = mapped_column(

@@ -5,6 +5,7 @@ import {
   addNote,
   castVotes,
   deleteSubmission,
+  editNote,
   editSubmission,
   extendVotingDeadline,
   getClub,
@@ -1968,20 +1969,69 @@ function SongNotes({
     }
   }, [open, loaded, submissionId, onActionError]);
 
+  // MYS-257: one note per player per song. While voting is open, GET only
+  // ever returns the caller's own notes, so a non-empty loaded list here
+  // means they already have theirs — open the composer pre-filled with it
+  // (edit) instead of a blank one (leave). If we haven't loaded yet, load
+  // first to find out; this also covers a second tab / stale-state 409/404
+  // as a fallback.
+  async function startComposing() {
+    if (!loaded) {
+      try {
+        const fetched = await getNotes(submissionId);
+        setNotes(fetched);
+        setLoaded(true);
+        if (fetched.length > 0) {
+          setDraft(fetched[0].body);
+        }
+      } catch (err) {
+        onActionError(err instanceof ApiError ? err.message : "couldn't load notes.");
+        return;
+      }
+    } else if (notes.length > 0) {
+      setDraft(notes[0].body);
+    }
+    setComposing(true);
+    setOpen(true);
+  }
+
+  const ownNote = loaded && notes.length > 0 ? notes[0] : null;
+
   async function submit() {
     const body = draft.trim();
     if (!body || body.length > NOTE_MAX || posting) return;
     setPosting(true);
     onActionError(null);
     try {
-      const created = await addNote(submissionId, body);
-      setNotes((current) => [...current, created]);
-      setLoaded(true);
+      if (ownNote) {
+        const updated = await editNote(submissionId, body);
+        setNotes((current) => current.map((n) => (n.id === updated.id ? updated : n)));
+      } else {
+        const created = await addNote(submissionId, body);
+        setNotes((current) => [...current, created]);
+        setLoaded(true);
+      }
       setDraft("");
       setComposing(false);
       setOpen(true);
     } catch (err) {
-      onActionError(err instanceof ApiError ? err.message : "couldn't leave your note. try again.");
+      if (err instanceof ApiError && (err.status === 409 || err.status === 404)) {
+        // Out of sync with the server (race with another tab/session, or the
+        // note we thought we had is gone) — refresh so the UI reflects
+        // reality instead of leaving a dead composer open.
+        setComposing(false);
+        try {
+          setNotes(await getNotes(submissionId));
+          setLoaded(true);
+        } catch {
+          // best-effort refresh; the error message below still surfaces.
+        }
+      }
+      onActionError(
+        err instanceof ApiError
+          ? err.message
+          : `couldn't ${ownNote ? "save your edit" : "leave your note"}. try again.`,
+      );
     } finally {
       setPosting(false);
     }
@@ -2004,13 +2054,10 @@ function SongNotes({
         {!composing ? (
           <button
             type="button"
-            onClick={() => {
-              setComposing(true);
-              setOpen(true);
-            }}
+            onClick={() => void startComposing()}
             className="font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink"
           >
-            leave a note
+            {ownNote ? "edit note" : "leave a note"}
           </button>
         ) : null}
       </div>
@@ -2053,14 +2100,14 @@ function SongNotes({
                     cancel
                   </button>
                   <Button type="button" onClick={() => void submit()} disabled={submitDisabled}>
-                    {posting ? "posting…" : "leave note"}
+                    {posting ? "saving…" : ownNote ? "save note" : "leave note"}
                   </Button>
                 </div>
               </div>
             </div>
           ) : null}
 
-          {loaded && notes.length > 0 ? (
+          {loaded && notes.length > 0 && !composing ? (
             <ul className="mt-4 space-y-3 border-t border-border pt-4">
               {notes.map((note) => (
                 <li key={note.id}>

@@ -709,7 +709,7 @@ export function MixDetailRoute() {
                     : []
                 }
               />
-              <ResultsSection results={results} userId={userId} />
+              <ResultsSection results={results} userId={userId} onActionError={setActionError} />
             </>
           )}
         </section>
@@ -2256,9 +2256,11 @@ function CollapsibleNotes({ notes }: { notes: ResultNote[] }) {
 function ResultsSection({
   results,
   userId,
+  onActionError,
 }: {
   results: MixResults | null;
   userId: string | null;
+  onActionError: (message: string | null) => void;
 }) {
   if (!results) {
     return <p className="font-mono text-[13px] font-light text-muted">no submissions</p>;
@@ -2267,7 +2269,7 @@ function ResultsSection({
   // A vibing viewer gets the trimmed reveal — winner(s) + Most Noted + their own
   // song's notes, no rankings or vote counts (MYS-112).
   if (results.viewer_is_vibing) {
-    return <VibingReveal results={results} />;
+    return <VibingReveal results={results} onActionError={onActionError} />;
   }
 
   if (results.submissions.length === 0) {
@@ -2393,7 +2395,13 @@ function RankBadge({ rank }: { rank: number }) {
  * one Rust signal), the winner(s) by votes — named, no counts — and the full
  * tracklist with notes but NO scores or leaderboard.
  */
-function VibingReveal({ results }: { results: MixResults }) {
+function VibingReveal({
+  results,
+  onActionError,
+}: {
+  results: MixResults;
+  onActionError: (message: string | null) => void;
+}) {
   const { most_noted, winners, picks } = results;
   return (
     <div className="animate-fade-in space-y-12">
@@ -2401,7 +2409,9 @@ function VibingReveal({ results }: { results: MixResults }) {
 
       {winners.length > 0 ? <VibeWinnersSection winners={winners} /> : null}
 
-      {picks.length > 0 ? <VibePicksSection picks={picks} /> : null}
+      {picks.length > 0 ? (
+        <VibePicksSection picks={picks} onActionError={onActionError} />
+      ) : null}
     </div>
   );
 }
@@ -2439,8 +2449,17 @@ function VibeWinnersSection({ winners }: { winners: WinnerReveal[] }) {
 
 /** The full tracklist as a vibing viewer sees it (MYS-134): every submitted song
  *  with its submitter and notes, but NO vote counts or ranking — so they can see
- *  what was in the mix without any scores. */
-function VibePicksSection({ picks }: { picks: RevealPick[] }) {
+ *  what was in the mix without any scores. A vibing viewer may keep leaving or
+ *  editing their own note on any pick even after the reveal (MYS-256
+ *  follow-up), so this renders the live SongNotes composer+list rather than
+ *  the read-only CollapsibleNotes used elsewhere on the reveal. */
+function VibePicksSection({
+  picks,
+  onActionError,
+}: {
+  picks: RevealPick[];
+  onActionError: (message: string | null) => void;
+}) {
   return (
     <section>
       <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
@@ -2468,7 +2487,7 @@ function VibePicksSection({ picks }: { picks: RevealPick[] }) {
                 </p>
               ) : null}
               <PlatformLinks platforms={p.platforms} title={p.title} source={p.source} />
-              {p.notes.length > 0 ? <CollapsibleNotes notes={p.notes} /> : null}
+              <SongNotes submissionId={p.submission_id} onActionError={onActionError} />
             </Card>
           </li>
         ))}

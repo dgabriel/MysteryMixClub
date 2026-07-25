@@ -118,15 +118,49 @@ async def test_post_when_not_open_voting_409(client, db_session):
     sub = await _seed_submission(db_session, mix_, organizer)
     resp = await client.post(_url(sub.id), json={"body": "love this"}, headers=_auth(organizer.id))
     assert resp.status_code == 409
-    assert resp.json()["detail"] == "notes can be left while voting is open"
+    assert (
+        resp.json()["detail"]
+        == "notes can be left while voting is open (or after the reveal, in casual mode)"
+    )
 
 
 async def test_post_when_closed_409(client, db_session):
+    # Organizer never submitted to this mix, so they're not vibing — a
+    # non-submitter defaults to "not vibing" (same rule as viewer_is_vibing on
+    # GET /mixes/:id/results).
     organizer = await _seed_user(db_session, "o@example.com")
     mix_ = await _seed_club_with_mix(db_session, organizer, state="closed")
     sub = await _seed_submission(db_session, mix_, organizer)
     resp = await client.post(_url(sub.id), json={"body": "too late"}, headers=_auth(organizer.id))
     assert resp.status_code == 409
+
+
+async def test_post_when_closed_and_playing_409(client, db_session):
+    # Submitted, but as "playing" not "vibing" — competitive club, closed mix:
+    # still blocked (MYS-256 follow-up).
+    organizer = await _seed_user(db_session, "o@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer, state="closed")
+    await _seed_submission(db_session, mix_, organizer, mode="playing")
+    other_sub = await _seed_submission(db_session, mix_, organizer, title="other song")
+    resp = await client.post(
+        _url(other_sub.id), json={"body": "too late"}, headers=_auth(organizer.id)
+    )
+    assert resp.status_code == 409
+
+
+async def test_post_when_closed_and_vibing_allowed(client, db_session):
+    # MYS-256 follow-up: a vibing player may keep leaving notes after the
+    # reveal — no real competition left to protect for a casual participant.
+    organizer = await _seed_user(db_session, "o@example.com")
+    member = await _seed_user(db_session, "m@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer, state="closed")
+    await _add_member(db_session, mix_.club_id, member)
+    await _seed_submission(db_session, mix_, member, mode="vibing")
+    other_sub = await _seed_submission(db_session, mix_, organizer, title="other song")
+    resp = await client.post(
+        _url(other_sub.id), json={"body": "still thinking about this one"}, headers=_auth(member.id)
+    )
+    assert resp.status_code == 201, resp.text
 
 
 async def test_post_empty_body_422(client, db_session):
@@ -280,7 +314,51 @@ async def test_patch_when_not_open_voting_409(client, db_session):
     sub = await _seed_submission(db_session, mix_, organizer)
     resp = await client.patch(_url(sub.id), json={"body": "edited"}, headers=_auth(organizer.id))
     assert resp.status_code == 409
-    assert resp.json()["detail"] == "notes can be edited while voting is open"
+    assert (
+        resp.json()["detail"]
+        == "notes can be edited while voting is open (or after the reveal, in casual mode)"
+    )
+
+
+async def test_patch_when_closed_and_playing_409(client, db_session):
+    # Note left while voting was open, mix later closed, author was "playing"
+    # (competitive): editing is blocked once closed (MYS-256 follow-up).
+    organizer = await _seed_user(db_session, "o@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer, state="open_voting")
+    mix_id = mix_.id
+    sub = await _seed_submission(db_session, mix_, organizer, mode="playing")
+    sub_id = sub.id
+    await client.post(_url(sub_id), json={"body": "first thought"}, headers=_auth(organizer.id))
+
+    db_mix = await db_session.scalar(select(Mix).where(Mix.id == mix_id))
+    db_mix.state = "closed"
+    await db_session.commit()
+
+    resp = await client.patch(_url(sub_id), json={"body": "edited"}, headers=_auth(organizer.id))
+    assert resp.status_code == 409
+
+
+async def test_patch_when_closed_and_vibing_allowed(client, db_session):
+    # MYS-256 follow-up: a vibing player may keep revising their note after
+    # the reveal, same as leaving a new one.
+    organizer = await _seed_user(db_session, "o@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer, state="open_voting")
+    mix_id = mix_.id
+    sub = await _seed_submission(db_session, mix_, organizer, mode="vibing")
+    sub_id = sub.id
+    await client.post(_url(sub_id), json={"body": "first thought"}, headers=_auth(organizer.id))
+
+    db_mix = await db_session.scalar(select(Mix).where(Mix.id == mix_id))
+    db_mix.state = "closed"
+    await db_session.commit()
+
+    resp = await client.patch(
+        _url(sub_id),
+        json={"body": "actually, revised after the reveal"},
+        headers=_auth(organizer.id),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["body"] == "actually, revised after the reveal"
 
 
 async def test_patch_no_existing_note_404(client, db_session):

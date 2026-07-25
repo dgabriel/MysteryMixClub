@@ -29,13 +29,26 @@ Related: branch model in `docs/ci-cd.md`. Hook PATH gotcha at the bottom of this
    **Create the branch before writing a single line of code.** Never edit files
    on `develop` and branch after — you will end up with uncommitted changes on a
    shared branch. Branch first, then code.
-   **No `develop` yet (neither local nor `origin/develop`)?** Create it from
-   `main` before cutting any feature branch — don't skip straight to branching
-   off `main`:
+   **Start from origin state, not local state.** Dawn sometimes merges PRs from
+   the GitHub web UI, and this repo auto-deletes head branches on merge — so a
+   promotion PR (`develop → main`, head branch `develop`) can delete
+   `origin/develop` out from under you, while your local `develop` still looks
+   fine (it just doesn't know its upstream is gone). Before trusting any local
+   branch, always:
+   ```
+   git fetch --prune
+   ```
+   Then prune local branches whose upstream is gone (`git branch -vv | grep
+   ': gone]'`) — each one either merged already (safe to delete) or needs a
+   look before deleting, never silently kept around as if still live.
+   **Only if `origin/develop` doesn't exist at all**, create it from `main`:
    ```
    git checkout main && git pull --ff-only origin main
    git checkout -b develop && git push -u origin develop
    ```
+   If `origin/develop` does exist but your local one doesn't (or is stale),
+   just track/reset to it — don't recreate it from `main`, that would discard
+   anything on `origin/develop` that `main` hasn't absorbed yet.
 4. **One branch at a time.** Finish and merge the current branch before starting
    the next piece of work. Do not begin new feature code while a PR is open and
    unmerged — even if asked. Stack depth = 1.

@@ -29,6 +29,13 @@ Related: branch model in `docs/ci-cd.md`. Hook PATH gotcha at the bottom of this
    **Create the branch before writing a single line of code.** Never edit files
    on `develop` and branch after — you will end up with uncommitted changes on a
    shared branch. Branch first, then code.
+   **No `develop` yet (neither local nor `origin/develop`)?** Create it from
+   `main` before cutting any feature branch — don't skip straight to branching
+   off `main`:
+   ```
+   git checkout main && git pull --ff-only origin main
+   git checkout -b develop && git push -u origin develop
+   ```
 4. **One branch at a time.** Finish and merge the current branch before starting
    the next piece of work. Do not begin new feature code while a PR is open and
    unmerged — even if asked. Stack depth = 1.

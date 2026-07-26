@@ -11,8 +11,62 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  build-frontend:
+    name: Build frontend (CI)
+    # Hosted runner, not the prod Droplet (MYS-259): the frontend build
+    # (npm ci && npm run build) used to run ON the 2 GB prod box during every
+    # deploy, which risked OOMing the app host itself. GitHub's hosted runners
+    # have plenty of headroom and cost nothing extra on the free/included
+    # Actions minutes this repo's traffic uses.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        # Vite bakes VITE_* vars into the bundle at build time — since the
+        # build no longer happens on the Droplet, it can no longer read them
+        # from /etc/mysterymixclub/prod.env either. `vars.VITE_API_BASE_URL`
+        # defaults to "" (unset) when no such Actions variable exists, which
+        # matches prod.env.example's documented default: leave it empty so
+        # the SPA calls the API same-origin (relative /api/v1/...) through
+        # nginx. Only set the `VITE_API_BASE_URL` variable as a
+        # **repository**-level Actions variable (Settings → Secrets and
+        # variables → Actions → Variables tab, NOT under Settings →
+        # Environments → production) if the API ever lives on a different
+        # host than the SPA. It MUST be repo-level, not environment-scoped:
+        # this job has no `environment:` key (it never touches the Droplet),
+        # and GitHub only exposes environment-scoped variables to jobs that
+        # declare that same environment — an environment-scoped variable here
+        # would silently be invisible to this job. It's fine for this to be a
+        # plain variable, not a secret: it ends up readable in the public JS
+        # bundle regardless of where it's stored.
+        env:
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+        run: npm run build
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          retention-days: 1
+
   deploy:
     name: Deploy to production Droplet
+    needs: build-frontend
     # Runs on a self-hosted runner living ON the prod Droplet itself (registered
     # via scripts/bootstrap-droplet-prod.sh-adjacent setup, systemd service
     # `actions.runner.*`, user mysterymixclub). GitHub-hosted runners can't reach
@@ -23,8 +77,27 @@ jobs:
     runs-on: [self-hosted, prod]
     # The `production` environment gates this job behind a manual approval.
     # Configure required reviewers under Settings → Environments → production.
+    # Gated here, not on build-frontend: building the artifact never touches
+    # prod, only this job does.
     environment: production
     steps:
+      # Clear out any dist/ left behind by a previous deploy before extracting
+      # the fresh artifact below — Vite's content-hashed filenames mean an
+      # overlay-only extraction could leave stale chunks that then get copied
+      # into WEB_ROOT by deploy-prod.sh alongside the current build.
+      - name: Clean previous frontend build output
+        run: rm -rf /home/mysterymixclub/app/frontend/dist
+
+      # Downloads straight to the persistent checkout's frontend/dist (see the
+      # "No actions/checkout here" note below) — deploy-prod.sh no longer
+      # builds the frontend itself (MYS-259); it just publishes what's already
+      # built here.
+      - name: Download frontend build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: /home/mysterymixclub/app/frontend/dist
+
       # No actions/checkout here — deploy-prod.sh manages its own persistent
       # clone at /home/mysterymixclub/app (placed there by
       # bootstrap-droplet-prod.sh) and syncs it to origin/main itself, so a

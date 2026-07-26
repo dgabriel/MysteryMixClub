@@ -35,13 +35,23 @@ branch-protection rules and the one-time Droplet/runner provisioning
         │ docs/git-hygiene.md "Why promotions must be a real merge";
         │ enforced by a GitHub ruleset on main, squash/rebase not offered)
         ▼
-   push to main ───► deploy-prod.yml ─► [environment: production]
-                          (manual approval gate, then self-hosted runner
-                           living ON the prod Droplet) ──────► scripts/deploy-prod.sh
-                                                                (Nginx + systemd)
+   push to main ───► deploy-prod.yml
+                        ├─ build-frontend (hosted runner, ungated):
+                        │    npm ci && npm run build → upload dist/ artifact
+                        └─ deploy [environment: production, manual approval
+                             gate] (self-hosted runner living ON the prod
+                             Droplet) ──► download dist/ artifact
+                                          → scripts/deploy-prod.sh
+                                            (gunicorn+systemd graceful reload,
+                                             publishes the CI-built frontend)
 ```
 
-Both deploy workflows run directly on their target Droplet — no SSH from
+Prod's frontend build moved off the Droplet into CI (MYS-259) — the old
+on-box `npm ci && npm run build` risked OOMing a 2 GB app host under load.
+Staging still builds on-box; see `docs/prod-setup.md` "What changes vs.
+staging" for why that gap exists and isn't (yet) closed.
+
+Both deploy jobs that actually touch a Droplet run directly on it — no SSH from
 GitHub, no DigitalOcean App Platform involved for either environment.
 
 ---
@@ -90,12 +100,16 @@ unit names).
 |-----------------------------------|---------------------------|-------------------------------------------------------------|
 | `.github/workflows/ci.yml`        | PR → `main` or `develop`  | Frontend lint/typecheck/test; backend ruff/mypy/pytest+cov  |
 | `.github/workflows/deploy-staging.yml` | push → `develop`     | Runs on a self-hosted runner living on the staging Droplet → `scripts/deploy-staging.sh` |
-| `.github/workflows/deploy-prod.yml`    | push → `main`        | `environment: production` approval gate → self-hosted runner on the prod Droplet → `scripts/deploy-prod.sh` |
+| `.github/workflows/deploy-prod.yml`    | push → `main`        | `build-frontend` job (hosted runner, ungated): builds the SPA, uploads it as an artifact. `deploy` job: `environment: production` approval gate → self-hosted runner on the prod Droplet → downloads the artifact → `scripts/deploy-prod.sh` (MYS-259) |
 
-Both deploys run directly on their target Droplet via a self-hosted GitHub
-Actions runner (MYS-224/225) — no SSH secrets or `DIGITALOCEAN_ACCESS_TOKEN`
-needed for either one anymore. See [`staging-setup.md`](staging-setup.md) and
-[`prod-setup.md`](prod-setup.md) for runner registration.
+The `deploy` job in each workflow runs directly on its target Droplet via a
+self-hosted GitHub Actions runner (MYS-224/225) — no SSH secrets or
+`DIGITALOCEAN_ACCESS_TOKEN` needed for either one. `deploy-prod.yml`'s
+`build-frontend` job is the one exception: it deliberately runs on a normal
+**hosted** runner (MYS-259) since it never touches the Droplet — building
+`npm ci && npm run build` there instead of on the 2 GB prod box removes a real
+OOM risk from every prod deploy. See [`staging-setup.md`](staging-setup.md)
+and [`prod-setup.md`](prod-setup.md) for runner registration.
 
 ---
 

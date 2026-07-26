@@ -52,15 +52,33 @@ Related: branch model in `docs/ci-cd.md`. Hook PATH gotcha at the bottom of this
 4. **One branch at a time.** Finish and merge the current branch before starting
    the next piece of work. Do not begin new feature code while a PR is open and
    unmerged — even if asked. Stack depth = 1.
-5. **Never force-push a shared branch** (`main`, `develop`, or any branch with an
+5. **bd issues and git branches are separate axes — don't conflate them.** Since
+   the 2026-07-26 move off Linear, issue state lives in bd's own Dolt store,
+   synced via `refs/dolt/data` — a ref namespace alongside but independent of
+   `refs/heads/*`. Checking out a different git branch does not change which bd
+   issues exist or their status; nothing about this branch model needs to change
+   because of bd.
+   - **Don't adopt bd's own Dolt-native branching** (`bd branch`) as a
+     per-feature-branch mirror of git branches. It's available, but at this
+     project's scale (one primary developer plus occasional collaborators, not
+     concurrent teams needing isolated issue-state experiments) it only adds a
+     second merge-conflict surface for no payoff. One shared bd history is enough.
+   - **Sequence `bd dolt push` after the PR merges and the issue closes, not
+     before.** Issue state and code state sync independently, so pushing dolt
+     state ahead of the actual merge would let a collaborator pull a "closed"
+     issue whose code isn't in `develop` yet. This is already how the session-close
+     protocol is wired (see the Beads section of `CLAUDE.md` and the
+     `mmc-issue-management` skill) — just don't run `bd dolt push` manually out
+     of that order.
+6. **Never force-push a shared branch** (`main`, `develop`, or any branch with an
    open PR / other readers). `--force-with-lease` only ever on your own private
    feature branch, and only when you understand why.
-6. **Never rewrite published history.** Don't `rebase`, `amend`, or `reset` commits
+7. **Never rewrite published history.** Don't `rebase`, `amend`, or `reset` commits
    that have already been pushed to a shared branch. Amend only local, unpushed
    commits.
-7. **Don't fast-forward `main` to `develop`.** The gap is intentional (un-promoted
+8. **Don't fast-forward `main` to `develop`.** The gap is intentional (un-promoted
    staging work). See [[project_branch-topology]].
-8. **Don't cherry-pick app/tooling changes into `main`.** They reach prod only via
+9. **Don't cherry-pick app/tooling changes into `main`.** They reach prod only via
    a deliberate `develop → main` promotion PR. Until the official beta, the only
    thing promoted to `main` is README docs (preserve main's pre-launch banner).
 
@@ -180,12 +198,12 @@ history first (see above), don't reach for `--squash` as the fast way out.
 - **Run `mypy` yourself** — it is **not** in the pre-push hook, only in CI.
   See [[project_mypy-not-in-prepush]]. `cd backend && mypy app`.
 - Pre-push runs `pytest`; let it. Don't bypass.
-- **Hook PATH gotcha:** Husky hooks call `ruff`/`pytest` by bare name but they
-  live in `backend/.venv/bin`. Prefix the git command or the hook fails with
-  ENOENT / ModuleNotFoundError:
-  ```
-  PATH="$PWD/backend/.venv/bin:$PATH" git push origin <branch>
-  ```
-  See [[project_git-hooks-venv]].
+- **Hook PATH gotcha — fixed 2026-07-26.** The hooks (`.beads/hooks/pre-commit`,
+  `.beads/hooks/pre-push`, and the `.husky/*` originals kept in sync) now export
+  `backend/.venv/bin` onto `PATH` themselves before calling `ruff`/`pytest`, so
+  they resolve the right interpreter regardless of what a given shell finds
+  first (e.g. Anaconda). No manual `PATH=...` prefix needed anymore — if you see
+  ENOENT / ModuleNotFoundError from a hook, that's a real regression, not this
+  old gotcha; investigate rather than reaching for the workaround.
 - Pushes to `main`/`develop` share one Postgres test DB serially — **never run two
   pushes concurrently** or pre-push deadlocks.

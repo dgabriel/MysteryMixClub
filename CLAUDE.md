@@ -15,14 +15,20 @@ Run these steps before writing any code:
    Do not touch git (branch, commit, push, merge, rebase) without having read the
    git hygiene guide. These rules are non-negotiable — never improvise around a git mess.
 
-2. **Load your sprint**
-   Use bd, not Linear — Linear is retired for this project:
+2. **Sync, then load your sprint**
+   Use bd, not Linear — Linear is retired for this project. Pull first so you're
+   not working off a stale set of issues if another clone/session closed or
+   created any since your last session:
    ```
+   bd dolt pull
    bd ready
    bd list --status=in_progress
    ```
-   Summarize the active sprint in one sentence, then list the in-scope issues
-   before asking what to work on.
+   `bd dolt pull` only merges remote issue state into your local DB — it doesn't
+   push or touch git branches, so it's safe to run unconditionally, unlike
+   `bd dolt push` (see the Beads Agent Context Profiles below for when that's
+   allowed). Summarize the active sprint in one sentence, then list the
+   in-scope issues before asking what to work on.
 
 3. **Confirm before acting**
    State what you're about to do and which issue it maps to.
@@ -208,7 +214,7 @@ docs/
 - [ ] Read `docs/design/style-guide.md`
 - [ ] Read `docs/technical/technical-design.md`
 - [ ] Read `docs/git-hygiene.md`
-- [ ] Fetched active Linear issues
+- [ ] Ran `bd dolt pull`, then fetched active bd issues
 - [ ] Confirmed which issue we're working on today
 - [ ] Stated one-sentence sprint goal back to user
 

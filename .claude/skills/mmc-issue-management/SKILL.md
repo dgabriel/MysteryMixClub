@@ -43,12 +43,13 @@ git checkout -b feature/<slug>
 
 **Local ticket log habit is retired.** [[feedback_local-ticket-log]] (maintain a gitignored `TICKETS.md`, only round-trip to Linear when told) is now obsolete — bd's local Dolt DB *is* the fast local reference that habit was trying to approximate, with no round-trip needed because there's no longer a remote source of truth to protect from over-querying. Query bd directly (`bd ready`, `bd list`, `bd show <id>`) instead of maintaining a parallel file.
 
-## Git/sync authority — follow the active profile, same as before
+## Git/sync authority — pull is routine, push still needs authority
 
-The bd-managed block in `CLAUDE.md` defines three profiles (Conservative default, Minimal, Team-maintainer). Nothing about the Linear migration changes this:
-- **Never** run `bd dolt push`, `git commit`, or `git push` without explicit authority for *this specific* action — a general "switch to bd" instruction is not blanket authorization to push the migrated database to the shared remote.
-- Right now (as of the migration on 2026-07-26) the local Dolt DB has **not** been pushed to `refs/dolt/data` — it exists only on this machine. Confirm with the user before the first `bd dolt push`.
-- `core.hooksPath` now points at `.beads/hooks` instead of `.husky/_` (a side effect of `bd init`). This is a **local, per-clone git config** — it is not tracked in git and does not propagate from a commit. Anyone else working in this repo needs to run `bd hooks install` themselves once. The existing Husky commands (`lint-staged`, `commitlint`, `typecheck`, `pytest`) were preserved inline in the new hook scripts, not dropped — verify with `bd hooks list` if in doubt.
+`bd dolt pull` and `bd dolt push` are not symmetric — treat them differently:
+- **`bd dolt pull` is wired into session start** (`CLAUDE.md` → "On Every Session Start" step 2) and safe to run unconditionally, every session, without asking — it only merges remote issue state into the local DB, no git branches or shared state touched.
+- **`bd dolt push` still requires explicit authority for that specific action**, per the Agent Context Profiles in the bd-managed `CLAUDE.md` block (Conservative default: report and wait; Team-maintainer: push as part of session close). A general "switch to bd" or "wire in sync" instruction is not blanket authorization for every future push — it's already wired into the Team-maintainer session-close protocol, but Conservative sessions still need a per-instance go-ahead.
+- The full migration (259 issues, doc/skill updates, the hooks fix) is already pushed as of 2026-07-26 — `refs/dolt/data` exists on `origin`, confirmed via `git ls-remote`. This is the steady state to keep it in; don't assume a fresh `bd dolt push` is needed unless local issues have changed since the last one.
+- `core.hooksPath` points at `.beads/hooks` instead of `.husky/_` (a side effect of `bd init`). This is a **local, per-clone git config** — it is not tracked in git and does not propagate from a commit. Anyone else working in this repo needs to run `bd hooks install` themselves once. The existing Husky commands (`lint-staged`, `commitlint`, `typecheck`, `pytest`) were preserved inline in the hook scripts, not dropped — verify with `bd hooks list` if in doubt. Both `.beads/hooks/*` and `.husky/*` now export the backend venv onto `PATH` before calling `ruff`/`pytest`, so those tools resolve correctly regardless of which Python a given shell finds first.
 
 ## Known open tension: `bd remember` vs. the personal memory system
 

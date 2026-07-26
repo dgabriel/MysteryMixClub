@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "MysteryMixClub",
+  "project_id": "a76b62fc-6160-4bf5-be59-0848ce96d03b"
+}

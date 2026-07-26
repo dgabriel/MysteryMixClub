@@ -19,7 +19,12 @@ from app.api.wire import WireModel
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.routes.invites import _join_via_invite
+from app.api.routes.invites import (
+    _active_member_count,
+    _CLUB_FULL_MESSAGE,
+    _CLUB_MEMBER_CAP,
+    _join_via_invite,
+)
 from app.auth.jwt import create_access_token
 from app.auth.tokens import generate_token, hash_token
 from app.config import Settings, get_settings
@@ -246,6 +251,20 @@ async def verify_magic_link(
         if settings.max_users and (total_users or 0) >= settings.max_users:
             await db.commit()
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=_AT_CAPACITY_MESSAGE)
+        if invite_row.club_id is not None:
+            # MYS-80: block a brand-new account from being created for a club
+            # invite that's already full, same spirit as the max_users guard
+            # just above — the whole point of this invite was joining that
+            # specific club, so there's nothing to sign up for. This is an
+            # early exit, not the authoritative check: the race-free one
+            # happens inside _join_via_invite once the club row is locked, a
+            # few lines below. A signup that slips past this early check in
+            # that narrow race window is allowed to complete rather than
+            # unwind an otherwise-finished login (see the join handling
+            # below).
+            if await _active_member_count(db, invite_row.club_id) >= _CLUB_MEMBER_CAP:
+                await db.commit()
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_CLUB_FULL_MESSAGE)
         if invite_row.club_id is None:
             # Single-use (MYS-182 follow-up): lock and re-check so two
             # concurrent signups can't both consume the same platform invite.
@@ -275,8 +294,16 @@ async def verify_magic_link(
     user_id = user.id
     welcome_email: tuple[uuid.UUID, str] | None = None
     if invite_row is not None and invite_row.club_id is not None:
-        joined = await _join_via_invite(db, user_id, invite_row)
-        if joined:
+        join_result = await _join_via_invite(db, user_id, invite_row)
+        # "full" (MYS-80) is deliberately not an error here, unlike the
+        # dedicated accept-invite endpoint: this is a sign-in flow, and a
+        # login must not fail just because a club someone has no stake in
+        # creating happens to be full. A brand-new signup was already turned
+        # away above except for the rare race window between that check and
+        # this one — in that window it completes without the club, same as
+        # any other no-op join, rather than unwinding an otherwise-finished
+        # account creation and login.
+        if join_result == "joined":
             club = await db.scalar(select(Club).where(Club.id == invite_row.club_id))
             if club is not None:
                 # Capture before commit so ORM expiry can't affect the bg task.

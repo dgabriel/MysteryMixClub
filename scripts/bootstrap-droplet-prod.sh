@@ -64,6 +64,36 @@ if ! node --version 2>/dev/null | grep -q '^v20\.'; then
   apt-get install -y nodejs
 fi
 
+echo "==> Provisioning swap (MYS-259 — safety net; this droplet has no swap today)"
+# 2G to match the droplet's 2G RAM: a conservative, standard sizing for a
+# small box, not tuned for any specific workload. Pure addition — nothing
+# above depends on swap existing, this just gives the kernel somewhere to go
+# before the OOM killer does, on a box that otherwise has zero headroom.
+# Idempotent: safe to re-run against a droplet that already has this file
+# swapped on, or one where the file exists but isn't active yet.
+SWAP_FILE="${SWAP_FILE:-/swapfile}"
+SWAP_SIZE="${SWAP_SIZE:-2G}"
+if swapon --show=NAME --noheadings 2>/dev/null | grep -qx "${SWAP_FILE}"; then
+  echo "    ${SWAP_FILE} already active, skipping"
+else
+  if [[ ! -f "${SWAP_FILE}" ]]; then
+    fallocate -l "${SWAP_SIZE}" "${SWAP_FILE}"
+    chmod 600 "${SWAP_FILE}"
+    mkswap "${SWAP_FILE}"
+  fi
+  swapon "${SWAP_FILE}"
+fi
+if ! grep -qs "^${SWAP_FILE} " /etc/fstab; then
+  echo "${SWAP_FILE} none swap sw 0 0" >>/etc/fstab
+fi
+# Prefer keeping the app/Postgres working set in RAM; only lean on swap under
+# real memory pressure rather than proactively — the default (60) reclaims
+# too eagerly for a box this size.
+if ! grep -qs '^vm.swappiness' /etc/sysctl.conf; then
+  echo 'vm.swappiness=10' >>/etc/sysctl.conf
+fi
+sysctl -w vm.swappiness=10 >/dev/null
+
 echo "==> Creating system user '${APP_USER}'"
 if id -u "${APP_USER}" >/dev/null 2>&1; then
   echo "    user already exists, skipping"

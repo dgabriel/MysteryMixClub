@@ -14,8 +14,29 @@ Type=simple
 User=mysterymixclub
 Group=mysterymixclub
 WorkingDirectory=/home/mysterymixclub/app/backend
+# GUNICORN_WORKERS defaults to 2 here (sized for the prod droplet's 2 vCPUs —
+# infra/terraform/envs/prod/terraform.tfvars, s-2vcpu-2gb; MYS-259). This
+# Environment= line is intentionally BEFORE EnvironmentFile=: systemd applies
+# later directives on top of earlier ones for the same key, so an optional
+# GUNICORN_WORKERS=N in prod.env overrides this default without requiring one;
+# leaving it unset in prod.env is equally valid and falls back to 2.
+Environment=GUNICORN_WORKERS=2
 EnvironmentFile=/etc/mysterymixclub/prod.env
-ExecStart=/home/mysterymixclub/app/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+# SQLAlchemy is fully async here (create_async_engine/AsyncSession) — worker
+# count is what scales concurrency, not a sync threadpool, so no extra
+# thread-sizing flags are needed alongside --workers.
+ExecStart=/home/mysterymixclub/app/backend/.venv/bin/gunicorn app.main:app \
+  --worker-class uvicorn.workers.UvicornWorker \
+  --workers ${GUNICORN_WORKERS} \
+  --bind 127.0.0.1:8000
+# Graceful reload on deploy (MYS-259): SIGHUP tells the gunicorn master to load
+# the new code, start a fresh set of workers, and only then gracefully drain
+# and kill the old ones — in-flight requests finish instead of being dropped,
+# unlike a hard `systemctl restart`. Deliberately NOT using --preload above:
+# preload loads the app into the master before forking, which would make HUP
+# respawn workers with the OLD (already-imported) code instead of picking up
+# the new deploy.
+ExecReload=/bin/kill -s HUP $MAINPID
 Restart=on-failure
 RestartSec=5
 

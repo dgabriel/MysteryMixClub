@@ -8,11 +8,17 @@ DigitalOcean App Platform. See **ADR 0002**
 for the tracking ticket.
 
 ```
- push to main ─► deploy-prod.yml ─► ssh ─► scripts/deploy-prod.sh
-                                            ├─ git pull main
-                                            ├─ pip install -e . + alembic upgrade
-                                            ├─ systemctl restart mysterymixclub-api
-                                            └─ npm ci && npm run build → /var/www/mysterymixclub
+ push to main ─► deploy-prod.yml (self-hosted runner ON the Droplet, no SSH)
+                   ├─ build-frontend job (hosted runner): npm ci && npm run build
+                   │  → uploads dist/ as a build artifact (MYS-259)
+                   └─ deploy job (self-hosted, gated behind `production` approval)
+                        ├─ downloads the dist/ artifact → frontend/dist
+                        └─ scripts/deploy-prod.sh
+                             ├─ git pull main
+                             ├─ pip install -e . + alembic upgrade
+                             ├─ systemctl reload mysterymixclub-api (graceful; falls
+                             │  back to restart only if the service isn't active yet)
+                             └─ publish frontend/dist → /var/www/mysterymixclub
 ```
 
 | Thing            | Value                                            |
@@ -22,9 +28,10 @@ for the tracking ticket.
 | Backend venv     | `/home/mysterymixclub/app/backend/.venv`         |
 | Web root         | `/var/www/mysterymixclub`                        |
 | Runtime env file | `/etc/mysterymixclub/prod.env`                   |
-| systemd unit     | `mysterymixclub-api` (uvicorn on `127.0.0.1:8000`) |
+| systemd unit     | `mysterymixclub-api` (gunicorn + `uvicorn.workers.UvicornWorker`, 2 workers by default, on `127.0.0.1:8000`; MYS-259) |
 | Nginx site       | `/etc/nginx/sites-available/mysterymixclub-prod` |
 | Canonical host   | `mysterymixclub.com` (apex — matches technical-design.md §5; `www` 301s to it) |
+| Swap             | `/swapfile`, 2G (`bootstrap-droplet-prod.sh`; MYS-259) |
 
 This doc covers the Droplet's OS-level setup. The Droplet, firewall, reserved
 IP, and DNS records themselves are provisioned by Terraform —
@@ -60,14 +67,26 @@ PROD_DB_PASSWORD='choose-a-strong-password' \
   sudo -E bash /root/scripts/bootstrap-droplet-prod.sh
 ```
 
-This installs packages, creates the `mysterymixclub` user, the
-`mysterymixclub_prod` Postgres database + `mmc_prod` role, clones the repo
-(branch `main`) to `/home/mysterymixclub/app`, builds the backend venv, and
-configures `ufw` — port 22 scoped to `ADMIN_SSH_CIDR`, 80/443 open. Idempotent
-— safe to re-run.
+This installs packages, provisions a 2G swapfile (`/swapfile`, `vm.swappiness=10`,
+MYS-259 — a safety net; this box has no other memory headroom), creates the
+`mysterymixclub` user, the `mysterymixclub_prod` Postgres database + `mmc_prod`
+role, clones the repo (branch `main`) to `/home/mysterymixclub/app`, builds the
+backend venv, and configures `ufw` — port 22 scoped to `ADMIN_SSH_CIDR`, 80/443
+open. Idempotent — safe to re-run.
 
 > Optional overrides (env vars): `PROD_DB_NAME`, `PROD_DB_USER`, `REPO_URL`,
-> `REPO_BRANCH`, `APP_ROOT`, `WEB_ROOT`.
+> `REPO_BRANCH`, `APP_ROOT`, `WEB_ROOT`, `SWAP_FILE`, `SWAP_SIZE`.
+
+> **This only provisions swap on a fresh droplet.** The bootstrap script never
+> re-runs against the *already-live* prod droplet on its own, so if
+> `mysterymixclub-prod` was provisioned before MYS-259, it has no swap today
+> and applying this requires a one-time manual step on the live box (`fallocate
+> -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon
+> /swapfile`, plus the matching `/etc/fstab` line and `vm.swappiness=10` in
+> `/etc/sysctl.conf` — see the bootstrap script for the exact commands). This
+> is **not something Claude can do** (no prod SSH, ever) — it's an operational
+> follow-up for Dawn to apply by hand, or to fold into a future full-redeploy
+> of the droplet from the updated bootstrap script.
 
 ---
 
@@ -91,7 +110,15 @@ Fill in at least:
   optional, but all three or none. See "Enabling Apple Music" in
   `staging-setup.md` — the process is identical, just against prod's env file.
 - `ALLOWED_ORIGINS` / `APP_BASE_URL` — `https://mysterymixclub.com`.
-- `VITE_API_BASE_URL` — leave **empty** (same-origin, as staging).
+- `GUNICORN_WORKERS` — optional; the systemd unit defaults to `2` (sized for
+  this droplet's 2 vCPUs) if left unset. Only set it after resizing the
+  droplet or measuring a different optimum, and follow up with a real
+  `sudo systemctl restart mysterymixclub-api` (not the deploy script's normal
+  `reload`) — see the comment in `scripts/prod.env.example` for why.
+
+Note: `VITE_API_BASE_URL` is **no longer read from this file** (MYS-259) — the
+frontend build moved into CI, so this env file is never sourced for it. See
+`scripts/prod.env.example`'s comment for where that setting now lives.
 
 Lock it down:
 
@@ -111,6 +138,41 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now mysterymixclub-api
 sudo systemctl status mysterymixclub-api      # should be active (running)
 ```
+
+> **Cutting an already-live droplet over to gunicorn (MYS-259):**
+> `scripts/deploy-prod.sh` never re-copies this unit file or runs
+> `daemon-reload` on its own — unlike the deadline-job units, this main API
+> unit is only ever (re-)installed by this manual step. So merging MYS-259 and
+> merely letting the next `main` deploy run is **not enough** to switch the
+> live droplet to gunicorn: the already-running bare-`uvicorn` process keeps
+> running under the *old* unit definition until someone repeats this step by
+> hand.
+>
+> **What actually happens if you skip this step and deploy anyway:**
+> `deploy-prod.sh` attempts `systemctl reload mysterymixclub-api` on every
+> deploy. Against the *old* unit (no `ExecReload=` defined at all), that
+> reload attempt itself fails — systemd, not the script, rejects it
+> ("Job type reload is not applicable"). The script catches that failure and
+> falls back to a plain `systemctl restart` of whatever unit is actually
+> installed, i.e. the still-old bare-`uvicorn` one. **The deploy still
+> succeeds** — new code runs, just still under bare uvicorn, hard-restarted
+> — you simply don't get gunicorn/multiple workers/graceful reload until the
+> manual cutover below happens. (An earlier version of this script instead
+> pre-decided reload-vs-restart from `systemctl is-active`, which does NOT
+> distinguish "not active yet" from "active but missing ExecReload=" — that
+> version would have let the reload attempt hard-fail mid-script, aborting the
+> deploy job **after** the alembic migration above had already run against
+> prod. Fixed before merge; flagging here so the failure mode is understood,
+> not just the current safe behavior.)
+>
+> To actually cut over: repeat the `cp` + `daemon-reload` above, then finish
+> with a real `sudo systemctl restart mysterymixclub-api` (not `reload` — the
+> running process needs to actually re-exec under the new `ExecStart` to
+> become gunicorn at all; `reload`/SIGHUP only does something useful once
+> gunicorn is already the thing running). This is a one-time, deliberate
+> cutover step for Dawn — not something Claude does (no prod SSH). After that
+> one restart, routine deploys use the normal graceful `reload` from step 5
+> onward, and the fallback above stops being exercised.
 
 Apply the first migration and confirm the API answers locally:
 
@@ -150,10 +212,29 @@ timer.
 
 ## 5. Wire up the GitHub Actions deploy
 
-The `Deploy Production` workflow (`.github/workflows/deploy-prod.yml`) runs on
-a **self-hosted GitHub Actions runner living on the Droplet itself** — gated
-behind the `production` GitHub environment's required-reviewer approval — and
-runs `scripts/deploy-prod.sh` directly.
+The `Deploy Production` workflow (`.github/workflows/deploy-prod.yml`) has two
+jobs (MYS-259):
+
+1. `build-frontend` — a normal **hosted** GitHub Actions runner (`ubuntu-latest`),
+   ungated. Builds the SPA (`npm ci && npm run build`) and uploads `dist/` as a
+   build artifact. Runs on every push to `main`, including before approval, since
+   it never touches the Droplet.
+2. `deploy` — the **self-hosted GitHub Actions runner living on the Droplet
+   itself** — gated behind the `production` GitHub environment's
+   required-reviewer approval. Downloads the `build-frontend` job's artifact
+   into `frontend/dist`, then runs `scripts/deploy-prod.sh`, which publishes
+   that already-built bundle (it no longer builds anything itself).
+
+If the SPA ever needs to call an API on a different host than itself, set a
+`VITE_API_BASE_URL` **repository-level** Actions variable (Settings → Secrets
+and variables → Actions → Variables tab — NOT a secret, it ends up in the
+public JS bundle either way, and NOT the `production` environment's
+Variables). It must be repo-level: `build-frontend` (the job that consumes
+it) has no `environment:` key — it never touches the Droplet, so it isn't
+gated — and GitHub only exposes environment-scoped variables to jobs that
+declare that same environment. An environment-scoped variable here would be
+silently invisible to `build-frontend`. Unset defaults to empty, i.e.
+same-origin, which is correct today.
 
 **Why self-hosted, not SSH-in like staging:** the prod cloud firewall (and
 this Droplet's host `ufw`) restrict inbound SSH to a single admin CIDR (fixing
@@ -164,13 +245,17 @@ approach) can never reach this box. A self-hosted runner sidesteps the problem
 entirely: it long-polls GitHub over an outbound connection, so no inbound
 firewall rule is needed at all.
 
-**Sudoers** — the deploy script restarts the service and keeps the
-deadline-job units current via sudo (the web root is owned by the deploy user,
-so the frontend publish needs no sudo):
+**Sudoers** — the deploy script attempts a graceful reload of the service and
+falls back to a real restart if that reload itself fails (not active yet, or
+the live unit predates `ExecReload=` — see `scripts/deploy-prod.sh`), and
+keeps the deadline-job units current via sudo (the web root is owned by the
+deploy user, so the frontend publish needs no sudo). Both `reload` and
+`restart` need a grant since either may run on any given deploy:
 
 ```bash
 # on the Droplet, as root
 cat >/etc/sudoers.d/mysterymixclub-deploy <<'EOF'
+mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl reload mysterymixclub-api
 mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl restart mysterymixclub-api
 mysterymixclub ALL=(root) NOPASSWD: /usr/bin/cp /home/mysterymixclub/app/scripts/mysterymixclub-advance-mixes-prod.service /etc/systemd/system/mysterymixclub-advance-mixes.service
 mysterymixclub ALL=(root) NOPASSWD: /usr/bin/cp /home/mysterymixclub/app/scripts/mysterymixclub-advance-mixes-prod.timer /etc/systemd/system/mysterymixclub-advance-mixes.timer
@@ -179,6 +264,13 @@ mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl enable --now mysterymixcl
 EOF
 chmod 440 /etc/sudoers.d/mysterymixclub-deploy
 ```
+
+> If this sudoers file was set up **before** MYS-259, add the
+> `systemctl reload mysterymixclub-api` line to the existing
+> `/etc/sudoers.d/mysterymixclub-deploy` by hand (`restart` was already
+> granted, so the fallback path already works — only `reload`, the new normal
+> path, needs adding). This is a one-time manual edit on the live Droplet;
+> Dawn should apply it, not Claude (no prod SSH).
 
 **Register the runner** (as the `mysterymixclub` user — reuses the sudoers
 grant above, matches the app's own file ownership):
@@ -245,6 +337,27 @@ sudo journalctl -u mysterymixclub-advance-mixes.service -f # per-run summary lin
 - **Separate secrets, separate keys.** `SECRET_KEY`, the DB password, and the
   SSH deploy keypair are all distinct from staging's — nothing shared across
   environments.
+- **Gunicorn + multiple workers, not bare uvicorn** (MYS-259). Staging's
+  `mysterymixclub-api.service` still runs a single bare `uvicorn` process —
+  prod runs `gunicorn` with `uvicorn.workers.UvicornWorker`, sized to this
+  droplet's 2 vCPUs (`GUNICORN_WORKERS=2` by default). Staging's `s-1vcpu-1gb`
+  box gets little from multiple workers on 1 vCPU; revisit if staging traffic
+  ever justifies it.
+- **Graceful `reload` on deploy, not a hard `restart`** (MYS-259) — SIGHUP
+  tells gunicorn to spin up new workers on the new code and drain the old ones
+  before killing them, so in-flight requests survive a deploy. Staging still
+  does a hard `restart` (bare uvicorn has nothing to gracefully reload without
+  its own process manager).
+- **Frontend built in CI, not on the Droplet** (MYS-259) — a hosted GitHub
+  Actions runner builds the SPA and hands the built `dist/` to the deploy job
+  as an artifact. Staging still runs `npm ci && npm run build` on its own box;
+  its `s-1vcpu-1gb` droplet is more exposed to this (less RAM than prod had
+  before this change), so this is a candidate follow-up for staging too — not
+  done here to keep this change scoped to prod (see the Linear ticket note in
+  this doc's history / MYS-259 comments).
+- **Swap provisioned at bootstrap** (MYS-259) — a 2G swapfile as an OOM safety
+  net. Staging has none today; lower stakes on a non-production environment,
+  and not required by this ticket's scope.
 
 ---
 

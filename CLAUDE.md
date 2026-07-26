@@ -102,25 +102,26 @@ Full spec: `docs/ci-cd.md`
 
 | Branch        | Deploys to                 | How                                  |
 |---------------|----------------------------|--------------------------------------|
-| `main`        | **production** (self-managed **Droplet**, IaaS — MYS-225, cutover pending) | push → `deploy-prod.yml` (manual approval gate) SSHes in and runs `scripts/deploy-prod.sh` |
-| `develop`     | **staging** (DO **Droplet**, IaaS) | push → `deploy-staging.yml` SSHes in and runs `scripts/deploy-staging.sh` |
+| `main`        | **production** (self-managed **Droplet**, IaaS) | push → `deploy-prod.yml` (manual approval gate) → self-hosted runner on the prod Droplet runs `scripts/deploy-prod.sh` |
+| `develop`     | **staging** (self-managed DO **Droplet**, IaaS) | push → `deploy-staging.yml` → self-hosted runner on the staging Droplet runs `scripts/deploy-staging.sh` |
 | `feature/*`   | nothing — open a PR        | PR → `develop` runs `ci.yml`         |
 
 Flow: branch `feature/*` off `develop` → PR into `develop` (CI must pass) →
 merge deploys to staging → PR `develop` → `main` → approve → deploys to prod.
 
-> **Note — prod is mid-migration off App Platform.** Per **ADR 0002**
-> (`docs/adr/0002-prod-platform-self-managed-droplet.md`), production moves to
-> the same self-managed model as staging (Nginx + systemd + local Postgres) —
-> `deploy-prod.yml` and the scripts below already target the Droplet, but no
-> prod Droplet has actually been applied/cut over yet (MYS-225 tracks it;
-> `PROD_HOST`/`PROD_SSH_USER`/`PROD_SSH_KEY` don't exist as secrets yet, so a
-> push to `main` today would fail at the deploy step, not silently succeed
-> against something stale). `.do/app.prod.yaml` is retained only until that
-> cutover happens, then should be deleted outright, not kept as a fallback.
-> Staging setup/runbook: `docs/staging-setup.md`; prod runbook:
-> `docs/prod-setup.md`. The `.do/app.staging.yaml` spec is retained for
-> reference but is **not** used by the staging deploy.
+> **Prod's migration off App Platform is done (ADR 0002, MYS-225 shipped
+> 2026-07-23).** Production now runs the same self-managed pattern as staging
+> (Nginx + systemd + local Postgres) on its own Droplet, provisioned via
+> Terraform (`infra/terraform/envs/prod/`). `.do/app.prod.yaml` (the old App
+> Platform spec) has been deleted, not just deprecated. Both `deploy-staging.yml`
+> and `deploy-prod.yml` run directly **on** their target Droplet via a
+> self-hosted GitHub Actions runner — neither one uses SSH or GitHub secrets
+> at all; `STAGING_HOST`/`STAGING_SSH_USER`/`STAGING_SSH_KEY` and
+> `PROD_HOST`/`PROD_SSH_USER`/`PROD_SSH_KEY` were an earlier design and were
+> never actually needed once the self-hosted-runner approach shipped (MYS-224
+> for staging, MYS-225 for prod). Staging setup/runbook: `docs/staging-setup.md`;
+> prod runbook: `docs/prod-setup.md`. The `.do/app.staging.yaml` spec is
+> retained for reference but is **not** used by the staging deploy.
 
 **Local hook chain** (Husky v9, `core.hooksPath=.husky/_`)
 
@@ -138,41 +139,40 @@ Re-install hooks after a fresh clone with `npm install` (runs `prepare` → `hus
   `scripts/deploy-staging.sh` (deploy), `scripts/mysterymixclub-api.service`
   (systemd), `scripts/nginx-mysterymixclub-staging.conf` (Nginx),
   `scripts/staging.env.example` (runtime env template). Runbook in
-  `docs/staging-setup.md`. Deploy needs GitHub secrets `STAGING_HOST`,
-  `STAGING_SSH_USER`, `STAGING_SSH_KEY`.
-- **Prod (Droplet, MYS-225 — pending cutover):** `scripts/bootstrap-droplet-prod.sh`
+  `docs/staging-setup.md`. Deploy runs via a self-hosted GitHub Actions runner
+  registered on the Droplet itself — no GitHub secrets needed.
+- **Prod (Droplet, cut over 2026-07-23 — MYS-225):** `scripts/bootstrap-droplet-prod.sh`
   (one-time provision), `scripts/deploy-prod.sh` (deploy),
   `scripts/mysterymixclub-api-prod.service` (systemd, installed as
   `mysterymixclub-api.service`), `scripts/nginx-mysterymixclub-prod.conf`
   (Nginx, real Let's Encrypt cert, no basic auth), `scripts/prod.env.example`
-  (runtime env template). Runbook in `docs/prod-setup.md`. Deploy needs GitHub
-  secrets `PROD_HOST`, `PROD_SSH_USER`, `PROD_SSH_KEY` (not yet set — no prod
-  Droplet exists yet). Infra itself is Terraform: `infra/terraform/envs/prod/`.
-  `.do/app.prod.yaml` (old App Platform spec) is reference-only until cutover,
-  then should be deleted.
+  (runtime env template). Runbook in `docs/prod-setup.md`. Deploy runs via a
+  self-hosted GitHub Actions runner registered on the prod Droplet itself — no
+  GitHub secrets needed. Infra itself is Terraform: `infra/terraform/envs/prod/`.
+  `.do/app.prod.yaml` (old App Platform spec) has been deleted.
 
 **Adding a new secret**
 
-Staging and prod now take secrets by the **same route** — both are Droplets
-(ADR 0002). Until MYS-225's cutover, though, prod's route is theoretical: the
-Droplet, its env file, and its systemd service don't exist yet.
+Staging and prod take secrets by the **same route** — both are Droplets
+(ADR 0002).
 
 1. Add the key to `.env.example` (no value) so the contract is documented.
 2. **Staging (Droplet):** add the key to `scripts/staging.env.example` (no
    value); set the real value in `/etc/mysterymixclub/staging.env` on the
    Droplet, then `sudo systemctl restart mysterymixclub-api` — settings are
    cached per process, so editing the file alone changes nothing.
-3. **Prod (Droplet, once cut over):** add the key to `scripts/prod.env.example`
+3. **Prod (Droplet):** add the key to `scripts/prod.env.example`
    (no value); set the real value in `/etc/mysterymixclub/prod.env` on the prod
    Droplet, then `sudo systemctl restart mysterymixclub-api`. Same mechanism as
    staging, different box, different secret values — never share a value
-   (`SECRET_KEY` especially) across environments.
+   (`SECRET_KEY` especially) across environments. Never SSH into the prod
+   Droplet yourself to do this — it goes through whoever holds prod access,
+   not an ad hoc session.
 4. Only if a *workflow* needs it (not the app at runtime): GitHub → Settings →
    Secrets and variables → Actions.
-5. Never commit real secret values. Once MYS-225 ships, `DIGITALOCEAN_ACCESS_TOKEN`
-   is needed only for `terraform apply`, not for app deploys — those go through
-   `PROD_HOST`/`PROD_SSH_USER`/`PROD_SSH_KEY` instead, same shape as staging's
-   `STAGING_*` secrets.
+5. Never commit real secret values. `DIGITALOCEAN_ACCESS_TOKEN` is needed only
+   for `terraform apply`, not for app deploys — neither deploy workflow uses
+   SSH or GitHub secrets at all (self-hosted runners on each Droplet).
 
 Worked example (Apple Music): `docs/ci-cd.md` → "Adding a new secret";
 `docs/staging-setup.md` → "Enabling Apple Music".

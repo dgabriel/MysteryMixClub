@@ -1,0 +1,14 @@
+# Provisioned Grafana dashboard provider -- as code, not clicked together.
+apiVersion: 1
+
+providers:
+  - name: "mmc-agent-workflow"
+    orgId: 1
+    folder: "Claude Code Agent Workflow"
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

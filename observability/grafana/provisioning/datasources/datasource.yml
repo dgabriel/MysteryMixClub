@@ -1,0 +1,13 @@
+# Provisioned Grafana datasource -- as code, not clicked together.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: mmc-agent-obs-prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: 60s

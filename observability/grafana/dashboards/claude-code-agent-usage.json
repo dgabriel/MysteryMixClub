@@ -1,0 +1,704 @@
+{
+  "id": null,
+  "uid": "mmc-agent-workflow-tokens",
+  "title": "Claude Code Agent Workflow - Token & Cost Usage (MysteryMixClub-ysu2)",
+  "description": "Meta-tooling observability for the repo's own multi-agent Claude Code workflow. Not MMC app observability (see MysteryMixClub-p0qzz0).",
+  "tags": [
+    "claude-code",
+    "agent-workflow",
+    "mmc-meta"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "source",
+        "type": "custom",
+        "label": "source",
+        "query": "live,backfill,live|backfill",
+        "current": {
+          "text": "live|backfill",
+          "value": "live|backfill"
+        },
+        "options": [
+          {
+            "text": "live",
+            "value": "live",
+            "selected": false
+          },
+          {
+            "text": "backfill",
+            "value": "backfill",
+            "selected": false
+          },
+          {
+            "text": "live + backfill",
+            "value": "live|backfill",
+            "selected": true
+          }
+        ],
+        "includeAll": false,
+        "multi": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "About this dashboard",
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "**Meta-tooling, not app observability.** This measures what the repo's own Claude Code multi-agent workflow (developer/tester/reviewer/ui-agent/product-manager subagents) costs in tokens -- separate from MysteryMixClub-p0qzz0 (the app's own runtime observability). Use the `source` variable above to compare `live` (real-time OTel) vs `backfill` (one-time reconstruction from `~/.claude/projects/*/*.jsonl`) data. **Caveat:** per Claude Code's OTel docs, `agent.name` is only emitted verbatim for built-in agent types or agents installed from an official marketplace plugin. MMC's five subagents are project-local custom agents (`.claude/agents/*.md`), so **live** telemetry will report them collapsed under `agent_name=\"custom\"` rather than individually -- the per-agent breakdown below is fully granular for `backfill` data (reconstructed from transcripts, where the real subagent identity is known) but coarse for `live` data until/unless the agents are published as a marketplace plugin. See observability/README.md."
+      }
+    },
+    {
+      "id": 2,
+      "type": "row",
+      "title": "Pipe health",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "claude_code.session.count (by source)",
+      "description": "Acceptance criterion: confirms the OTel -> Prometheus pipe works. Should be > 0 once telemetry env vars are set on the host and at least one Claude Code session has started, and/or after the backfill script has been run. Uses last_over_time() over the dashboard range rather than an instant vector, because backfilled series only have historical samples and would otherwise fall outside Prometheus's 5m staleness window at 'now'.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mmc-agent-obs-prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 8,
+        "x": 0,
+        "y": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mmc-agent-obs-prometheus"
+          },
+          "expr": "sum by (source) (last_over_time({__name__=~\"claude_code_session_count.*\", source=~\"$source\"}[$__range]))",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Scrape target health (live pipe)",
+      "description": "1 = Prometheus is successfully scraping Claude Code's OTel Prometheus exporter at host.docker.internal:9464/metrics. 0 or no data = telemetry env vars are not set on the host, or no Claude Code session is currently running (the exporter is only up while a session is active).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mmc-agent-obs-prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 8,
+        "x": 8,
+        "y": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mmc-agent-obs-prometheus"
+          },
+          "expr": "up{job=\"claude-code-agent-workflow\"}",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Distinct sources loaded",
+      "description": "Sanity check: expect 2 once both live telemetry and the one-time backfill have run at least once (live, backfill).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mmc-agent-obs-prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 8,
+        "x": 16,
+        "y": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mmc-agent-obs-prometheus"
+          },
+          "expr": "count(count by (source) (last_over_time({__name__=~\"claude_code_token_usage.*\"}[$__range])))",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "row",
+      "title": "Core metric: tokens per PR, by agent, cache hit ratio",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 11
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Tokens per PR (overall)",
+      "description": "sum(claude_code.token.usage) / sum(claude_code.pull_request.count), the ticket's core metric. NOTE: claude_code.pull_request.count carries no agent.name attribute upstream in Claude Code's OTel emitter, so this ratio cannot itself be sliced by agent -- see the adjacent per-agent token panel for that half of the picture.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mmc-agent-obs-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 12
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "stacking": {
+              "mode": "none"
+            },
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "sum"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mmc-agent-obs-prometheus"
+          },
+          "expr": "sum(increase({__name__=~\"claude_code_token_usage.*\", source=~\"$source\"}[$__rate_interval])) / sum(increase({__name__=~\"claude_code_pull_request_count.*\", source=~\"$source\"}[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": "tokens / PR"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Token usage by agent.name",
+      "description": "Per-subagent token attribution. See the caveat in the top panel: live data currently buckets MMC's custom subagents under agent_name=\"custom\"; backfill data is fully granular (developer/tester/reviewer/ui-agent/uiux-designer/devops/main/etc, derived from transcript agent metadata).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mmc-agent-obs-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 12
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "stacking": {
+              "mode": "normal"
+            },
+            "fillOpacity": 60
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "sum"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mmc-agent-obs-prometheus"
+          },
+          "expr": "sum by (agent_name) (increase({__name__=~\"claude_code_token_usage.*\", source=~\"$source\"}[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": "{{agent_name}}"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Token usage by type (input / output / cacheRead / cacheCreation)",
+      "description": "Cache hit ratio is the most important lever here: a high cacheRead share relative to input+cacheCreation means prompt caching is working and cost is well controlled.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mmc-agent-obs-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 16,
+        "x": 0,
+        "y": 20
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "stacking": {
+              "mode": "normal"
+            },
+            "fillOpacity": 60
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "sum"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mmc-agent-obs-prometheus"
+          },
+          "expr": "sum by (type) (increase({__name__=~\"claude_code_token_usage.*\", source=~\"$source\"}[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": "{{type}}"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "Cache hit ratio",
+      "description": "cacheRead tokens / (cacheRead + cacheCreation + input) tokens. The single lever most likely to move cost per the ticket -- invisible in aggregate token totals, which is why it gets its own panel.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mmc-agent-obs-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 20
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.5
+              },
+              {
+                "color": "green",
+                "value": 0.8
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mmc-agent-obs-prometheus"
+          },
+          "expr": "sum(increase({__name__=~\"claude_code_token_usage.*\", type=\"cacheRead\", source=~\"$source\"}[$__rate_interval])) / sum(increase({__name__=~\"claude_code_token_usage.*\", type=~\"cacheRead|cacheCreation|input\", source=~\"$source\"}[$__rate_interval]))",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "row",
+      "title": "Secondary: cost, commits, lines of code, active time",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 28
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Cost usage (USD) by model + agent.name",
+      "description": "Cost metrics are approximations (Claude Code docs' own caveat); treat /cost and provider billing as ground truth. Same agent.name caveat as above applies to live data.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mmc-agent-obs-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 29
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "custom": {
+            "drawStyle": "bars",
+            "stacking": {
+              "mode": "normal"
+            },
+            "fillOpacity": 60
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "sum"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mmc-agent-obs-prometheus"
+          },
+          "expr": "sum by (model, agent_name) (increase({__name__=~\"claude_code_cost_usage.*\", source=~\"$source\"}[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": "{{model}} / {{agent_name}}"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Lines of code by type (added/removed), by model",
+      "description": "claude_code.lines_of_code.count has no agent.name attribute upstream (per Claude Code OTel docs) -- only type (added/removed) and model.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mmc-agent-obs-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 29
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "stacking": {
+              "mode": "normal"
+            },
+            "fillOpacity": 60
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "sum"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mmc-agent-obs-prometheus"
+          },
+          "expr": "sum by (type, model) (increase({__name__=~\"claude_code_lines_of_code_count.*\", source=~\"$source\"}[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": "{{type}} / {{model}}"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Commit count",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mmc-agent-obs-prometheus"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 0,
+        "y": 37
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "stacking": {
+              "mode": "none"
+            },
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "sum"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mmc-agent-obs-prometheus"
+          },
+          "expr": "sum(increase({__name__=~\"claude_code_commit_count.*\", source=~\"$source\"}[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": "commits"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Active time by type (user / cli)",
+      "description": "type=\"user\": keyboard interaction time. type=\"cli\": tool execution + AI response generation time.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mmc-agent-obs-prometheus"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 16,
+        "x": 8,
+        "y": 37
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "bars",
+            "stacking": {
+              "mode": "normal"
+            },
+            "fillOpacity": 60
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "sum"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mmc-agent-obs-prometheus"
+          },
+          "expr": "sum by (type) (increase({__name__=~\"claude_code_active_time.*\", source=~\"$source\"}[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": "{{type}}"
+        }
+      ]
+    }
+  ]
+}

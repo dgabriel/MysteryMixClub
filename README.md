@@ -58,12 +58,34 @@ A web app where a friend group can run music club mystery mixes across Spotify, 
 
 ---
 
+## Contributing — Agent-Driven Development
+
+This repo is built primarily by directing an AI coding agent, not by hand-typing every
+change. If you're joining as a collaborator:
+
+1. Install [Claude Code](https://claude.com/claude-code) (or the agent of your choice)
+   and clone this repo.
+2. Point your agent at [`CLAUDE.md`](CLAUDE.md) **first** — that's the real onboarding
+   doc: the session-start checklist, required reading (design system, technical design,
+   git hygiene), and how issue tracking works here.
+3. Issues live in **bd (beads)**, not Linear — `bd ready` shows available work,
+   `bd show <id>` for detail. See
+   [`.claude/skills/mmc-issue-management/SKILL.md`](.claude/skills/mmc-issue-management/SKILL.md)
+   for the full workflow: branching, claiming, closing, and syncing (`bd dolt pull`/`push`).
+
+Nothing here is agent-exclusive — you can still edit files by hand — but the git
+hygiene rules, the branch model, and the issue-tracking setup all assume an agent is
+driving. Start with `CLAUDE.md`, not the setup steps below.
+
+---
+
 ## Running Locally
 
 ### Quick start (recommended)
 
-New here? Install [git](https://git-scm.com) and [Docker](https://docs.docker.com/get-docker/),
-then:
+An agent following `CLAUDE.md` can run these same commands directly — this isn't a
+human-only path. New here? Install [git](https://git-scm.com) and
+[Docker](https://docs.docker.com/get-docker/), then:
 
 ```bash
 git clone https://github.com/dgabriel/MysteryMixClub.git
@@ -86,7 +108,11 @@ previous instance first. Other commands:
 Then open the web app at <http://localhost:5173>. The manual steps below do the
 same thing by hand if you prefer.
 
-### Manual setup
+### Manual setup (fallback reference)
+
+This is what `dev-up.sh` does under the hood, spelled out step by step. Reach for
+it only when the script isn't available or something needs debugging — it's not
+the primary path for a human or an agent.
 
 **Prerequisites:** Python 3.11+, Node 20+, Docker (for Postgres).
 
@@ -149,6 +175,10 @@ App: <http://localhost:5173> (calls the API at `http://localhost:8000`).
 ---
 
 ## Testing Locally
+
+These are the same commands the pre-commit/pre-push hooks and CI run. While
+iterating on a change, run only the targeted test file(s) for it; run the full
+suite before opening a PR (see `docs/git-hygiene.md`).
 
 **Backend** — tests run against a separate `mysterymixclub_test` database, which
 `docker compose up -d db` creates automatically on first init (see
@@ -224,6 +254,8 @@ PDLC Definition phase complete (Discovery, PRD, and technical design all done).
 
 Active work — Spotify shared-playlist expiration handling, a profile/settings screen
 (photo upload), scaling strategy, observability, and a Doppler secrets-manager
-migration, among others — is tracked in Linear (team **MysteryMixClub**, project
-**MysteryMixClub MVP**). `develop` leads `main`; both `develop` and `main` deploy
+migration, among others — is tracked in **bd (beads)**, not Linear. Run `bd ready`
+for what's available now, or see
+[`.claude/skills/mmc-issue-management/SKILL.md`](.claude/skills/mmc-issue-management/SKILL.md)
+for the full workflow. `develop` leads `main`; both `develop` and `main` deploy
 automatically (staging and production respectively) on merge.

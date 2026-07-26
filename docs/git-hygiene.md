@@ -79,8 +79,11 @@ Related: branch model in `docs/ci-cd.md`. Hook PATH gotcha at the bottom of this
 8. **Don't fast-forward `main` to `develop`.** The gap is intentional (un-promoted
    staging work). See [[project_branch-topology]].
 9. **Don't cherry-pick app/tooling changes into `main`.** They reach prod only via
-   a deliberate `develop → main` promotion PR. Until the official beta, the only
-   thing promoted to `main` is README docs (preserve main's pre-launch banner).
+   a deliberate `develop → main` promotion PR. Beta went live 2026-07-25 — the old
+   pre-beta rule limiting promotions to README-only is retired; `main` and `develop`
+   are now kept nearly in sync via routine full promotion PRs (app code, docs,
+   tooling, all of it), same merge-commit-only mechanics as any other promotion.
+   See [[project_branch-topology]].
 
 ---
 

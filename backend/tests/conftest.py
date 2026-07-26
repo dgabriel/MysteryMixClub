@@ -11,6 +11,28 @@ pins connections to the loop they were created in. So the engine is
 function-scoped: a fresh engine is built inside each test's loop. The schema is
 created once per session via a synchronous engine so we don't pay create_all on
 every test or straddle event loops.
+
+Per-test isolation (ADR 0005): each test gets one real connection
+(``connection``) with an outer transaction that is always rolled back at
+teardown. Every ``Session`` in the test — ``db_session``, and each request the
+``client`` fixture's ``get_db`` override serves — binds to that *same*
+connection via a ``SAVEPOINT`` (``join_transaction_mode="create_savepoint"``),
+so a test's own ``session.commit()`` calls only release the savepoint, never
+the outer transaction. Rolling back the outer transaction at teardown undoes
+everything the test did without ever fsync'ing a durable write, replacing the
+old TRUNCATE-before/after fixture (see the ADR for the profiling that
+motivated this).
+
+This does mean every ``Session`` in a given test shares one physical
+connection, so it cannot support genuine cross-connection concurrency (e.g.
+racing two requests for a ``with_for_update()`` row lock — two coroutines
+can't both have an operation in flight on the same asyncpg connection at
+once, and even if they could, they wouldn't actually contend for a lock they
+both "hold"). Tests that need that use the ``real_session_factory`` /
+``real_client`` / ``real_db_session`` fixtures below instead, which bind to
+the engine's connection pool directly (genuinely separate real connections,
+real commits) and pay back a small, test-scoped TRUNCATE cost to clean up
+after themselves.
 """
 
 import asyncio
@@ -35,9 +57,11 @@ from app.models import MagicLinkToken, Session, User  # noqa: F401
 
 TEST_ASYNC_DATABASE_URL = "postgresql+asyncpg://mmc:mmc@localhost:5432/mysterymixclub_test"
 
-# Tables truncated before and after each test for isolation. ``sessions``
-# references ``users``; CASCADE on the TRUNCATE handles the FK, and
-# magic_link_tokens is independent. Listed together so one statement covers all.
+# Tables truncated before and after each test that opts into
+# ``real_session_factory`` (ADR 0005) — the rest of the suite is isolated by
+# rolling back the test's outer transaction instead. ``sessions`` references
+# ``users``; CASCADE on the TRUNCATE handles the FK, and magic_link_tokens is
+# independent. Listed together so one statement covers all.
 _TRUNCATE_TABLES = (
     "magic_link_tokens, sessions, spotify_connections, invites, submissions, "
     "mixes, clubs, club_members, users"
@@ -92,24 +116,76 @@ def _schema() -> None:
 async def engine(_schema) -> AsyncGenerator:
     """Function-scoped async engine, created inside the running test's loop."""
     eng = create_async_engine(TEST_ASYNC_DATABASE_URL, future=True)
-    # Clean slate before the test.
-    async with eng.begin() as conn:
-        await conn.execute(text(f"TRUNCATE TABLE {_TRUNCATE_TABLES} CASCADE"))
     yield eng
-    async with eng.begin() as conn:
-        await conn.execute(text(f"TRUNCATE TABLE {_TRUNCATE_TABLES} CASCADE"))
     await eng.dispose()
 
 
+@pytest_asyncio.fixture
+async def connection(engine) -> AsyncGenerator:
+    """One real connection per test, wrapped in an outer transaction that's
+    always rolled back at teardown (ADR 0005) — the test's isolation
+    boundary. ``try/finally`` guarantees the rollback runs even if the test
+    itself raises."""
+    async with engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            yield conn
+        finally:
+            await trans.rollback()
+
+
 @pytest.fixture
-def session_factory(engine):
-    return async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+def session_factory(connection):
+    """Sessions bound to the test's single transactional ``connection``
+    (ADR 0005) via a SAVEPOINT, so every Session in a test — ``db_session``,
+    each ``client`` request — shares one rollback boundary. Not suitable for
+    tests that need genuine cross-connection concurrency; see
+    ``real_session_factory``."""
+    return async_sessionmaker(
+        bind=connection,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        join_transaction_mode="create_savepoint",
+    )
 
 
 @pytest_asyncio.fixture
 async def db_session(session_factory) -> AsyncGenerator[AsyncSession, None]:
     """A standalone session for tests to read/assert DB state directly."""
     async with session_factory() as session:
+        yield session
+
+
+@pytest_asyncio.fixture
+async def real_session_factory(engine) -> AsyncGenerator:
+    """Sessions bound directly to the engine's connection pool — genuinely
+    separate real connections per ``Session``, each able to commit
+    independently.
+
+    For the handful of tests that exercise real cross-connection concurrency
+    (``with_for_update()`` row-locking races via ``asyncio.gather``): under
+    the default ``session_factory`` fixture every Session in a test shares
+    one connection/transaction (ADR 0005), so two "concurrent" requests can
+    never actually contend for a row lock. This fixture keeps those tests on
+    real, separate connections (the pre-ADR-0005 behavior) so the lock is
+    genuinely contended, at the cost of its own TRUNCATE-based cleanup below
+    — which is exactly why this is opt-in rather than the suite default."""
+    async with engine.begin() as conn:
+        await conn.execute(text(f"TRUNCATE TABLE {_TRUNCATE_TABLES} CASCADE"))
+    try:
+        yield async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+    finally:
+        async with engine.begin() as conn:
+            await conn.execute(text(f"TRUNCATE TABLE {_TRUNCATE_TABLES} CASCADE"))
+
+
+@pytest_asyncio.fixture
+async def real_db_session(real_session_factory) -> AsyncGenerator[AsyncSession, None]:
+    """Like ``db_session``, but bound to a genuinely separate real connection
+    (``real_session_factory``) rather than the test's rollback-scoped
+    ``connection``. Pair with ``real_client`` for tests that need real
+    cross-connection concurrency."""
+    async with real_session_factory() as session:
         yield session
 
 
@@ -163,16 +239,19 @@ class _OfflineYouTubeResolver:
         return None
 
 
-@pytest_asyncio.fixture
-async def client(
+def _build_test_app(
     session_factory,
     email_spy: SpyEmailSender,
     seed_admin_emails: str,
     max_users: int,
     waitlist_enabled: bool,
     resend_webhook_secret: str,
-) -> AsyncGenerator[AsyncClient, None]:
-    """AsyncClient over the ASGI app with get_db / get_email_sender overridden."""
+):
+    """Build a fresh ASGI app with the standard test dependency overrides,
+    binding ``get_db`` to whichever ``session_factory`` the caller passes in.
+    Shared by ``client`` (the ADR 0005 rollback-scoped ``session_factory``)
+    and ``real_client`` (the real-connection ``real_session_factory`` used by
+    cross-connection concurrency tests) so the two stay in lockstep."""
     app = create_app()
 
     async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -202,6 +281,64 @@ async def client(
     app.dependency_overrides[get_settings] = override_get_settings
     # Keep the whole suite offline by default — no live YouTube Data API calls.
     app.dependency_overrides[get_youtube_resolver] = lambda: _OfflineYouTubeResolver()
+    return app
+
+
+@pytest_asyncio.fixture
+async def client(
+    session_factory,
+    email_spy: SpyEmailSender,
+    seed_admin_emails: str,
+    max_users: int,
+    waitlist_enabled: bool,
+    resend_webhook_secret: str,
+) -> AsyncGenerator[AsyncClient, None]:
+    """AsyncClient over the ASGI app with get_db / get_email_sender
+    overridden. Bound to the test's single rollback-scoped ``connection``
+    (ADR 0005) via ``session_factory`` — every request in a test shares that
+    one connection, so a test's own writes are visible to ``db_session``
+    assertions without a real commit. Not suitable for tests that need
+    genuine cross-connection concurrency; use ``real_client`` for that."""
+    app = _build_test_app(
+        session_factory,
+        email_spy,
+        seed_admin_emails,
+        max_users,
+        waitlist_enabled,
+        resend_webhook_secret,
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+
+    app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def real_client(
+    real_session_factory,
+    email_spy: SpyEmailSender,
+    seed_admin_emails: str,
+    max_users: int,
+    waitlist_enabled: bool,
+    resend_webhook_secret: str,
+) -> AsyncGenerator[AsyncClient, None]:
+    """Like ``client``, but each request gets a genuinely separate real
+    connection (``real_session_factory``) instead of sharing the test's
+    single rollback-scoped connection. Only for tests that exercise real
+    cross-connection concurrency — e.g. ``with_for_update()`` row-locking
+    races via ``asyncio.gather`` (ADR 0005) — where every "concurrent"
+    request must be able to actually contend for a lock, not serialize on one
+    shared asyncpg connection."""
+    app = _build_test_app(
+        real_session_factory,
+        email_spy,
+        seed_admin_emails,
+        max_users,
+        waitlist_enabled,
+        resend_webhook_secret,
+    )
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:

@@ -77,6 +77,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # ADR 0005: same fsync/synchronous_commit relaxation as docker-compose's
+      # mmc-postgres, applied here via ALTER SYSTEM + reload since the GH
+      # Actions `services:` block has no equivalent of docker-compose's
+      # `command:` (its `options:` are docker-create flags, not postgres args).
+      # Both settings are reload-context in Postgres (no restart needed). This
+      # container only ever backs this CI job's test database — never
+      # staging/prod.
+      - name: Relax test Postgres durability (ADR 0005 — test/CI-only)
+        run: |
+          PGPASSWORD=mmc psql -h localhost -U mmc -d mysterymixclub_test -c "ALTER SYSTEM SET fsync = off;"
+          PGPASSWORD=mmc psql -h localhost -U mmc -d mysterymixclub_test -c "ALTER SYSTEM SET synchronous_commit = off;"
+          PGPASSWORD=mmc psql -h localhost -U mmc -d mysterymixclub_test -c "SELECT pg_reload_conf();"
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:

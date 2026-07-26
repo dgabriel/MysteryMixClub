@@ -1,4 +1,6 @@
 #!/usr/bin/env sh
+# ruff resolves via the venv on PATH — see .lintstagedrc.mjs and docs/git-hygiene.md
+export PATH="$PWD/backend/.venv/bin:$PATH"
 npx lint-staged
 
 # --- BEGIN BEADS INTEGRATION v1.1.0 ---

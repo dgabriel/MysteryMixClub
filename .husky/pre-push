@@ -1,5 +1,8 @@
 #!/usr/bin/env sh
 
+# python/pytest resolve via the backend venv on PATH — see docs/git-hygiene.md
+export PATH="$PWD/backend/.venv/bin:$PATH"
+
 # Skip checks when only deleting remote branches (local SHA is all zeros on deletions)
 zero_sha="0000000000000000000000000000000000000000"
 pushing_code=0

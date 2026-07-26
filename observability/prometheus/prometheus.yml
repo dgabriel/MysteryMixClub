@@ -1,0 +1,27 @@
+# Prometheus scrape config for MMC agent-workflow observability.
+#
+# Scrapes Claude Code's built-in OTel Prometheus exporter, which listens on
+# localhost:9464/metrics on the HOST (not in a container) whenever a Claude
+# Code session is running with:
+#   CLAUDE_CODE_ENABLE_TELEMETRY=1
+#   OTEL_METRICS_EXPORTER=prometheus
+# See ../README.md for exactly where those two lines need to go (not set by
+# this repo/stack -- that's an intentionally manual step).
+
+global:
+  scrape_interval: 60s # matches Claude Code's default OTEL_METRIC_EXPORT_INTERVAL (60000ms)
+  evaluation_interval: 60s
+
+scrape_configs:
+  - job_name: "claude-code-agent-workflow"
+    static_configs:
+      - targets: ["host.docker.internal:9464"]
+        labels:
+          service: "claude-code-agent-workflow"
+          source: "live"
+
+  # Optional self-monitoring of Prometheus itself. Cheap, useful for noticing
+  # if the scrape target above starts failing (target down / stack health).
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]

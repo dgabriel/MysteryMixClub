@@ -4,6 +4,13 @@ services:
   db:
     image: postgres:16-alpine
     container_name: mmc-postgres
+    # fsync/synchronous_commit off (ADR 0005): this DB is fully rebuilt every
+    # test session (conftest.py's drop_all/create_all) and never needs crash
+    # durability, so paying fsync's cost on every write is pure waste here.
+    # This container also serves local dev, not just tests — an accepted,
+    # named tradeoff (local dev data isn't precious either) — but this must
+    # NEVER be mirrored onto staging/prod Postgres, which need real durability.
+    command: ["postgres", "-c", "fsync=off", "-c", "synchronous_commit=off"]
     environment:
       POSTGRES_USER: mmc
       POSTGRES_PASSWORD: mmc

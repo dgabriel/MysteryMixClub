@@ -439,15 +439,21 @@ async def test_unexpired_dated_link_still_previews_200(client, db_session):
 # ========================================================================== #
 
 
-async def test_concurrent_accept_produces_exactly_one_membership(client, db_session):
-    organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
-    club = await _seed_club(db_session, organizer)
-    invite = await _seed_invite(db_session, club, organizer)
-    joiner = await _seed_user(db_session, email="join@example.com", display_name="Joiner")
+async def test_concurrent_accept_produces_exactly_one_membership(real_client, real_db_session):
+    # Uses real_client/real_db_session (genuinely separate real connections,
+    # ADR 0005), not the default client/db_session: the two "concurrent"
+    # accepts below must actually contend for the with_for_update() row lock
+    # on the club row, which requires two real connections/transactions
+    # racing each other — the default fixtures share a single connection per
+    # test, so they couldn't exercise this race at all.
+    organizer = await _seed_user(real_db_session, email="org@example.com", display_name="Org")
+    club = await _seed_club(real_db_session, organizer)
+    invite = await _seed_invite(real_db_session, club, organizer)
+    joiner = await _seed_user(real_db_session, email="join@example.com", display_name="Joiner")
 
     resp1, resp2 = await asyncio.gather(
-        client.post(_accept_url(invite.token), headers=_auth_header(joiner.id)),
-        client.post(_accept_url(invite.token), headers=_auth_header(joiner.id)),
+        real_client.post(_accept_url(invite.token), headers=_auth_header(joiner.id)),
+        real_client.post(_accept_url(invite.token), headers=_auth_header(joiner.id)),
     )
 
     assert resp1.status_code == 200, resp1.text
@@ -455,7 +461,7 @@ async def test_concurrent_accept_produces_exactly_one_membership(client, db_sess
 
     club_id = club.id
     joiner_id = joiner.id
-    db_session.expire_all()
+    real_db_session.expire_all()
 
-    count = await _active_membership_count(db_session, club_id, joiner_id)
+    count = await _active_membership_count(real_db_session, club_id, joiner_id)
     assert count == 1, "concurrent accepts must not duplicate the membership row"

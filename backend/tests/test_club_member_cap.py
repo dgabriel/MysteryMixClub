@@ -261,25 +261,36 @@ async def test_already_active_member_can_still_accept_a_full_club(client, db_ses
     assert resp.json()["id"] == str(club_id)
 
 
-async def test_concurrent_accept_for_last_slot_only_one_joins(client, db_session):
+async def test_concurrent_accept_for_last_slot_only_one_joins(real_client, real_db_session):
     # MYS-80 concurrency guard: club at 19 active members (one slot open), two
     # different new users race for the accept endpoint. Only one may win the
     # last slot; the other must see 409, not a 21st member. Follows the same
     # asyncio.gather pattern as MYS-32's test_concurrent_accept_produces_
     # exactly_one_membership in test_invites_preview_accept.py.
-    organizer = await _seed_user(db_session, "org@example.com")
-    club = await _seed_club(db_session, organizer)
-    await _add_active_members(db_session, club, 18, prefix="m")
-    invite = await _seed_invite(db_session, club, organizer)
-    racer_a = await _seed_user(db_session, "racer-a@example.com")
-    racer_b = await _seed_user(db_session, "racer-b@example.com")
+    #
+    # Uses real_client/real_db_session (genuinely separate real connections,
+    # ADR 0005), not the default client/db_session: the two "concurrent"
+    # requests below must actually contend for the with_for_update() row
+    # lock on the club row, which requires two real connections/transactions
+    # racing each other — the default fixtures share a single connection per
+    # test, so they couldn't exercise this race at all.
+    organizer = await _seed_user(real_db_session, "org@example.com")
+    club = await _seed_club(real_db_session, organizer)
+    await _add_active_members(real_db_session, club, 18, prefix="m")
+    invite = await _seed_invite(real_db_session, club, organizer)
+    racer_a = await _seed_user(real_db_session, "racer-a@example.com")
+    racer_b = await _seed_user(real_db_session, "racer-b@example.com")
 
     club_id = club.id
-    assert await _active_member_count(db_session, club_id) == _CLUB_MEMBER_CAP - 1
+    assert await _active_member_count(real_db_session, club_id) == _CLUB_MEMBER_CAP - 1
 
     resp_a, resp_b = await asyncio.gather(
-        client.post(ACCEPT_URL_TMPL.format(token=invite.token), headers=_auth_header(racer_a.id)),
-        client.post(ACCEPT_URL_TMPL.format(token=invite.token), headers=_auth_header(racer_b.id)),
+        real_client.post(
+            ACCEPT_URL_TMPL.format(token=invite.token), headers=_auth_header(racer_a.id)
+        ),
+        real_client.post(
+            ACCEPT_URL_TMPL.format(token=invite.token), headers=_auth_header(racer_b.id)
+        ),
     )
 
     statuses = sorted([resp_a.status_code, resp_b.status_code])
@@ -290,9 +301,9 @@ async def test_concurrent_accept_for_last_slot_only_one_joins(client, db_session
         resp_b.text,
     )
 
-    db_session.expire_all()
+    real_db_session.expire_all()
     # The cap was never exceeded — exactly 20 active, never 21.
-    assert await _active_member_count(db_session, club_id) == _CLUB_MEMBER_CAP
+    assert await _active_member_count(real_db_session, club_id) == _CLUB_MEMBER_CAP
 
 
 # ========================================================================== #

@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime, timezone
+from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 
@@ -23,6 +24,14 @@ router = APIRouter(prefix="/invites", tags=["invites"])
 
 _EXPIRED_LINK_MESSAGE = "this invite link has expired"
 
+# A club caps active membership at 20 (MYS-80). The organizer/any co-organizer
+# counts toward this cap like any other member — this is the same "active
+# club_members row" count already shown as member_count on the invite preview
+# below, and that count has always included the organizer (their own
+# club_members row is created alongside the club itself, see clubs.py).
+_CLUB_MEMBER_CAP = 20
+_CLUB_FULL_MESSAGE = f"this club is full ({_CLUB_MEMBER_CAP} members)"
+
 
 def _is_expired(invite: Invite, now: datetime) -> bool:
     """Shareable links expire 48h after creation (MYS-126). Legacy invites with
@@ -41,48 +50,77 @@ async def _is_active_member(db: AsyncSession, league_id: uuid.UUID, user_id: uui
     return membership is not None
 
 
-async def _join_via_invite(db: AsyncSession, user_id: uuid.UUID, invite: Invite) -> bool:
+async def _active_member_count(db: AsyncSession, club_id: uuid.UUID) -> int:
+    count = await db.scalar(
+        select(func.count())
+        .select_from(ClubMember)
+        .where(ClubMember.club_id == club_id, ClubMember.removed_at.is_(None))
+    )
+    return count or 0
+
+
+async def _join_via_invite(
+    db: AsyncSession, user_id: uuid.UUID, invite: Invite
+) -> Literal["joined", "already_active", "full"]:
     """Join ``user_id`` to the invite's club: insert a new membership, or
     reactivate an existing (possibly removed) one in place. Shared by the invite
     accept route and the auto-join on sign-in (MYS-127). The caller commits.
 
-    Returns True if the user actually joined or rejoined (False = already active, no-op)."""
+    Locks the club row first (MYS-80) — this is what makes the capacity check
+    below race-free. Two concurrent joins to the same club both call this
+    function; whichever gets here first holds the club row lock until its
+    caller commits or rolls back, so the second call blocks here and only
+    proceeds (re-reading an up-to-date active-member count) once the first is
+    fully resolved. Two requests can never both observe "under cap" and both
+    add a member.
+
+    Returns "joined" (fresh join or rejoin), "already_active" (no-op — caller
+    should not send a welcome email), or "full" (at the MYS-80 cap — caller
+    must not add the member)."""
+    # Both callers only reach here for a club invite (a platform/club-less
+    # invite has nothing to join) — asserted so the Optional on the model
+    # doesn't need re-checking below.
+    assert invite.club_id is not None
+    club = await db.scalar(select(Club).where(Club.id == invite.club_id).with_for_update())
+
     membership = await db.scalar(
-        select(ClubMember)
-        .where(
+        select(ClubMember).where(
             ClubMember.club_id == invite.club_id,
             ClubMember.user_id == user_id,
         )
-        .with_for_update()
     )
+    if membership is not None and membership.removed_at is None:
+        return "already_active"
+
+    if await _active_member_count(db, invite.club_id) >= _CLUB_MEMBER_CAP:
+        return "full"
+
     if membership is not None:
-        if membership.removed_at is not None:
-            membership.removed_at = None
-            membership.joined_at = func.now()
-            # A returning member keeps their existing vibe_mode; only fresh joins
-            # seed from the club default.
-            return True
-        return False  # already active — caller should not send a welcome email
-    else:
-        # Seed the new member's per-club vibe_mode from the club default
-        # (MYS-112).
-        club = await db.scalar(select(Club).where(Club.id == invite.club_id))
-        try:
-            db.add(
-                ClubMember(
-                    club_id=invite.club_id,
-                    user_id=user_id,
-                    vibe_mode=club.default_vibe_mode if club is not None else False,
-                )
+        # Returning (previously removed) member: reactivate in place. They
+        # keep their existing vibe_mode; only a fresh join below seeds from
+        # the club default.
+        membership.removed_at = None
+        membership.joined_at = func.now()
+        return "joined"
+
+    # Fresh join: seed the new member's per-club vibe_mode from the club
+    # default (MYS-112).
+    try:
+        db.add(
+            ClubMember(
+                club_id=invite.club_id,
+                user_id=user_id,
+                vibe_mode=club.default_vibe_mode if club is not None else False,
             )
-            # Flush now so IntegrityError surfaces here rather than at caller's
-            # commit — lets us recover cleanly inside this function (MYS-32).
-            await db.flush()
-        except IntegrityError:
-            # A concurrent request beat us to the insert; treat as already joined.
-            await db.rollback()
-            return False
-        return True
+        )
+        # Flush now so IntegrityError surfaces here rather than at caller's
+        # commit — lets us recover cleanly inside this function (MYS-32).
+        await db.flush()
+    except IntegrityError:
+        # A concurrent request beat us to the insert; treat as already joined.
+        await db.rollback()
+        return "already_active"
+    return "joined"
 
 
 class InvitePreviewResponse(WireModel):
@@ -141,18 +179,11 @@ async def preview_invite(
     if club is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invite not found")
 
-    member_count = await db.scalar(
-        select(func.count())
-        .select_from(ClubMember)
-        .where(
-            ClubMember.club_id == invite.club_id,
-            ClubMember.removed_at.is_(None),
-        )
-    )
+    member_count = await _active_member_count(db, invite.club_id)
     return InvitePreviewResponse(
         league_id=invite.club_id,
         league_name=club.name,
-        member_count=member_count or 0,
+        member_count=member_count,
         already_member=already_member,
     )
 
@@ -196,9 +227,12 @@ async def accept_invite(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invite not found")
 
     if not already_active:
-        joined = await _join_via_invite(db, current_user.id, invite)
+        result = await _join_via_invite(db, current_user.id, invite)
+        if result == "full":
+            # Nothing was written (MYS-80) — no commit needed before bailing.
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_CLUB_FULL_MESSAGE)
         await db.commit()
-        if joined:
+        if result == "joined":
             queue_club_joined(
                 background_tasks,
                 email_sender,

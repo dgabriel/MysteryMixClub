@@ -16,16 +16,17 @@ Run these steps before writing any code:
    git hygiene guide. These rules are non-negotiable — never improvise around a git mess.
 
 2. **Load your sprint**
-   Use the Linear MCP to fetch your current issues:
+   Use bd, not Linear — Linear is retired for this project:
    ```
-   list issues from the MysteryMixClub team, filtered to In Progress and Todo
+   bd ready
+   bd list --status=in_progress
    ```
    Summarize the active sprint in one sentence, then list the in-scope issues
    before asking what to work on.
 
 3. **Confirm before acting**
    State what you're about to do and which issue it maps to.
-   If it doesn't map to an open Linear issue, flag it.
+   If it doesn't map to an open bd issue, flag it.
 
 ---
 
@@ -81,11 +82,11 @@ unless you flag it first.
 
 - **Read before you write.** Always read a file before editing it. Never assume current state.
 - **Smallest change that works.** Surgical edits only. No speculative refactors.
-- **One issue at a time.** Reference the Linear issue identifier in your first message (`MMC-##`).
+- **One issue at a time.** Reference the bd issue ID in your first message (e.g. `MysteryMixClub-s7bv2t`); if it has a historical `MYS-##` number, mention that too for continuity.
 - **State assumptions explicitly.** If something is ambiguous, say what you're assuming before acting.
 - **No placeholder logic.** If you'd write a `// TODO`, ask instead.
 - **Flag design drift.** If a request would violate the style guide, say so before proceeding.
-- **Update Linear when done.** When an issue is complete, note it so the status can be updated.
+- **Close bd issues when done.** When an issue is complete, run `bd close <id>` (see the Beads section below for the full session-close protocol).
 - **Record every major decision as an ADR.** Full process: `docs/adr/README.md`.
   Applies to PM and developers alike, Claude Code included — a tech/vendor/hosting
   choice, an architectural pattern other work builds on, or any tradeoff that
@@ -212,7 +213,7 @@ docs/
 - [ ] Stated one-sentence sprint goal back to user
 
 
-<!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:6cd5cc61 -->
+<!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:970c3bf2 -->
 ## Beads Issue Tracker
 
 This project uses **bd (beads)** for issue tracking. Run `bd prime` to see full workflow context and commands.
@@ -256,6 +257,7 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 
    # Team-maintainer opt-in only, unless current instructions forbid it:
    git pull --rebase
+   bd dolt push
    git push
    git status
    ```

@@ -18,11 +18,14 @@ import uuid
 from sqlalchemy import func, select
 
 from app.auth.jwt import create_access_token
+from app.models.apple_mix_playlist import AppleMixPlaylist
 from app.models.invite import Invite
 from app.models.club import Club
 from app.models.club_member import ClubMember
 from app.models.note import Note
 from app.models.mix import Mix
+from app.models.playlist_job import PlaylistJob
+from app.models.spotify_mix_playlist import SpotifyMixPlaylist
 from app.models.submission import Submission
 from app.models.user import User
 from app.models.vote import Vote
@@ -296,6 +299,51 @@ async def test_delete_complete_club_cascades_submissions_votes_notes(client, db_
     # Users are untouched.
     assert await db_session.scalar(select(User).where(User.id == organizer_id)) is not None
     assert await db_session.scalar(select(User).where(User.id == player_id)) is not None
+
+
+async def test_delete_club_with_generated_playlists_cascades(client, db_session):
+    # MysteryMixClub-98gp (MYS regression): a mix with a generated Spotify
+    # playlist, a generated Apple playlist, and a queued/finished playlist_job
+    # row used to make DELETE /clubs/{id} 500 with a foreign-key violation,
+    # since none of spotify_mix_playlists/apple_mix_playlists/playlist_jobs
+    # were cleared before the owning mix. Confirms the delete now succeeds
+    # (204) and none of the three rows survive.
+    organizer = await _seed_user(db_session, email="org@example.com", display_name="Org")
+    club = await _seed_club(db_session, organizer, state="complete", current_mix=1)
+    player = await _seed_user(db_session, email="player@example.com", display_name="Player")
+    await _seed_member(db_session, club, player)
+
+    mix_ = Mix(club_id=club.id, mix_number=1, state="closed")
+    db_session.add(mix_)
+    await db_session.flush()
+
+    db_session.add(
+        SpotifyMixPlaylist(mix_id=mix_.id, user_id=organizer.id, playlist_id="spotify-playlist-1")
+    )
+    db_session.add(
+        AppleMixPlaylist(
+            mix_id=mix_.id,
+            user_id=player.id,
+            playlist_id="apple-playlist-1",
+            playlist_name="Mystery Mix 1",
+        )
+    )
+    db_session.add(PlaylistJob(mix_id=mix_.id, provider="spotify", status="complete"))
+    await db_session.commit()
+
+    club_id = club.id
+    mix_id = mix_.id
+
+    resp = await client.delete(_delete_url(club.id), headers=_auth_header(organizer.id))
+
+    assert resp.status_code == 204, resp.text
+
+    db_session.expire_all()
+    assert await db_session.scalar(select(Club).where(Club.id == club_id)) is None
+    assert await _count(db_session, Mix, club_id=club_id) == 0
+    assert await _count(db_session, SpotifyMixPlaylist, mix_id=mix_id) == 0
+    assert await _count(db_session, AppleMixPlaylist, mix_id=mix_id) == 0
+    assert await _count(db_session, PlaylistJob, mix_id=mix_id) == 0
 
 
 async def test_delete_only_targets_its_own_club(client, db_session):

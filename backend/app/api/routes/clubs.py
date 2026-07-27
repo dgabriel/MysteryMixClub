@@ -12,11 +12,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
 from app.db.session import get_db
+from app.models.apple_mix_playlist import AppleMixPlaylist
 from app.models.club import Club
 from app.models.club_member import ClubMember
 from app.models.invite import Invite
 from app.models.mix import Mix
 from app.models.note import Note
+from app.models.playlist_job import PlaylistJob
+from app.models.spotify_mix_playlist import SpotifyMixPlaylist
 from app.models.submission import Submission
 from app.models.user import User
 from app.models.vote import Vote
@@ -540,12 +543,15 @@ async def delete_club(
     # the cascade below removes everything the club owns.
 
     # Cascade in FK dependency order in one transaction (no ON DELETE CASCADE):
-    # votes/notes/submissions (by this club's mixes) -> mixes -> invites ->
-    # members -> club.
+    # votes/notes/submissions/spotify+apple playlists/playlist jobs (by this
+    # club's mixes) -> mixes -> invites -> members -> club.
     mix_ids = select(Mix.id).where(Mix.club_id == league_id)
     await db.execute(delete(Vote).where(Vote.mix_id.in_(mix_ids)))
     await db.execute(delete(Note).where(Note.mix_id.in_(mix_ids)))
     await db.execute(delete(Submission).where(Submission.mix_id.in_(mix_ids)))
+    await db.execute(delete(SpotifyMixPlaylist).where(SpotifyMixPlaylist.mix_id.in_(mix_ids)))
+    await db.execute(delete(AppleMixPlaylist).where(AppleMixPlaylist.mix_id.in_(mix_ids)))
+    await db.execute(delete(PlaylistJob).where(PlaylistJob.mix_id.in_(mix_ids)))
     await db.execute(delete(Mix).where(Mix.club_id == league_id))
     await db.execute(delete(Invite).where(Invite.club_id == league_id))
     await db.execute(delete(ClubMember).where(ClubMember.club_id == league_id))

@@ -413,6 +413,65 @@ process, so editing the env file alone changes nothing.
 
 ---
 
+## Enabling Google Sign-In (MysteryMixClub-ali8, ADR 0007)
+
+Google Sign-In is **off** until all three credentials are present, the same
+"gap is a supported state" pattern as Apple Music above: the login screen
+renders no Google button, and magic link / password (once shipped) keep
+working exactly as before. So this can be done any time after the code ships,
+independently of it, and skipping it breaks nothing.
+
+**Credentials come from the Google Cloud console** (console.cloud.google.com,
+any Google account — no paid membership required, unlike Apple).
+
+1. Create (or pick) a project, then **APIs & Services → OAuth consent
+   screen**. Choose **External** user type, fill in the app name/support
+   email, and add the `email` and `profile` scopes (nothing else needed).
+   While the app is in **Testing** mode only explicitly-added test users can
+   sign in — fine for early staging use, but production needs the app moved
+   to **Production** and, because MysteryMixClub already has live users at
+   that point, **submitted for Google's verification review**. That review
+   has its own lead time outside our control — start it early, don't treat it
+   as a same-day deploy step (see ADR 0007's "Revisit if").
+2. **APIs & Services → Credentials → + Create Credentials → OAuth client ID**,
+   application type **Web application**. Add an **Authorized redirect URI**
+   pointing at this environment's callback:
+   `https://staging.mysterymixclub.com/api/v1/auth/google/callback`. It must
+   match `GOOGLE_REDIRECT_URI` below **exactly**, including scheme and path.
+3. Google shows the **Client ID** and **Client secret** once the client is
+   created (both are re-viewable later from the Credentials page, unlike
+   Apple's one-time `.p8` download).
+
+On the Droplet, add all three to the env file:
+
+```bash
+sudo nano /etc/mysterymixclub/staging.env
+# GOOGLE_CLIENT_ID=xxxxxxxxxx.apps.googleusercontent.com
+# GOOGLE_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxxxxxxxxxxxxxx
+# GOOGLE_REDIRECT_URI=https://staging.mysterymixclub.com/api/v1/auth/google/callback
+
+sudo systemctl restart mysterymixclub-api
+```
+
+**Verify** — the login screen should now render the Google button, and
+starting the flow should redirect to Google's consent screen rather than
+erroring:
+
+```bash
+curl -s https://staging.mysterymixclub.com/api/v1/auth/google/login
+# a redirect (302) to accounts.google.com when configured;
+# 404 when GOOGLE_CLIENT_ID is unset, same "hidden" behavior as Apple Music
+```
+
+A restart is required: settings are cached per process, so editing the env
+file alone changes nothing.
+
+**Use a separate OAuth client per environment** — never share
+`GOOGLE_CLIENT_SECRET` across staging and prod, and each needs its own
+Authorized redirect URI registered on its own client (see `prod.env.example`).
+
+---
+
 ## What to share with the test team
 
 - **URL:** `https://staging.mysterymixclub.com` (or `http://<DROPLET_IP>/`)

@@ -109,6 +109,13 @@ Fill in at least:
 - `APPLE_MUSIC_TEAM_ID` / `APPLE_MUSIC_KEY_ID` / `APPLE_MUSIC_PRIVATE_KEY` —
   optional, but all three or none. See "Enabling Apple Music" in
   `staging-setup.md` — the process is identical, just against prod's env file.
+- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` —
+  optional, all three or none (MysteryMixClub-ali8, ADR 0007). See "Enabling
+  Google Sign-In" in `staging-setup.md` — same process, a **separate** OAuth
+  client from staging's, and the prod redirect URI
+  (`https://mysterymixclub.com/api/v1/auth/google/callback`). Prod's OAuth
+  consent screen also needs Google's verification review before real users
+  can sign in with it — start that early, see ADR 0007.
 - `ALLOWED_ORIGINS` / `APP_BASE_URL` — `https://mysterymixclub.com`.
 - `GUNICORN_WORKERS` — optional; the systemd unit defaults to `2` (sized for
   this droplet's 2 vCPUs) if left unset. Only set it after resizing the

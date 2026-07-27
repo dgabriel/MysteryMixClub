@@ -259,8 +259,11 @@ mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl reload mysterymixclub-api
 mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl restart mysterymixclub-api
 mysterymixclub ALL=(root) NOPASSWD: /usr/bin/cp /home/mysterymixclub/app/scripts/mysterymixclub-advance-mixes-prod.service /etc/systemd/system/mysterymixclub-advance-mixes.service
 mysterymixclub ALL=(root) NOPASSWD: /usr/bin/cp /home/mysterymixclub/app/scripts/mysterymixclub-advance-mixes-prod.timer /etc/systemd/system/mysterymixclub-advance-mixes.timer
+mysterymixclub ALL=(root) NOPASSWD: /usr/bin/cp /home/mysterymixclub/app/scripts/mysterymixclub-playlist-worker-prod.service /etc/systemd/system/mysterymixclub-playlist-worker.service
 mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl daemon-reload
 mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl enable --now mysterymixclub-advance-mixes.timer
+mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl enable mysterymixclub-playlist-worker
+mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl restart mysterymixclub-playlist-worker
 EOF
 chmod 440 /etc/sudoers.d/mysterymixclub-deploy
 ```
@@ -271,6 +274,11 @@ chmod 440 /etc/sudoers.d/mysterymixclub-deploy
 > granted, so the fallback path already works — only `reload`, the new normal
 > path, needs adding). This is a one-time manual edit on the live Droplet;
 > Dawn should apply it, not Claude (no prod SSH).
+>
+> The three `playlist-worker` lines were added for MYS-258 (ADR 0006). On a
+> Droplet bootstrapped before this change, add them by hand too, or the next
+> deploy fails at the worker-refresh step — same "Dawn applies it, not Claude"
+> rule as above.
 
 **Register the runner** (as the `mysterymixclub` user — reuses the sudoers
 grant above, matches the app's own file ownership):
@@ -322,6 +330,21 @@ refreshes the files and runs `enable --now`.
 ```bash
 systemctl list-timers mysterymixclub-advance-mixes.timer   # NEXT / LAST run
 sudo journalctl -u mysterymixclub-advance-mixes.service -f # per-run summary line
+```
+
+---
+
+## 6a. The playlist-generation worker (MYS-258, ADR 0006)
+
+Same worker as staging — see `staging-setup.md` §7a for the full behavior
+explanation. On prod the unit is named identically on-disk
+(`mysterymixclub-playlist-worker.service`) but sourced from the
+`-prod`-suffixed repo file. Bootstrap installs and enables it; each deploy
+refreshes the unit file and restarts it.
+
+```bash
+systemctl status mysterymixclub-playlist-worker
+sudo journalctl -u mysterymixclub-playlist-worker -f
 ```
 
 ---

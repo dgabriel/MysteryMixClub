@@ -79,18 +79,31 @@ approve the `production` environment → prod deploy.
 
 ---
 
-## Scheduled jobs
+## Scheduled jobs and background workers
 
-The backend ships two standalone jobs run outside the request path:
-`python -m app.jobs.purge_accounts` (right-to-be-forgotten hard purge) and
-`python -m app.jobs.advance_mixes` (deadline force-advance + 12h warnings,
-MYS-145/162). On **both staging and prod** the deadline job runs every 15
-minutes via a systemd timer (`mysterymixclub-advance-mixes.timer`) — bootstrap
-installs and arms it, and each deploy refreshes the unit files and re-runs
-`enable --now`. See [`staging-setup.md` §7](staging-setup.md) for the full
-behavior explanation and [`prod-setup.md` §6](prod-setup.md) for what differs
-on prod (unit files sourced from the `-prod`-suffixed scripts, same on-disk
-unit names).
+The backend ships standalone processes run outside the request path, none of
+them behind DO's own scheduler/App Platform equivalent — all systemd, on the
+same self-managed Droplets as the API:
+
+- **Timer-triggered (`oneshot` + `.timer`)**: `python -m app.jobs.purge_accounts`
+  (right-to-be-forgotten hard purge) and `python -m app.jobs.advance_mixes`
+  (deadline force-advance + 12h warnings, MYS-145/162). On **both staging and
+  prod** the deadline job runs every 15 minutes via a systemd timer
+  (`mysterymixclub-advance-mixes.timer`) — bootstrap installs and arms it, and
+  each deploy refreshes the unit files and re-runs `enable --now`. See
+  [`staging-setup.md` §7](staging-setup.md) for the full behavior explanation
+  and [`prod-setup.md` §6](prod-setup.md) for what differs on prod (unit files
+  sourced from the `-prod`-suffixed scripts, same on-disk unit names).
+- **Persistent (`Type=simple`, `Restart=on-failure`, no `.timer`)**:
+  `python -m app.jobs.playlist_worker` (MYS-258, ADR 0006) — dequeues the
+  Postgres-backed `playlist_jobs` queue (`LISTEN`/`NOTIFY` + `SELECT ... FOR
+  UPDATE SKIP LOCKED`) and runs the shared-account Spotify playlist generation
+  that used to run inline in the request/deadline-job path. On **both staging
+  and prod** it's installed by bootstrap and enabled, and each deploy
+  refreshes the unit file and restarts it (a persistent process is
+  `restart`ed on deploy, not re-`enable --now`d like a timer). See
+  [`staging-setup.md` §7a](staging-setup.md) and
+  [`prod-setup.md` §6a](prod-setup.md).
 
 ---
 

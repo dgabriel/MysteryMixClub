@@ -10,8 +10,12 @@
 #   systemctl reload mysterymixclub-api
 #   systemctl restart mysterymixclub-api (first-deploy fallback, MYS-259 — see below)
 #   cp scripts/mysterymixclub-advance-mixes-prod.{service,timer} /etc/systemd/system/mysterymixclub-advance-mixes.{service,timer}
+#   cp scripts/mysterymixclub-playlist-worker-prod.service /etc/systemd/system/mysterymixclub-playlist-worker.service
 #   systemctl daemon-reload
 #   systemctl enable --now mysterymixclub-advance-mixes.timer
+#   systemctl restart mysterymixclub-playlist-worker (MYS-258, ADR 0006 —
+#     persistent process, not timer-driven; restart both applies new code and
+#     starts it on the first deploy after bootstrap installed-but-didn't-start it)
 # The web root is owned by the deploy user (see bootstrap-droplet-prod.sh), so
 # the frontend publish step needs no sudo. (See docs/prod-setup.md.)
 #
@@ -91,6 +95,15 @@ sudo cp "${REPO_ROOT}/scripts/mysterymixclub-advance-mixes-prod.service" /etc/sy
 sudo cp "${REPO_ROOT}/scripts/mysterymixclub-advance-mixes-prod.timer" /etc/systemd/system/mysterymixclub-advance-mixes.timer
 sudo systemctl daemon-reload
 sudo systemctl enable --now mysterymixclub-advance-mixes.timer
+
+echo "==> Installing/refreshing and restarting the playlist worker (MYS-258, ADR 0006)"
+# Persistent process (not timer-driven), so a `restart` — rather than the
+# deadline job's `enable --now` — both applies new code and starts it on the
+# first deploy after bootstrap installed-but-didn't-start it.
+sudo cp "${REPO_ROOT}/scripts/mysterymixclub-playlist-worker-prod.service" /etc/systemd/system/mysterymixclub-playlist-worker.service
+sudo systemctl daemon-reload
+sudo systemctl enable mysterymixclub-playlist-worker
+sudo systemctl restart mysterymixclub-playlist-worker
 
 echo "==> Publishing the frontend (built in CI, not here — MYS-259)"
 cd ../frontend

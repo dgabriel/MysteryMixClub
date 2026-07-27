@@ -5,6 +5,7 @@ from app.models.invite import Invite
 from app.models.magic_link_token import MagicLinkToken
 from app.models.mix import Mix
 from app.models.note import Note
+from app.models.playlist_job import PlaylistJob
 from app.models.session import Session
 from app.models.spotify_connection import SpotifyConnection
 from app.models.spotify_mix_playlist import SpotifyMixPlaylist
@@ -21,6 +22,7 @@ __all__ = [
     "MagicLinkToken",
     "Mix",
     "Note",
+    "PlaylistJob",
     "Session",
     "SpotifyConnection",
     "SpotifyMixPlaylist",

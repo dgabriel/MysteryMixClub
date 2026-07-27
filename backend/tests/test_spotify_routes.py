@@ -648,7 +648,10 @@ async def test_link_null_before_generation(spotify_client, db_session):
     await _seed_shared_account(db_session)
     resp = await spotify_client.get(_link_url(mix_.id), headers=_auth(organizer.id))
     assert resp.status_code == 200
-    assert resp.json() == {"playlist_url": None, "unmatched": []}
+    # status is None too: this mix was never enqueued (MYS-258) — generation
+    # here happens by calling generate_mix_playlist directly, bypassing the
+    # queue entirely, same as every other _generate()-based test in this file.
+    assert resp.json() == {"playlist_url": None, "unmatched": [], "status": None}
 
 
 async def test_link_null_when_shared_account_not_configured(client, db_session):
@@ -656,7 +659,7 @@ async def test_link_null_when_shared_account_not_configured(client, db_session):
     mix_ = await _seed_mix(db_session, organizer)
     resp = await client.get(_link_url(mix_.id), headers=_auth(organizer.id))
     assert resp.status_code == 200
-    assert resp.json() == {"playlist_url": None, "unmatched": []}
+    assert resp.json() == {"playlist_url": None, "unmatched": [], "status": None}
 
 
 async def test_link_visible_to_any_member_after_generation(
@@ -677,6 +680,7 @@ async def test_link_visible_to_any_member_after_generation(
     assert link_resp.json() == {
         "playlist_url": "https://open.spotify.com/playlist/pl1",
         "unmatched": [],
+        "status": None,
     }
 
 
@@ -723,14 +727,27 @@ async def test_link_reports_unmatched_gap_after_generation(
 
 
 # --------------------------------------------------------------------------- #
-# auto-generation on voting_open (MYS-176) — no admin click needed
+# playlist job enqueue on voting_open (MYS-176/MYS-258) — no admin click needed
+#
+# As of ADR 0006 (Slice 1), PATCH /mixes/{id} no longer calls the Spotify API
+# inline at all — it only enqueues a playlist_jobs row
+# (app.services.playlist_jobs.enqueue_playlist_job); app.jobs.playlist_worker
+# does the actual generation later, out of the request path (its own tests
+# live in test_playlist_worker.py). So these tests assert the job got queued,
+# not that a playlist was actually created — and enqueue is blind to whether
+# Spotify is even configured, so the "unconfigured" test now asserts a job is
+# queued too, and the old "a rejecting client doesn't block the transition"
+# test is gone: there's no code path left here that could reach the Spotify
+# API to fail on, so that property is now structural, not something to
+# assert at this layer.
 # --------------------------------------------------------------------------- #
 
 
-async def test_voting_open_auto_generates_playlist(spotify_client, db_session, fake_spotify):
+async def test_voting_open_enqueues_spotify_playlist_job(spotify_client, db_session):
+    from app.models.playlist_job import PlaylistJob
+
     organizer = await _seed_user(db_session, "o@example.com")
     mix_ = await _seed_mix(db_session, organizer, state="open_submission")
-    await _seed_shared_account(db_session)
     await _add_submission(db_session, mix_.id, organizer.id, isrc="I-MATCH", title="hit")
 
     resp = await spotify_client.patch(
@@ -738,22 +755,28 @@ async def test_voting_open_auto_generates_playlist(spotify_client, db_session, f
     )
     assert resp.status_code == 200, resp.text
 
+    job = await db_session.scalar(
+        select(PlaylistJob).where(PlaylistJob.mix_id == mix_.id, PlaylistJob.provider == "spotify")
+    )
+    assert job is not None
+    assert job.status == "queued"
+
     link = await spotify_client.get(_playlist_url(mix_.id), headers=_auth(organizer.id))
-    assert link.json()["playlist_url"] == "https://open.spotify.com/playlist/pl1"
-    assert fake_spotify.created["public"] is True
+    body = link.json()
+    assert body["playlist_url"] is None
+    assert body["status"] == "queued"
 
 
-async def test_all_vibing_mix_still_auto_generates_playlist(
-    spotify_client, db_session, fake_spotify
-):
+async def test_all_vibing_mix_still_enqueues_spotify_playlist_job(spotify_client, db_session):
     # Bug: an all-vibing mix chains open_voting -> closed in the same PATCH
     # (nobody can vote), which used to suppress the voting_open *event* used to
     # notify AND, by the same check, the playlist-generation trigger. Vibers
     # still deserve a listen-along playlist even though the mix never really
     # waits for votes.
+    from app.models.playlist_job import PlaylistJob
+
     organizer = await _seed_user(db_session, "o@example.com")
     mix_ = await _seed_mix(db_session, organizer, state="open_submission")
-    await _seed_shared_account(db_session)
     await _add_submission(
         db_session,
         mix_.id,
@@ -769,13 +792,21 @@ async def test_all_vibing_mix_still_auto_generates_playlist(
     assert resp.status_code == 200, resp.text
     assert resp.json()["state"] == "closed"
 
-    link = await spotify_client.get(_playlist_url(mix_.id), headers=_auth(organizer.id))
-    assert link.json()["playlist_url"] == "https://open.spotify.com/playlist/pl1"
+    job = await db_session.scalar(
+        select(PlaylistJob).where(PlaylistJob.mix_id == mix_.id, PlaylistJob.provider == "spotify")
+    )
+    assert job is not None
+    assert job.status == "queued"
 
 
-async def test_voting_open_does_not_auto_generate_when_unconfigured(client, db_session):
+async def test_voting_open_enqueues_even_when_spotify_unconfigured(client, db_session):
     # `client` (conftest's default fixture) has no SPOTIFY_PLAYLIST_ACCOUNT_USER_ID
-    # set — the mix transition must succeed exactly as before MYS-176.
+    # set. The mix transition must succeed exactly as before MYS-176/258 — and,
+    # post-ADR-0006, a job is still queued regardless: the worker (not the
+    # enqueue call site) is what resolves whether Spotify is configured, and
+    # degrades to a silent "complete" no-op there instead.
+    from app.models.playlist_job import PlaylistJob
+
     organizer = await _seed_user(db_session, "o@example.com")
     mix_ = await _seed_mix(db_session, organizer, state="open_submission")
     await _add_submission(db_session, mix_.id, organizer.id, isrc="I-MATCH", title="hit")
@@ -786,28 +817,8 @@ async def test_voting_open_does_not_auto_generate_when_unconfigured(client, db_s
     assert resp.status_code == 200, resp.text
     assert resp.json()["state"] == "open_voting"
 
-
-async def test_voting_open_auto_generate_failure_does_not_block_transition(
-    session_factory, db_session
-):
-    # A revoked shared-account grant must not prevent voting from opening —
-    # auto-generation is best-effort (MYS-176).
-    from app.services.spotify_client import SpotifyAuthError
-
-    class _RejectingClient(FakeSpotifyClient):
-        async def refresh_access_token(self, refresh_token):
-            raise SpotifyAuthError("invalid_grant")
-
-    organizer = await _seed_user(db_session, "o@example.com")
-    mix_ = await _seed_mix(db_session, organizer, state="open_submission")
-    await _seed_shared_account(db_session)
-    await _add_submission(db_session, mix_.id, organizer.id, isrc="I-MATCH", title="hit")
-
-    async with _client_with_spotify(session_factory, _RejectingClient()) as ac:
-        resp = await ac.patch(
-            f"/api/v1/mixes/{mix_.id}",
-            json={"state": "open_voting"},
-            headers=_auth(organizer.id),
-        )
-    assert resp.status_code == 200, resp.text
-    assert resp.json()["state"] == "open_voting"
+    job = await db_session.scalar(
+        select(PlaylistJob).where(PlaylistJob.mix_id == mix_.id, PlaylistJob.provider == "spotify")
+    )
+    assert job is not None
+    assert job.status == "queued"

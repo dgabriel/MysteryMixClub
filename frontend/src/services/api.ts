@@ -790,10 +790,7 @@ export async function updateMix(
 /** Push a mix's voting deadline to an organizer-chosen time, up to 48h past
  *  the current deadline (organizer only, MYS-180). `votingDeadline` is an ISO
  *  datetime string. Only valid while the mix is still open_voting. */
-export async function extendVotingDeadline(
-  mixId: string,
-  votingDeadline: string,
-): Promise<Mix> {
+export async function extendVotingDeadline(mixId: string, votingDeadline: string): Promise<Mix> {
   const res = await authenticatedRequest(`/api/v1/mixes/${mixId}/extend-voting`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -827,10 +824,7 @@ export type SubmissionInput = {
 
 /** Add a song to a mix (MYS-116). Mix must be open_submission; the backend
  *  returns 409 once you've reached the club's songs-per-submission cap. */
-export async function submitSong(
-  mixId: string,
-  input: SubmissionInput,
-): Promise<SubmissionResult> {
+export async function submitSong(mixId: string, input: SubmissionInput): Promise<SubmissionResult> {
   const res = await authenticatedRequest(`/api/v1/mixes/${mixId}/submissions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -947,18 +941,30 @@ export async function connectSpotify(returnTo?: string): Promise<{ authorize_url
   return (await res.json()) as { authorize_url: string };
 }
 
+/** Queue status of a mix's background playlist-generation job (MYS-258, ADR
+ *  0006) — null when generation has never been triggered for this mix (e.g.
+ *  it hasn't opened for voting yet). */
+export type PlaylistJobStatus = "queued" | "running" | "complete" | "failed";
+
 /** Read-only: the mix's existing Spotify playlist link, or null if
  *  generation hasn't run (or hasn't matched anything) yet (MYS-169, MYS-176).
  *  Generation is automatic, triggered on the voting_open transition — this
- *  never triggers it itself. */
-export async function getSpotifyPlaylistLink(
-  mixId: string,
-): Promise<{ playlist_url: string | null; unmatched: UnmatchedTrack[] }> {
+ *  never triggers it itself. `status` (MYS-258) reflects the background job
+ *  the transition enqueues; callers poll while it's queued/running. */
+export async function getSpotifyPlaylistLink(mixId: string): Promise<{
+  playlist_url: string | null;
+  unmatched: UnmatchedTrack[];
+  status: PlaylistJobStatus | null;
+}> {
   const res = await authenticatedRequest(`/api/v1/mixes/${mixId}/spotify-playlist`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
-  return (await res.json()) as { playlist_url: string | null; unmatched: UnmatchedTrack[] };
+  return (await res.json()) as {
+    playlist_url: string | null;
+    unmatched: UnmatchedTrack[];
+    status: PlaylistJobStatus | null;
+  };
 }
 
 /** Why a mix submission didn't make an auto-generated playlist (MYS-201):

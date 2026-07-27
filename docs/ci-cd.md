@@ -202,6 +202,7 @@ never in GitHub or DigitalOcean's dashboard:
 | `ENVIRONMENT`  | GENERAL  | `production` / `staging`                           |
 | `RESEND_API_KEY`, `ALLOWED_ORIGINS`, `APP_BASE_URL` | SECRET/GENERAL | see `.env.example` |
 | `APPLE_MUSIC_TEAM_ID`, `APPLE_MUSIC_KEY_ID`, `APPLE_MUSIC_PRIVATE_KEY` | SECRET | Apple Music (MYS-104/105-108). **All three or none** — any missing and the Apple UI hides itself and links fall back to keyless iTunes. Provisioning walkthrough in `staging-setup.md` → "Enabling Apple Music". |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | SECRET | Google Sign-In (MysteryMixClub-ali8, ADR 0007). **All three or none** — any missing and the Google button hides itself, magic link/password unaffected. Separate OAuth client per environment. Provisioning walkthrough in `staging-setup.md` → "Enabling Google Sign-In". |
 | `RESEND_WEBHOOK_SECRET`, `INBOUND_EMAIL_FORWARD_TO` | SECRET/GENERAL | Inbound mail forwarding (MYS-242). Prod-only in practice — Resend Inbound's MX is on the apex domain, which prod serves. Empty `RESEND_WEBHOOK_SECRET` = the webhook route 503s rather than accepting unsigned requests. |
 
 ### Adding a new secret (the routine)

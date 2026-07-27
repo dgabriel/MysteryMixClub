@@ -182,8 +182,11 @@ mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl disable --now mysterymixc
 mysterymixclub ALL=(root) NOPASSWD: /usr/bin/rm -f /etc/systemd/system/mysterymixclub-advance-rounds.service /etc/systemd/system/mysterymixclub-advance-rounds.timer
 mysterymixclub ALL=(root) NOPASSWD: /usr/bin/cp /home/mysterymixclub/app/scripts/mysterymixclub-advance-mixes.service /etc/systemd/system/
 mysterymixclub ALL=(root) NOPASSWD: /usr/bin/cp /home/mysterymixclub/app/scripts/mysterymixclub-advance-mixes.timer /etc/systemd/system/
+mysterymixclub ALL=(root) NOPASSWD: /usr/bin/cp /home/mysterymixclub/app/scripts/mysterymixclub-playlist-worker.service /etc/systemd/system/
 mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl daemon-reload
 mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl enable --now mysterymixclub-advance-mixes.timer
+mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl enable mysterymixclub-playlist-worker
+mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl restart mysterymixclub-playlist-worker
 EOF
 chmod 440 /etc/sudoers.d/mysterymixclub-deploy
 ```
@@ -199,6 +202,11 @@ chmod 440 /etc/sudoers.d/mysterymixclub-deploy
 > the old unit will linger and start erroring in journalctl every time it fires
 > (its target module is gone) until this grant is applied by hand on the
 > **live staging Droplet** — do this before or at the next deploy off `develop`.
+>
+> The three `playlist-worker` lines were added for MYS-258 (ADR 0006, the
+> Postgres-backed playlist job queue) — see §7a. On a Droplet bootstrapped
+> before this change, add them to the existing sudoers file or the next deploy
+> will fail at the worker-refresh step.
 
 **Deploy via a self-hosted GitHub Actions runner living on the Droplet itself**
 (added MYS-224, replacing the `appleboy/ssh-action` approach below it used to
@@ -287,6 +295,68 @@ sudo systemctl disable --now mysterymixclub-advance-mixes.timer
 ```
 
 Re-enable with `sudo systemctl enable --now mysterymixclub-advance-mixes.timer`.
+
+---
+
+## 7a. The playlist-generation worker (MYS-258, ADR 0006)
+
+Playlist generation (the shared-account Spotify playlist, auto-triggered when
+a mix opens for voting) no longer runs inline in the request/deadline-job
+path — `PATCH /mixes/{id}` and `app.jobs.advance_mixes` only enqueue a
+`playlist_jobs` row (`app.services.playlist_jobs.enqueue_playlist_job`) and
+`NOTIFY` a Postgres channel; this worker (`app.jobs.playlist_worker`) does the
+actual generation. Unlike the deadline job above, it's a **persistent
+process**, not timer-triggered: it `LISTEN`s on the `playlist_jobs` channel
+for near-instant dispatch, with a 30s poll fallback in case a `NOTIFY` is ever
+missed (a dropped/reconnecting listener isn't guaranteed delivery), and
+dequeues via `SELECT ... FOR UPDATE SKIP LOCKED`.
+
+**Unit** (installed from `scripts/`): `mysterymixclub-playlist-worker.service`
+(`Type=simple`, `Restart=on-failure`, same user/env/venv as the API) — no
+paired `.timer`. Bootstrap installs and enables it; each deploy refreshes the
+unit file and restarts it (a plain `restart`, not `enable --now`, since it's
+already enabled from bootstrap — this is what both picks up new code on every
+deploy and starts it for the first time after a fresh bootstrap). On a
+Droplet bootstrapped before this job existed, install once:
+
+```bash
+sudo cp /home/mysterymixclub/app/scripts/mysterymixclub-playlist-worker.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now mysterymixclub-playlist-worker
+```
+
+**Check it:**
+
+```bash
+systemctl status mysterymixclub-playlist-worker            # running? since when?
+sudo journalctl -u mysterymixclub-playlist-worker -f        # live log — listens on startup, logs each drained batch
+```
+
+It logs `playlist_worker: listening on 'playlist_jobs' (poll fallback every
+30s)` on startup and `playlist_worker: processed N job(s)` whenever it drains
+one or more queued jobs. A queued/failed job's live state is queryable
+directly: `SELECT * FROM playlist_jobs ORDER BY created_at DESC LIMIT 20;` —
+`status` is one of `queued`/`running`/`complete`/`failed`, and `failed` rows
+carry their exception text in `error`. (Dead-letter *visibility* beyond this
+queryable column — retry UI, alerting — is deferred; see ADR 0006.)
+
+**Crash recovery is automatic, no manual DB fix-up needed.** If the process
+dies mid-job (`systemctl restart`, OOM, a host reboot), the job it was
+running is left in `running` — every loop iteration (so effectively on
+startup, and again each wake/poll tick) resets any `running` row older than
+10 minutes back to `queued`, logging `playlist_worker: reclaimed N stale
+running job(s)`. It's then picked up by the ordinary dequeue path like any
+other queued job. A `running` row younger than 10 minutes is left alone
+(presumed still genuinely in flight).
+
+**Disable in an emergency** (stops new playlist generation entirely; jobs pile
+up as `queued` until the worker restarts, they don't get dropped):
+
+```bash
+sudo systemctl stop mysterymixclub-playlist-worker
+```
+
+Re-enable/restart with `sudo systemctl start mysterymixclub-playlist-worker`.
 
 ---
 

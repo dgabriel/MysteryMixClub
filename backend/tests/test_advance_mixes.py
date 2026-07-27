@@ -19,6 +19,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from sqlalchemy import select
 
 from app.config import get_settings
 from app.jobs.advance_mixes import advance_due_mixes
@@ -430,21 +431,21 @@ async def test_branch4_force_advance_to_voting(run_job, db_session, email_spy):
 
 
 # ========================================================================== #
-# Branch 4 — Spotify auto-generation on voting_open (MYS-176)
+# Branch 4 — Spotify playlist job enqueue on voting_open (MYS-176/MYS-258)
+#
+# As of ADR 0006 (Slice 1), this job no longer calls the Spotify API at all —
+# it only enqueues a playlist_jobs row (app.jobs.playlist_worker does the
+# actual generation, tested separately in test_playlist_worker.py). So this
+# no longer needs a shared account or a fake Spotify client to seed/inject:
+# enqueue is blind to whether Spotify is even configured on this deployment.
+# The old "a revoked shared-account grant doesn't block advance" test is gone
+# too — there's no longer a code path here that could reach the Spotify API
+# to fail on; that property is now structural rather than something to assert.
 # ========================================================================== #
 
-_SHARED_ACCOUNT_ID = uuid.UUID("00000000-0000-0000-0000-0000000000bb")
 
-
-async def test_branch4_auto_generates_spotify_playlist(
-    monkeypatch, session_factory, db_session, email_spy
-):
-    from app.config import Settings
-    from app.models.spotify_connection import SpotifyConnection
-    from app.services.spotify_token_crypto import encrypt_refresh_token
-    from tests.test_spotify_routes import FakeSpotifyClient
-
-    monkeypatch.setattr("app.jobs.advance_mixes.async_session_factory", session_factory)
+async def test_branch4_enqueues_spotify_playlist_job(run_job, db_session, email_spy):
+    from app.models.playlist_job import PlaylistJob
 
     now = datetime.now(timezone.utc)
     org = await _seed_user(db_session, "o@e.com")
@@ -457,57 +458,35 @@ async def test_branch4_auto_generates_spotify_playlist(
         submission_deadline=now - timedelta(hours=1),
         submission_opened_at=now - timedelta(hours=73),
     )
-    db_session.add(
-        Submission(
-            mix_id=rnd.id,
-            user_id=org.id,
-            isrc="ISRC-1",
-            title="one",
-            artist="Artist",
-            participation_mode="playing",
-            spotify_track_uri="spotify:track:pre-resolved",
-        )
-    )
-    db_session.add(
-        User(id=_SHARED_ACCOUNT_ID, email="playlist-account@example.com", display_name="P")
-    )
-    await db_session.commit()
-    db_session.add(
-        SpotifyConnection(
-            user_id=_SHARED_ACCOUNT_ID,
-            spotify_user_id="spuser",
-            refresh_token_encrypted=encrypt_refresh_token("rt"),
-            scope="playlist-modify-private",
-        )
-    )
-    await db_session.commit()
+    rid = rnd.id
+    await _seed_submission(db_session, rid, org, title="one")
 
-    settings = Settings(spotify_playlist_account_user_id=str(_SHARED_ACCOUNT_ID))
-    fake = FakeSpotifyClient()
-
-    report = await advance_due_mixes(now=now, settings=settings, sender=email_spy, client=fake)
+    report = await run_job(now)
     assert report.advanced_to_voting == 1
-    assert fake.created is not None
-    assert fake.created["public"] is True
-    assert fake.added == ["spotify:track:pre-resolved"]
+
+    job = await db_session.scalar(
+        select(PlaylistJob).where(PlaylistJob.mix_id == rid, PlaylistJob.provider == "spotify")
+    )
+    assert job is not None
+    assert job.status == "queued"
 
 
-async def test_branch4_spotify_failure_does_not_block_advance(
-    monkeypatch, session_factory, db_session, email_spy
+async def test_branch4_enqueue_failure_rolls_back_the_state_transition_too(
+    monkeypatch, run_job, db_session, email_spy
 ):
-    # A revoked shared-account grant must not prevent the mix from advancing
-    # or the voting_open email from sending (MYS-176: best-effort).
-    from app.config import Settings
-    from app.models.spotify_connection import SpotifyConnection
-    from app.services.spotify_client import SpotifyAuthError
-    from app.services.spotify_token_crypto import encrypt_refresh_token
-    from tests.test_spotify_routes import FakeSpotifyClient
+    # Review finding on the initial Slice 1 PR: the enqueue must land in the
+    # SAME commit as the open_voting transition (ADR 0006 — "inside the same
+    # transaction as the caller's existing work"), not a separate commit
+    # afterward. Proven here the way that actually matters: if enqueue fails,
+    # the mix must NOT be left stuck in open_voting with no job ever
+    # created — the whole transaction rolls back together, and the job is
+    # simply recorded as this mix's processing error for that run.
+    from app.models.playlist_job import PlaylistJob
 
-    monkeypatch.setattr("app.jobs.advance_mixes.async_session_factory", session_factory)
+    async def _boom(db, mix_id, provider):
+        raise RuntimeError("simulated crash between transition and enqueue")
 
-    class _RejectingClient(FakeSpotifyClient):
-        async def refresh_access_token(self, refresh_token):
-            raise SpotifyAuthError("invalid_grant")
+    monkeypatch.setattr("app.jobs.advance_mixes.enqueue_playlist_job", _boom)
 
     now = datetime.now(timezone.utc)
     org = await _seed_user(db_session, "o@e.com")
@@ -520,36 +499,33 @@ async def test_branch4_spotify_failure_does_not_block_advance(
         submission_deadline=now - timedelta(hours=1),
         submission_opened_at=now - timedelta(hours=73),
     )
-    db_session.add(
-        Submission(
-            mix_id=rnd.id,
-            user_id=org.id,
-            isrc="ISRC-1",
-            title="one",
-            artist="Artist",
-            participation_mode="playing",
-        )
-    )
-    db_session.add(
-        User(id=_SHARED_ACCOUNT_ID, email="playlist-account@example.com", display_name="P")
-    )
-    await db_session.commit()
-    db_session.add(
-        SpotifyConnection(
-            user_id=_SHARED_ACCOUNT_ID,
-            spotify_user_id="spuser",
-            refresh_token_encrypted=encrypt_refresh_token("rt"),
-            scope="playlist-modify-private",
-        )
-    )
-    await db_session.commit()
+    rid = rnd.id
+    await _seed_submission(db_session, rid, org, title="one")
 
-    settings = Settings(spotify_playlist_account_user_id=str(_SHARED_ACCOUNT_ID))
-    report = await advance_due_mixes(
-        now=now, settings=settings, sender=email_spy, client=_RejectingClient()
-    )
-    assert report.advanced_to_voting == 1
-    assert report.errors == 0
+    report = await run_job(now)
+    assert report.advanced_to_voting == 0
+    assert report.errors == 1
+
+    db_session.expire_all()
+    r = await db_session.get(Mix, rid)
+    assert r.state == "open_submission"  # NOT stuck in open_voting
+
+    job = await db_session.scalar(select(PlaylistJob).where(PlaylistJob.mix_id == rid))
+    assert job is None  # no orphaned/half-created job either
+
+    # The mix isn't permanently wedged: a later run (enqueue no longer
+    # failing) still succeeds normally. Restore the real enqueue_playlist_job
+    # specifically — plain monkeypatch.undo() would also undo `run_job`'s own
+    # async_session_factory patch, since both share this test's one
+    # monkeypatch fixture instance.
+    from app.services.playlist_jobs import enqueue_playlist_job as real_enqueue_playlist_job
+
+    monkeypatch.setattr("app.jobs.advance_mixes.enqueue_playlist_job", real_enqueue_playlist_job)
+    report2 = await run_job(now)
+    assert report2.advanced_to_voting == 1
+    db_session.expire_all()
+    r2 = await db_session.get(Mix, rid)
+    assert r2.state == "open_voting"
 
 
 # ========================================================================== #

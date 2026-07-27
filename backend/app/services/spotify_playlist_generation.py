@@ -6,16 +6,21 @@ Pulled out of ``app.api.routes.spotify`` so it can be called from a plain
 modules importing the route file (``spotify.py`` already imports from
 ``mixes.py`` for ``_load_mix``; the reverse import would be circular).
 
-Two entry points:
+One entry point:
 
 * :func:`generate_mix_playlist` — the core engine. Raises
   ``SpotifyTokenCryptoError`` / ``SpotifyAuthError`` / ``SpotifyApiError`` on
   failure; callers decide how to surface that (the HTTP route maps them to
-  503/502, the auto-trigger below swallows them).
-* :func:`try_auto_generate_playlist` — best-effort wrapper used when a mix
-  enters ``open_voting`` (MYS-176): resolves the shared account, no-ops
-  silently if it isn't configured/connected, and never raises — a Spotify
-  hiccup must never block a mix from opening for voting.
+  503/502).
+
+As of MYS-258 / ADR 0006 (Slice 1), the only caller is
+``app.jobs.playlist_worker``, which dequeues a job and resolves the shared
+account itself (:func:`playlist_account_user_id` / :func:`get_shared_connection`
+below) before calling this function — the same account-resolution/no-op-if-
+unconfigured logic that used to live in a ``try_auto_generate_playlist``
+wrapper here now lives in the worker, since generation runs entirely out of
+the request/job path and there's no longer a synchronous caller for a wrapper
+to shield from a Spotify hiccup.
 """
 
 from __future__ import annotations
@@ -35,19 +40,10 @@ from app.models.mix import Mix
 from app.models.spotify_connection import SpotifyConnection
 from app.models.spotify_mix_playlist import SpotifyMixPlaylist
 from app.models.submission import Submission
-from app.services.spotify_client import (
-    SpotifyApiError,
-    SpotifyAuthError,
-    SpotifyClient,
-    SpotifyNotFoundError,
-)
+from app.services.spotify_client import SpotifyClient, SpotifyNotFoundError
 from app.services.source_tracks import Source, source_fields
 from app.services.spotify_playlist import playlist_description, playlist_name
-from app.services.spotify_token_crypto import (
-    SpotifyTokenCryptoError,
-    decrypt_refresh_token,
-    encrypt_refresh_token,
-)
+from app.services.spotify_token_crypto import decrypt_refresh_token, encrypt_refresh_token
 
 logger = logging.getLogger("app.services.spotify_playlist_generation")
 
@@ -217,29 +213,3 @@ async def generate_mix_playlist(
         total_count=len(submissions),
         unmatched=unmatched,
     )
-
-
-async def try_auto_generate_playlist(
-    round_id: uuid.UUID,
-    mix_: Mix,
-    club: Club,
-    db: AsyncSession,
-    client: SpotifyClient,
-    settings: Settings,
-) -> None:
-    """Best-effort auto-generation when a mix opens for voting (MYS-176).
-
-    No-ops silently if the shared account isn't configured/connected — this is
-    a normal, expected state on any deployment that hasn't set up Spotify
-    playlists, not an error. Never raises: a Spotify hiccup must never block
-    the mix transition that triggered this."""
-    account_id = playlist_account_user_id(settings)
-    if account_id is None:
-        return
-    connection = await get_shared_connection(db, account_id)
-    if connection is None:
-        return
-    try:
-        await generate_mix_playlist(round_id, mix_, club, account_id, connection, db, client)
-    except (SpotifyTokenCryptoError, SpotifyAuthError, SpotifyApiError):
-        logger.exception("spotify playlist: automatic generation failed for mix %s", round_id)

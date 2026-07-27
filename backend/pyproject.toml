@@ -50,6 +50,14 @@ python_version = "3.11"
 module = ["jose.*"]
 ignore_missing_imports = true
 
+# asyncpg ships no py.typed marker. Already a dependency (used indirectly via
+# SQLAlchemy's `+asyncpg` driver everywhere else); app/jobs/playlist_worker.py
+# (MYS-258, ADR 0006) is the first caller to import it directly, for the raw
+# LISTEN/NOTIFY connection SQLAlchemy has no API for.
+[[tool.mypy.overrides]]
+module = ["asyncpg.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

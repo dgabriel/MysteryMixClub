@@ -1,0 +1,28 @@
+# MysteryMixClub playlist-generation worker — staging (MYS-258, ADR 0006).
+# Runs `python -m app.jobs.playlist_worker` continuously: LISTENs on Postgres's
+# `playlist_jobs` NOTIFY channel (with a 30s poll fallback), dequeues via
+# `SELECT ... FOR UPDATE SKIP LOCKED`, and generates the shared-account Spotify
+# playlist for each queued mix. Unlike the deadline force-advance job
+# (mysterymixclub-advance-mixes.service/.timer), this is a persistent process,
+# not timer-triggered — Type=simple with Restart=on-failure, no paired .timer.
+# Install:
+#   sudo cp scripts/mysterymixclub-playlist-worker.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now mysterymixclub-playlist-worker
+[Unit]
+Description=MysteryMixClub playlist-generation worker (staging)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=mysterymixclub
+Group=mysterymixclub
+WorkingDirectory=/home/mysterymixclub/app/backend
+EnvironmentFile=/etc/mysterymixclub/staging.env
+ExecStart=/home/mysterymixclub/app/backend/.venv/bin/python -m app.jobs.playlist_worker
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

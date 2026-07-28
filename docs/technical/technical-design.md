@@ -107,6 +107,28 @@ MysteryMixClub is a PWA from day one. This is not a post-launch enhancement.
     path is POST, and Lax still withholds the cookie on all cross-site POST/XHR,
     so it can't be CSRF-forged.)
 
+### Password Flow (ADR 0007)
+
+Additive — magic link above is unchanged, and an account with no
+`password_hash` simply cannot sign in this way.
+
+1. `POST /auth/register` creates a NEW account with `{email, password,
+   invite_token}`. Same invite gate, user cap, and club-join as magic-link
+   sign-up; email ownership is established by the invite rather than by
+   receiving a link.
+2. `POST /auth/login` takes `{email, password}` and issues a session
+   identically to `/auth/verify` (access JWT + refresh cookie + `sessions` row).
+   Wrong password, no password set, and unknown email all return one
+   indistinguishable 401.
+3. `POST /auth/forgot-password` mails a single-use, hashed, 30-minute reset
+   token (`password_reset_tokens`, same pattern as `magic_link_tokens`), or
+   silently sends nothing when the address has no password — same neutral
+   response either way.
+4. `POST /auth/reset-password` consumes the token (hard delete), sets the new
+   hash, and invalidates every session for that user.
+
+Passwords are hashed with argon2. The only password rule is length (8–128).
+
 ### Token Refresh Flow
 
 - When an access token expires, the client sends the refresh token cookie to `/auth/refresh`
@@ -128,7 +150,16 @@ MysteryMixClub is a PWA from day one. This is not a post-launch enhancement.
 - Access tokens: JWT, 60-minute expiry, signed with server secret, never stored in localStorage or cookies
 - Refresh tokens: 30-day expiry, stored as a hash in the database, HttpOnly Secure cookie on client
 - Rate limiting on `/auth/request` — maximum 5 magic link requests per email per hour
-- All endpoints require authentication except `/auth/request` and `/auth/verify`
+- Rate limiting on `/auth/forgot-password` — same 5 per email per hour
+- Brute-force protection on `/auth/login` — maximum 10 FAILED attempts per email
+  per 15 minutes (`login_attempts`); a successful login or a password reset
+  clears the bucket
+- Password hashes: argon2, never returned to a client, cleared on account deletion
+- Password reset tokens: single-use, 30-minute expiry, hashed at rest,
+  hard-deleted on use
+- All endpoints require authentication except `/auth/request`, `/auth/verify`,
+  `/auth/login`, `/auth/register`, `/auth/forgot-password`, and
+  `/auth/reset-password`
 - HTTPS enforced at the infrastructure level
 
 ---
@@ -141,6 +172,7 @@ id                  UUID PRIMARY KEY
 email               TEXT UNIQUE NOT NULL
 display_name        TEXT NOT NULL
 preferred_service   TEXT (spotify | youtube | deezer)
+password_hash       TEXT NULL (argon2; NULL for magic-link-only accounts — ADR 0007)
 created_at          TIMESTAMP
 deleted_at          TIMESTAMP (soft delete for cascade handling, hard purge on schedule)
 ```
@@ -292,6 +324,31 @@ used                BOOLEAN DEFAULT FALSE
 created_at          TIMESTAMP
 ```
 
+### password_reset_tokens
+```
+id                  UUID PRIMARY KEY
+email               TEXT NOT NULL
+token_hash          TEXT NOT NULL
+expires_at          TIMESTAMP NOT NULL
+created_at          TIMESTAMP
+```
+> Same pattern as `magic_link_tokens` (ADR 0007), minus the `used` flag: a
+> matched token is hard-deleted on lookup, and that delete is what enforces
+> single use. Only ever written for an address that actually has a password.
+
+### login_attempts
+```
+id                  UUID PRIMARY KEY
+email               TEXT NOT NULL
+created_at          TIMESTAMP
+```
+> One row per FAILED `/auth/login` attempt, for brute-force rate limiting
+> (ADR 0007). Indexed `(email, created_at)` — every read is "this email, inside
+> the window". A successful login or password reset deletes that email's rows;
+> anything left is trimmed after 24h by `app.jobs.purge_login_attempts`, since
+> an attempt against an address that never signs in successfully has nothing
+> else to clear it.
+
 ### waitlist_entries
 ```
 id                  UUID PRIMARY KEY
@@ -330,6 +387,10 @@ All endpoints are prefixed `/api/v1/`. All responses are JSON. All authenticated
 ```
 POST   /auth/request          Request a magic link (email in body)
 GET    /auth/verify           Validate magic link token, issue session
+POST   /auth/login            Sign in with email + password, issue session
+POST   /auth/register         Create an invite-gated account with a password, issue session
+POST   /auth/forgot-password  Email a single-use password reset link
+POST   /auth/reset-password   Consume a reset token, set a new password
 POST   /auth/refresh          Exchange refresh token for new access token
 POST   /auth/logout           Invalidate current session
 POST   /auth/logout-all       Invalidate all sessions for current user

@@ -21,6 +21,9 @@ class User(Base):
     email_notifications: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("true")
     )
+    # Argon2 hash, NULL for accounts that only use magic link (ADR 0007). Set at
+    # password signup or password reset; never returned to a client.
+    password_hash: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

@@ -192,6 +192,9 @@ class _FailingEmailSender:
     def send_magic_link(self, email: str, link: str) -> None:
         raise RuntimeError("domain is not verified")
 
+    def send_password_reset(self, email: str, link: str) -> None:
+        raise RuntimeError("domain is not verified")
+
     def send(self, email, subject, html, headers=None) -> None:
         raise RuntimeError("domain is not verified")
 

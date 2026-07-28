@@ -27,8 +27,10 @@ from app.db.session import async_session_factory
 from app.models.club import Club
 from app.models.club_member import ClubMember
 from app.models.invite import Invite
+from app.models.login_attempt import LoginAttempt
 from app.models.magic_link_token import MagicLinkToken
 from app.models.note import Note
+from app.models.password_reset_token import PasswordResetToken
 from app.models.session import Session
 from app.models.submission import Submission
 from app.models.user import User
@@ -51,10 +53,11 @@ async def hard_delete_users(
 
     # FK-safe order: children before parents. Notes/votes reference submissions,
     # so they go first; submissions/memberships/sessions/invites reference users
-    # next; then magic-link tokens keyed by the tombstoned email; then the
-    # organizer FK on clubs is nulled (purged accounts never organize active
-    # clubs); finally the users themselves. invites.created_by is a NOT NULL FK
-    # with no ON DELETE, so these must go before the user delete to avoid both an
+    # next; then the email-keyed auth tables (magic-link tokens, password-reset
+    # tokens, login attempts) keyed by the tombstoned email; then the organizer
+    # FK on clubs is nulled (purged accounts never organize active clubs);
+    # finally the users themselves. invites.created_by is a NOT NULL FK with no
+    # ON DELETE, so these must go before the user delete to avoid both an
     # IntegrityError and an orphaned PII record.
     await db.execute(delete(Note).where(Note.author_id.in_(user_ids)))
     await db.execute(delete(Vote).where(Vote.voter_id.in_(user_ids)))
@@ -63,6 +66,8 @@ async def hard_delete_users(
     await db.execute(delete(Invite).where(Invite.created_by.in_(user_ids)))
     await db.execute(delete(Session).where(Session.user_id.in_(user_ids)))
     await db.execute(delete(MagicLinkToken).where(MagicLinkToken.email.in_(emails)))
+    await db.execute(delete(PasswordResetToken).where(PasswordResetToken.email.in_(emails)))
+    await db.execute(delete(LoginAttempt).where(LoginAttempt.email.in_(emails)))
     await db.execute(update(Club).where(Club.organizer_id.in_(user_ids)).values(organizer_id=None))
     await db.execute(delete(User).where(User.id.in_(user_ids)))
 

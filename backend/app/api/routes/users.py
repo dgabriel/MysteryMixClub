@@ -251,10 +251,15 @@ async def delete_me(
     former_email = current_user.email
     current_user.deleted_at = now
     current_user.email = f"deleted+{current_user.id}@deleted.invalid"
-    # Drop the credential and anything else keyed to the real address, while
+    # Drop every credential and anything else keyed to the real address, while
     # that address is still known — after the tombstone above it can't be
-    # matched again (ADR 0007).
+    # matched again (ADR 0007). google_id is a third-party identifier for a
+    # person who asked to be forgotten, so it goes for the same reason as the
+    # password hash (TD 10), not merely because it's UNIQUE: leaving it would
+    # also make the same Google account's next sign-up collide with a tombstone
+    # the resolution queries can no longer see.
     current_user.password_hash = None
+    current_user.google_id = None
     await db.execute(delete(PasswordResetToken).where(PasswordResetToken.email == former_email))
     await db.execute(delete(LoginAttempt).where(LoginAttempt.email == former_email))
 

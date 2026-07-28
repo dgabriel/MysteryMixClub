@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Literal
@@ -14,6 +15,7 @@ from fastapi import (
     Response,
     status,
 )
+from fastapi.responses import RedirectResponse
 from pydantic import EmailStr, Field
 
 from app.api.wire import WireModel
@@ -26,7 +28,7 @@ from app.api.routes.invites import (
     _CLUB_MEMBER_CAP,
     _join_via_invite,
 )
-from app.auth.jwt import create_access_token
+from app.auth.jwt import JWTError, create_access_token, create_sign_in_state, decode_sign_in_state
 from app.auth.passwords import hash_password, verify_password
 from app.auth.tokens import generate_token, hash_token
 from app.config import Settings, get_settings
@@ -39,6 +41,12 @@ from app.models.password_reset_token import PasswordResetToken
 from app.models.session import Session
 from app.models.user import User
 from app.services.email import EmailSender, get_email_sender
+from app.services.google_oauth import (
+    GoogleApiError,
+    GoogleAuthError,
+    GoogleOAuthClient,
+    get_google_oauth_client,
+)
 from app.services.notifications import queue_club_joined
 
 logger = logging.getLogger("app.api.routes.auth")
@@ -80,6 +88,18 @@ _REFRESH_TOKEN_TTL = timedelta(days=30)
 _REFRESH_TOKEN_MAX_AGE = int(_REFRESH_TOKEN_TTL.total_seconds())
 _DEVICE_HINT_MAX_LENGTH = 255
 
+# Anti-CSRF nonce for the Google round-trip (ADR 0007). Scoped to the Google
+# endpoints, and deliberately SameSite=Lax like the refresh cookie: Strict would
+# withhold it on the cross-site navigation back from Google, which is exactly
+# when the callback needs to read it.
+_GOOGLE_NONCE_COOKIE_NAME = "google_oauth_nonce"
+_GOOGLE_NONCE_COOKIE_PATH = "/api/v1/auth/google"
+_GOOGLE_NONCE_SAMESITE: Literal["lax"] = "lax"
+# Must outlive a slow trip through Google's consent screen without leaving a
+# usable nonce lying around; matches the signed state's own 10-minute TTL.
+_GOOGLE_NONCE_MAX_AGE = 600
+_GOOGLE_UNCONFIGURED_MESSAGE = "google sign-in is not configured on this server"
+
 _NEUTRAL_MESSAGE = "If that email is registered, a sign-in link is on its way."
 _INVALID_LINK_MESSAGE = "invalid or expired link"
 _INVALID_SESSION_MESSAGE = "invalid or expired session"
@@ -91,6 +111,17 @@ _INVALID_CREDENTIALS_MESSAGE = "invalid email or password"
 _TOO_MANY_LOGINS_MESSAGE = "Too many sign-in attempts. Please try again later."
 _RESET_NEUTRAL_MESSAGE = "If that email has a password set, a reset link is on its way."
 _ACCOUNT_EXISTS_MESSAGE = "an account already exists for this email — sign in instead"
+
+# The invite-gate helpers signal rejection by raising, but the Google callback
+# is a top-level navigation — map each rejection to a landing-page flag the
+# login screen can render. Keyed on the detail rather than the status code
+# because "invite required" and "at capacity" are both 403 but need to say very
+# different things. Anything unmapped falls back to a generic "error".
+_GOOGLE_SIGNUP_OUTCOMES = {
+    _INVITE_REQUIRED_MESSAGE: "invite_required",
+    _AT_CAPACITY_MESSAGE: "at_capacity",
+    _CLUB_FULL_MESSAGE: "club_full",
+}
 
 # Verified against when the email is unknown or the account has no password, so
 # a failed login costs the same argon2 work either way. Without this, response
@@ -715,6 +746,242 @@ async def reset_password(
     await db.commit()
 
     return ResetPasswordResponse(message="password updated")
+
+
+# --------------------------------------------------------------------------- #
+# Google Sign-In (MysteryMixClub-ali8.2, ADR 0007)
+#
+# A browser redirect flow, not a JSON API: the callback can't hand back an
+# access token in a response body the way /auth/login does, so it sets the
+# refresh cookie on a redirect to the SPA, which probes /auth/refresh on mount
+# (frontend/src/hooks/useAuth.tsx) and picks the session up from there.
+# --------------------------------------------------------------------------- #
+
+
+def _log_safe(value: str | None, limit: int = 100) -> str:
+    """Render an attacker-controlled value safe to log.
+
+    ``repr`` escapes control characters — a raw CRLF in a query param would
+    otherwise let the caller forge whole log entries — and the truncation keeps
+    an unbounded value from flooding the log.
+    """
+    return "none" if value is None else repr(value[:limit])
+
+
+def _google_redirect(settings: Settings, outcome: str) -> RedirectResponse:
+    """Bounce back to the SPA with an outcome flag for the login screen.
+
+    Everything after Google's redirect is a top-level browser navigation, so
+    failures can't be JSON — they have to be a landing page the user can read.
+
+    Always clears the nonce cookie: it authorizes exactly one callback, and
+    every exit from that callback — success or any rejection — consumes it. A
+    surviving nonce could satisfy a later flow.
+    """
+    response = RedirectResponse(
+        url=f"{settings.app_base_url.rstrip('/')}/login?google={outcome}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+    response.delete_cookie(
+        key=_GOOGLE_NONCE_COOKIE_NAME,
+        path=_GOOGLE_NONCE_COOKIE_PATH,
+        httponly=True,
+        samesite=_GOOGLE_NONCE_SAMESITE,
+        secure=settings.secure_cookies,
+    )
+    return response
+
+
+@router.get("/google/login")
+async def google_login(
+    invite_token: str | None = None,
+    settings: Settings = Depends(get_settings),
+    client: GoogleOAuthClient = Depends(get_google_oauth_client),
+) -> RedirectResponse:
+    """Redirect to Google's consent screen.
+
+    404 when Google isn't configured, matching the "hidden when unconfigured"
+    behavior the staging runbook documents — an unconfigured deployment is a
+    normal state, not an error.
+
+    ``invite_token`` rides through the round-trip inside the signed state so a
+    brand-new account can still be invite-gated on the way back (ADR 0007: every
+    new signup goes through the invite gate, whichever method it uses).
+    """
+    if not client.is_configured:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=_GOOGLE_UNCONFIGURED_MESSAGE
+        )
+
+    nonce = generate_token()
+    response = RedirectResponse(
+        url=client.authorize_url(create_sign_in_state(nonce, invite_token)),
+        status_code=status.HTTP_302_FOUND,
+    )
+    # The nonce's other half. The callback requires this cookie to match the
+    # nonce inside the signed state, so a flow started in an attacker's browser
+    # can't be completed in the victim's (login-CSRF).
+    response.set_cookie(
+        key=_GOOGLE_NONCE_COOKIE_NAME,
+        value=nonce,
+        max_age=_GOOGLE_NONCE_MAX_AGE,
+        path=_GOOGLE_NONCE_COOKIE_PATH,
+        httponly=True,
+        samesite=_GOOGLE_NONCE_SAMESITE,
+        secure=settings.secure_cookies,
+    )
+    return response
+
+
+@router.get("/google/callback")
+async def google_callback(
+    background_tasks: BackgroundTasks,
+    state: str | None = None,
+    code: str | None = None,
+    error: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    client: GoogleOAuthClient = Depends(get_google_oauth_client),
+    email_sender: EmailSender = Depends(get_email_sender),
+    user_agent: str | None = Header(default=None),
+    google_oauth_nonce: str | None = Cookie(default=None, alias=_GOOGLE_NONCE_COOKIE_NAME),
+) -> RedirectResponse:
+    """Google redirects here after consent.
+
+    Validates state against the browser's nonce cookie, exchanges the code,
+    resolves the Google identity to an account, and lands the user back on the
+    SPA with a session cookie set.
+    """
+    if not client.is_configured:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=_GOOGLE_UNCONFIGURED_MESSAGE
+        )
+
+    if error or not code or not state:
+        logger.info("google callback: denied or missing code/state (error=%s)", _log_safe(error))
+        return _google_redirect(settings, "denied")
+
+    try:
+        sign_in_state = decode_sign_in_state(state)
+    except JWTError:
+        logger.warning("google callback: state failed verification")
+        return _google_redirect(settings, "invalid_state")
+
+    # Constant-time compare: the nonce is a secret the attacker is trying to
+    # guess. The cookie is fully attacker-controlled, and compare_digest raises
+    # TypeError on a non-ASCII str, so a non-ASCII value has to be rejected as
+    # simply not matching rather than allowed to become a 500.
+    if (
+        google_oauth_nonce is None
+        or not google_oauth_nonce.isascii()
+        or not secrets.compare_digest(google_oauth_nonce, sign_in_state.nonce)
+    ):
+        logger.warning("google callback: state nonce did not match the browser cookie")
+        return _google_redirect(settings, "invalid_state")
+
+    try:
+        access_token = await client.exchange_code(code)
+        identity = await client.fetch_identity(access_token)
+    except (GoogleAuthError, GoogleApiError):
+        logger.exception("google callback: code exchange or userinfo lookup failed")
+        return _google_redirect(settings, "exchange_failed")
+
+    if not identity.email_verified:
+        # An unverified Google address proves nothing about who owns that
+        # mailbox, so it must never match or create an account here.
+        logger.warning("google callback: refusing an unverified google email")
+        return _google_redirect(settings, "email_unverified")
+
+    now = datetime.now(timezone.utc)
+    email = identity.email.lower()
+
+    try:
+        user, welcome_email = await _resolve_google_account(
+            db, identity.subject, email, sign_in_state.invite_token, settings, now
+        )
+    except HTTPException as exc:
+        # The shared invite-gate helpers raise HTTP errors, but this is a
+        # top-level navigation — translate to a landing the user can read.
+        logger.info("google callback: sign-up rejected (%s)", exc.detail)
+        return _google_redirect(settings, _GOOGLE_SIGNUP_OUTCOMES.get(exc.detail, "error"))
+
+    user_id = user.id
+    # The access token is deliberately discarded rather than put in the redirect
+    # URL: a query string lands in browser history, referrers, and server logs.
+    # The SPA's on-mount /auth/refresh turns the cookie into one immediately.
+    _, raw_refresh_token = await _issue_session(db, user_id, user_agent, now)
+    await db.commit()
+
+    if welcome_email is not None:
+        queue_club_joined(
+            background_tasks,
+            email_sender,
+            settings,
+            email,
+            user_id,
+            welcome_email[0],
+            welcome_email[1],
+        )
+
+    response = _google_redirect(settings, "ok")
+    _set_refresh_cookie(response, raw_refresh_token, settings)
+    return response
+
+
+async def _resolve_google_account(
+    db: AsyncSession,
+    google_subject: str,
+    email: str,
+    invite_token: str | None,
+    settings: Settings,
+    now: datetime,
+) -> tuple[User, tuple[uuid.UUID, str] | None]:
+    """Map a verified Google identity to an account, creating one if needed.
+
+    Three cases, in order:
+
+    1. **Already linked** — a user carries this ``google_id``. Straight sign-in.
+    2. **Same verified email** — link ``google_id`` onto that account and sign
+       in. Deliberately NOT invite-gated: the account already exists, and
+       Google has just proven ownership of its address more strongly than
+       anything else in this system does. If the account was already linked to
+       a *different* Google identity, the new one wins: whoever currently
+       controls the verified address is the rightful owner, and leaving the
+       stale link would lock them out of their own account.
+    3. **Nobody** — a brand-new account, which IS invite-gated exactly like
+       magic-link and password sign-up (ADR 0007).
+
+    Returns the user plus any club-welcome email the caller should queue.
+    """
+    user = await db.scalar(
+        select(User).where(User.google_id == google_subject, User.deleted_at.is_(None))
+    )
+    if user is not None:
+        return user, None
+
+    user = await db.scalar(select(User).where(User.email == email, User.deleted_at.is_(None)))
+    if user is not None:
+        if user.google_id is not None and user.google_id != google_subject:
+            # Replacing a live link, not filling in a blank one. Google won't
+            # verify one address on two accounts, so reaching this at all is
+            # notable — log it, because to a user later reviewing their linked
+            # identities a silent swap is indistinguishable from a hijack.
+            logger.warning(
+                "google callback: relinking user %s from google_id %s to %s",
+                user.id,
+                user.google_id,
+                google_subject,
+            )
+        user.google_id = google_subject
+        return user, None
+
+    invite_row = await _load_valid_invite(db, invite_token, now, email=email)
+    user = await _create_invited_user(db, email, invite_row, settings, now)
+    user.google_id = google_subject
+    # Capture the PK before further async work (project MissingGreenlet gotcha).
+    user_id = user.id
+    welcome_email = await _join_invite_club(db, user_id, invite_row)
+    return user, welcome_email
 
 
 @router.post("/refresh", response_model=VerifyResponse)

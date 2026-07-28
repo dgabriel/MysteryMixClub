@@ -24,6 +24,10 @@ class User(Base):
     # Argon2 hash, NULL for accounts that only use magic link (ADR 0007). Set at
     # password signup or password reset; never returned to a client.
     password_hash: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    # Google's stable per-account subject id, NULL until Google Sign-In is used
+    # (ADR 0007). Unique so one Google account can never sign in as two users.
+    # Stores `sub`, not the email — a user can change their Gmail address.
+    google_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, unique=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

@@ -129,6 +129,44 @@ Additive — magic link above is unchanged, and an account with no
 
 Passwords are hashed with argon2. The only password rule is length (8–128).
 
+### Google Sign-In Flow (ADR 0007)
+
+Standard OAuth authorization code. Off unless `GOOGLE_CLIENT_ID`,
+`GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI` are all set — both endpoints
+404 otherwise, the same "hidden when unconfigured" behavior Apple Music uses.
+
+1. `GET /auth/google/login` (optional `invite_token`) redirects to Google's
+   consent screen. It mints a random nonce, puts it in both a signed 10-minute
+   `state` token and an HttpOnly cookie, and carries `invite_token` inside the
+   signed state so it survives the round-trip untampered.
+2. `GET /auth/google/callback` verifies `state` and requires its nonce to match
+   the cookie — signing alone would not stop login-CSRF, where an attacker
+   feeds a victim a callback URL from a flow the attacker started. It then
+   exchanges the code for an access token server-side and asks Google's
+   `/userinfo` who it belongs to.
+3. An unverified Google email is refused outright — it proves nothing about who
+   owns the mailbox.
+4. Account resolution, in order: an existing `users.google_id` signs straight
+   in; otherwise a matching verified `users.email` gets `google_id` linked onto
+   it **without an invite** (the account already exists and Google has just
+   proven ownership of its address) — if that account already carries a
+   *different* `google_id`, the new identity **replaces** it (a decided
+   trade-off, not a bug: rejecting would lock out real Google
+   Workspace/personal-account address collisions with no admin tooling to
+   resolve them, and relinking doesn't raise the account's trust level, since
+   reaching this branch already requires the same verified-email proof a
+   magic-link sign-in accepts); otherwise a brand-new account is created under
+   the ordinary invite gate and user cap.
+5. Being a top-level browser navigation, the callback can't return a JSON access
+   token. It sets the refresh cookie and redirects to `APP_BASE_URL/login`
+   with a `?google=` outcome flag; the SPA's on-mount `/auth/refresh` turns that
+   cookie into an access token, and `/login` bounces an authenticated user to
+   `/home`. The access token is deliberately never put in the redirect URL,
+   where it would land in history, referrers, and logs.
+
+The refresh cookie is already `SameSite=Lax` (MYS-91) precisely so it survives
+this cross-site return; the nonce cookie is Lax for the same reason.
+
 ### Token Refresh Flow
 
 - When an access token expires, the client sends the refresh token cookie to `/auth/refresh`
@@ -155,11 +193,18 @@ Passwords are hashed with argon2. The only password rule is length (8–128).
   per 15 minutes (`login_attempts`); a successful login or a password reset
   clears the bucket
 - Password hashes: argon2, never returned to a client, cleared on account deletion
+- Google identity: `google_id` cleared on account deletion, same as the
+  password hash — a third-party identifier for someone who asked to be
+  forgotten, and left uncleared it would also collide with that Google
+  account's next sign-up (the resolution queries can't see a soft-deleted row)
 - Password reset tokens: single-use, 30-minute expiry, hashed at rest,
   hard-deleted on use
+- Google Sign-In: `state` is signed AND bound to an HttpOnly nonce cookie, so a
+  flow can only be completed by the browser that started it; an unverified
+  Google email is refused; the access token is never placed in a redirect URL
 - All endpoints require authentication except `/auth/request`, `/auth/verify`,
-  `/auth/login`, `/auth/register`, `/auth/forgot-password`, and
-  `/auth/reset-password`
+  `/auth/login`, `/auth/register`, `/auth/forgot-password`,
+  `/auth/reset-password`, `/auth/google/login`, and `/auth/google/callback`
 - HTTPS enforced at the infrastructure level
 
 ---
@@ -173,6 +218,7 @@ email               TEXT UNIQUE NOT NULL
 display_name        TEXT NOT NULL
 preferred_service   TEXT (spotify | youtube | deezer)
 password_hash       TEXT NULL (argon2; NULL for magic-link-only accounts — ADR 0007)
+google_id           TEXT UNIQUE NULL (Google's `sub`; NULL until Google Sign-In is linked — ADR 0007)
 created_at          TIMESTAMP
 deleted_at          TIMESTAMP (soft delete for cascade handling, hard purge on schedule)
 ```
@@ -391,6 +437,8 @@ POST   /auth/login            Sign in with email + password, issue session
 POST   /auth/register         Create an invite-gated account with a password, issue session
 POST   /auth/forgot-password  Email a single-use password reset link
 POST   /auth/reset-password   Consume a reset token, set a new password
+GET    /auth/google/login     Redirect to Google's consent screen (404 when unconfigured)
+GET    /auth/google/callback  Google's redirect back; issue session, bounce to the SPA
 POST   /auth/refresh          Exchange refresh token for new access token
 POST   /auth/logout           Invalidate current session
 POST   /auth/logout-all       Invalidate all sessions for current user

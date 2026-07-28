@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import StringConstraints, model_validator
 
 from app.api.wire import WireModel
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
@@ -13,7 +13,9 @@ from app.config import Settings, get_settings
 from app.db.session import get_db
 from app.models.club import Club
 from app.models.club_member import ClubMember
+from app.models.login_attempt import LoginAttempt
 from app.models.note import Note
+from app.models.password_reset_token import PasswordResetToken
 from app.models.session import Session
 from app.models.submission import Submission
 from app.models.user import User
@@ -246,8 +248,15 @@ async def delete_me(
         )
 
     now = datetime.now(timezone.utc)
+    former_email = current_user.email
     current_user.deleted_at = now
     current_user.email = f"deleted+{current_user.id}@deleted.invalid"
+    # Drop the credential and anything else keyed to the real address, while
+    # that address is still known — after the tombstone above it can't be
+    # matched again (ADR 0007).
+    current_user.password_hash = None
+    await db.execute(delete(PasswordResetToken).where(PasswordResetToken.email == former_email))
+    await db.execute(delete(LoginAttempt).where(LoginAttempt.email == former_email))
 
     # Kill every still-active session so refresh tokens die with the account.
     await db.execute(

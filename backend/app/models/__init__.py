@@ -2,9 +2,11 @@ from app.models.apple_mix_playlist import AppleMixPlaylist
 from app.models.club import Club
 from app.models.club_member import ClubMember
 from app.models.invite import Invite
+from app.models.login_attempt import LoginAttempt
 from app.models.magic_link_token import MagicLinkToken
 from app.models.mix import Mix
 from app.models.note import Note
+from app.models.password_reset_token import PasswordResetToken
 from app.models.playlist_job import PlaylistJob
 from app.models.session import Session
 from app.models.spotify_connection import SpotifyConnection
@@ -19,9 +21,11 @@ __all__ = [
     "Club",
     "ClubMember",
     "Invite",
+    "LoginAttempt",
     "MagicLinkToken",
     "Mix",
     "Note",
+    "PasswordResetToken",
     "PlaylistJob",
     "Session",
     "SpotifyConnection",

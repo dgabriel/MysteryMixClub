@@ -86,7 +86,9 @@ them behind DO's own scheduler/App Platform equivalent — all systemd, on the
 same self-managed Droplets as the API:
 
 - **Timer-triggered (`oneshot` + `.timer`)**: `python -m app.jobs.purge_accounts`
-  (right-to-be-forgotten hard purge) and `python -m app.jobs.advance_mixes`
+  (right-to-be-forgotten hard purge), `python -m app.jobs.purge_login_attempts`
+  (trims `login_attempts` rows older than 24h, ADR 0007), and
+  `python -m app.jobs.advance_mixes`
   (deadline force-advance + 12h warnings, MYS-145/162). On **both staging and
   prod** the deadline job runs every 15 minutes via a systemd timer
   (`mysterymixclub-advance-mixes.timer`) — bootstrap installs and arms it, and

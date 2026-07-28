@@ -20,9 +20,13 @@ from app.services.email import (
 class _Spy:
     sends: list[tuple[str, str, str, dict | None]] = field(default_factory=list)
     magic: list[tuple[str, str]] = field(default_factory=list)
+    resets: list[tuple[str, str]] = field(default_factory=list)
 
     def send_magic_link(self, email: str, link: str) -> None:
         self.magic.append((email, link))
+
+    def send_password_reset(self, email: str, link: str) -> None:
+        self.resets.append((email, link))
 
     def send(self, email, subject, html, headers=None) -> None:
         self.sends.append((email, subject, html, headers))

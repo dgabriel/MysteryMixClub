@@ -6,6 +6,7 @@ from app.config import Settings, get_settings
 logger = logging.getLogger("app.services.email")
 
 _MAGIC_LINK_SUBJECT = "Your MysteryMixClub sign-in link"
+_PASSWORD_RESET_SUBJECT = "Reset your MysteryMixClub password"
 _FROM_ADDRESS = "MysteryMixClub <login@mysterymixclub.com>"
 _NOTIFY_FROM_ADDRESS = "MysteryMixClub <notifications@mysterymixclub.com>"
 
@@ -18,10 +19,22 @@ def _magic_link_html(link: str) -> str:
     )
 
 
+def _password_reset_html(link: str) -> str:
+    return (
+        "<p>Click the link below to choose a new MysteryMixClub password. "
+        "It expires in 30 minutes and can only be used once.</p>"
+        f'<p><a href="{link}">Reset your password</a></p>'
+        "<p>If you didn't ask for this, you can ignore this email — "
+        "your password hasn't changed.</p>"
+    )
+
+
 class EmailSender(Protocol):
     """Anything that can deliver email — magic links and general notifications."""
 
     def send_magic_link(self, email: str, link: str) -> None: ...
+
+    def send_password_reset(self, email: str, link: str) -> None: ...
 
     def send(
         self, email: str, subject: str, html: str, headers: dict[str, str] | None = None
@@ -38,6 +51,9 @@ class ConsoleEmailSender:
 
     def send_magic_link(self, email: str, link: str) -> None:
         logger.info("Magic link for %s: %s", email, link)
+
+    def send_password_reset(self, email: str, link: str) -> None:
+        logger.info("Password reset link for %s: %s", email, link)
 
     def send(
         self, email: str, subject: str, html: str, headers: dict[str, str] | None = None
@@ -79,6 +95,9 @@ class ResendEmailSender:
     def send_magic_link(self, email: str, link: str) -> None:
         self._send(_FROM_ADDRESS, email, _MAGIC_LINK_SUBJECT, _magic_link_html(link))
 
+    def send_password_reset(self, email: str, link: str) -> None:
+        self._send(_FROM_ADDRESS, email, _PASSWORD_RESET_SUBJECT, _password_reset_html(link))
+
     def send(
         self, email: str, subject: str, html: str, headers: dict[str, str] | None = None
     ) -> None:
@@ -100,6 +119,9 @@ class RedirectingEmailSender:
 
     def send_magic_link(self, email: str, link: str) -> None:
         self._inner.send_magic_link(self._to, link)
+
+    def send_password_reset(self, email: str, link: str) -> None:
+        self._inner.send_password_reset(self._to, link)
 
     def send(
         self, email: str, subject: str, html: str, headers: dict[str, str] | None = None

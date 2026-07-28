@@ -63,8 +63,8 @@ TEST_ASYNC_DATABASE_URL = "postgresql+asyncpg://mmc:mmc@localhost:5432/mysterymi
 # ``users``; CASCADE on the TRUNCATE handles the FK, and magic_link_tokens is
 # independent. Listed together so one statement covers all.
 _TRUNCATE_TABLES = (
-    "magic_link_tokens, sessions, spotify_connections, invites, submissions, "
-    "mixes, clubs, club_members, users"
+    "magic_link_tokens, password_reset_tokens, login_attempts, sessions, "
+    "spotify_connections, invites, submissions, mixes, clubs, club_members, users"
 )
 
 
@@ -73,6 +73,8 @@ class SpyEmailSender:
     """Records every send so tests can assert on arguments."""
 
     calls: list[tuple[str, str]] = field(default_factory=list)
+    # Password-reset sends (ADR 0007): (email, link).
+    reset_calls: list[tuple[str, str]] = field(default_factory=list)
     # General notification sends (MYS-109): (email, subject, html).
     sends: list[tuple[str, str, str]] = field(default_factory=list)
     # Extra MIME headers per send (e.g. List-Unsubscribe), parallel to `sends`.
@@ -80,6 +82,9 @@ class SpyEmailSender:
 
     def send_magic_link(self, email: str, link: str) -> None:
         self.calls.append((email, link))
+
+    def send_password_reset(self, email: str, link: str) -> None:
+        self.reset_calls.append((email, link))
 
     def send(
         self, email: str, subject: str, html: str, headers: dict[str, str] | None = None

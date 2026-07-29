@@ -64,3 +64,11 @@ TICKETS.md
 *.db
 .beads-credential-key
 .beads/proxieddb/
+
+# Instrumentation: raw event collector (scripts/instrumentation/, MysteryMixClub-ghal)
+# Event logs and derived state are regenerated locally by the hooks/batch job
+# and are never the same across two clones -- .instrumentation/interventions.jsonl
+# is the one file in this tree that IS committed (tracked deliberately below).
+.instrumentation/events/
+.instrumentation/state/
+scripts/instrumentation/out/

@@ -23,6 +23,30 @@ bd close <id>         # Complete work
 bd dolt push          # Push beads data to remote
 ```
 
+## Starting work: bead-start.sh is the entry point
+
+`scripts/bead-start.sh <bd-issue-id>` is the only way to start work on an
+issue in this repo (MysteryMixClub-ghal). It syncs `develop`, creates
+`feature/<id>-<slug>` (or `fix/<id>-<slug>` for a bug), and only then runs
+`bd update <id> --claim` — the single bd-graph write this convention makes.
+Don't claim an issue or branch manually; use the script so the branch and
+the claim happen together.
+
+Every commit after that needs a `Bead: <id>` trailer in its message,
+enforced by the commit-msg hook (`scripts/instrumentation/check_bead_trailer.py`):
+
+```
+feat(auth): add password reset flow
+
+Bead: MysteryMixClub-abc123
+```
+
+This is what lets git history and the bd issue graph join exactly (git log
+filtered by the trailer, instead of guessing from commit text). Commits
+typed `chore`/`docs`/`ci`/`style`/`build`/`revert`, and merge commits, are
+exempt — everything else is blocked without a valid, existing bd id in the
+trailer.
+
 ## Non-Interactive Shell Commands
 
 **ALWAYS use non-interactive flags** with file operations to avoid hanging on confirmation prompts.

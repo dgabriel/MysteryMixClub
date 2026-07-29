@@ -389,21 +389,27 @@ export function EmailEntryScreen({
 
         {/* Below the sign-in form, not above it (MYS-215) — this is the
             secondary path for someone without an account yet, not the
-            primary action on the page. */}
-        {waitlistEnabled ? (
-          <WaitlistForm />
-        ) : waitlistEnabled === undefined ? null : (
-          <p className="mt-12 text-center font-mono text-[13px] font-light text-muted">
-            no invite yet?{" "}
-            <ContactEmail
-              user="info"
-              domain="mysterymixclub.com"
-              label="email us"
-              className="text-ink underline underline-offset-[3px]"
-            />{" "}
-            to request one.
-          </p>
-        )}
+            primary action on the page. A visitor who already has a working
+            invite (canRegister) has no use for it — unless something they
+            just tried actually failed (a screen-level error, or a wrong
+            password), in which case it's a reasonable fallback regardless of
+            invite status. */}
+        {!canRegister || Boolean(error) || Boolean(passwordError) ? (
+          waitlistEnabled ? (
+            <WaitlistForm />
+          ) : waitlistEnabled === undefined ? null : (
+            <p className="mt-12 text-center font-mono text-[13px] font-light text-muted">
+              no invite yet?{" "}
+              <ContactEmail
+                user="info"
+                domain="mysterymixclub.com"
+                label="email us"
+                className="text-ink underline underline-offset-[3px]"
+              />{" "}
+              to request one.
+            </p>
+          )
+        ) : null}
 
         <div className="mt-10 flex flex-wrap justify-center gap-4 text-center">
           <Link to="/about" className="py-1 font-mono text-[11px] text-muted hover:text-ink">

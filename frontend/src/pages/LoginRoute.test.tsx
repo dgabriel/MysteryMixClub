@@ -277,6 +277,44 @@ describe("LoginRoute", () => {
     expect(screen.queryByText("check your email")).not.toBeInTheDocument();
   });
 
+  it("a stashed invite hides the waitlist block entirely — it's not needed", async () => {
+    localStorage.setItem("pendingInvitePath", "/invite/inv-789");
+    mockGetWaitlistEnabled.mockResolvedValue({ enabled: true });
+
+    try {
+      renderLogin();
+      // Something else that resolves on the same async tick, so there's a
+      // definite point at which the waitlist check has settled either way.
+      await screen.findByRole("button", { name: /send sign-in link/i });
+
+      expect(screen.queryByText(/join the waitlist/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/no invite yet\?/i)).not.toBeInTheDocument();
+    } finally {
+      localStorage.clear();
+    }
+  });
+
+  it("a failed login re-shows the waitlist block even with a stashed invite", async () => {
+    localStorage.setItem("pendingInvitePath", "/invite/inv-789");
+    mockLogin.mockRejectedValue(new ApiError(401, "invalid email or password"));
+    const user = userEvent.setup();
+
+    try {
+      renderLogin();
+      // A stashed invite lands the password tab on register by default —
+      // switch back to sign-in, which is the mode a failed login comes from.
+      await openPasswordTab(user);
+      await user.click(screen.getByRole("button", { name: /back to sign in/i }));
+      await user.type(screen.getByLabelText(/^email$/i), "user@example.com");
+      await user.type(passwordInput(), "wrong-password");
+      await user.click(screen.getByRole("button", { name: /^sign in$/i }));
+
+      await screen.findByText(/no invite yet\?/i);
+    } finally {
+      localStorage.clear();
+    }
+  });
+
   it("waitlist enabled (MYS-215): shows the join-waitlist form instead of email-us copy", async () => {
     mockGetWaitlistEnabled.mockResolvedValue({ enabled: true });
     renderLogin();

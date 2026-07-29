@@ -49,3 +49,36 @@ Style violations (if any):
 Approved to commit: yes / no
 
 Do not suggest fixes. Flag the issue and location. The developer resolves it.
+
+## Logging your verdict (MysteryMixClub-ghal)
+
+After you've written your report, log it to the review-verdict record with:
+
+```
+python3 scripts/instrumentation/log_review.py <issue_id> <PASS|FAIL> <reason_code>
+```
+
+Determine `<issue_id>` from the current branch name (`git branch --show-current`),
+which follows `feature/<id>-<slug>` or `fix/<id>-<slug>`. If the branch
+doesn't match that shape, you cannot log a review — say so as one line in
+your report and skip logging. Do not guess an issue id from commit text or
+file contents.
+
+`<reason_code>` is a closed vocabulary — pick exactly one:
+
+- `security_issue` — a Security-category problem
+- `logic_defect` — a Logic-category problem
+- `scope_mismatch` — the implementation doesn't match what the issue asked
+  for, or scope crept beyond it
+- `quality_issue` — a Code quality-category problem
+- `style_violation` — a Style guide compliance-category problem
+- `clean` — PASS only, nothing found
+
+If your report has FAIL issues in more than one category, use whichever of
+the above appears first in that list (most severe first) — the log records
+one primary reason per pass, not every issue found.
+
+This logging step is additive instrumentation, not part of the review
+itself. If the script errors for any reason, note it as one line in your
+report and move on — never let a logging failure change your verdict or
+block delivering the report.

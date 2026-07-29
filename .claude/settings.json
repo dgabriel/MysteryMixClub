@@ -6,6 +6,43 @@
           {
             "command": "bd prime --hook-json",
             "type": "command"
+          },
+          {
+            "command": "python3 scripts/instrumentation/hooks/session_hook.py",
+            "type": "command"
+          }
+        ],
+        "matcher": ""
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "command": "python3 scripts/instrumentation/hooks/session_hook.py",
+            "type": "command"
+          }
+        ],
+        "matcher": ""
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "command": "python3 scripts/instrumentation/hooks/subagent_hook.py",
+            "type": "command"
+          }
+        ],
+        "matcher": ""
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "command": "python3 scripts/instrumentation/hooks/subagent_hook.py",
+            "type": "command"
           }
         ],
         "matcher": ""

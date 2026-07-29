@@ -153,11 +153,15 @@ export function EmailEntryScreen({
   // make this steal focus on arrival at /login.
   useEffect(() => {
     if (prevMode.current !== null && prevMode.current !== mode) {
-      const target = showsPassword ? passwordRef.current : emailRef.current;
+      // Only skip ahead to the password field once the email above it is
+      // already filled — otherwise land there first, so tabbing forward
+      // reaches password without needing to shift-tab back for email.
+      const target =
+        showsPassword && email.trim() ? passwordRef.current : emailRef.current;
       target?.focus();
     }
     prevMode.current = mode;
-  }, [mode, showsPassword]);
+  }, [mode, showsPassword, email]);
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();

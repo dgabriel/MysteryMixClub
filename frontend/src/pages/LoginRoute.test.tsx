@@ -702,13 +702,20 @@ describe("LoginRoute", () => {
     const user = userEvent.setup();
     renderLogin();
 
-    // magic → signin: the password field is the one that just appeared.
-    await openPasswordTab(user);
-    expect(passwordInput()).toHaveFocus();
+    // magic → signin with email still empty: land on email, not past it —
+    // tabbing forward should reach password without a shift-tab back.
+    const email = await openPasswordTab(user);
+    expect(email).toHaveFocus();
+
+    await user.type(email, "user@example.com");
 
     // signin → forgot: no password field there, so the address is next.
     await user.click(screen.getByRole("button", { name: /forgot your password\?/i }));
     expect(screen.getByLabelText(/^email$/i)).toHaveFocus();
+
+    // forgot → signin with email already filled: password is next.
+    await user.click(screen.getByRole("button", { name: /back to sign in/i }));
+    expect(passwordInput()).toHaveFocus();
   });
 
   it("does not steal focus on arrival", () => {

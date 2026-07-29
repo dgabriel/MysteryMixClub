@@ -194,6 +194,10 @@ class ResetPasswordResponse(WireModel):
     message: str
 
 
+class GoogleEnabledResponse(WireModel):
+    enabled: bool
+
+
 async def _load_valid_invite(
     db: AsyncSession, invite_token: str | None, now: datetime, email: str | None = None
 ) -> Invite | None:
@@ -790,6 +794,20 @@ def _google_redirect(settings: Settings, outcome: str) -> RedirectResponse:
         secure=settings.secure_cookies,
     )
     return response
+
+
+@router.get("/google/enabled", response_model=GoogleEnabledResponse)
+async def google_enabled(
+    client: GoogleOAuthClient = Depends(get_google_oauth_client),
+) -> GoogleEnabledResponse:
+    """Whether the frontend should render the Google sign-in button at all —
+    checked on page load rather than only at click time, so a disabled Google
+    integration never shows a button that would just 404.
+
+    Exposes only the same ``is_configured`` boolean that already gates
+    /google/login's own 404; no credential ever reaches the client.
+    """
+    return GoogleEnabledResponse(enabled=client.is_configured)
 
 
 @router.get("/google/login")

@@ -28,7 +28,7 @@ describe("WaitlistForm", () => {
     const user = userEvent.setup();
     render(<WaitlistForm />);
 
-    await user.type(screen.getByLabelText(/^email$/i), "  fan@example.com  ");
+    await user.type(screen.getByLabelText(/^your email$/i), "  fan@example.com  ");
     await user.click(screen.getByRole("button", { name: /^join$/i }));
 
     expect(mockJoin).toHaveBeenCalledWith("fan@example.com");
@@ -42,7 +42,7 @@ describe("WaitlistForm", () => {
     const user = userEvent.setup();
     render(<WaitlistForm />);
 
-    await user.type(screen.getByLabelText(/^email$/i), "dup@example.com");
+    await user.type(screen.getByLabelText(/^your email$/i), "dup@example.com");
     await user.click(screen.getByRole("button", { name: /^join$/i }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
@@ -60,7 +60,7 @@ describe("WaitlistForm", () => {
     const user = userEvent.setup();
     render(<WaitlistForm />);
 
-    await user.type(screen.getByLabelText(/^email$/i), "edge@example.com");
+    await user.type(screen.getByLabelText(/^your email$/i), "edge@example.com");
     await user.click(screen.getByRole("button", { name: /^join$/i }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
@@ -73,7 +73,7 @@ describe("WaitlistForm", () => {
     const user = userEvent.setup();
     render(<WaitlistForm />);
 
-    await user.type(screen.getByLabelText(/^email$/i), "user@example.com");
+    await user.type(screen.getByLabelText(/^your email$/i), "user@example.com");
     await user.click(screen.getByRole("button", { name: /^join$/i }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
@@ -88,7 +88,7 @@ describe("WaitlistForm", () => {
     await user.click(screen.getByRole("button", { name: /^join$/i }));
     expect(mockJoin).not.toHaveBeenCalled();
 
-    await user.type(screen.getByLabelText(/^email$/i), "   ");
+    await user.type(screen.getByLabelText(/^your email$/i), "   ");
     await user.click(screen.getByRole("button", { name: /^join$/i }));
     expect(mockJoin).not.toHaveBeenCalled();
   });

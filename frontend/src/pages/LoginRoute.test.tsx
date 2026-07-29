@@ -1,37 +1,87 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { LoginRoute } from "./LoginRoute";
-import { getWaitlistEnabled, requestMagicLink } from "../services/api";
+import {
+  ApiError,
+  forgotPassword,
+  getGoogleEnabled,
+  getWaitlistEnabled,
+  googleLoginUrl,
+  login,
+  register,
+  requestMagicLink,
+} from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 
-// Mock only the API module so no network is touched.
-vi.mock("../services/api", () => ({
-  requestMagicLink: vi.fn(),
-  getWaitlistEnabled: vi.fn(),
-  joinWaitlist: vi.fn(),
-}));
+// Mock only the API module so no network is touched. ApiError stays real so
+// LoginRoute's instanceof-based status mapping works.
+vi.mock("../services/api", async () => {
+  const actual = await vi.importActual<typeof import("../services/api")>("../services/api");
+  return {
+    ApiError: actual.ApiError,
+    PASSWORD_MIN_LENGTH: actual.PASSWORD_MIN_LENGTH,
+    PASSWORD_MAX_LENGTH: actual.PASSWORD_MAX_LENGTH,
+    requestMagicLink: vi.fn(),
+    getWaitlistEnabled: vi.fn(),
+    joinWaitlist: vi.fn(),
+    login: vi.fn(),
+    register: vi.fn(),
+    forgotPassword: vi.fn(),
+    googleLoginUrl: vi.fn(),
+    getGoogleEnabled: vi.fn(),
+  };
+});
 vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
 
 const mockRequestMagicLink = vi.mocked(requestMagicLink);
 const mockGetWaitlistEnabled = vi.mocked(getWaitlistEnabled);
+const mockLogin = vi.mocked(login);
+const mockRegister = vi.mocked(register);
+const mockForgotPassword = vi.mocked(forgotPassword);
+const mockGoogleLoginUrl = vi.mocked(googleLoginUrl);
+const mockGetGoogleEnabled = vi.mocked(getGoogleEnabled);
 const mockUseAuth = vi.mocked(useAuth);
+const setAccessToken = vi.fn();
 
 // EmailEntryScreen links to /about (MYS-155), which needs a Router context.
-function renderLogin() {
+function renderLogin(entry = "/login") {
   return render(
-    <MemoryRouter initialEntries={["/login"]}>
+    <MemoryRouter initialEntries={[entry]}>
       <LoginRoute />
     </MemoryRouter>,
   );
+}
+
+/** The password input. */
+function passwordInput() {
+  return screen.getByLabelText(/^password$/i);
+}
+
+/** Surfaces the current query string so URL side effects can be asserted. */
+function LocationProbe() {
+  return <div data-testid="search">{useLocation().search}</div>;
+}
+
+/** Switch to the password tab and return the shared email input. */
+async function openPasswordTab(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: /^password$/i }));
+  return screen.getByLabelText(/^email$/i);
 }
 
 describe("LoginRoute", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Default: not signed in, so the form renders.
-    mockUseAuth.mockReturnValue({ status: "unauthenticated" } as ReturnType<typeof useAuth>);
+    mockUseAuth.mockReturnValue({
+      status: "unauthenticated",
+      setAccessToken,
+    } as unknown as ReturnType<typeof useAuth>);
+    mockGoogleLoginUrl.mockReturnValue("http://127.0.0.1:8000/api/v1/auth/google/login");
+    // Default: Google configured, so the button renders. The unconfigured case
+    // is asserted explicitly below.
+    mockGetGoogleEnabled.mockResolvedValue({ enabled: true });
     // Default: waitlist off (MYS-215), matching the flag's production-safe
     // default — every existing "email us" assertion in this file relies on
     // this resolving to false.
@@ -260,5 +310,444 @@ describe("LoginRoute", () => {
     expect(screen.getByText(/no invite yet\?/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^use a different email$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^email us$/i })).not.toBeInTheDocument();
+  });
+
+  // --- password sign-in (ADR 0007) ---------------------------------------- //
+
+  it("password sign-in: happy path stores the returned access token", async () => {
+    mockLogin.mockResolvedValue({ access_token: "acc-1" });
+    const user = userEvent.setup();
+
+    renderLogin();
+    const email = await openPasswordTab(user);
+
+    await user.type(email, "user@example.com");
+    await user.type(passwordInput(), "correct-horse");
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
+
+    await waitFor(() => expect(mockLogin).toHaveBeenCalledWith("user@example.com", "correct-horse"));
+    expect(setAccessToken).toHaveBeenCalledWith("acc-1");
+    // Magic link is untouched by the password path.
+    expect(mockRequestMagicLink).not.toHaveBeenCalled();
+  });
+
+  it("password sign-in: a 401 shows the server's uniform message on the password field", async () => {
+    mockLogin.mockRejectedValue(new ApiError(401, "invalid email or password"));
+    const user = userEvent.setup();
+
+    renderLogin();
+    const email = await openPasswordTab(user);
+
+    // Held onto: once the error renders, the field's accessible name absorbs
+    // the inline message, so a /^password$/ lookup would no longer find it.
+    const field = passwordInput();
+    await user.type(email, "user@example.com");
+    await user.type(field, "wrong");
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/invalid email or password/i);
+    // Field-level invalid state (ADR 0004), not just a loose message.
+    expect(field).toHaveAttribute("aria-invalid", "true");
+    expect(setAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("password sign-in: does not submit without a password", async () => {
+    const user = userEvent.setup();
+
+    renderLogin();
+    const email = await openPasswordTab(user);
+
+    await user.type(email, "user@example.com");
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
+
+    expect(mockLogin).not.toHaveBeenCalled();
+  });
+
+  // --- password registration ----------------------------------------------- //
+
+  it("register: passes the stashed invite token and stores the access token", async () => {
+    localStorage.setItem("pendingInvitePath", "/invite/inv-789");
+    mockRegister.mockResolvedValue({ access_token: "acc-2" });
+    const user = userEvent.setup();
+
+    try {
+      renderLogin();
+      await openPasswordTab(user);
+
+      await user.type(screen.getByLabelText(/^email$/i), "new@example.com");
+      await user.type(passwordInput(), "long-enough-pw");
+      await user.click(screen.getByRole("button", { name: /^create account$/i }));
+
+      await waitFor(() =>
+        expect(mockRegister).toHaveBeenCalledWith("new@example.com", "long-enough-pw", "inv-789"),
+      );
+      expect(setAccessToken).toHaveBeenCalledWith("acc-2");
+    } finally {
+      localStorage.clear();
+    }
+  });
+
+  it("register: with no invite stashed, the affordance is hidden rather than offered as a dead end", async () => {
+    const user = userEvent.setup();
+
+    renderLogin();
+    await openPasswordTab(user);
+
+    // Register would be guaranteed to fail without an invite, and the waitlist
+    // further down the page is the real path, so it isn't offered at all.
+    expect(screen.queryByRole("button", { name: /create an account/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^sign in$/i })).toBeInTheDocument();
+  });
+
+  it("register: the password tab opens straight on account creation when an invite is stashed", async () => {
+    localStorage.setItem("pendingInvitePath", "/invite/inv-789");
+    const user = userEvent.setup();
+
+    try {
+      renderLogin();
+      await openPasswordTab(user);
+
+      // An invited visitor is by definition new.
+      expect(screen.getByRole("button", { name: /^create account$/i })).toBeInTheDocument();
+      expect(screen.getByText("create account", { selector: "p" })).toBeInTheDocument();
+    } finally {
+      localStorage.clear();
+    }
+  });
+
+  it("register: an invite cleared mid-session is caught before any request", async () => {
+    localStorage.setItem("pendingInvitePath", "/invite/inv-789");
+    const user = userEvent.setup();
+
+    try {
+      renderLogin();
+      await openPasswordTab(user);
+      await user.type(screen.getByLabelText(/^email$/i), "new@example.com");
+      await user.type(passwordInput(), "long-enough-pw");
+
+      // e.g. storage cleared in another tab between render and submit.
+      localStorage.clear();
+      await user.click(screen.getByRole("button", { name: /^create account$/i }));
+
+      expect(mockRegister).not.toHaveBeenCalled();
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        /you need an invite to create an account/i,
+      );
+    } finally {
+      localStorage.clear();
+    }
+  });
+
+  it("register: a short password is caught before any request", async () => {
+    localStorage.setItem("pendingInvitePath", "/invite/inv-789");
+    const user = userEvent.setup();
+
+    try {
+      renderLogin();
+      await openPasswordTab(user);
+
+      await user.type(screen.getByLabelText(/^email$/i), "new@example.com");
+      await user.type(passwordInput(), "short");
+      await user.click(screen.getByRole("button", { name: /^create account$/i }));
+
+      expect(mockRegister).not.toHaveBeenCalled();
+      expect(await screen.findByRole("alert")).toHaveTextContent(/at least 8 characters/i);
+    } finally {
+      localStorage.clear();
+    }
+  });
+
+  it("register: a 409 surfaces the backend's sign-in-instead message", async () => {
+    localStorage.setItem("pendingInvitePath", "/invite/inv-789");
+    mockRegister.mockRejectedValue(
+      new ApiError(409, "an account already exists for this email — sign in instead"),
+    );
+    const user = userEvent.setup();
+
+    try {
+      renderLogin();
+      await openPasswordTab(user);
+
+      await user.type(screen.getByLabelText(/^email$/i), "old@example.com");
+      await user.type(passwordInput(), "long-enough-pw");
+      await user.click(screen.getByRole("button", { name: /^create account$/i }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(/sign in instead/i);
+      expect(setAccessToken).not.toHaveBeenCalled();
+    } finally {
+      localStorage.clear();
+    }
+  });
+
+  // --- forgot password ------------------------------------------------------ //
+
+  it("forgot password: shows a neutral notice and, in dev, a reset link", async () => {
+    mockForgotPassword.mockResolvedValue({ devToken: "reset-tok" });
+    const user = userEvent.setup();
+
+    renderLogin();
+    await openPasswordTab(user);
+    await user.click(screen.getByRole("button", { name: /forgot your password\?/i }));
+
+    // The password field is gone — this step only needs the address.
+    expect(screen.queryByLabelText(/^password$/i)).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText(/^email$/i), "user@example.com");
+    await user.click(screen.getByRole("button", { name: /email a reset link/i }));
+
+    await waitFor(() => expect(mockForgotPassword).toHaveBeenCalledWith("user@example.com"));
+    // Never phrased as "sent" — a 200 says nothing about the address.
+    expect(await screen.findByText(/if that email has a password set/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /set a new password with this link/i })).toHaveAttribute(
+      "href",
+      "/auth/reset-password?token=reset-tok",
+    );
+  });
+
+  // --- google (ADR 0007) ---------------------------------------------------- //
+
+  it("google: renders a real link to the redirect endpoint, carrying any stashed invite", async () => {
+    localStorage.setItem("pendingInvitePath", "/invite/inv-789");
+    mockGoogleLoginUrl.mockReturnValue("http://api.test/api/v1/auth/google/login?invite_token=inv-789");
+
+    try {
+      renderLogin();
+
+      expect(mockGoogleLoginUrl).toHaveBeenCalledWith("inv-789");
+      expect(await screen.findByRole("link", { name: /sign in with google/i })).toHaveAttribute(
+        "href",
+        "http://api.test/api/v1/auth/google/login?invite_token=inv-789",
+      );
+    } finally {
+      localStorage.clear();
+    }
+  });
+
+  it("google: no button at all when the deployment has no Google credentials", async () => {
+    mockGetGoogleEnabled.mockResolvedValue({ enabled: false });
+    renderLogin();
+
+    // Wait out the async flag check via a sibling that resolves on the same tick.
+    await screen.findByText(/no invite yet\?/i);
+    expect(screen.queryByRole("link", { name: /sign in with google/i })).not.toBeInTheDocument();
+  });
+
+  it("google: a failed enabled-check hides the button too (fail-safe)", async () => {
+    mockGetGoogleEnabled.mockRejectedValue(new Error("network down"));
+    renderLogin();
+
+    await screen.findByText(/no invite yet\?/i);
+    expect(screen.queryByRole("link", { name: /sign in with google/i })).not.toBeInTheDocument();
+  });
+
+  it("google: ?google=ok shows no error and still falls through to the authenticated redirect", () => {
+    mockUseAuth.mockReturnValue({
+      status: "authenticated",
+      setAccessToken,
+    } as unknown as ReturnType<typeof useAuth>);
+    render(
+      <MemoryRouter initialEntries={["/login?google=ok"]}>
+        <Routes>
+          <Route path="/login" element={<LoginRoute />} />
+          <Route path="/home" element={<div>HOME</div>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("HOME")).toBeInTheDocument();
+  });
+
+  it("google: ?google=ok on an unresolved session shows the form with no error copy", () => {
+    renderLogin("/login?google=ok");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /send sign-in link/i })).toBeInTheDocument();
+  });
+
+  it("google: ?google=invite_required reuses the same copy as the other sign-up paths", () => {
+    renderLogin("/login?google=invite_required");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      /you need an invite to create an account/i,
+    );
+  });
+
+  it("google: ?google=denied and an unknown outcome each get calm copy", () => {
+    const { unmount } = renderLogin("/login?google=denied");
+    expect(screen.getByRole("alert")).toHaveTextContent(/google sign-in was cancelled/i);
+    unmount();
+
+    renderLogin("/login?google=something_new");
+    expect(screen.getByRole("alert")).toHaveTextContent(/that sign-in didn't work/i);
+  });
+
+  it("google: the outcome param is stripped from the URL once read, but the copy stays", async () => {
+    render(
+      <MemoryRouter initialEntries={["/login?google=denied"]}>
+        <LocationProbe />
+        <LoginRoute />
+      </MemoryRouter>,
+    );
+
+    // Shown to the user...
+    expect(screen.getByRole("alert")).toHaveTextContent(/google sign-in was cancelled/i);
+    // ...but gone from the URL, so a reload or bookmark can't resurface it.
+    await waitFor(() => expect(screen.getByTestId("search")).toHaveTextContent(""));
+  });
+
+  it("google: outcome messages are plain Ink, while the same words from a form submit are Rust", async () => {
+    localStorage.setItem("pendingInvitePath", "/invite/inv-789");
+    mockRegister.mockRejectedValue(
+      new ApiError(403, "you need an invite to create an account"),
+    );
+    const user = userEvent.setup();
+
+    try {
+      // Same sentence, arriving from Google's redirect: an external system's
+      // outcome, so it stays Ink.
+      const { unmount } = renderLogin("/login?google=invite_required");
+      expect(screen.getByRole("alert")).toHaveClass("text-ink");
+      expect(screen.getByRole("alert")).not.toHaveClass("text-rust");
+      unmount();
+
+      // Same sentence, from the user's own register submission: a claim about
+      // their attempt, so it gets the Rust validation treatment.
+      renderLogin();
+      await openPasswordTab(user);
+      await user.type(screen.getByLabelText(/^email$/i), "new@example.com");
+      await user.type(passwordInput(), "long-enough-pw");
+      await user.click(screen.getByRole("button", { name: /^create account$/i }));
+
+      expect(await screen.findByRole("alert")).toHaveClass("text-rust");
+    } finally {
+      localStorage.clear();
+    }
+  });
+
+  it("google: the outcome error clears on a mode switch rather than stacking", async () => {
+    const user = userEvent.setup();
+    renderLogin("/login?google=denied");
+    expect(screen.getByRole("alert")).toHaveTextContent(/google sign-in was cancelled/i);
+
+    await openPasswordTab(user);
+
+    expect(screen.queryByText(/google sign-in was cancelled/i)).not.toBeInTheDocument();
+  });
+
+  // --- form semantics and validation ---------------------------------------- //
+
+  it("the method switcher is a labelled group of pressed-state buttons, not ARIA tabs", async () => {
+    const user = userEvent.setup();
+    renderLogin();
+
+    // Not role="tab": that would promise arrow-key navigation this doesn't have.
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tabpanel")).not.toBeInTheDocument();
+    expect(screen.getByRole("group", { name: /sign-in method/i })).toBeInTheDocument();
+
+    // Anchored: "send sign-in link" (the submit button) also contains this text.
+    const magicButton = screen.getByRole("button", { name: /^sign-in link$/i });
+    expect(magicButton).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /^password$/i })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+
+    await openPasswordTab(user);
+    expect(screen.getByRole("button", { name: /^password$/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("re-clicking the already-active password button preserves a half-typed password", async () => {
+    const user = userEvent.setup();
+    renderLogin();
+
+    await openPasswordTab(user);
+    await user.type(passwordInput(), "half-typed");
+
+    await user.click(screen.getByRole("button", { name: /^password$/i }));
+
+    expect(passwordInput()).toHaveValue("half-typed");
+  });
+
+  it("re-clicking it preserves the password with an invite stashed too, from either sub-mode", async () => {
+    localStorage.setItem("pendingInvitePath", "/invite/inv-789");
+    const user = userEvent.setup();
+
+    try {
+      renderLogin();
+      // An invite means the button opens on register, so a naive
+      // register-or-signin target would force-switch out of signin and wipe the
+      // field. Walk to signin first, which is where that bug lived.
+      await openPasswordTab(user);
+      await user.click(screen.getByRole("button", { name: /back to sign in/i }));
+      await user.type(passwordInput(), "half-typed");
+
+      await user.click(screen.getByRole("button", { name: /^password$/i }));
+
+      expect(passwordInput()).toHaveValue("half-typed");
+      // Still on sign-in, not bounced back to account creation.
+      expect(screen.getByRole("button", { name: /^sign in$/i })).toBeInTheDocument();
+
+      // And in register mode the same click is equally inert.
+      await user.click(screen.getByRole("button", { name: /create an account/i }));
+      await user.type(passwordInput(), "typed-again");
+      await user.click(screen.getByRole("button", { name: /^password$/i }));
+      expect(passwordInput()).toHaveValue("typed-again");
+    } finally {
+      localStorage.clear();
+    }
+  });
+
+  it("moves focus to the field the new mode expects after a mode swap", async () => {
+    const user = userEvent.setup();
+    renderLogin();
+
+    // magic → signin: the password field is the one that just appeared.
+    await openPasswordTab(user);
+    expect(passwordInput()).toHaveFocus();
+
+    // signin → forgot: no password field there, so the address is next.
+    await user.click(screen.getByRole("button", { name: /forgot your password\?/i }));
+    expect(screen.getByLabelText(/^email$/i)).toHaveFocus();
+  });
+
+  it("does not steal focus on arrival", () => {
+    renderLogin();
+    expect(screen.getByLabelText(/^email$/i)).not.toHaveFocus();
+  });
+
+  it("empty email: shows a field error and focuses the field instead of doing nothing", async () => {
+    const user = userEvent.setup();
+    renderLogin();
+
+    await user.click(screen.getByRole("button", { name: /send sign-in link/i }));
+
+    expect(mockRequestMagicLink).not.toHaveBeenCalled();
+    expect(await screen.findByRole("alert")).toHaveTextContent(/enter your email/i);
+    expect(screen.getByLabelText(/^email/i)).toHaveFocus();
+  });
+
+  it("empty password: shows a field error and focuses the field", async () => {
+    const user = userEvent.setup();
+    renderLogin();
+
+    const email = await openPasswordTab(user);
+    await user.type(email, "user@example.com");
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
+
+    expect(mockLogin).not.toHaveBeenCalled();
+    expect(await screen.findByRole("alert")).toHaveTextContent(/enter your password/i);
+    expect(passwordInput()).toHaveFocus();
+  });
+
+  it("the password can be revealed to check what was typed", async () => {
+    const user = userEvent.setup();
+    renderLogin();
+
+    await openPasswordTab(user);
+    expect(passwordInput()).toHaveAttribute("type", "password");
+
+    await user.click(screen.getByRole("button", { name: /show password/i }));
+    expect(passwordInput()).toHaveAttribute("type", "text");
   });
 });

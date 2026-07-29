@@ -204,7 +204,8 @@ this cross-site return; the nonce cookie is Lax for the same reason.
   Google email is refused; the access token is never placed in a redirect URL
 - All endpoints require authentication except `/auth/request`, `/auth/verify`,
   `/auth/login`, `/auth/register`, `/auth/forgot-password`,
-  `/auth/reset-password`, `/auth/google/login`, and `/auth/google/callback`
+  `/auth/reset-password`, `/auth/google/enabled`, `/auth/google/login`, and
+  `/auth/google/callback`
 - HTTPS enforced at the infrastructure level
 
 ---
@@ -437,6 +438,7 @@ POST   /auth/login            Sign in with email + password, issue session
 POST   /auth/register         Create an invite-gated account with a password, issue session
 POST   /auth/forgot-password  Email a single-use password reset link
 POST   /auth/reset-password   Consume a reset token, set a new password
+GET    /auth/google/enabled   Whether Google Sign-In is configured (public, ADR 0007)
 GET    /auth/google/login     Redirect to Google's consent screen (404 when unconfigured)
 GET    /auth/google/callback  Google's redirect back; issue session, bounce to the SPA
 POST   /auth/refresh          Exchange refresh token for new access token

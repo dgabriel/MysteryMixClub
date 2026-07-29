@@ -18,6 +18,9 @@ const HelpRoute = lazy(() => import("./pages/HelpRoute").then((m) => ({ default:
 const VerifyRoute = lazy(() =>
   import("./pages/VerifyRoute").then((m) => ({ default: m.VerifyRoute })),
 );
+const ResetPasswordRoute = lazy(() =>
+  import("./pages/ResetPasswordRoute").then((m) => ({ default: m.ResetPasswordRoute })),
+);
 const HomeRoute = lazy(() => import("./pages/HomeRoute").then((m) => ({ default: m.HomeRoute })));
 const OnboardingRoute = lazy(() =>
   import("./pages/OnboardingRoute").then((m) => ({ default: m.OnboardingRoute })),
@@ -42,8 +45,12 @@ const ProfileRoute = lazy(() =>
 /**
  * Route map:
  *   /              → redirect to /login
- *   /login         → magic-link request flow (EmailEntry → CheckEmail)
+ *   /login         → sign-in: magic link (EmailEntry → CheckEmail), email +
+ *                    password (sign in / register / forgot), and Google's
+ *                    redirect return leg (?google=<outcome>) — ADR 0007
  *   /auth/verify   → magic-link landing; verifies token, then → /home
+ *   /auth/reset-password → password-reset landing; collects a new password and
+ *                    submits it with the emailed token (ADR 0007)
  *   /onboarding    → first-login display-name capture (self-guarded; bounces
  *                    unauthenticated → /login, already-onboarded → /home)
  *   /about         → public static about page (MYS-155); linked from /login
@@ -101,6 +108,7 @@ const router = createBrowserRouter([
   { path: "/privacy", element: withSuspense(<PrivacyRoute />) },
   { path: "/help", element: withSuspense(<HelpRoute />) },
   { path: "/auth/verify", element: withSuspense(<VerifyRoute />) },
+  { path: "/auth/reset-password", element: withSuspense(<ResetPasswordRoute />) },
   { path: "/onboarding", element: withSuspense(<OnboardingRoute />) },
 
   // Authed screens share the TopNav via AuthedLayout (mounted once).

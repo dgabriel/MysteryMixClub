@@ -45,6 +45,7 @@ from app.services.google_oauth import (
 
 LOGIN_URL = "/api/v1/auth/google/login"
 CALLBACK_URL = "/api/v1/auth/google/callback"
+ENABLED_URL = "/api/v1/auth/google/enabled"
 REFRESH_URL = "/api/v1/auth/refresh"
 
 GOOGLE_SUB = "google-sub-1234567890"
@@ -257,6 +258,39 @@ async def test_callback_is_404_when_unconfigured(session_factory, email_spy):
         resp = await ac.get(CALLBACK_URL, params={"code": "c", "state": "s"})
 
     assert resp.status_code == 404
+
+
+# --------------------------------------------------------------------------- #
+# GET /auth/google/enabled — lets the login screen hide the button rather than
+# render one that would just 404 (the contract in docs/staging-setup.md).
+# --------------------------------------------------------------------------- #
+
+
+async def test_enabled_is_true_when_configured(google_client):
+    resp = await google_client.get(ENABLED_URL)
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"enabled": True}
+
+
+async def test_enabled_is_false_when_unconfigured(session_factory, email_spy):
+    app = _build_app(session_factory, FakeGoogleOAuthClient(configured=False), email_spy)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        resp = await ac.get(ENABLED_URL)
+
+    # 200 with enabled=false, NOT a 404 like /google/login — the frontend has to
+    # be able to ask the question and get an answer either way.
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"enabled": False}
+
+
+async def test_enabled_needs_no_authentication(session_factory, email_spy):
+    # It's consulted on the login screen, before anyone has a session.
+    app = _build_app(session_factory, FakeGoogleOAuthClient(configured=False), email_spy)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        resp = await ac.get(ENABLED_URL)
+
+    assert resp.status_code != 401
 
 
 # --------------------------------------------------------------------------- #

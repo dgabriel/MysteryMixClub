@@ -87,7 +87,11 @@ same self-managed Droplets as the API:
 
 - **Timer-triggered (`oneshot` + `.timer`)**: `python -m app.jobs.purge_accounts`
   (right-to-be-forgotten hard purge), `python -m app.jobs.purge_login_attempts`
-  (trims `login_attempts` rows older than 24h, ADR 0007), and
+  (trims `login_attempts` rows older than 24h, ADR 0007),
+  `python -m app.jobs.purge_oauth_callback_attempts` (trims
+  `oauth_callback_attempts` rows older than 24h, MysteryMixClub-ali8.8, same
+  as-yet-unwired-timer situation as `purge_accounts`/`purge_login_attempts` —
+  tracked together under `MysteryMixClub-9ej6`), and
   `python -m app.jobs.advance_mixes`
   (deadline force-advance + 12h warnings, MYS-145/162). On **both staging and
   prod** the deadline job runs every 15 minutes via a systemd timer

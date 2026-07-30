@@ -6,6 +6,7 @@ from app.models.login_attempt import LoginAttempt
 from app.models.magic_link_token import MagicLinkToken
 from app.models.mix import Mix
 from app.models.note import Note
+from app.models.oauth_callback_attempt import OAuthCallbackAttempt
 from app.models.password_reset_token import PasswordResetToken
 from app.models.playlist_job import PlaylistJob
 from app.models.session import Session
@@ -25,6 +26,7 @@ __all__ = [
     "MagicLinkToken",
     "Mix",
     "Note",
+    "OAuthCallbackAttempt",
     "PasswordResetToken",
     "PlaylistJob",
     "Session",

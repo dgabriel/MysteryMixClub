@@ -761,6 +761,32 @@ async def test_sign_in_state_round_trips_without_an_invite():
 
 
 # --------------------------------------------------------------------------- #
+# Per-IP rate limiting on the callback (MysteryMixClub-ali8.8)
+# --------------------------------------------------------------------------- #
+
+
+async def test_callback_rate_limits_by_ip_before_touching_state(google_client, db_session):
+    """A flood of hits from one IP is throttled before any state/code
+    processing -- proven by sending garbage state and getting "rate_limited"
+    back rather than "invalid_state"."""
+    from app.models.oauth_callback_attempt import OAuthCallbackAttempt
+
+    ip = "9.9.9.9"
+    now = datetime.now(timezone.utc)
+    for _ in range(20):
+        db_session.add(OAuthCallbackAttempt(ip=ip, created_at=now))
+    await db_session.commit()
+
+    resp = await google_client.get(
+        CALLBACK_URL,
+        params={"code": "auth-code", "state": "not-a-real-state"},
+        headers={"X-Forwarded-For": ip},
+    )
+
+    assert _outcome(resp) == "rate_limited"
+
+
+# --------------------------------------------------------------------------- #
 # The nonce is one-shot: every exit from the callback consumes it
 # --------------------------------------------------------------------------- #
 

@@ -39,6 +39,7 @@
 - **Ink as a surface is a time signal.** An Ink-filled chip with Cream text is reserved for time-critical information — deadlines and countdowns (see Badges → Time signal). One per screen; never decorative.
 - **No pure black or pure white.** Cream is the lightest surface; Ink is the darkest text.
 - **Sage family handles hierarchy.** Sage for primary, Sage Light for hover/secondary, Sage Pale for background tags.
+- **Charts stay in the Sage family.** Data marks use Sage, axes/baselines use Border, tick labels use Muted. Charts never spend Rust or Gold — a chart is information, not a signal (see Components → Charts).
 
 ---
 
@@ -52,12 +53,14 @@
 | Label           | DM Mono               | 9–11px | 400     | ALL CAPS, letter-spacing 0.15em  |
 | UI / Buttons    | DM Mono               | 11px   | 400     | ALL CAPS, letter-spacing 0.12em  |
 | Accent          | DM Mono               | 11px   | 400     | Rust color, underline, links     |
+| Data / Stat value | DM Mono             | 16px   | 400     | Numeric values paired with a Label stat (admin metrics, etc.) |
 
 ### Rules
 
 - Labels and buttons are always ALL CAPS with generous letter-spacing.
 - Body text uses light weight (300) — avoid medium or bold in running copy.
 - Italic display is reserved for secondary information — don't compete with display upright on the same screen.
+- Data / Stat value sits deliberately between Body (13px) and Display — it exists so a Label (9px) + value pairing has enough size contrast to scan at a glance when a screen's entire content is numbers.
 
 ---
 
@@ -163,6 +166,36 @@ Page horizontal padding: `32px` (desktop), `16px` (mobile)
   **one time-signal chip per screen.** (Added Jul 2026 — the palette's only
   sanctioned Ink-filled surface; it exists because the Sage family cannot
   produce enough contrast for time-critical info without stealing Rust.)
+
+---
+
+### Charts
+
+Established by the first chart in the app (admin signup trend, DM d3.js — see ADR 0008).
+
+- Drawn with **d3 for math only** — scales, extents, and shape generators. d3 never
+  touches the DOM directly; the SVG is rendered as JSX so React owns every node.
+- **Line:** 1.5px, Sage, round cap and join. One series per chart.
+- **Baseline:** 1px, Border. No y-axis spine, no gridlines.
+- **Point marker:** r=2.5, Sage fill — used only when a single data point would
+  otherwise render nothing (a d3 line generator draws no visible path for one point).
+- **Ticks:** Label style (DM Mono, 9–11px, ALL CAPS, 0.15em, Muted). Four maximum:
+  zero, the peak, the first period, the last period. The peak label sits at the
+  peak's own height rather than a fixed axis top, so the two value ticks imply the
+  scale without needing a spine.
+- **Tick text is rendered as an HTML overlay, not inside the SVG.** The SVG (marks:
+  line, baseline, point) scales with its container via `viewBox`, which is correct
+  and expected — but SVG `<text>` sized in viewBox units shrinks along with it, and
+  on a narrow phone width that drops tick text below the 9px Label floor. Fixed-size
+  HTML spans, positioned with percentages computed from the same viewBox/margin
+  constants the marks use, keep tick text legible at every width while the marks
+  keep scaling normally.
+- **No** area fills, per-point dots (beyond the single-point exception above),
+  legends, tooltips, or load-in animation.
+- Charts sit inside a standard Card, no accent bar.
+- **Charts stay in the Sage family.** Data marks use Sage; axes and baselines use
+  Border; tick labels use Muted. Charts never spend Rust or Gold — a chart is
+  information, not a signal.
 
 ---
 

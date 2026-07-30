@@ -479,6 +479,8 @@ DELETE /admin/users/:id                Hard-delete an account and all its data (
 POST   /admin/invites                  Generate a club-less signup invite (platform-admin, MYS-182)
 GET    /admin/waitlist                 List waitlist entries, oldest first (platform-admin, MYS-215)
 POST   /admin/waitlist/:id/invite      Mint + email an email-locked platform invite for a waitlist entry (platform-admin, MYS-215)
+GET    /admin/metrics                  Platform-wide aggregate snapshot: users, clubs, mixes, submissions, votes, notes, waitlist -- aggregate-only, no user-level data (platform-admin, MysteryMixClub-etz7.1)
+GET    /admin/metrics/signups?days=N   Daily signup counts over the last N UTC days, zero-filled (default 30, max 365; platform-admin, MysteryMixClub-etz7.2)
 ```
 
 ### Waitlist

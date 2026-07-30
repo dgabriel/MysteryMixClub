@@ -3,6 +3,8 @@ import {
   ApiError,
   acceptInvite,
   adminCreateInvite,
+  adminGetMetrics,
+  adminGetSignupTrend,
   addNote,
   authenticatedRequest,
   castVotes,
@@ -31,6 +33,8 @@ import {
   verifyToken,
 } from "./api";
 import type {
+  AdminMetrics,
+  AdminSignupTrend,
   Invite,
   InvitePreview,
   Club,
@@ -489,16 +493,23 @@ describe("api.ts", () => {
 
       const err = await setPassword("a-strong-password").catch((e: unknown) => e);
       expect(err).toBeInstanceOf(ApiError);
-      expect(err).toMatchObject({ status: 409, message: "a password is already set on this account" });
+      expect(err).toMatchObject({
+        status: 409,
+        message: "a password is already set on this account",
+      });
     });
   });
 
   describe("startGoogleLink", () => {
     it("GETs /api/v1/users/me/google/link (Bearer + credentials) and resolves the authorize_url", async () => {
       setStoredAccessToken("my-token");
-      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-        jsonResponse(200, { authorize_url: "https://accounts.google.com/o/oauth2/v2/auth?state=x" }),
-      );
+      const fetchMock = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(
+          jsonResponse(200, {
+            authorize_url: "https://accounts.google.com/o/oauth2/v2/auth?state=x",
+          }),
+        );
 
       await expect(startGoogleLink()).resolves.toEqual({
         authorize_url: "https://accounts.google.com/o/oauth2/v2/auth?state=x",
@@ -970,6 +981,142 @@ describe("api.ts", () => {
       const err = await adminCreateInvite().catch((e: unknown) => e);
       expect(err).toBeInstanceOf(ApiError);
       expect(err).toMatchObject({ status: 403, message: "not authorized" });
+    });
+  });
+
+  describe("adminGetMetrics", () => {
+    const snapshot: AdminMetrics = {
+      total_users: 42,
+      total_clubs: 7,
+      active_clubs: 4,
+      complete_clubs: 3,
+      total_mixes: 41,
+      pending_mixes: 20,
+      open_submission_mixes: 2,
+      open_voting_mixes: 1,
+      closed_mixes: 18,
+      total_submissions: 63,
+      avg_submissions_per_mix: 3.5,
+      total_votes: 120,
+      total_notes: 31,
+      waitlist_total: 15,
+      waitlist_pending: 11,
+      waitlist_invited: 4,
+    };
+
+    it("GETs /api/v1/admin/metrics (Bearer + credentials) and resolves the snapshot on 200", async () => {
+      setStoredAccessToken("admin-token");
+      const fetchMock = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(jsonResponse(200, snapshot));
+
+      await expect(adminGetMetrics()).resolves.toEqual(snapshot);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(`${V1_BASE}/admin/metrics`);
+      expect(init?.method).toBeUndefined();
+      expect(init?.credentials).toBe("include");
+      const headers = new Headers(init?.headers);
+      expect(headers.get("Authorization")).toBe("Bearer admin-token");
+    });
+
+    it("throws ApiError(403) for a non-admin caller", async () => {
+      setStoredAccessToken("my-token");
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse(403, { detail: "not authorized" }),
+      );
+
+      const err = await adminGetMetrics().catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err).toMatchObject({ status: 403, message: "not authorized" });
+    });
+
+    it("throws ApiError(500) when the aggregate query fails", async () => {
+      setStoredAccessToken("admin-token");
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse(500, { detail: "internal server error" }),
+      );
+
+      const err = await adminGetMetrics().catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err).toMatchObject({ status: 500 });
+    });
+  });
+
+  describe("adminGetSignupTrend", () => {
+    const series: AdminSignupTrend = {
+      days: 30,
+      buckets: [
+        { day: "2026-07-01", count: 3 },
+        { day: "2026-07-02", count: 0 },
+        { day: "2026-07-03", count: 7 },
+      ],
+    };
+
+    it("GETs /api/v1/admin/metrics/signups (Bearer + credentials) and resolves the series on 200", async () => {
+      setStoredAccessToken("admin-token");
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, series));
+
+      await expect(adminGetSignupTrend()).resolves.toEqual(series);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(`${V1_BASE}/admin/metrics/signups?days=30`);
+      expect(init?.method).toBeUndefined();
+      expect(init?.credentials).toBe("include");
+      const headers = new Headers(init?.headers);
+      expect(headers.get("Authorization")).toBe("Bearer admin-token");
+    });
+
+    it("sends an explicit window when one is given", async () => {
+      setStoredAccessToken("admin-token");
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, series));
+
+      await adminGetSignupTrend(7);
+
+      expect(fetchMock.mock.calls[0][0]).toBe(`${V1_BASE}/admin/metrics/signups?days=7`);
+    });
+
+    it("resolves an empty window as data, not as a failure", async () => {
+      setStoredAccessToken("admin-token");
+      const empty: AdminSignupTrend = { days: 30, buckets: [] };
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, empty));
+
+      await expect(adminGetSignupTrend()).resolves.toEqual(empty);
+    });
+
+    it("throws ApiError(403) for a non-admin caller", async () => {
+      setStoredAccessToken("my-token");
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse(403, { detail: "not authorized" }),
+      );
+
+      const err = await adminGetSignupTrend().catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err).toMatchObject({ status: 403, message: "not authorized" });
+    });
+
+    it("throws ApiError(422) when the backend rejects the window", async () => {
+      setStoredAccessToken("admin-token");
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse(422, { detail: "days must be between 1 and 365" }),
+      );
+
+      const err = await adminGetSignupTrend(9999).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err).toMatchObject({ status: 422 });
+    });
+
+    it("throws ApiError(500) when the aggregate query fails", async () => {
+      setStoredAccessToken("admin-token");
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse(500, { detail: "internal server error" }),
+      );
+
+      const err = await adminGetSignupTrend().catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err).toMatchObject({ status: 500 });
     });
   });
 

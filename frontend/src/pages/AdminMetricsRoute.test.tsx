@@ -2,22 +2,26 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { AdminMetricsRoute } from "./AdminMetricsRoute";
-import { ApiError, adminGetMetrics } from "../services/api";
-import type { AdminMetrics } from "../services/api";
+import { ApiError, adminGetMetrics, adminGetSignupTrend } from "../services/api";
+import type { AdminMetrics, AdminSignupTrend } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 
-// Mock the API module (no network). Keep ApiError real.
+// Mock the API module (no network). Keep ApiError real. Both admin fetches are
+// mocked: the page fires them independently, so leaving either one real would
+// put a live fetch in every test in this file.
 vi.mock("../services/api", async () => {
   const actual = await vi.importActual<typeof import("../services/api")>("../services/api");
   return {
     ...actual,
     adminGetMetrics: vi.fn(),
+    adminGetSignupTrend: vi.fn(),
   };
 });
 
 vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
 
 const mockGetMetrics = vi.mocked(adminGetMetrics);
+const mockGetSignupTrend = vi.mocked(adminGetSignupTrend);
 const mockUseAuth = vi.mocked(useAuth);
 
 function setAuth(isPlatformAdmin: boolean) {
@@ -62,6 +66,16 @@ const snapshot: AdminMetrics = {
   waitlist_invited: 415,
 };
 
+/** A short trend window, oldest-first and zero-filled, as the endpoint returns. */
+const trend: AdminSignupTrend = {
+  days: 30,
+  buckets: [
+    { day: "2026-07-01", count: 3 },
+    { day: "2026-07-02", count: 0 },
+    { day: "2026-07-03", count: 7 },
+  ],
+};
+
 function renderMetrics() {
   return render(
     <MemoryRouter initialEntries={["/admin/metrics"]}>
@@ -94,6 +108,7 @@ describe("AdminMetricsRoute", () => {
     vi.clearAllMocks();
     setAuth(true);
     mockGetMetrics.mockResolvedValue(snapshot);
+    mockGetSignupTrend.mockResolvedValue(trend);
   });
 
   it("non-admin: redirects to /home, never renders the page, never calls the API", () => {
@@ -103,6 +118,7 @@ describe("AdminMetricsRoute", () => {
     expect(screen.getByText("HOME CONTENT")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { level: 1, name: "metrics" })).not.toBeInTheDocument();
     expect(mockGetMetrics).not.toHaveBeenCalled();
+    expect(mockGetSignupTrend).not.toHaveBeenCalled();
   });
 
   it("admin: fetches the snapshot exactly once", async () => {
@@ -239,7 +255,7 @@ describe("AdminMetricsRoute", () => {
   });
 
   describe("accessibility", () => {
-    it("has one main landmark, one h1, and four h2 groups in reading order", async () => {
+    it("has one main landmark, one h1, and five h2 sections in reading order", async () => {
       renderMetrics();
       await screen.findByRole("heading", { level: 1, name: "metrics" });
 
@@ -250,6 +266,7 @@ describe("AdminMetricsRoute", () => {
         "mystery mixes",
         "submissions and engagement",
         "waitlist",
+        "signups",
       ]);
     });
 
@@ -280,6 +297,78 @@ describe("AdminMetricsRoute", () => {
       renderMetrics();
 
       await waitFor(() => expect(screen.getAllByRole("alert")).toHaveLength(1));
+    });
+  });
+
+  /** MysteryMixClub-etz7.4 — the trend is a second, independent request, so the
+   *  point of these is that neither section can take the other down. */
+  describe("signups section", () => {
+    it("fetches the trend exactly once, at the endpoint's default window", async () => {
+      renderMetrics();
+      await screen.findByRole("heading", { level: 2, name: "signups" });
+
+      expect(mockGetSignupTrend).toHaveBeenCalledTimes(1);
+      expect(mockGetSignupTrend).toHaveBeenCalledWith();
+    });
+
+    it("renders the chart and labels the window with the days the endpoint reported", async () => {
+      renderMetrics();
+      await screen.findByRole("heading", { level: 1, name: "metrics" });
+      const section = group("signups");
+
+      expect(await within(section).findByRole("img")).toHaveAccessibleName(
+        "daily signups from Jul 1 to Jul 3: 10 total, 7 on the busiest day.",
+      );
+      expect(within(section).getByText("last 30 days")).toBeInTheDocument();
+    });
+
+    it("a failing trend fetch leaves every stat card intact", async () => {
+      mockGetSignupTrend.mockRejectedValue(new ApiError(500, "trend query failed"));
+
+      renderMetrics();
+      await screen.findByRole("heading", { level: 1, name: "metrics" });
+
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent(/trend query failed/i);
+      expect(within(group("signups")).queryByRole("img")).not.toBeInTheDocument();
+
+      // The snapshot half of the page is untouched.
+      expect(statValue("users and clubs", "users")).toBe("101");
+      expect(statValue("waitlist", "invited")).toBe("415");
+      expect(screen.getAllByRole("alert")).toHaveLength(1);
+    });
+
+    it("falls back to a calm message when the trend failure isn't an ApiError", async () => {
+      mockGetSignupTrend.mockRejectedValue(new TypeError("Failed to fetch"));
+
+      renderMetrics();
+
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent(/couldn't load the signup trend/i);
+      expect(alert).not.toHaveTextContent(/failed to fetch/i);
+    });
+
+    it("a failing snapshot fetch still leaves the chart rendered", async () => {
+      mockGetMetrics.mockRejectedValue(new ApiError(500, "internal server error"));
+
+      renderMetrics();
+      await screen.findByRole("alert");
+
+      const chart = await within(group("signups")).findByRole("img");
+      expect(chart).toHaveAccessibleName(/10 total/);
+      expect(screen.getAllByRole("alert")).toHaveLength(1);
+    });
+
+    it("keeps its own spinner while the snapshot has already landed", async () => {
+      mockGetSignupTrend.mockReturnValue(new Promise<AdminSignupTrend>(() => {}));
+
+      renderMetrics();
+      await screen.findByRole("heading", { level: 1, name: "metrics" });
+
+      // Stats are readable even though the chart is still in flight.
+      expect(statValue("users and clubs", "users")).toBe("101");
+      expect(group("signups").querySelector(".animate-rotate-rings")).not.toBeNull();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     });
   });
 });

@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { AdminMetricsScreen } from "./AdminMetricsScreen";
-import { ApiError, adminGetMetrics, type AdminMetrics } from "../services/api";
+import {
+  ApiError,
+  adminGetMetrics,
+  adminGetSignupTrend,
+  type AdminMetrics,
+  type AdminSignupTrend,
+} from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 
 /**
@@ -16,6 +22,10 @@ export function AdminMetricsRoute() {
   const [metrics, setMetrics] = useState<AdminMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [trend, setTrend] = useState<AdminSignupTrend | null>(null);
+  const [trendLoading, setTrendLoading] = useState(true);
+  const [trendError, setTrendError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isPlatformAdmin) return;
@@ -37,9 +47,38 @@ export function AdminMetricsRoute() {
     };
   }, [isPlatformAdmin]);
 
+  useEffect(() => {
+    if (!isPlatformAdmin) return;
+    let active = true;
+    adminGetSignupTrend()
+      .then((series) => {
+        if (active) setTrend(series);
+      })
+      .catch((err: unknown) => {
+        if (active) {
+          setTrendError(err instanceof ApiError ? err.message : "couldn't load the signup trend.");
+        }
+      })
+      .finally(() => {
+        if (active) setTrendLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [isPlatformAdmin]);
+
   if (!isPlatformAdmin) {
     return <Navigate to="/home" replace />;
   }
 
-  return <AdminMetricsScreen metrics={metrics} loading={loading} error={error} />;
+  return (
+    <AdminMetricsScreen
+      metrics={metrics}
+      loading={loading}
+      error={error}
+      trend={trend}
+      trendLoading={trendLoading}
+      trendError={trendError}
+    />
+  );
 }

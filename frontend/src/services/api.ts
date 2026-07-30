@@ -1536,6 +1536,28 @@ export async function adminGetMetrics(): Promise<AdminMetrics> {
   return (await res.json()) as AdminMetrics;
 }
 
+/** One day of the signup trend. `day` is a UTC calendar day, `YYYY-MM-DD`. */
+export type SignupBucket = {
+  day: string;
+  count: number;
+};
+
+/** Daily signup counts over a trailing window, ascending oldest-first. Every
+ *  day in the window is present — days with no signups come back as zero. */
+export type AdminSignupTrend = {
+  days: number;
+  buckets: SignupBucket[];
+};
+
+/** Fetch the daily signup trend (platform-admin only). */
+export async function adminGetSignupTrend(days = 30): Promise<AdminSignupTrend> {
+  const res = await authenticatedRequest(`/api/v1/admin/metrics/signups?days=${days}`);
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as AdminSignupTrend;
+}
+
 /** A public waitlist join request (MYS-215, temporary pre-launch flow). */
 export type WaitlistEntry = {
   id: string;

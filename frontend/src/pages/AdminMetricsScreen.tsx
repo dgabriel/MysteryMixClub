@@ -1,22 +1,37 @@
 import type { ReactNode } from "react";
-import type { AdminMetrics } from "../services/api";
+import type { AdminMetrics, AdminSignupTrend } from "../services/api";
 import { Card } from "../components/Card";
 import { ConcentricRings } from "../components/ConcentricRings";
+import { SignupTrendChart } from "../components/SignupTrendChart";
 
 type AdminMetricsScreenProps = {
   metrics: AdminMetrics | null;
   loading: boolean;
   error?: string | null;
+  trend: AdminSignupTrend | null;
+  trendLoading: boolean;
+  trendError?: string | null;
 };
 
 /**
  * Read-only platform snapshot (MysteryMixClub-etz7.3): the aggregate counts from
- * GET /admin/metrics, grouped into four cards. Content-only — the shared TopNav
- * is rendered by AuthedLayout. Nothing here is an action or a warning, so the
- * page stays entirely in the Sage/Ink/Muted family and spends no Rust.
+ * GET /admin/metrics, grouped into four cards, plus the daily signup trend
+ * (MysteryMixClub-etz7.4). Content-only — the shared TopNav is rendered by
+ * AuthedLayout. Nothing here is an action or a warning, so the page stays
+ * entirely in the Sage/Ink/Muted family and spends no Rust.
+ *
+ * The snapshot and the trend are two independent requests, so each carries its
+ * own loading and error state and neither section waits on the other.
  */
-export function AdminMetricsScreen({ metrics, loading, error }: AdminMetricsScreenProps) {
-  if (loading) {
+export function AdminMetricsScreen({
+  metrics,
+  loading,
+  error,
+  trend,
+  trendLoading,
+  trendError,
+}: AdminMetricsScreenProps) {
+  if (loading && trendLoading) {
     return (
       <main className="flex flex-1 items-center justify-center px-4 sm:px-8">
         <ConcentricRings size={88} spinning className="mx-auto" />
@@ -31,7 +46,11 @@ export function AdminMetricsScreen({ metrics, loading, error }: AdminMetricsScre
         platform totals as of right now.
       </p>
 
-      {error || !metrics ? (
+      {loading ? (
+        <div className="mt-8 flex justify-center">
+          <ConcentricRings size={56} spinning />
+        </div>
+      ) : error || !metrics ? (
         <p role="alert" className="mt-8 font-mono text-[13px] font-light text-muted">
           {error ?? "couldn't load the metrics."}
         </p>
@@ -72,6 +91,26 @@ export function AdminMetricsScreen({ metrics, loading, error }: AdminMetricsScre
           </StatGroup>
         </div>
       )}
+
+      <section className="mt-12">
+        <h2 className="font-serif lowercase text-[20px] leading-tight text-ink">signups</h2>
+        <p className="mt-2 font-mono uppercase tracking-label text-[9px] text-muted">
+          {trend ? `last ${trend.days} days` : "over time"}
+        </p>
+        <Card className="mt-4">
+          {trendLoading ? (
+            <div className="flex justify-center py-4">
+              <ConcentricRings size={56} spinning />
+            </div>
+          ) : trendError || !trend ? (
+            <p role="alert" className="font-mono text-[13px] font-light text-muted">
+              {trendError ?? "couldn't load the signup trend."}
+            </p>
+          ) : (
+            <SignupTrendChart buckets={trend.buckets} />
+          )}
+        </Card>
+      </section>
     </main>
   );
 }

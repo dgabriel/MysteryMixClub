@@ -6,6 +6,12 @@ on:
       - main
       - develop
 
+# Least-privilege GITHUB_TOKEN (code scanning #1/#3): every step here only
+# checks out code, runs lint/test, and uploads a coverage artifact -- none of
+# it needs anything beyond reading the repo.
+permissions:
+  contents: read
+
 # Cancel superseded runs on the same ref to save CI minutes.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}

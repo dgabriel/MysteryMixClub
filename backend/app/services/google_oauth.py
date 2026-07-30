@@ -26,6 +26,8 @@ Reference: https://developers.google.com/identity/protocols/oauth2/web-server
 
 from __future__ import annotations
 
+import base64
+import hashlib
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import lru_cache
@@ -33,6 +35,7 @@ from urllib.parse import urlencode
 
 import httpx
 
+from app.auth.tokens import generate_token
 from app.config import Settings, get_settings
 
 _AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -100,10 +103,12 @@ class GoogleOAuthClient:
         """True only when client id, secret, and redirect URI are all present."""
         return bool(self._client_id and self._client_secret and self._redirect_uri)
 
-    def authorize_url(self, state: str) -> str:
+    def authorize_url(self, state: str, code_challenge: str) -> str:
         """Build the Google consent URL to redirect the user to.
 
         ``state`` is the signed round-trip value the callback verifies.
+        ``code_challenge`` is the PKCE challenge for this flow
+        (MysteryMixClub-ali8.7) — see :func:`generate_pkce_pair`.
         """
         params = {
             "client_id": self._client_id,
@@ -114,17 +119,28 @@ class GoogleOAuthClient:
             # Sign-in only ever needs an identity, so no refresh token is
             # requested and no offline access is kept.
             "access_type": "online",
+            "code_challenge": code_challenge,
+            "code_challenge_method": "S256",
         }
         return f"{_AUTHORIZE_URL}?{urlencode(params)}"
 
-    async def exchange_code(self, code: str) -> str:
-        """Exchange an authorization ``code`` for an access token. Raises on failure."""
+    async def exchange_code(self, code: str, code_verifier: str) -> str:
+        """Exchange an authorization ``code`` for an access token. Raises on
+        failure.
+
+        ``code_verifier`` is PKCE's code-to-flow binding (MysteryMixClub-
+        ali8.7): Google checks it hashes to the ``code_challenge`` sent to
+        ``authorize_url`` for this same ``state``, so a code obtained via a
+        separate leak (referrer, open redirect, log exposure) can't be
+        replayed from a different flow that never had the matching verifier.
+        """
         data = {
             "grant_type": "authorization_code",
             "code": code,
             "client_id": self._client_id,
             "client_secret": self._client_secret,
             "redirect_uri": self._redirect_uri,
+            "code_verifier": code_verifier,
         }
         try:
             async with self._client_factory() as client:
@@ -182,6 +198,22 @@ class GoogleOAuthClient:
             # Absent reads as unverified — never assume a claim Google didn't make.
             email_verified=payload.get("email_verified") is True,
         )
+
+
+def generate_pkce_pair() -> tuple[str, str]:
+    """Return ``(code_verifier, code_challenge)`` for a fresh PKCE exchange
+    (MysteryMixClub-ali8.7). S256, per Google's recommendation for web server
+    apps: https://developers.google.com/identity/protocols/oauth2/web-server
+
+    ``generate_token()`` already produces a 43-character URL-safe string --
+    RFC 7636 requires 43-128 characters from ``[A-Za-z0-9-._~]``, and
+    ``token_urlsafe``'s alphabet (``-``/``_`` plus alphanumerics) is a subset
+    of that, so it's a valid ``code_verifier`` as-is with no new generator.
+    """
+    verifier = generate_token()
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+    return verifier, challenge
 
 
 def build_google_oauth_client(settings: Settings) -> GoogleOAuthClient:

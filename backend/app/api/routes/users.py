@@ -33,7 +33,7 @@ from app.models.session import Session
 from app.models.submission import Submission
 from app.models.user import User
 from app.models.vote import Vote
-from app.services.google_oauth import GoogleOAuthClient, get_google_oauth_client
+from app.services.google_oauth import GoogleOAuthClient, generate_pkce_pair, get_google_oauth_client
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -365,7 +365,8 @@ async def start_google_link(
         )
 
     nonce = generate_token()
-    state = create_google_link_state(current_user.id, nonce)
+    code_verifier, code_challenge = generate_pkce_pair()
+    state = create_google_link_state(current_user.id, nonce, code_verifier)
     response.set_cookie(
         key=_GOOGLE_NONCE_COOKIE_NAME,
         value=nonce,
@@ -375,4 +376,4 @@ async def start_google_link(
         samesite=_GOOGLE_NONCE_SAMESITE,
         secure=settings.secure_cookies,
     )
-    return GoogleLinkStartResponse(authorize_url=client.authorize_url(state))
+    return GoogleLinkStartResponse(authorize_url=client.authorize_url(state, code_challenge))

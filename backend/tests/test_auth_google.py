@@ -75,18 +75,25 @@ class FakeGoogleOAuthClient:
         self._exchange_raises = exchange_raises
         self._identity_raises = identity_raises
         self.exchanged_codes: list[str] = []
+        # PKCE (MysteryMixClub-ali8.7): recorded so tests can confirm the same
+        # verifier minted at /google/login is the one sent at exchange time.
+        self.exchanged_verifiers: list[str] = []
 
     @property
     def is_configured(self) -> bool:
         return self._configured
 
-    def authorize_url(self, state: str) -> str:
-        return f"https://accounts.google.com/o/oauth2/v2/auth?state={state}"
+    def authorize_url(self, state: str, code_challenge: str) -> str:
+        return (
+            f"https://accounts.google.com/o/oauth2/v2/auth?state={state}"
+            f"&code_challenge={code_challenge}&code_challenge_method=S256"
+        )
 
-    async def exchange_code(self, code: str) -> str:
+    async def exchange_code(self, code: str, code_verifier: str) -> str:
         if self._exchange_raises:
             raise self._exchange_raises
         self.exchanged_codes.append(code)
+        self.exchanged_verifiers.append(code_verifier)
         return "google-access-token"
 
     async def fetch_identity(self, access_token: str) -> GoogleIdentity:
@@ -226,6 +233,29 @@ async def test_login_sets_a_nonce_cookie(google_client):
     resp = await google_client.get(LOGIN_URL)
 
     assert resp.cookies.get("google_oauth_nonce")
+
+
+async def test_login_redirect_carries_a_pkce_challenge(google_client):
+    """MysteryMixClub-ali8.7: the consent URL must carry Google's expected
+    PKCE params, not just our own state/nonce."""
+    resp = await google_client.get(LOGIN_URL)
+    query = parse_qs(urlparse(resp.headers["location"]).query)
+
+    assert query["code_challenge_method"] == ["S256"]
+    assert len(query["code_challenge"][0]) > 0
+
+
+async def test_callback_sends_the_matching_code_verifier_to_exchange(google_client, fake_google):
+    """MysteryMixClub-ali8.7: the verifier minted at /login must be exactly
+    the one sent back to Google at exchange time, not a fresh one."""
+    from app.auth.jwt import decode_sign_in_state
+
+    state = await _start_flow(google_client)
+    expected_verifier = decode_sign_in_state(state).code_verifier
+
+    await google_client.get(CALLBACK_URL, params={"code": "auth-code", "state": state})
+
+    assert fake_google.exchanged_verifiers == [expected_verifier]
 
 
 async def test_login_state_carries_the_invite_token(google_client):
@@ -723,10 +753,11 @@ async def test_new_account_blocked_at_capacity(session_factory, db_session, fake
 async def test_sign_in_state_round_trips_without_an_invite():
     from app.auth.jwt import decode_sign_in_state
 
-    decoded = decode_sign_in_state(create_sign_in_state("nonce-1"))
+    decoded = decode_sign_in_state(create_sign_in_state("nonce-1", "verifier-1"))
 
     assert decoded.nonce == "nonce-1"
     assert decoded.invite_token is None
+    assert decoded.code_verifier == "verifier-1"
 
 
 # --------------------------------------------------------------------------- #

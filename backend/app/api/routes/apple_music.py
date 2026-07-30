@@ -148,7 +148,19 @@ async def create_mix_apple_playlist(
     db: AsyncSession = Depends(get_db),
     client: AppleMusicClient = Depends(get_apple_music_client),
 ) -> GeneratePlaylistResponse:
-    """Generate this mix's playlist in the caller's Apple Music library."""
+    """Generate this mix's playlist in the caller's Apple Music library.
+
+    Deliberately stays synchronous (MYS-258 / ADR 0006, Slice 1) — unlike the
+    Spotify auto-trigger, this call is **not** routed through
+    ``enqueue_playlist_job``. The Music User Token above is a per-request
+    credential this module's docstring already commits to never storing; a
+    queued job dequeued later by a separate worker process would need that
+    token to still be available then, which means persisting it (even
+    transiently, in the `playlist_jobs` row) — a real conflict with that
+    invariant that ADR 0006 doesn't address. Flagged rather than silently
+    resolved either way; revisit with an explicit decision (e.g. a
+    short-lived encrypted token column, or accepting this endpoint stays
+    request-path work) before wiring Apple into the queue."""
     if not client.is_configured:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

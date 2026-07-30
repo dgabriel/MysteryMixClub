@@ -19,12 +19,17 @@ OAuth playlist creation is dead as a general feature. One designated
 MysteryMixClub Spotify account (``settings.spotify_playlist_account_user_id``)
 creates each mix's playlist as PUBLIC; every member gets the same link.
 
-Generation is automatic, triggered on the ``voting_open`` event (MYS-176) via
-:func:`app.services.spotify_playlist_generation.try_auto_generate_playlist` —
-there is no manual/admin trigger. Regular members only ever read the resulting
-link through this router. The connect/callback/status endpoints and per-user
-connection storage stay dormant (not deleted) in case extended quota is ever
-reached.
+Generation is automatic, triggered on the ``voting_open`` event (MYS-176) —
+there is no manual/admin trigger. As of MYS-258 / ADR 0006 (Slice 1),
+generation itself runs out of the request path entirely: the transition
+handlers in ``mixes.py``/``advance_mixes.py`` only enqueue a
+``playlist_jobs`` row (``app.services.playlist_jobs.enqueue_playlist_job``);
+``app.jobs.playlist_worker`` dequeues it and calls
+:func:`app.services.spotify_playlist_generation.generate_mix_playlist`
+directly. Regular members only ever read the resulting link (plus the job's
+current status) through this router. The connect/callback/status endpoints
+and per-user connection storage stay dormant (not deleted) in case extended
+quota is ever reached.
 """
 
 from __future__ import annotations
@@ -46,6 +51,7 @@ from app.auth.deps import get_current_user
 from app.auth.jwt import JWTError, create_oauth_state, decode_oauth_state
 from app.config import Settings, get_settings
 from app.db.session import get_db
+from app.models.playlist_job import PlaylistJob
 from app.models.spotify_connection import SpotifyConnection
 from app.models.spotify_mix_playlist import SpotifyMixPlaylist
 from app.models.submission import Submission
@@ -122,6 +128,16 @@ class SpotifyPlaylistLinkResponse(WireModel):
 
     playlist_url: str | None
     unmatched: list[UnmatchedTrack] = []
+    # The latest playlist_jobs status for this mix (MYS-258, ADR 0006 Slice 1):
+    # "queued" / "running" / "complete" / "failed", or null when generation has
+    # never been triggered for this mix (it hasn't opened for voting yet).
+    # `playlist_url` already carries the practical "is it done" signal once a
+    # job completes with matches — this lets the frontend show "generating…"
+    # instead of a bare null while a fresh job is still in flight. Plain `str`
+    # (not `Literal`), matching how MixResponse.state carries its DB column
+    # straight through without re-validating it as a Literal at the route
+    # layer.
+    status: str | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -257,9 +273,21 @@ async def get_mix_spotify_playlist_link(
     mix_ = await _load_mix(round_id, db)
     await _load_club_as_member(mix_.club_id, current_user, db)
 
+    # Latest job for this (mix, provider) — enqueue_playlist_job's partial
+    # unique index keeps at most one queued/running row at a time, but a
+    # re-run after a terminal row adds a new one, so "latest" is the one that
+    # matters (MYS-258, ADR 0006 Slice 1).
+    job = await db.scalar(
+        select(PlaylistJob)
+        .where(PlaylistJob.mix_id == round_id, PlaylistJob.provider == "spotify")
+        .order_by(PlaylistJob.created_at.desc())
+        .limit(1)
+    )
+    job_status = job.status if job else None
+
     account_id = playlist_account_user_id(settings)
     if account_id is None:
-        return SpotifyPlaylistLinkResponse(playlist_url=None)
+        return SpotifyPlaylistLinkResponse(playlist_url=None, status=job_status)
 
     stored = await db.scalar(
         select(SpotifyMixPlaylist).where(
@@ -268,7 +296,7 @@ async def get_mix_spotify_playlist_link(
         )
     )
     if stored is None:
-        return SpotifyPlaylistLinkResponse(playlist_url=None)
+        return SpotifyPlaylistLinkResponse(playlist_url=None, status=job_status)
 
     # The gap summary (MYS-201) is recomputed from persisted state, not stored:
     # auto-generation caches each matched track's spotify_track_uri on the
@@ -295,6 +323,7 @@ async def get_mix_spotify_playlist_link(
     return SpotifyPlaylistLinkResponse(
         playlist_url=f"https://open.spotify.com/playlist/{stored.playlist_id}",
         unmatched=unmatched,
+        status=job_status,
     )
 
 

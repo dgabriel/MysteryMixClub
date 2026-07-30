@@ -106,6 +106,14 @@ install -m 0644 "${APP_ROOT}/scripts/mysterymixclub-advance-mixes.timer" /etc/sy
 systemctl daemon-reload
 systemctl enable mysterymixclub-advance-mixes.timer
 
+echo "==> Installing the playlist-generation worker (MYS-258, ADR 0006)"
+# `enable` (not --now), same reasoning as the deadline job above — it needs
+# the runtime env file populated first. Persistent process, not timer-driven,
+# so there's no paired .timer to install.
+install -m 0644 "${APP_ROOT}/scripts/mysterymixclub-playlist-worker.service" /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable mysterymixclub-playlist-worker
+
 echo "==> Configuring the firewall (ufw)"
 ufw allow 22/tcp
 ufw allow 80/tcp
@@ -121,5 +129,8 @@ Bootstrap complete. Remaining steps (see docs/staging-setup.md):
   4. Once the env is populated, start the deadline-job timer:
      systemctl enable --now mysterymixclub-advance-mixes.timer
      (the timer unit is already installed + armed; this begins the 15-min runs)
+  5. Once the env is populated, start the playlist worker:
+     systemctl start mysterymixclub-playlist-worker
+     (already installed + enabled above; this starts the persistent process)
 
 EOF

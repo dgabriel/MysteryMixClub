@@ -16,6 +16,11 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 const AUTH_BASE = `${API_BASE_URL}/api/v1/auth`;
 
+/** Password bounds the backend enforces on register/reset. Mirrored here only so
+ *  the UI can hint before a round-trip — the server stays authoritative. */
+export const PASSWORD_MIN_LENGTH = 8;
+export const PASSWORD_MAX_LENGTH = 128;
+
 /** In-memory access token. Lost on full page reload by design — the on-mount
  *  silent refresh restores the session from the HttpOnly cookie. */
 let accessToken: string | null = null;
@@ -47,6 +52,11 @@ export type UserProfile = {
   /** True once the user has accepted the current Terms of Service / Privacy
    *  Policy (MYS-183). Drives the onboarding/consent gate. */
   tos_accepted: boolean;
+  /** Whether a password is already set (MysteryMixClub-ali8.6) -- never the
+   *  password itself, just presence. POST /users/me/password 409s once true. */
+  has_password: boolean;
+  /** Whether a Google identity is already linked (MysteryMixClub-ali8.6). */
+  google_linked: boolean;
 };
 
 class ApiError extends Error {
@@ -120,6 +130,120 @@ export async function verifyToken(
   }
   const data = (await res.json()) as TokenResponse;
   return { access_token: data.access_token };
+}
+
+/**
+ * Sign in with email + password (ADR 0007). On success the backend sets the
+ * HttpOnly refresh cookie and returns the access token, so this needs
+ * `credentials: 'include'`. Throws ApiError(401) with a single uniform detail
+ * for every failure mode (wrong password, unknown email, no password set) —
+ * never surface it as anything more specific than the server said.
+ */
+export async function login(email: string, password: string): Promise<{ access_token: string }> {
+  const res = await fetch(`${AUTH_BASE}/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ email, password }),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  const data = (await res.json()) as TokenResponse;
+  return { access_token: data.access_token };
+}
+
+/**
+ * Create a new invite-gated account with a password and sign it in (ADR 0007).
+ * Unlike the magic-link flow the invite token is REQUIRED — this only ever
+ * creates a new account, and every new account is invite-gated. Sets the refresh
+ * cookie, so `credentials: 'include'`.
+ *
+ * Throws ApiError(403) when the invite is missing or invalid, ApiError(409) when
+ * an account already exists for the address (both carry calm backend details).
+ */
+export async function register(
+  email: string,
+  password: string,
+  inviteToken: string,
+): Promise<{ access_token: string }> {
+  const res = await fetch(`${AUTH_BASE}/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ email, password, invite_token: inviteToken }),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  const data = (await res.json()) as TokenResponse;
+  return { access_token: data.access_token };
+}
+
+/**
+ * Request a password-reset link. Same neutral contract as requestMagicLink: a
+ * 200 says nothing about whether the address exists or has a password, so never
+ * present it as "sent". Outside production the backend also returns `dev_token`
+ * so the UI can offer a clickable reset link; it is absent in production.
+ */
+export async function forgotPassword(email: string): Promise<{ devToken: string | null }> {
+  const res = await fetch(`${AUTH_BASE}/forgot-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  const data = (await res.json()) as { dev_token?: string | null };
+  return { devToken: data.dev_token ?? null };
+}
+
+/**
+ * Consume a reset token from the emailed link and set a new password. No session
+ * comes back — the reset invalidates every existing session, so the user signs in
+ * again afterwards. Throws ApiError(401) on an expired, spent, or unknown token.
+ */
+export async function resetPassword(token: string, password: string): Promise<{ message: string }> {
+  const res = await fetch(`${AUTH_BASE}/reset-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, password }),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as { message: string };
+}
+
+/**
+ * Whether Google sign-in is configured on this deployment — checked on page load
+ * so an unconfigured environment never renders a button that would just 404 on
+ * click. Same contract and purpose as getWaitlistEnabled(); exposes only a
+ * boolean, never a credential.
+ */
+export async function getGoogleEnabled(): Promise<{ enabled: boolean }> {
+  const res = await fetch(`${AUTH_BASE}/google/enabled`);
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as { enabled: boolean };
+}
+
+/**
+ * The URL for the "sign in with Google" affordance. Deliberately NOT a fetch:
+ * the endpoint 302s to Google's consent screen, so this has to be a top-level
+ * browser navigation (a real href). Google returns the browser to
+ * `/login?google=<outcome>` with the refresh cookie already set.
+ *
+ * `inviteToken` rides through the round-trip so a brand-new account created this
+ * way still passes the invite gate.
+ */
+export function googleLoginUrl(inviteToken?: string | null): string {
+  const params = new URLSearchParams();
+  if (inviteToken) params.set("invite_token", inviteToken);
+  const query = params.toString();
+  return `${AUTH_BASE}/google/login${query ? `?${query}` : ""}`;
 }
 
 /**
@@ -264,6 +388,35 @@ export async function updatePreferredService(
     throw new ApiError(res.status, await readErrorMessage(res));
   }
   return (await res.json()) as UserProfile;
+}
+
+/** Set a password on an account that doesn't have one yet
+ *  (MysteryMixClub-ali8.4/ali8.6, ADR 0007). Throws 409 (via ApiError) if one
+ *  is already set -- use forgotPassword/resetPassword to change it instead. */
+export async function setPassword(password: string): Promise<{ message: string }> {
+  const res = await authenticatedRequest("/api/v1/users/me/password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password }),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as { message: string };
+}
+
+/** Begin linking a Google identity onto the current account
+ *  (MysteryMixClub-ali8.4/ali8.6, ADR 0007): returns Google's consent URL to
+ *  redirect to. Mirrors connectSpotify's shape -- an authenticated fetch
+ *  call, not a direct link, since a top-level navigation can't carry the
+ *  Bearer token; the caller does `window.location.href = authorize_url`
+ *  itself once it has the response. */
+export async function startGoogleLink(): Promise<{ authorize_url: string }> {
+  const res = await authenticatedRequest("/api/v1/users/me/google/link");
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as { authorize_url: string };
 }
 
 /** Delete the current user's account (right to be forgotten). Throws 409 if
@@ -790,10 +943,7 @@ export async function updateMix(
 /** Push a mix's voting deadline to an organizer-chosen time, up to 48h past
  *  the current deadline (organizer only, MYS-180). `votingDeadline` is an ISO
  *  datetime string. Only valid while the mix is still open_voting. */
-export async function extendVotingDeadline(
-  mixId: string,
-  votingDeadline: string,
-): Promise<Mix> {
+export async function extendVotingDeadline(mixId: string, votingDeadline: string): Promise<Mix> {
   const res = await authenticatedRequest(`/api/v1/mixes/${mixId}/extend-voting`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -827,10 +977,7 @@ export type SubmissionInput = {
 
 /** Add a song to a mix (MYS-116). Mix must be open_submission; the backend
  *  returns 409 once you've reached the club's songs-per-submission cap. */
-export async function submitSong(
-  mixId: string,
-  input: SubmissionInput,
-): Promise<SubmissionResult> {
+export async function submitSong(mixId: string, input: SubmissionInput): Promise<SubmissionResult> {
   const res = await authenticatedRequest(`/api/v1/mixes/${mixId}/submissions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -947,18 +1094,30 @@ export async function connectSpotify(returnTo?: string): Promise<{ authorize_url
   return (await res.json()) as { authorize_url: string };
 }
 
+/** Queue status of a mix's background playlist-generation job (MYS-258, ADR
+ *  0006) — null when generation has never been triggered for this mix (e.g.
+ *  it hasn't opened for voting yet). */
+export type PlaylistJobStatus = "queued" | "running" | "complete" | "failed";
+
 /** Read-only: the mix's existing Spotify playlist link, or null if
  *  generation hasn't run (or hasn't matched anything) yet (MYS-169, MYS-176).
  *  Generation is automatic, triggered on the voting_open transition — this
- *  never triggers it itself. */
-export async function getSpotifyPlaylistLink(
-  mixId: string,
-): Promise<{ playlist_url: string | null; unmatched: UnmatchedTrack[] }> {
+ *  never triggers it itself. `status` (MYS-258) reflects the background job
+ *  the transition enqueues; callers poll while it's queued/running. */
+export async function getSpotifyPlaylistLink(mixId: string): Promise<{
+  playlist_url: string | null;
+  unmatched: UnmatchedTrack[];
+  status: PlaylistJobStatus | null;
+}> {
   const res = await authenticatedRequest(`/api/v1/mixes/${mixId}/spotify-playlist`);
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
-  return (await res.json()) as { playlist_url: string | null; unmatched: UnmatchedTrack[] };
+  return (await res.json()) as {
+    playlist_url: string | null;
+    unmatched: UnmatchedTrack[];
+    status: PlaylistJobStatus | null;
+  };
 }
 
 /** Why a mix submission didn't make an auto-generated playlist (MYS-201):

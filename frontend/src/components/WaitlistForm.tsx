@@ -56,7 +56,9 @@ export function WaitlistForm() {
         <div className="w-full max-w-[220px] text-left">
           <TextField
             id="waitlist-email"
-            label="email"
+            // Not just "email": this sits on the same page as the sign-in form's
+            // own email field, and two identically-labelled fields read as one.
+            label="your email"
             type="email"
             name="email"
             autoComplete="email"

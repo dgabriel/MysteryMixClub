@@ -42,8 +42,7 @@ from app.models.note import Note
 from app.models.submission import Submission
 from app.models.user import User
 from app.services.source_tracks import source_fields
-from app.services.spotify_client import SpotifyClient, get_spotify_client
-from app.services.spotify_playlist_generation import try_auto_generate_playlist
+from app.services.playlist_jobs import enqueue_playlist_job
 from app.models.vote import Vote
 from app.services.email import EmailSender, get_email_sender
 from app.services.most_noted import compute_most_noted
@@ -578,7 +577,6 @@ async def update_mix(
     db: AsyncSession = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
     settings: Settings = Depends(get_settings),
-    spotify_client: SpotifyClient = Depends(get_spotify_client),
 ) -> MixResponse:
     mix_ = await _load_mix(round_id, db)
     club = await _load_club_as_organizer(
@@ -696,13 +694,15 @@ async def update_mix(
                 background_tasks, sender, settings, event_recipients, club, event_mix, event
             )
 
-    # Auto-generate the shared-account Spotify playlist the moment voting opens
-    # (MYS-176) — no admin click needed. Best-effort: never raises, so a Spotify
-    # hiccup can't block this transition (see try_auto_generate_playlist). Uses
-    # `voting_opened` (captured before the all-vibing rollup above may have
-    # stripped the voting_open event from `events`), not the events list itself.
+    # Queue the shared-account Spotify playlist generation the moment voting
+    # opens (MYS-176/MYS-258) — no admin click needed. `enqueue_playlist_job`
+    # only inserts a row + NOTIFYs inside this same transaction (ADR 0006); the
+    # actual generation call runs later, out of the request path, in
+    # app.jobs.playlist_worker. Uses `voting_opened` (captured before the
+    # all-vibing rollup above may have stripped the voting_open event from
+    # `events`), not the events list itself.
     if voting_opened:
-        await try_auto_generate_playlist(round_id, mix_, club, db, spotify_client, settings)
+        await enqueue_playlist_job(db, round_id, "spotify")
 
     await db.commit()
     await db.refresh(mix_)

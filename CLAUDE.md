@@ -89,6 +89,7 @@ unless you flag it first.
 - **Read before you write.** Always read a file before editing it. Never assume current state.
 - **Smallest change that works.** Surgical edits only. No speculative refactors.
 - **One issue at a time.** Reference the bd issue ID in your first message (e.g. `MysteryMixClub-s7bv2t`); if it has a historical `MYS-##` number, mention that too for continuity.
+- **Start work with `scripts/bead-start.sh <id>`.** It claims the issue and creates the branch together — see "Starting Work" below. Every commit after that needs a `Bead: <id>` trailer.
 - **State assumptions explicitly.** If something is ambiguous, say what you're assuming before acting.
 - **No placeholder logic.** If you'd write a `// TODO`, ask instead.
 - **Flag design drift.** If a request would violate the style guide, say so before proceeding.
@@ -98,6 +99,33 @@ unless you flag it first.
   choice, an architectural pattern other work builds on, or any tradeoff that
   overrides the "obvious" approach gets a numbered ADR at decision time, not
   after the fact.
+
+---
+
+## Starting Work
+
+`scripts/bead-start.sh <bd-issue-id>` is the single entry point for starting
+work on a bd issue (MysteryMixClub-ghal). It syncs `develop`, creates
+`feature/<id>-<slug>` (`fix/<id>-<slug>` for a bug), and only then runs
+`bd update <id> --claim` — that `--claim` is the only bd-graph write this
+convention makes anywhere. Don't claim an issue or create the branch by hand;
+use the script so both happen together and stay traceable.
+
+Every commit from then on needs a `Bead: <id>` trailer, enforced by the
+commit-msg hook (`scripts/instrumentation/check_bead_trailer.py`, chained
+after commitlint in both `.beads/hooks/commit-msg` and `.husky/commit-msg`):
+
+```
+feat(auth): add password reset flow
+
+Bead: MysteryMixClub-abc123
+```
+
+This is the join key between git history and the bd issue graph — it lets
+`git log` be filtered exactly by issue instead of guessed from commit text.
+Exempt from the trailer requirement: commits typed `chore`/`docs`/`ci`/
+`style`/`build`/`revert`, and merge commits. Everything else is blocked
+without a valid, existing bd id in the trailer.
 
 ---
 

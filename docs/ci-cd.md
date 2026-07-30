@@ -35,13 +35,23 @@ branch-protection rules and the one-time Droplet/runner provisioning
         │ docs/git-hygiene.md "Why promotions must be a real merge";
         │ enforced by a GitHub ruleset on main, squash/rebase not offered)
         ▼
-   push to main ───► deploy-prod.yml ─► [environment: production]
-                          (manual approval gate, then self-hosted runner
-                           living ON the prod Droplet) ──────► scripts/deploy-prod.sh
-                                                                (Nginx + systemd)
+   push to main ───► deploy-prod.yml
+                        ├─ build-frontend (hosted runner, ungated):
+                        │    npm ci && npm run build → upload dist/ artifact
+                        └─ deploy [environment: production, manual approval
+                             gate] (self-hosted runner living ON the prod
+                             Droplet) ──► download dist/ artifact
+                                          → scripts/deploy-prod.sh
+                                            (gunicorn+systemd graceful reload,
+                                             publishes the CI-built frontend)
 ```
 
-Both deploy workflows run directly on their target Droplet — no SSH from
+Prod's frontend build moved off the Droplet into CI (MYS-259) — the old
+on-box `npm ci && npm run build` risked OOMing a 2 GB app host under load.
+Staging still builds on-box; see `docs/prod-setup.md` "What changes vs.
+staging" for why that gap exists and isn't (yet) closed.
+
+Both deploy jobs that actually touch a Droplet run directly on it — no SSH from
 GitHub, no DigitalOcean App Platform involved for either environment.
 
 ---
@@ -69,18 +79,37 @@ approve the `production` environment → prod deploy.
 
 ---
 
-## Scheduled jobs
+## Scheduled jobs and background workers
 
-The backend ships two standalone jobs run outside the request path:
-`python -m app.jobs.purge_accounts` (right-to-be-forgotten hard purge) and
-`python -m app.jobs.advance_mixes` (deadline force-advance + 12h warnings,
-MYS-145/162). On **both staging and prod** the deadline job runs every 15
-minutes via a systemd timer (`mysterymixclub-advance-mixes.timer`) — bootstrap
-installs and arms it, and each deploy refreshes the unit files and re-runs
-`enable --now`. See [`staging-setup.md` §7](staging-setup.md) for the full
-behavior explanation and [`prod-setup.md` §6](prod-setup.md) for what differs
-on prod (unit files sourced from the `-prod`-suffixed scripts, same on-disk
-unit names).
+The backend ships standalone processes run outside the request path, none of
+them behind DO's own scheduler/App Platform equivalent — all systemd, on the
+same self-managed Droplets as the API:
+
+- **Timer-triggered (`oneshot` + `.timer`)**: `python -m app.jobs.purge_accounts`
+  (right-to-be-forgotten hard purge), `python -m app.jobs.purge_login_attempts`
+  (trims `login_attempts` rows older than 24h, ADR 0007),
+  `python -m app.jobs.purge_oauth_callback_attempts` (trims
+  `oauth_callback_attempts` rows older than 24h, MysteryMixClub-ali8.8, same
+  as-yet-unwired-timer situation as `purge_accounts`/`purge_login_attempts` —
+  tracked together under `MysteryMixClub-9ej6`), and
+  `python -m app.jobs.advance_mixes`
+  (deadline force-advance + 12h warnings, MYS-145/162). On **both staging and
+  prod** the deadline job runs every 15 minutes via a systemd timer
+  (`mysterymixclub-advance-mixes.timer`) — bootstrap installs and arms it, and
+  each deploy refreshes the unit files and re-runs `enable --now`. See
+  [`staging-setup.md` §7](staging-setup.md) for the full behavior explanation
+  and [`prod-setup.md` §6](prod-setup.md) for what differs on prod (unit files
+  sourced from the `-prod`-suffixed scripts, same on-disk unit names).
+- **Persistent (`Type=simple`, `Restart=on-failure`, no `.timer`)**:
+  `python -m app.jobs.playlist_worker` (MYS-258, ADR 0006) — dequeues the
+  Postgres-backed `playlist_jobs` queue (`LISTEN`/`NOTIFY` + `SELECT ... FOR
+  UPDATE SKIP LOCKED`) and runs the shared-account Spotify playlist generation
+  that used to run inline in the request/deadline-job path. On **both staging
+  and prod** it's installed by bootstrap and enabled, and each deploy
+  refreshes the unit file and restarts it (a persistent process is
+  `restart`ed on deploy, not re-`enable --now`d like a timer). See
+  [`staging-setup.md` §7a](staging-setup.md) and
+  [`prod-setup.md` §6a](prod-setup.md).
 
 ---
 
@@ -90,12 +119,16 @@ unit names).
 |-----------------------------------|---------------------------|-------------------------------------------------------------|
 | `.github/workflows/ci.yml`        | PR → `main` or `develop`  | Frontend lint/typecheck/test; backend ruff/mypy/pytest+cov  |
 | `.github/workflows/deploy-staging.yml` | push → `develop`     | Runs on a self-hosted runner living on the staging Droplet → `scripts/deploy-staging.sh` |
-| `.github/workflows/deploy-prod.yml`    | push → `main`        | `environment: production` approval gate → self-hosted runner on the prod Droplet → `scripts/deploy-prod.sh` |
+| `.github/workflows/deploy-prod.yml`    | push → `main`        | `build-frontend` job (hosted runner, ungated): builds the SPA, uploads it as an artifact. `deploy` job: `environment: production` approval gate → self-hosted runner on the prod Droplet → downloads the artifact → `scripts/deploy-prod.sh` (MYS-259) |
 
-Both deploys run directly on their target Droplet via a self-hosted GitHub
-Actions runner (MYS-224/225) — no SSH secrets or `DIGITALOCEAN_ACCESS_TOKEN`
-needed for either one anymore. See [`staging-setup.md`](staging-setup.md) and
-[`prod-setup.md`](prod-setup.md) for runner registration.
+The `deploy` job in each workflow runs directly on its target Droplet via a
+self-hosted GitHub Actions runner (MYS-224/225) — no SSH secrets or
+`DIGITALOCEAN_ACCESS_TOKEN` needed for either one. `deploy-prod.yml`'s
+`build-frontend` job is the one exception: it deliberately runs on a normal
+**hosted** runner (MYS-259) since it never touches the Droplet — building
+`npm ci && npm run build` there instead of on the 2 GB prod box removes a real
+OOM risk from every prod deploy. See [`staging-setup.md`](staging-setup.md)
+and [`prod-setup.md`](prod-setup.md) for runner registration.
 
 ---
 
@@ -175,6 +208,7 @@ never in GitHub or DigitalOcean's dashboard:
 | `ENVIRONMENT`  | GENERAL  | `production` / `staging`                           |
 | `RESEND_API_KEY`, `ALLOWED_ORIGINS`, `APP_BASE_URL` | SECRET/GENERAL | see `.env.example` |
 | `APPLE_MUSIC_TEAM_ID`, `APPLE_MUSIC_KEY_ID`, `APPLE_MUSIC_PRIVATE_KEY` | SECRET | Apple Music (MYS-104/105-108). **All three or none** — any missing and the Apple UI hides itself and links fall back to keyless iTunes. Provisioning walkthrough in `staging-setup.md` → "Enabling Apple Music". |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | SECRET | Google Sign-In (MysteryMixClub-ali8, ADR 0007). **All three or none** — any missing and the Google button hides itself, magic link/password unaffected. Separate OAuth client per environment. Provisioning walkthrough in `staging-setup.md` → "Enabling Google Sign-In". |
 | `RESEND_WEBHOOK_SECRET`, `INBOUND_EMAIL_FORWARD_TO` | SECRET/GENERAL | Inbound mail forwarding (MYS-242). Prod-only in practice — Resend Inbound's MX is on the apex domain, which prod serves. Empty `RESEND_WEBHOOK_SECRET` = the webhook route 503s rather than accepting unsigned requests. |
 
 ### Adding a new secret (the routine)

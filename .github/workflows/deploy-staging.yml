@@ -5,6 +5,12 @@ on:
     branches:
       - develop
 
+# Least-privilege GITHUB_TOKEN (code scanning #2): this job runs
+# scripts/deploy-staging.sh on the runner itself (no actions/checkout, no
+# repo-write API calls) -- nothing here needs more than reading the repo.
+permissions:
+  contents: read
+
 # Never run two staging deploys concurrently; let the newest win.
 concurrency:
   group: deploy-staging

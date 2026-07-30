@@ -54,8 +54,7 @@ from app.services.notifications import (
     send_empty_mix_notice,
     send_mix_event,
 )
-from app.services.spotify_client import SpotifyClient, get_spotify_client
-from app.services.spotify_playlist_generation import try_auto_generate_playlist
+from app.services.playlist_jobs import enqueue_playlist_job
 
 logger = logging.getLogger("app.jobs.advance_mixes")
 
@@ -120,7 +119,6 @@ async def _process_mix(
     now: datetime,
     settings: Settings,
     sender: EmailSender,
-    client: SpotifyClient,
     report: AdvanceReport,
 ) -> None:
     """Process a single mix under a row lock, in the caller's transaction.
@@ -202,13 +200,20 @@ async def _process_mix(
         # Branch 4: submissions are in — advance to voting.
         events = await advance_mix_state(mix_, club, "open_voting", db)
         recipients = await gather_recipients(db, club.id)
+        # Queue the shared-account Spotify playlist generation the moment
+        # voting opens (MYS-176/MYS-258) — no admin click needed.
+        # enqueue_playlist_job only inserts a row + NOTIFYs; it must land in
+        # THIS SAME commit as the state transition above (ADR 0006: "inside
+        # the same transaction as the caller's existing work"), not a
+        # separate one afterward — a crash between two separate commits would
+        # otherwise strand the mix in open_voting with no job ever created and
+        # nothing to re-trigger it. The actual generation call runs later, out
+        # of this job entirely, in app.jobs.playlist_worker.
+        if any(event == "voting_open" for _, event in events):
+            await enqueue_playlist_job(db, mix_id, "spotify")
         await db.commit()
         for event_mix, event in events:
             send_mix_event(sender, settings, recipients, club, event_mix, event)
-        # Auto-generate the shared-account Spotify playlist the moment voting
-        # opens (MYS-176) — no admin click needed. Best-effort: never raises.
-        if any(event == "voting_open" for _, event in events):
-            await try_auto_generate_playlist(mix_id, mix_, club, db, client, settings)
         report.advanced_to_voting += 1
         return
 
@@ -235,7 +240,6 @@ async def advance_due_mixes(
     now: datetime | None = None,
     settings: Settings | None = None,
     sender: EmailSender | None = None,
-    client: SpotifyClient | None = None,
 ) -> AdvanceReport:
     """Scan live mixes and process each in its own locked transaction.
 
@@ -243,7 +247,6 @@ async def advance_due_mixes(
     counted, never fatal; only a failure of the initial scan propagates."""
     settings = settings or get_settings()
     sender = sender or build_email_sender(settings)
-    client = client or get_spotify_client()
     now = now or datetime.now(timezone.utc)
 
     # Read-only scan in its own short-lived session; each mix is then locked and
@@ -255,7 +258,7 @@ async def advance_due_mixes(
     for mix_id in mix_ids:
         try:
             async with async_session_factory() as db:
-                await _process_mix(db, mix_id, now, settings, sender, client, report)
+                await _process_mix(db, mix_id, now, settings, sender, report)
         except Exception:  # noqa: BLE001 — isolate one mix's failure from the rest
             logger.exception("advance_mixes: failed processing mix %s", mix_id)
             report.errors += 1

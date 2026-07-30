@@ -885,14 +885,22 @@ async def test_submit_malformed_bandcamp_track_id_422(session_factory, db_sessio
 
 
 async def test_concurrent_submit_at_cap_1_produces_exactly_one_submission(
-    session_factory, db_session
+    real_session_factory, real_db_session
 ):
-    organizer = await _seed_user(db_session, "o@example.com")
-    mix_ = await _seed_club_with_mix(db_session, organizer, songs=1)
+    # Uses real_session_factory/real_db_session (genuinely separate real
+    # connections, ADR 0005), not session_factory/db_session: the submit
+    # route's serialization is a `pg_advisory_xact_lock` (MYS-144), which is
+    # scoped per Postgres backend session and re-entrant for the *same*
+    # session — so racing two requests over one shared connection wouldn't
+    # actually contend for the lock (and asyncpg can't run two concurrent
+    # operations on one connection regardless). The two "concurrent" submits
+    # below need two real connections/transactions racing each other.
+    organizer = await _seed_user(real_db_session, "o@example.com")
+    mix_ = await _seed_club_with_mix(real_db_session, organizer, songs=1)
     mix_id = mix_.id
     organizer_id = organizer.id
 
-    async with _build_client(session_factory) as client:
+    async with _build_client(real_session_factory) as client:
         resp1, resp2 = await asyncio.gather(
             client.post(
                 _sub_url(mix_id),
@@ -909,8 +917,8 @@ async def test_concurrent_submit_at_cap_1_produces_exactly_one_submission(
     statuses = sorted([resp1.status_code, resp2.status_code])
     assert statuses == [201, 409], f"expected one success and one cap rejection, got {statuses}"
 
-    db_session.expire_all()
-    count = await db_session.scalar(
+    real_db_session.expire_all()
+    count = await real_db_session.scalar(
         select(func.count()).select_from(Submission).where(Submission.mix_id == mix_id)
     )
     assert count == 1, "concurrent submissions must not exceed the cap"

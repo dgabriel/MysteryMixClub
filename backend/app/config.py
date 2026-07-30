@@ -34,6 +34,16 @@ class Settings(BaseSettings):
     # PEM contents of the MusicKit .p8 key. Deploy secrets may store it single-line
     # with literal "\n" escapes; the token service normalizes both forms.
     apple_music_private_key: str = Field(default="")
+    # Google Sign-In OAuth client (MysteryMixClub-ali8, ADR 0007). Server-side
+    # only; the client secret must never reach the browser. Empty (any of the
+    # three) = Google Sign-In is off and its endpoints 404, the same "hidden
+    # when unconfigured" behavior Apple Music uses. Each environment needs its
+    # own OAuth client — never share a secret across staging and prod.
+    google_client_id: str = Field(default="")
+    google_client_secret: str = Field(default="")
+    # Must exactly match a redirect URI registered on the Google OAuth client,
+    # pointing at this API's /auth/google/callback.
+    google_redirect_uri: str = Field(default="")
     allowed_origins: str = Field(default="")
     environment: Literal["development", "staging", "production"] = "development"
     app_base_url: str = Field(default="https://mysterymixclub.com")

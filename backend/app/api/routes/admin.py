@@ -1,12 +1,12 @@
 import logging
 import secrets
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.api.wire import WireModel
-from sqlalchemy import func, select
+from sqlalchemy import Date, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.clubs import (
@@ -320,4 +320,60 @@ async def get_metrics(
         waitlist_total=waitlist_total,
         waitlist_pending=waitlist_total - waitlist_invited,
         waitlist_invited=waitlist_invited,
+    )
+
+
+# Longest window the trend endpoint will serve, in days. A year of daily
+# buckets is more history than the chart can usefully render, and bounding it
+# caps how much of `users` a single request scans; anything larger is a 422.
+_MAX_SIGNUP_TREND_DAYS = 365
+
+
+class SignupBucket(WireModel):
+    day: date
+    count: int
+
+
+class AdminSignupsResponse(WireModel):
+    days: int
+    buckets: list[SignupBucket]
+
+
+# Kept separate from GET /admin/metrics rather than nested in it: the snapshot
+# there is a flat set of scalars with no parameters, and this one is a
+# parameterised series the chart refetches on its own when the window changes.
+@router.get("/metrics/signups", response_model=AdminSignupsResponse)
+async def get_signup_trend(
+    days: int = Query(default=30, ge=1, le=_MAX_SIGNUP_TREND_DAYS),
+    _admin: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AdminSignupsResponse:
+    """Daily live-account signup counts over the last ``days`` days (platform-admin).
+
+    Buckets are UTC calendar days, ending today, and every day in the window is
+    returned — days with no signups come back as zero so the series is
+    continuous. Deleted accounts are excluded, matching total_users above.
+    """
+    end_day = datetime.now(timezone.utc).date()
+    start_day = end_day - timedelta(days=days - 1)
+    window_start = datetime(start_day.year, start_day.month, start_day.day, tzinfo=timezone.utc)
+
+    day_column = cast(func.timezone("UTC", User.created_at), Date)
+    counts = {
+        day: count
+        for day, count in (
+            await db.execute(
+                select(day_column, func.count())
+                .where(User.deleted_at.is_(None), User.created_at >= window_start)
+                .group_by(day_column)
+            )
+        ).all()
+    }
+
+    return AdminSignupsResponse(
+        days=days,
+        buckets=[
+            SignupBucket(day=day, count=counts.get(day, 0))
+            for day in (start_day + timedelta(days=offset) for offset in range(days))
+        ],
     )

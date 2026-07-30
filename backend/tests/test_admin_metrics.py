@@ -1,13 +1,19 @@
-"""Tests for MysteryMixClub-etz7.1: GET /api/v1/admin/metrics.
+"""Tests for the admin metrics surface.
 
-Aggregate-only platform snapshot (technical-design §10 — no user-level
-tracking), gated by the same get_platform_admin dependency as the rest of
-/admin. Covers authorization (401 unauthenticated, 403 authenticated
-non-admin), every aggregate field against known seeded data, and the
-empty-platform edge case (all zeros, avg 0.0 rather than a divide-by-zero).
+MysteryMixClub-etz7.1 — GET /api/v1/admin/metrics: aggregate-only platform
+snapshot (technical-design §10 — no user-level tracking), gated by the same
+get_platform_admin dependency as the rest of /admin. Covers authorization (401
+unauthenticated, 403 authenticated non-admin), every aggregate field against
+known seeded data, and the empty-platform edge case (all zeros, avg 0.0 rather
+than a divide-by-zero).
+
+MysteryMixClub-etz7.2 — GET /api/v1/admin/metrics/signups: daily signup counts
+over a bounded window. Covers the same authorization gate, zero-filling of days
+with no signups, ordering/window arithmetic, the `days` query bounds (422 rather
+than a silent clamp), and UTC day-boundary bucketing.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -268,3 +274,167 @@ async def test_metrics_on_empty_platform_returns_zeros(client, db_session):
         "waitlist_pending": 0,
         "waitlist_invited": 0,
     }
+
+
+# ========================================================================== #
+# MysteryMixClub-etz7.2 — GET /api/v1/admin/metrics/signups
+# ========================================================================== #
+
+SIGNUPS_URL = "/api/v1/admin/metrics/signups"
+
+# Far enough back that the admin account never lands inside a test's window,
+# even at the 365-day maximum, so bucket counts come only from seeded signups.
+_ADMIN_AGE = timedelta(days=400)
+
+
+async def _seed_user_at(db_session, email: str, created_at: datetime, *, deleted_at=None) -> User:
+    user = User(email=email, display_name=email, created_at=created_at, deleted_at=deleted_at)
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    return user
+
+
+async def _seed_old_admin(db_session) -> User:
+    return await _seed_user_at(db_session, ADMIN_EMAIL, datetime.now(timezone.utc) - _ADMIN_AGE)
+
+
+async def test_signup_trend_unauthenticated_returns_401(client, db_session):
+    await _seed_admin(db_session)
+
+    resp = await client.get(SIGNUPS_URL)
+
+    assert resp.status_code == 401, resp.text
+
+
+async def test_signup_trend_non_admin_returns_403(client, db_session):
+    plain = await _seed_user(db_session, "plain@example.com")
+
+    resp = await client.get(SIGNUPS_URL, headers=_auth(plain.id))
+
+    assert resp.status_code == 403, resp.text
+
+
+async def test_signup_trend_zero_fills_days_with_no_signups(client, db_session):
+    # Window of 5 days with signups on days 0, 2 and 4 — the two empty days in
+    # the middle must still come back, as count 0, so the series is continuous.
+    admin = await _seed_old_admin(db_session)
+    admin_id = admin.id
+    now = datetime.now(timezone.utc)
+
+    await _seed_user_at(db_session, "d4a@example.com", now - timedelta(days=4))
+    await _seed_user_at(db_session, "d4b@example.com", now - timedelta(days=4))
+    await _seed_user_at(db_session, "d2@example.com", now - timedelta(days=2))
+    await _seed_user_at(db_session, "d0a@example.com", now)
+    await _seed_user_at(db_session, "d0b@example.com", now)
+    await _seed_user_at(db_session, "d0c@example.com", now)
+
+    resp = await client.get(SIGNUPS_URL, params={"days": 5}, headers=_auth(admin_id))
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["days"] == 5
+
+    today = now.date()
+    expected = [
+        {"day": str(today - timedelta(days=4)), "count": 2},
+        {"day": str(today - timedelta(days=3)), "count": 0},
+        {"day": str(today - timedelta(days=2)), "count": 1},
+        {"day": str(today - timedelta(days=1)), "count": 0},
+        {"day": str(today), "count": 3},
+    ]
+    assert body["buckets"] == expected
+
+
+async def test_signup_trend_buckets_are_ascending_and_end_today(client, db_session):
+    admin = await _seed_old_admin(db_session)
+    admin_id = admin.id
+
+    resp = await client.get(SIGNUPS_URL, params={"days": 7}, headers=_auth(admin_id))
+
+    assert resp.status_code == 200, resp.text
+    days = [b["day"] for b in resp.json()["buckets"]]
+    assert len(days) == 7
+    assert days == sorted(days)
+    assert days[-1] == str(datetime.now(timezone.utc).date())
+
+
+async def test_signup_trend_defaults_to_30_days(client, db_session):
+    admin = await _seed_old_admin(db_session)
+    admin_id = admin.id
+
+    resp = await client.get(SIGNUPS_URL, headers=_auth(admin_id))
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["days"] == 30
+    assert len(body["buckets"]) == 30
+    assert all(b["count"] == 0 for b in body["buckets"])
+
+
+async def test_signup_trend_honours_explicit_days(client, db_session):
+    admin = await _seed_old_admin(db_session)
+    admin_id = admin.id
+
+    for days in (1, 5, 365):
+        resp = await client.get(SIGNUPS_URL, params={"days": days}, headers=_auth(admin_id))
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["days"] == days
+        assert len(body["buckets"]) == days
+
+
+@pytest.mark.parametrize("days", [0, -1, 366, 400, "abc"])
+async def test_signup_trend_rejects_out_of_range_days(client, db_session, days):
+    # Out-of-range windows are a 422, not a silent clamp and not a 500.
+    admin = await _seed_old_admin(db_session)
+    admin_id = admin.id
+
+    resp = await client.get(SIGNUPS_URL, params={"days": days}, headers=_auth(admin_id))
+
+    assert resp.status_code == 422, resp.text
+
+
+async def test_signup_trend_excludes_deleted_and_out_of_window_users(client, db_session):
+    admin = await _seed_old_admin(db_session)
+    admin_id = admin.id
+    now = datetime.now(timezone.utc)
+
+    # Inside the 3-day window but soft-deleted.
+    await _seed_user_at(db_session, "gone@example.com", now - timedelta(days=1), deleted_at=now)
+    # Live, but signed up before the window opens.
+    await _seed_user_at(db_session, "ancient@example.com", now - timedelta(days=4))
+    await _seed_user_at(db_session, "live@example.com", now - timedelta(days=1))
+
+    resp = await client.get(SIGNUPS_URL, params={"days": 3}, headers=_auth(admin_id))
+
+    assert resp.status_code == 200, resp.text
+    counts = [b["count"] for b in resp.json()["buckets"]]
+    assert counts == [0, 1, 0]
+
+
+async def test_signup_trend_buckets_by_utc_day_boundary(client, db_session):
+    admin = await _seed_old_admin(db_session)
+    admin_id = admin.id
+
+    today = datetime.now(timezone.utc).date()
+    yesterday = today - timedelta(days=1)
+    midnight = datetime(yesterday.year, yesterday.month, yesterday.day, tzinfo=timezone.utc)
+
+    # First and last instant of yesterday UTC both belong to yesterday's
+    # bucket; one microsecond earlier belongs to the day before.
+    await _seed_user_at(db_session, "first@example.com", midnight)
+    await _seed_user_at(
+        db_session, "last@example.com", midnight + timedelta(days=1, microseconds=-1)
+    )
+    await _seed_user_at(db_session, "prev@example.com", midnight - timedelta(microseconds=1))
+
+    resp = await client.get(SIGNUPS_URL, params={"days": 3}, headers=_auth(admin_id))
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["buckets"] == [
+        {"day": str(today - timedelta(days=2)), "count": 1},
+        {"day": str(yesterday), "count": 2},
+        {"day": str(today), "count": 0},
+    ]

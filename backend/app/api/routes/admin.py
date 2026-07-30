@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.wire import WireModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.clubs import (
@@ -20,9 +20,14 @@ from app.auth.tokens import generate_token, hash_token
 from app.config import Settings, get_settings
 from app.db.session import get_db
 from app.jobs.purge_accounts import hard_delete_users
+from app.models.club import Club
 from app.models.invite import Invite
 from app.models.magic_link_token import MagicLinkToken
+from app.models.mix import Mix
+from app.models.note import Note
+from app.models.submission import Submission
 from app.models.user import User
+from app.models.vote import Vote
 from app.models.waitlist_entry import WaitlistEntry
 from app.services.email import EmailSender, get_email_sender
 from app.services.notifications import send_waitlist_invite
@@ -228,3 +233,91 @@ async def invite_from_waitlist(
     await db.refresh(entry)
 
     return _to_waitlist_response(entry)
+
+
+# --------------------------------------------------------------------------- #
+# Metrics — aggregate counts only (technical-design §10: no user-level
+# tracking). Every value here is a COUNT over an existing table.
+# --------------------------------------------------------------------------- #
+
+
+class AdminMetricsResponse(WireModel):
+    total_users: int
+    total_clubs: int
+    active_clubs: int
+    complete_clubs: int
+    total_mixes: int
+    pending_mixes: int
+    open_submission_mixes: int
+    open_voting_mixes: int
+    closed_mixes: int
+    total_submissions: int
+    avg_submissions_per_mix: float
+    total_votes: int
+    total_notes: int
+    waitlist_total: int
+    waitlist_pending: int
+    waitlist_invited: int
+
+
+@router.get("/metrics", response_model=AdminMetricsResponse)
+async def get_metrics(
+    _admin: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AdminMetricsResponse:
+    """Platform-wide aggregate snapshot (platform-admin)."""
+    total_users = (
+        await db.scalar(select(func.count()).select_from(User).where(User.deleted_at.is_(None)))
+        or 0
+    )
+    club_counts = {
+        state: count
+        for state, count in (
+            await db.execute(select(Club.state, func.count()).group_by(Club.state))
+        ).all()
+    }
+    mix_counts = {
+        state: count
+        for state, count in (
+            await db.execute(select(Mix.state, func.count()).group_by(Mix.state))
+        ).all()
+    }
+    total_submissions = await db.scalar(select(func.count()).select_from(Submission)) or 0
+    # Averaged over mixes that actually received a submission: every club
+    # auto-creates all of its mixes up front, so dividing by total mixes would
+    # mostly measure how far ahead clubs are scheduled.
+    mixes_with_submissions = (
+        await db.scalar(select(func.count(func.distinct(Submission.mix_id)))) or 0
+    )
+    total_votes = await db.scalar(select(func.count()).select_from(Vote)) or 0
+    total_notes = await db.scalar(select(func.count()).select_from(Note)) or 0
+    waitlist_total = await db.scalar(select(func.count()).select_from(WaitlistEntry)) or 0
+    waitlist_invited = (
+        await db.scalar(
+            select(func.count())
+            .select_from(WaitlistEntry)
+            .where(WaitlistEntry.invited_at.is_not(None))
+        )
+        or 0
+    )
+
+    return AdminMetricsResponse(
+        total_users=total_users,
+        total_clubs=sum(club_counts.values()),
+        active_clubs=club_counts.get("active", 0),
+        complete_clubs=club_counts.get("complete", 0),
+        total_mixes=sum(mix_counts.values()),
+        pending_mixes=mix_counts.get("pending", 0),
+        open_submission_mixes=mix_counts.get("open_submission", 0),
+        open_voting_mixes=mix_counts.get("open_voting", 0),
+        closed_mixes=mix_counts.get("closed", 0),
+        total_submissions=total_submissions,
+        avg_submissions_per_mix=(
+            total_submissions / mixes_with_submissions if mixes_with_submissions else 0.0
+        ),
+        total_votes=total_votes,
+        total_notes=total_notes,
+        waitlist_total=waitlist_total,
+        waitlist_pending=waitlist_total - waitlist_invited,
+        waitlist_invited=waitlist_invited,
+    )

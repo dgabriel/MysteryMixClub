@@ -54,6 +54,12 @@ class UserProfileResponse(WireModel):
     # Whether the user has accepted the current Terms of Service / Privacy
     # Policy (MYS-183). Drives the frontend's consent gate.
     tos_accepted: bool
+    # Whether a password/Google identity is already set (MysteryMixClub-ali8.6)
+    # -- never the credential itself, just presence. Drives account settings:
+    # show "set password" only when there isn't one yet (POST /users/me/password
+    # 409s otherwise), and "linked" vs "link google" accordingly.
+    has_password: bool
+    google_linked: bool
 
 
 class UserProfileUpdate(WireModel):
@@ -134,6 +140,8 @@ def _to_profile(user: User, settings: Settings) -> UserProfileResponse:
         email_notifications=user.email_notifications,
         is_platform_admin=user.email.lower() in settings.seed_admin_email_set,
         tos_accepted=user.tos_accepted_at is not None,
+        has_password=user.password_hash is not None,
+        google_linked=user.google_id is not None,
     )
 
 

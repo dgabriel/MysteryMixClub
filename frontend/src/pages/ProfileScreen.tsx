@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from "react";
-import type { Club } from "../services/api";
+import { PASSWORD_MIN_LENGTH, type Club } from "../services/api";
 import { Button } from "../components/Button";
 import { TextField } from "../components/TextField";
 import { Badge } from "../components/Badge";
@@ -25,6 +25,21 @@ type ProfileScreenProps = {
   savingService: boolean;
   saveServiceError?: string | null;
   savedService: boolean;
+  hasPassword: boolean;
+  onSetPassword: (password: string) => void;
+  settingPassword: boolean;
+  setPasswordError?: string | null;
+  googleEnabled: boolean;
+  googleLinked: boolean;
+  onLinkGoogle: () => void;
+  linkingGoogle: boolean;
+  linkGoogleError?: string | null;
+  /** Calm message from returning to /profile?google_link=<outcome> (the
+   *  Google-link redirect's return leg) -- e.g. "google account linked." or an
+   *  explanation for a denial/conflict. `isError` only changes whether it reads
+   *  as a problem; it is never rendered in Rust (ADR 0004 excludes a third-party
+   *  outcome the user didn't do anything invalid to cause). */
+  googleLinkNotice?: { message: string; isError: boolean } | null;
   onLogoutAll: () => void;
   logoutAllBusy?: boolean;
   onExportData: () => void;
@@ -59,6 +74,16 @@ export function ProfileScreen({
   savingService,
   saveServiceError,
   savedService,
+  hasPassword,
+  onSetPassword,
+  settingPassword,
+  setPasswordError,
+  googleEnabled,
+  googleLinked,
+  onLinkGoogle,
+  linkingGoogle,
+  linkGoogleError,
+  googleLinkNotice,
   onLogoutAll,
   logoutAllBusy = false,
   onExportData,
@@ -113,6 +138,19 @@ export function ProfileScreen({
           />
 
           <ArchivedClubs clubs={archivedClubs} onOpenClub={onOpenClub} />
+
+          <AccountSettingsSection
+            hasPassword={hasPassword}
+            onSetPassword={onSetPassword}
+            settingPassword={settingPassword}
+            setPasswordError={setPasswordError}
+            googleEnabled={googleEnabled}
+            googleLinked={googleLinked}
+            onLinkGoogle={onLinkGoogle}
+            linkingGoogle={linkingGoogle}
+            linkGoogleError={linkGoogleError}
+            googleLinkNotice={googleLinkNotice}
+          />
 
           <section className="mt-12 border-t border-border pt-10">
             <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">security</h2>
@@ -311,6 +349,165 @@ function ArchivedClubs({
         </ul>
       )}
     </section>
+  );
+}
+
+/**
+ * Set-a-password / link-Google (MysteryMixClub-ali8.6, ADR 0007). Two
+ * independent sub-parts, each keyed off its own already-persisted flag
+ * (`hasPassword` / `googleLinked`) so a completed action swaps its form for a
+ * plain status line rather than staying interactive.
+ *
+ * No Rust here: every message (client hint, save error, link error, or the
+ * google-redirect outcome) renders in ink/muted, matching this screen's error
+ * convention -- the screen's one Rust use is already spent on the archived
+ * club accent bar.
+ */
+function AccountSettingsSection({
+  hasPassword,
+  onSetPassword,
+  settingPassword,
+  setPasswordError,
+  googleEnabled,
+  googleLinked,
+  onLinkGoogle,
+  linkingGoogle,
+  linkGoogleError,
+  googleLinkNotice,
+}: {
+  hasPassword: boolean;
+  onSetPassword: (password: string) => void;
+  settingPassword: boolean;
+  setPasswordError?: string | null;
+  googleEnabled: boolean;
+  googleLinked: boolean;
+  onLinkGoogle: () => void;
+  linkingGoogle: boolean;
+  linkGoogleError?: string | null;
+  googleLinkNotice?: { message: string; isError: boolean } | null;
+}) {
+  return (
+    <section className="mt-12 border-t border-border pt-10">
+      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
+        account settings
+      </h2>
+
+      <div className="mt-4">
+        <SetPasswordForm
+          hasPassword={hasPassword}
+          onSetPassword={onSetPassword}
+          saving={settingPassword}
+          saveError={setPasswordError}
+        />
+      </div>
+
+      {googleEnabled ? (
+        <div className="mt-8">
+          <p className="font-mono uppercase tracking-label text-[9px] text-muted">
+            google account
+          </p>
+
+          {googleLinkNotice ? (
+            <p
+              role={googleLinkNotice.isError ? "alert" : "status"}
+              className={[
+                "mt-2 font-mono text-[13px] font-light",
+                googleLinkNotice.isError ? "text-ink" : "text-muted",
+              ].join(" ")}
+            >
+              {googleLinkNotice.message}
+            </p>
+          ) : null}
+
+          {googleLinked ? (
+            <p className="mt-2 font-mono text-[13px] font-light text-muted">linked</p>
+          ) : (
+            <div className="mt-3">
+              <Button variant="ghost" type="button" onClick={onLinkGoogle} disabled={linkingGoogle}>
+                {linkingGoogle ? "connecting…" : "link google account"}
+              </Button>
+              {linkGoogleError ? (
+                <p role="alert" className="mt-3 font-mono text-[13px] text-ink">
+                  {linkGoogleError}
+                </p>
+              ) : null}
+            </div>
+          )}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function SetPasswordForm({
+  hasPassword,
+  onSetPassword,
+  saving,
+  saveError,
+}: {
+  hasPassword: boolean;
+  onSetPassword: (password: string) => void;
+  saving: boolean;
+  saveError?: string | null;
+}) {
+  const [password, setPassword] = useState("");
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!password) return;
+    onSetPassword(password);
+  }
+
+  if (hasPassword) {
+    return (
+      <>
+        <p className="font-mono uppercase tracking-label text-[9px] text-muted">password</p>
+        <p className="mt-2 font-mono text-[13px] font-light text-muted">password set</p>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <p className="font-mono uppercase tracking-label text-[9px] text-muted">password</p>
+      <p className="mt-1 font-mono text-[13px] font-light text-muted">
+        add a password so you can sign in without a magic link.
+      </p>
+      <form onSubmit={handleSubmit} noValidate className="mt-4 space-y-3">
+        <div>
+          <TextField
+            id="profile-set-password"
+            label="new password"
+            type="password"
+            name="new-password"
+            autoComplete="new-password"
+            revealToggle
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={saving}
+            aria-describedby={saveError ? "profile-set-password-error" : "profile-set-password-hint"}
+          />
+          {saveError ? (
+            <p
+              id="profile-set-password-error"
+              role="alert"
+              className="mt-2 font-mono text-[13px] text-ink"
+            >
+              {saveError}
+            </p>
+          ) : (
+            <p id="profile-set-password-hint" className="mt-2 font-mono text-[11px] font-light text-muted">
+              {PASSWORD_MIN_LENGTH} characters or more.
+            </p>
+          )}
+        </div>
+        <div>
+          <Button type="submit" disabled={saving || !password}>
+            {saving ? "saving…" : "set password"}
+          </Button>
+        </div>
+      </form>
+    </>
   );
 }
 

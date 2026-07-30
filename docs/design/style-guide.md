@@ -52,12 +52,14 @@
 | Label           | DM Mono               | 9–11px | 400     | ALL CAPS, letter-spacing 0.15em  |
 | UI / Buttons    | DM Mono               | 11px   | 400     | ALL CAPS, letter-spacing 0.12em  |
 | Accent          | DM Mono               | 11px   | 400     | Rust color, underline, links     |
+| Data / Stat value | DM Mono             | 16px   | 400     | Numeric values paired with a Label stat (admin metrics, etc.) |
 
 ### Rules
 
 - Labels and buttons are always ALL CAPS with generous letter-spacing.
 - Body text uses light weight (300) — avoid medium or bold in running copy.
 - Italic display is reserved for secondary information — don't compete with display upright on the same screen.
+- Data / Stat value sits deliberately between Body (13px) and Display — it exists so a Label (9px) + value pairing has enough size contrast to scan at a glance when a screen's entire content is numbers.
 
 ---
 

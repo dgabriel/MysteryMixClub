@@ -9,8 +9,12 @@ import { RouteFallback } from "./components/RouteFallback";
 // Lazy-loaded (MYS-240): everything except the /login entry point itself,
 // which is the page Lighthouse audits and the one that must not wait on
 // chunks it doesn't need. Cuts unused JS out of that first bundle.
-const AboutRoute = lazy(() => import("./pages/AboutRoute").then((m) => ({ default: m.AboutRoute })));
-const TermsRoute = lazy(() => import("./pages/TermsRoute").then((m) => ({ default: m.TermsRoute })));
+const AboutRoute = lazy(() =>
+  import("./pages/AboutRoute").then((m) => ({ default: m.AboutRoute })),
+);
+const TermsRoute = lazy(() =>
+  import("./pages/TermsRoute").then((m) => ({ default: m.TermsRoute })),
+);
 const PrivacyRoute = lazy(() =>
   import("./pages/PrivacyRoute").then((m) => ({ default: m.PrivacyRoute })),
 );
@@ -37,7 +41,12 @@ const MixDetailRoute = lazy(() =>
 const JoinClubRoute = lazy(() =>
   import("./pages/JoinClubRoute").then((m) => ({ default: m.JoinClubRoute })),
 );
-const AdminRoute = lazy(() => import("./pages/AdminRoute").then((m) => ({ default: m.AdminRoute })));
+const AdminRoute = lazy(() =>
+  import("./pages/AdminRoute").then((m) => ({ default: m.AdminRoute })),
+);
+const AdminMetricsRoute = lazy(() =>
+  import("./pages/AdminMetricsRoute").then((m) => ({ default: m.AdminMetricsRoute })),
+);
 const ProfileRoute = lazy(() =>
   import("./pages/ProfileRoute").then((m) => ({ default: m.ProfileRoute })),
 );
@@ -68,6 +77,8 @@ const ProfileRoute = lazy(() =>
  *                    nav's back link
  *     /profile     → edit display name + archived (completed) clubs
  *     /admin       → platform-admin only (self-guards non-admins → /home)
+ *     /admin/metrics → platform-admin only; read-only platform snapshot,
+ *                    self-guarded the same way as /admin
  *
  *   /clubs/new     → protected but OUTSIDE the nav shell — a focused create form
  *                    with its own cancel affordance (not in the nav's screen set).
@@ -127,6 +138,7 @@ const router = createBrowserRouter([
       { path: "/rounds/:id", element: <LegacyPathRedirect prefix="mixes" /> },
       { path: "/profile", element: withSuspense(<ProfileRoute />) },
       { path: "/admin", element: withSuspense(<AdminRoute />) },
+      { path: "/admin/metrics", element: withSuspense(<AdminMetricsRoute />) },
     ],
   },
 

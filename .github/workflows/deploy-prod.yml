@@ -5,6 +5,13 @@ on:
     branches:
       - main
 
+# Least-privilege GITHUB_TOKEN (code scanning #4): build-frontend only checks
+# out code and uploads a build artifact; deploy runs scripts/deploy-prod.sh
+# on the runner itself and downloads that artifact. No repo-write API calls
+# anywhere in this workflow.
+permissions:
+  contents: read
+
 # Never run two production deploys concurrently.
 concurrency:
   group: deploy-prod

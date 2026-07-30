@@ -22,7 +22,9 @@ import {
   refresh,
   removeMember,
   requestMagicLink,
+  setPassword,
   setStoredAccessToken,
+  startGoogleLink,
   updateDisplayName,
   updateClub,
   updateMemberRole,
@@ -454,6 +456,74 @@ describe("api.ts", () => {
       const err = await updateDisplayName("x".repeat(100)).catch((e: unknown) => e);
       expect(err).toBeInstanceOf(ApiError);
       expect(err).toMatchObject({ status: 422, message: "display name too long" });
+    });
+  });
+
+  describe("setPassword", () => {
+    it("POSTs /api/v1/users/me/password with a JSON body and returns the parsed message on 201", async () => {
+      setStoredAccessToken("my-token");
+      const fetchMock = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(jsonResponse(201, { message: "password set" }));
+
+      await expect(setPassword("a-strong-password")).resolves.toEqual({
+        message: "password set",
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(`${API_BASE}/api/v1/users/me/password`);
+      expect(init?.method).toBe("POST");
+      expect(init?.credentials).toBe("include");
+      expect(init?.body).toBe(JSON.stringify({ password: "a-strong-password" }));
+      const headers = new Headers(init?.headers);
+      expect(headers.get("Content-Type")).toBe("application/json");
+      expect(headers.get("Authorization")).toBe("Bearer my-token");
+    });
+
+    it("throws ApiError with the backend detail on a 409 (already set)", async () => {
+      setStoredAccessToken("my-token");
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse(409, { detail: "a password is already set on this account" }),
+      );
+
+      const err = await setPassword("a-strong-password").catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err).toMatchObject({ status: 409, message: "a password is already set on this account" });
+    });
+  });
+
+  describe("startGoogleLink", () => {
+    it("GETs /api/v1/users/me/google/link (Bearer + credentials) and resolves the authorize_url", async () => {
+      setStoredAccessToken("my-token");
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse(200, { authorize_url: "https://accounts.google.com/o/oauth2/v2/auth?state=x" }),
+      );
+
+      await expect(startGoogleLink()).resolves.toEqual({
+        authorize_url: "https://accounts.google.com/o/oauth2/v2/auth?state=x",
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(`${API_BASE}/api/v1/users/me/google/link`);
+      expect(init?.credentials).toBe("include");
+      const headers = new Headers(init?.headers);
+      expect(headers.get("Authorization")).toBe("Bearer my-token");
+    });
+
+    it("throws ApiError with the backend detail on a 404 (google not configured)", async () => {
+      setStoredAccessToken("my-token");
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse(404, { detail: "google sign-in is not configured on this server" }),
+      );
+
+      const err = await startGoogleLink().catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err).toMatchObject({
+        status: 404,
+        message: "google sign-in is not configured on this server",
+      });
     });
   });
 

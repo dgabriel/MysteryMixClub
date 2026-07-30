@@ -1,14 +1,27 @@
+import asyncio
 from datetime import datetime, timezone
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import StringConstraints, model_validator
+from fastapi import APIRouter, Depends, HTTPException, Response, status
+from pydantic import Field, StringConstraints, model_validator
 
 from app.api.wire import WireModel
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.routes.auth import (
+    _GOOGLE_NONCE_COOKIE_NAME,
+    _GOOGLE_NONCE_COOKIE_PATH,
+    _GOOGLE_NONCE_MAX_AGE,
+    _GOOGLE_NONCE_SAMESITE,
+    _GOOGLE_UNCONFIGURED_MESSAGE,
+    _PASSWORD_MAX_LENGTH,
+    _PASSWORD_MIN_LENGTH,
+)
 from app.auth.deps import get_current_user
+from app.auth.jwt import create_google_link_state
+from app.auth.passwords import hash_password
+from app.auth.tokens import generate_token
 from app.config import Settings, get_settings
 from app.db.session import get_db
 from app.models.club import Club
@@ -20,6 +33,7 @@ from app.models.session import Session
 from app.models.submission import Submission
 from app.models.user import User
 from app.models.vote import Vote
+from app.services.google_oauth import GoogleOAuthClient, get_google_oauth_client
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -271,3 +285,94 @@ async def delete_me(
     )
 
     await db.commit()
+
+
+# --------------------------------------------------------------------------- #
+# Account settings: opt an existing account into password / Google sign-in
+# (MysteryMixClub-ali8.4, ADR 0007). No forced migration -- an account that
+# never calls these keeps working exactly as it does today.
+# --------------------------------------------------------------------------- #
+
+_PASSWORD_ALREADY_SET_MESSAGE = (
+    "a password is already set on this account -- use forgot-password to change it"
+)
+
+
+class SetPasswordRequest(WireModel):
+    password: str = Field(min_length=_PASSWORD_MIN_LENGTH, max_length=_PASSWORD_MAX_LENGTH)
+
+
+class SetPasswordResponse(WireModel):
+    message: str = "password set"
+
+
+class GoogleLinkStartResponse(WireModel):
+    authorize_url: str
+
+
+@router.post(
+    "/me/password", response_model=SetPasswordResponse, status_code=status.HTTP_201_CREATED
+)
+async def set_password(
+    payload: SetPasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> SetPasswordResponse:
+    """Opt an existing magic-link/Google-only account into password sign-in.
+
+    Only for an account with no password yet. Changing an existing password
+    goes through /auth/forgot-password + /auth/reset-password instead, which
+    also invalidates every other session the way a credential change should --
+    this endpoint doesn't, since setting a *first* password from an
+    already-signed-in session isn't a compromise-recovery action.
+    """
+    if current_user.password_hash is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=_PASSWORD_ALREADY_SET_MESSAGE
+        )
+
+    # Off the event loop, same reason as every other argon2 hash in this app
+    # (app/api/routes/auth.py): a synchronous hash would block every other
+    # request on this worker for its whole duration.
+    current_user.password_hash = await asyncio.to_thread(hash_password, payload.password)
+    await db.commit()
+    return SetPasswordResponse()
+
+
+@router.get("/me/google/link", response_model=GoogleLinkStartResponse)
+async def start_google_link(
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+    client: GoogleOAuthClient = Depends(get_google_oauth_client),
+) -> GoogleLinkStartResponse:
+    """Start linking a Google identity onto the caller's existing account.
+
+    Returns Google's consent URL as JSON (like /spotify/connect) rather than
+    redirecting directly: this is an authenticated fetch call carrying a Bearer
+    token, and a top-level browser navigation can't carry one, so the frontend
+    does the actual redirect to ``authorize_url`` itself once it has it.
+
+    Sets the same anti-CSRF nonce cookie the sign-in flow uses (shared cookie
+    name/path -- only one Google round-trip is ever in flight per browser at a
+    time), which /auth/google/callback checks against this state's nonce
+    before linking anything (see create_google_link_state's docstring for why
+    that check matters here specifically).
+    """
+    if not client.is_configured:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=_GOOGLE_UNCONFIGURED_MESSAGE
+        )
+
+    nonce = generate_token()
+    state = create_google_link_state(current_user.id, nonce)
+    response.set_cookie(
+        key=_GOOGLE_NONCE_COOKIE_NAME,
+        value=nonce,
+        max_age=_GOOGLE_NONCE_MAX_AGE,
+        path=_GOOGLE_NONCE_COOKIE_PATH,
+        httponly=True,
+        samesite=_GOOGLE_NONCE_SAMESITE,
+        secure=settings.secure_cookies,
+    )
+    return GoogleLinkStartResponse(authorize_url=client.authorize_url(state))

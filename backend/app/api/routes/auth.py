@@ -28,7 +28,13 @@ from app.api.routes.invites import (
     _CLUB_MEMBER_CAP,
     _join_via_invite,
 )
-from app.auth.jwt import JWTError, create_access_token, create_sign_in_state, decode_sign_in_state
+from app.auth.jwt import (
+    JWTError,
+    create_access_token,
+    create_sign_in_state,
+    decode_google_link_state,
+    decode_sign_in_state,
+)
 from app.auth.passwords import hash_password, verify_password
 from app.auth.tokens import generate_token, hash_token
 from app.config import Settings, get_settings
@@ -796,6 +802,30 @@ def _google_redirect(settings: Settings, outcome: str) -> RedirectResponse:
     return response
 
 
+def _google_link_redirect(settings: Settings, outcome: str) -> RedirectResponse:
+    """Bounce back to account settings with an outcome flag
+    (MysteryMixClub-ali8.4) -- the account-link counterpart of
+    :func:`_google_redirect`. Lands on ``/profile`` instead of ``/login``: the
+    caller is already authenticated and isn't switching identity, just adding
+    one, so there's no reason to send them through the login screen.
+
+    Same cookie-clearing contract as :func:`_google_redirect` (shared cookie
+    name/path -- only one Google round-trip is ever in flight per browser).
+    """
+    response = RedirectResponse(
+        url=f"{settings.app_base_url.rstrip('/')}/profile?google_link={outcome}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+    response.delete_cookie(
+        key=_GOOGLE_NONCE_COOKIE_NAME,
+        path=_GOOGLE_NONCE_COOKIE_PATH,
+        httponly=True,
+        samesite=_GOOGLE_NONCE_SAMESITE,
+        secure=settings.secure_cookies,
+    )
+    return response
+
+
 @router.get("/google/enabled", response_model=GoogleEnabledResponse)
 async def google_enabled(
     client: GoogleOAuthClient = Depends(get_google_oauth_client),
@@ -864,27 +894,49 @@ async def google_callback(
     user_agent: str | None = Header(default=None),
     google_oauth_nonce: str | None = Cookie(default=None, alias=_GOOGLE_NONCE_COOKIE_NAME),
 ) -> RedirectResponse:
-    """Google redirects here after consent.
+    """Google redirects here after consent -- for BOTH the sign-in flow
+    (MysteryMixClub-ali8.2) and the authenticated account-link flow
+    (MysteryMixClub-ali8.4). One endpoint, not two: registering a second
+    redirect URI with Google is a real OAuth-console + per-environment-secret
+    change for what's otherwise the exact same code-exchange mechanism, so the
+    two flows are told apart by which state type ``state`` decodes as instead.
 
     Validates state against the browser's nonce cookie, exchanges the code,
-    resolves the Google identity to an account, and lands the user back on the
-    SPA with a session cookie set.
+    then either resolves/creates an account and signs in (sign-in state) or
+    links the identity onto the already-authenticated account that started the
+    flow (link state, MysteryMixClub-ali8.4) -- the link path issues no new
+    session; the caller's existing one is untouched.
     """
     if not client.is_configured:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=_GOOGLE_UNCONFIGURED_MESSAGE
         )
 
+    sign_in_state = None
+    link_state = None
+    if state:
+        try:
+            sign_in_state = decode_sign_in_state(state)
+        except JWTError:
+            try:
+                link_state = decode_google_link_state(state)
+            except JWTError:
+                pass  # neither decode worked; handled by the invalid_state check below
+
+    def _redirect(outcome: str) -> RedirectResponse:
+        if link_state is not None:
+            return _google_link_redirect(settings, outcome)
+        return _google_redirect(settings, outcome)
+
     if error or not code or not state:
         logger.info("google callback: denied or missing code/state (error=%s)", _log_safe(error))
-        return _google_redirect(settings, "denied")
+        return _redirect("denied")
 
-    try:
-        sign_in_state = decode_sign_in_state(state)
-    except JWTError:
+    if sign_in_state is None and link_state is None:
         logger.warning("google callback: state failed verification")
-        return _google_redirect(settings, "invalid_state")
+        return _redirect("invalid_state")
 
+    nonce = sign_in_state.nonce if sign_in_state is not None else link_state.nonce  # type: ignore[union-attr]
     # Constant-time compare: the nonce is a secret the attacker is trying to
     # guess. The cookie is fully attacker-controlled, and compare_digest raises
     # TypeError on a non-ASCII str, so a non-ASCII value has to be rejected as
@@ -892,24 +944,33 @@ async def google_callback(
     if (
         google_oauth_nonce is None
         or not google_oauth_nonce.isascii()
-        or not secrets.compare_digest(google_oauth_nonce, sign_in_state.nonce)
+        or not secrets.compare_digest(google_oauth_nonce, nonce)
     ):
         logger.warning("google callback: state nonce did not match the browser cookie")
-        return _google_redirect(settings, "invalid_state")
+        return _redirect("invalid_state")
 
     try:
         access_token = await client.exchange_code(code)
         identity = await client.fetch_identity(access_token)
     except (GoogleAuthError, GoogleApiError):
         logger.exception("google callback: code exchange or userinfo lookup failed")
-        return _google_redirect(settings, "exchange_failed")
+        return _redirect("exchange_failed")
 
     if not identity.email_verified:
         # An unverified Google address proves nothing about who owns that
-        # mailbox, so it must never match or create an account here.
+        # mailbox, so it must never match, create, or link an account here.
         logger.warning("google callback: refusing an unverified google email")
-        return _google_redirect(settings, "email_unverified")
+        return _redirect("email_unverified")
 
+    if link_state is not None:
+        outcome = await _link_google_identity(db, link_state.user_id, identity.subject)
+        await db.commit()
+        return _redirect(outcome)
+
+    # link_state was None past the check above, and the earlier "neither
+    # decoded" check already ruled out both being None -- so sign_in_state is
+    # guaranteed set here. Asserted for mypy and as a runtime guard.
+    assert sign_in_state is not None
     now = datetime.now(timezone.utc)
     email = identity.email.lower()
 
@@ -921,7 +982,7 @@ async def google_callback(
         # The shared invite-gate helpers raise HTTP errors, but this is a
         # top-level navigation — translate to a landing the user can read.
         logger.info("google callback: sign-up rejected (%s)", exc.detail)
-        return _google_redirect(settings, _GOOGLE_SIGNUP_OUTCOMES.get(exc.detail, "error"))
+        return _redirect(_GOOGLE_SIGNUP_OUTCOMES.get(exc.detail, "error"))
 
     user_id = user.id
     # The access token is deliberately discarded rather than put in the redirect
@@ -941,7 +1002,7 @@ async def google_callback(
             welcome_email[1],
         )
 
-    response = _google_redirect(settings, "ok")
+    response = _redirect("ok")
     _set_refresh_cookie(response, raw_refresh_token, settings)
     return response
 
@@ -1000,6 +1061,41 @@ async def _resolve_google_account(
     user_id = user.id
     welcome_email = await _join_invite_club(db, user_id, invite_row)
     return user, welcome_email
+
+
+async def _link_google_identity(db: AsyncSession, user_id: uuid.UUID, google_subject: str) -> str:
+    """Link ``google_subject`` onto ``user_id``'s account (MysteryMixClub-ali8.4).
+
+    Returns an outcome flag for the settings-page redirect:
+
+    - ``"linked"`` — success.
+    - ``"already_linked_elsewhere"`` — the identity belongs to a *different*
+      account. Google won't verify one address for two accounts, but two
+      different Google accounts can still collide with our side by
+      coincidence, so this is a real, reachable case, not defensive-only.
+    - ``"error"`` — the account was deleted mid-flow.
+    """
+    user = await db.scalar(select(User).where(User.id == user_id, User.deleted_at.is_(None)))
+    if user is None:
+        return "error"
+
+    conflicting_owner = await db.scalar(
+        select(User.id).where(User.google_id == google_subject, User.id != user_id)
+    )
+    if conflicting_owner is not None:
+        return "already_linked_elsewhere"
+
+    if user.google_id is not None and user.google_id != google_subject:
+        # Replacing a live link, not filling in a blank one -- same
+        # notable-enough-to-log case _resolve_google_account treats this way.
+        logger.warning(
+            "google link: relinking user %s from google_id %s to %s",
+            user_id,
+            user.google_id,
+            google_subject,
+        )
+    user.google_id = google_subject
+    return "linked"
 
 
 @router.post("/refresh", response_model=VerifyResponse)

@@ -12,12 +12,15 @@ __all__ = [
     "JWTError",
     "OAuthState",
     "SignInState",
+    "GoogleLinkState",
     "create_access_token",
     "decode_access_token",
     "create_oauth_state",
     "decode_oauth_state",
     "create_sign_in_state",
     "decode_sign_in_state",
+    "create_google_link_state",
+    "decode_google_link_state",
     "create_unsubscribe_token",
     "decode_unsubscribe_token",
 ]
@@ -38,6 +41,15 @@ class SignInState(NamedTuple):
 
     nonce: str
     invite_token: str | None
+
+
+class GoogleLinkState(NamedTuple):
+    """Decoded Google-account-link state (MysteryMixClub-ali8.4): which
+    already-authenticated user started the link, plus the anti-CSRF nonce the
+    callback matches against the browser's cookie."""
+
+    user_id: uuid.UUID
+    nonce: str
 
 
 # Access tokens are short-lived JWTs (TD 5): 60-minute expiry, HS256, signed
@@ -157,6 +169,54 @@ def decode_sign_in_state(token: str) -> SignInState:
         raise JWTError("missing or invalid nonce claim")
     invite = claims.get("invite")
     return SignInState(nonce=nonce, invite_token=invite if isinstance(invite, str) else None)
+
+
+def create_google_link_state(user_id: uuid.UUID, nonce: str) -> str:
+    """Return a signed, 10-minute state token for linking a Google identity onto
+    an already-authenticated account (MysteryMixClub-ali8.4, ADR 0007).
+
+    Distinct from :func:`create_sign_in_state` (which carries no user — nobody's
+    signed in yet there) and from :func:`create_oauth_state` (which has no
+    nonce). This flow needs the nonce the same way sign-in does: without it, an
+    attacker could start their own link flow (binding it to their own account
+    via the signed ``sub``), trick a victim into finishing it with the victim's
+    Google account, and end up with the victim's Google identity linked onto
+    the ATTACKER's account — after which "Sign in with Google" using that
+    Google account lands the victim in the attacker's account. The nonce
+    closes that: only the browser that started the flow can complete it.
+    """
+    now = datetime.now(timezone.utc)
+    claims = {
+        "sub": str(user_id),
+        "nonce": nonce,
+        "purpose": "google_link",
+        "iat": int(now.timestamp()),
+        "exp": int((now + _OAUTH_STATE_TTL).timestamp()),
+    }
+    return jwt.encode(claims, get_settings().secret_key, algorithm=_ALGORITHM)
+
+
+def decode_google_link_state(token: str) -> GoogleLinkState:
+    """Verify a Google-link state token and return its user id + nonce.
+
+    Raises ``jose.JWTError`` on any failure: malformed, bad signature, expired,
+    a ``purpose`` that isn't ``"google_link"``, or a missing/invalid ``sub`` or
+    ``nonce``.
+    """
+    claims = jwt.decode(token, get_settings().secret_key, algorithms=[_ALGORITHM])
+    if claims.get("purpose") != "google_link":
+        raise JWTError("google-link state purpose mismatch")
+    sub = claims.get("sub")
+    if not isinstance(sub, str):
+        raise JWTError("missing or invalid subject claim")
+    try:
+        user_id = uuid.UUID(sub)
+    except ValueError as exc:
+        raise JWTError("subject claim is not a valid user id") from exc
+    nonce = claims.get("nonce")
+    if not isinstance(nonce, str) or not nonce:
+        raise JWTError("missing or invalid nonce claim")
+    return GoogleLinkState(user_id=user_id, nonce=nonce)
 
 
 def create_unsubscribe_token(user_id: uuid.UUID) -> str:

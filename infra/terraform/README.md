@@ -7,6 +7,9 @@ infra/terraform/
   modules/droplet-app/   shared module: droplet + firewall + reserved IP + DNS + monitor alerts + project
   envs/staging/          wires the module to the *existing* staging droplet (id 577618725)
   envs/prod/             droplet-shaped prod (MYS-213/MYS-225) — NOT App Platform, applied and live
+  envs/bootstrap/        one-off, permanently-local-state config: provisions the
+                          `mmc-tfstate` Spaces bucket + access key that staging/prod
+                          use as their remote-state backend (MYS-229)
 ```
 
 Both environments consume the same module; the only differences are data
@@ -193,3 +196,37 @@ terraform {
 
 Spaces access keys go in `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` env vars,
 never in the block.
+
+### Bootstrap: create the bucket, then migrate state (MYS-229, not yet applied)
+
+The backend blocks above are already wired into `envs/staging/main.tf` and
+`envs/prod/main.tf`. The bucket itself is code (`envs/bootstrap/`) but
+**not yet created** — review, then run yourself with a write-scoped token.
+`envs/bootstrap` stays on local state permanently (see the comment in its
+`main.tf`): you can't back a config with a bucket that config itself creates.
+
+```bash
+cd envs/bootstrap
+export DIGITALOCEAN_TOKEN=...          # write-scoped
+tofu init
+tofu plan                              # review: 1 bucket + 1 key to add
+tofu apply                             # creates a real, billed Spaces bucket (~$5/mo, shared with MYS-232's later offsite dumps)
+tofu output -raw access_key_id         # do not paste the value into chat/commits
+tofu output -raw secret_access_key
+```
+
+Then, per env, point existing local state at the new backend (one-way —
+back up the local `.tfstate` first):
+
+```bash
+cd envs/staging   # repeat for envs/prod with its own AWS_* keys if rotated separately
+export DIGITALOCEAN_TOKEN=...
+export AWS_ACCESS_KEY_ID=...           # from the bootstrap output above
+export AWS_SECRET_ACCESS_KEY=...
+cp terraform.tfstate terraform.tfstate.pre-migrate.bak   # belt-and-suspenders local backup
+tofu init -migrate-state
+tofu plan                              # MUST show "No changes" — confirms the migrated state matches reality
+```
+
+Repeat the `envs/staging` block for `envs/prod` (same bucket, `key =
+"prod/terraform.tfstate"` already set in its backend block — no collision).

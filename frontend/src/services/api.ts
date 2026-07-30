@@ -52,6 +52,11 @@ export type UserProfile = {
   /** True once the user has accepted the current Terms of Service / Privacy
    *  Policy (MYS-183). Drives the onboarding/consent gate. */
   tos_accepted: boolean;
+  /** Whether a password is already set (MysteryMixClub-ali8.6) -- never the
+   *  password itself, just presence. POST /users/me/password 409s once true. */
+  has_password: boolean;
+  /** Whether a Google identity is already linked (MysteryMixClub-ali8.6). */
+  google_linked: boolean;
 };
 
 class ApiError extends Error {
@@ -383,6 +388,35 @@ export async function updatePreferredService(
     throw new ApiError(res.status, await readErrorMessage(res));
   }
   return (await res.json()) as UserProfile;
+}
+
+/** Set a password on an account that doesn't have one yet
+ *  (MysteryMixClub-ali8.4/ali8.6, ADR 0007). Throws 409 (via ApiError) if one
+ *  is already set -- use forgotPassword/resetPassword to change it instead. */
+export async function setPassword(password: string): Promise<{ message: string }> {
+  const res = await authenticatedRequest("/api/v1/users/me/password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password }),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as { message: string };
+}
+
+/** Begin linking a Google identity onto the current account
+ *  (MysteryMixClub-ali8.4/ali8.6, ADR 0007): returns Google's consent URL to
+ *  redirect to. Mirrors connectSpotify's shape -- an authenticated fetch
+ *  call, not a direct link, since a top-level navigation can't carry the
+ *  Bearer token; the caller does `window.location.href = authorize_url`
+ *  itself once it has the response. */
+export async function startGoogleLink(): Promise<{ authorize_url: string }> {
+  const res = await authenticatedRequest("/api/v1/users/me/google/link");
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as { authorize_url: string };
 }
 
 /** Delete the current user's account (right to be forgotten). Throws 409 if

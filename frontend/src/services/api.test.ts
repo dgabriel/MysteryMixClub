@@ -359,6 +359,8 @@ describe("api.ts", () => {
       preferred_service: "spotify",
       is_platform_admin: false,
       tos_accepted: true,
+      has_password: false,
+      google_linked: false,
     };
 
     it("GETs /api/v1/users/me (Bearer + credentials) and resolves the parsed profile on 200", async () => {
@@ -422,6 +424,8 @@ describe("api.ts", () => {
       preferred_service: null,
       is_platform_admin: false,
       tos_accepted: true,
+      has_password: false,
+      google_linked: false,
     };
 
     it("PATCHes /api/v1/users/me with a JSON body and returns the parsed profile on 200", async () => {

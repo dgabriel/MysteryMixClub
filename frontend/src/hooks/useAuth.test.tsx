@@ -34,6 +34,8 @@ function profileWith(displayName: string): UserProfile {
     preferred_service: null,
     is_platform_admin: false,
     tos_accepted: true,
+    has_password: false,
+    google_linked: false,
   };
 }
 

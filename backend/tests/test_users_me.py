@@ -143,6 +143,8 @@ async def test_get_me_returns_exact_profile_shape(client, db_session):
         "email_notifications",
         "is_platform_admin",
         "tos_accepted",
+        "has_password",
+        "google_linked",
     }
     assert body["id"] == str(user_id)
     assert body["display_name"] == "Bob"
@@ -152,6 +154,9 @@ async def test_get_me_returns_exact_profile_shape(client, db_session):
     assert body["is_platform_admin"] is False
     # A fresh user has not accepted the Terms/Privacy Policy yet (MYS-183).
     assert body["tos_accepted"] is False
+    # A fresh magic-link-only account has neither (MysteryMixClub-ali8.6).
+    assert body["has_password"] is False
+    assert body["google_linked"] is False
 
 
 async def test_get_me_includes_user_id(client, db_session):

@@ -51,6 +51,7 @@ from app.services.google_oauth import (
     GoogleApiError,
     GoogleAuthError,
     GoogleOAuthClient,
+    generate_pkce_pair,
     get_google_oauth_client,
 )
 from app.services.notifications import queue_club_joined
@@ -855,6 +856,10 @@ async def google_login(
     ``invite_token`` rides through the round-trip inside the signed state so a
     brand-new account can still be invite-gated on the way back (ADR 0007: every
     new signup goes through the invite gate, whichever method it uses).
+
+    Also carries a PKCE challenge (MysteryMixClub-ali8.7) so the code
+    exchange can only be completed by whoever holds the matching verifier,
+    which never leaves the server.
     """
     if not client.is_configured:
         raise HTTPException(
@@ -862,8 +867,11 @@ async def google_login(
         )
 
     nonce = generate_token()
+    code_verifier, code_challenge = generate_pkce_pair()
     response = RedirectResponse(
-        url=client.authorize_url(create_sign_in_state(nonce, invite_token)),
+        url=client.authorize_url(
+            create_sign_in_state(nonce, code_verifier, invite_token), code_challenge
+        ),
         status_code=status.HTTP_302_FOUND,
     )
     # The nonce's other half. The callback requires this cookie to match the
@@ -949,8 +957,14 @@ async def google_callback(
         logger.warning("google callback: state nonce did not match the browser cookie")
         return _redirect("invalid_state")
 
+    # PKCE (MysteryMixClub-ali8.7): sent back to Google alongside the code so
+    # it can verify this exchange is completing the same flow that requested
+    # the code, not a replay from a separately-leaked code.
+    code_verifier = (
+        sign_in_state.code_verifier if sign_in_state is not None else link_state.code_verifier  # type: ignore[union-attr]
+    )
     try:
-        access_token = await client.exchange_code(code)
+        access_token = await client.exchange_code(code, code_verifier)
         identity = await client.fetch_identity(access_token)
     except (GoogleAuthError, GoogleApiError):
         logger.exception("google callback: code exchange or userinfo lookup failed")

@@ -36,20 +36,25 @@ class OAuthState(NamedTuple):
 
 class SignInState(NamedTuple):
     """Decoded sign-in OAuth-state: the anti-CSRF nonce the callback matches
-    against the browser's cookie, plus the invite token (if any) that has to
-    survive the round-trip so a brand-new account can still be invite-gated."""
+    against the browser's cookie, the invite token (if any) that has to
+    survive the round-trip so a brand-new account can still be invite-gated,
+    and the PKCE code_verifier (MysteryMixClub-ali8.7) the callback sends back
+    to Google alongside the authorization code."""
 
     nonce: str
     invite_token: str | None
+    code_verifier: str
 
 
 class GoogleLinkState(NamedTuple):
     """Decoded Google-account-link state (MysteryMixClub-ali8.4): which
-    already-authenticated user started the link, plus the anti-CSRF nonce the
-    callback matches against the browser's cookie."""
+    already-authenticated user started the link, the anti-CSRF nonce the
+    callback matches against the browser's cookie, and the PKCE code_verifier
+    (MysteryMixClub-ali8.7) the callback sends back to Google."""
 
     user_id: uuid.UUID
     nonce: str
+    code_verifier: str
 
 
 # Access tokens are short-lived JWTs (TD 5): 60-minute expiry, HS256, signed
@@ -128,7 +133,7 @@ def decode_oauth_state(token: str, purpose: str) -> OAuthState:
     return OAuthState(user_id=user_id, return_to=rt if isinstance(rt, str) else None)
 
 
-def create_sign_in_state(nonce: str, invite_token: str | None = None) -> str:
+def create_sign_in_state(nonce: str, code_verifier: str, invite_token: str | None = None) -> str:
     """Return a signed, 10-minute state token for a sign-in OAuth round-trip
     (ADR 0007).
 
@@ -142,10 +147,17 @@ def create_sign_in_state(nonce: str, invite_token: str | None = None) -> str:
     flow and feed a victim the resulting callback URL. ``nonce`` is what closes
     that: the caller also drops it in a cookie and the callback requires the two
     to match, so the flow can only be finished by the browser that began it.
+
+    ``code_verifier`` is PKCE's code-to-flow binding (MysteryMixClub-ali8.7,
+    see :func:`app.services.google_oauth.generate_pkce_pair`) — carried here
+    the same way ``invite_token`` is, since the callback needs it back to
+    complete the token exchange and this state is the only thing that survives
+    the round-trip to Google and back.
     """
     now = datetime.now(timezone.utc)
     claims = {
         "nonce": nonce,
+        "cv": code_verifier,
         "purpose": "sign_in",
         "iat": int(now.timestamp()),
         "exp": int((now + _OAUTH_STATE_TTL).timestamp()),
@@ -156,10 +168,12 @@ def create_sign_in_state(nonce: str, invite_token: str | None = None) -> str:
 
 
 def decode_sign_in_state(token: str) -> SignInState:
-    """Verify a sign-in state token and return its nonce + optional invite token.
+    """Verify a sign-in state token and return its nonce, code_verifier, and
+    optional invite token.
 
     Raises ``jose.JWTError`` on any failure: malformed, bad signature, expired,
-    a ``purpose`` that isn't ``"sign_in"``, or a missing/invalid nonce.
+    a ``purpose`` that isn't ``"sign_in"``, or a missing/invalid nonce or
+    code_verifier.
     """
     claims = jwt.decode(token, get_settings().secret_key, algorithms=[_ALGORITHM])
     if claims.get("purpose") != "sign_in":
@@ -167,11 +181,18 @@ def decode_sign_in_state(token: str) -> SignInState:
     nonce = claims.get("nonce")
     if not isinstance(nonce, str) or not nonce:
         raise JWTError("missing or invalid nonce claim")
+    code_verifier = claims.get("cv")
+    if not isinstance(code_verifier, str) or not code_verifier:
+        raise JWTError("missing or invalid code_verifier claim")
     invite = claims.get("invite")
-    return SignInState(nonce=nonce, invite_token=invite if isinstance(invite, str) else None)
+    return SignInState(
+        nonce=nonce,
+        invite_token=invite if isinstance(invite, str) else None,
+        code_verifier=code_verifier,
+    )
 
 
-def create_google_link_state(user_id: uuid.UUID, nonce: str) -> str:
+def create_google_link_state(user_id: uuid.UUID, nonce: str, code_verifier: str) -> str:
     """Return a signed, 10-minute state token for linking a Google identity onto
     an already-authenticated account (MysteryMixClub-ali8.4, ADR 0007).
 
@@ -184,11 +205,16 @@ def create_google_link_state(user_id: uuid.UUID, nonce: str) -> str:
     the ATTACKER's account — after which "Sign in with Google" using that
     Google account lands the victim in the attacker's account. The nonce
     closes that: only the browser that started the flow can complete it.
+
+    ``code_verifier`` is PKCE's code-to-flow binding (MysteryMixClub-ali8.7) —
+    this flow shares the same underlying code-exchange mechanism as sign-in,
+    so it gets the same hardening.
     """
     now = datetime.now(timezone.utc)
     claims = {
         "sub": str(user_id),
         "nonce": nonce,
+        "cv": code_verifier,
         "purpose": "google_link",
         "iat": int(now.timestamp()),
         "exp": int((now + _OAUTH_STATE_TTL).timestamp()),
@@ -197,11 +223,12 @@ def create_google_link_state(user_id: uuid.UUID, nonce: str) -> str:
 
 
 def decode_google_link_state(token: str) -> GoogleLinkState:
-    """Verify a Google-link state token and return its user id + nonce.
+    """Verify a Google-link state token and return its user id, nonce, and
+    code_verifier.
 
     Raises ``jose.JWTError`` on any failure: malformed, bad signature, expired,
-    a ``purpose`` that isn't ``"google_link"``, or a missing/invalid ``sub`` or
-    ``nonce``.
+    a ``purpose`` that isn't ``"google_link"``, or a missing/invalid ``sub``,
+    ``nonce``, or code_verifier.
     """
     claims = jwt.decode(token, get_settings().secret_key, algorithms=[_ALGORITHM])
     if claims.get("purpose") != "google_link":
@@ -216,7 +243,10 @@ def decode_google_link_state(token: str) -> GoogleLinkState:
     nonce = claims.get("nonce")
     if not isinstance(nonce, str) or not nonce:
         raise JWTError("missing or invalid nonce claim")
-    return GoogleLinkState(user_id=user_id, nonce=nonce)
+    code_verifier = claims.get("cv")
+    if not isinstance(code_verifier, str) or not code_verifier:
+        raise JWTError("missing or invalid code_verifier claim")
+    return GoogleLinkState(user_id=user_id, nonce=nonce, code_verifier=code_verifier)
 
 
 def create_unsubscribe_token(user_id: uuid.UUID) -> str:

@@ -120,15 +120,22 @@ class FakeGoogleOAuthClient:
         self._identity = identity or GoogleIdentity(
             subject=GOOGLE_SUB, email="linker@example.com", email_verified=True
         )
+        # PKCE (MysteryMixClub-ali8.7): recorded so a test can confirm the
+        # verifier embedded in the link state is what actually gets sent.
+        self.exchanged_verifiers: list[str] = []
 
     @property
     def is_configured(self) -> bool:
         return True
 
-    def authorize_url(self, state: str) -> str:
-        return f"https://accounts.google.com/o/oauth2/v2/auth?state={state}"
+    def authorize_url(self, state: str, code_challenge: str) -> str:
+        return (
+            f"https://accounts.google.com/o/oauth2/v2/auth?state={state}"
+            f"&code_challenge={code_challenge}"
+        )
 
-    async def exchange_code(self, code: str) -> str:
+    async def exchange_code(self, code: str, code_verifier: str) -> str:
+        self.exchanged_verifiers.append(code_verifier)
         return "google-access-token"
 
     async def fetch_identity(self, access_token: str) -> GoogleIdentity:
@@ -192,6 +199,22 @@ async def test_link_google_success(google_client, db_session):
     # The link flow must not touch the caller's existing session: no refresh
     # cookie is set on this response, unlike a sign-in callback's "ok".
     assert "refresh_token" not in resp.cookies
+
+
+async def test_link_google_sends_matching_pkce_verifier(google_client, fake_google, db_session):
+    """MysteryMixClub-ali8.7: the link flow shares the same code-exchange
+    mechanism as sign-in, so it gets PKCE too -- not re-testing the
+    challenge/S256 mechanics themselves (test_auth_google.py already does),
+    just that the link state's verifier is the one actually sent."""
+    from app.auth.jwt import decode_google_link_state
+
+    user = await _seed_user(db_session, "pkce@example.com")
+    state = await _start_link(google_client, user.id)
+    expected_verifier = decode_google_link_state(state).code_verifier
+
+    await google_client.get(CALLBACK_URL, params={"code": "auth-code", "state": state})
+
+    assert fake_google.exchanged_verifiers == [expected_verifier]
 
 
 async def test_link_google_conflict_when_identity_used_elsewhere(google_client, db_session):

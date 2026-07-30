@@ -12,6 +12,7 @@ from fastapi import (
     Depends,
     Header,
     HTTPException,
+    Request,
     Response,
     status,
 )
@@ -28,6 +29,7 @@ from app.api.routes.invites import (
     _CLUB_MEMBER_CAP,
     _join_via_invite,
 )
+from app.api.routes.waitlist import _client_ip
 from app.auth.jwt import (
     JWTError,
     create_access_token,
@@ -43,6 +45,7 @@ from app.models.club import Club
 from app.models.invite import Invite
 from app.models.login_attempt import LoginAttempt
 from app.models.magic_link_token import MagicLinkToken
+from app.models.oauth_callback_attempt import OAuthCallbackAttempt
 from app.models.password_reset_token import PasswordResetToken
 from app.models.session import Session
 from app.models.user import User
@@ -106,6 +109,16 @@ _GOOGLE_NONCE_SAMESITE: Literal["lax"] = "lax"
 # usable nonce lying around; matches the signed state's own 10-minute TTL.
 _GOOGLE_NONCE_MAX_AGE = 600
 _GOOGLE_UNCONFIGURED_MESSAGE = "google sign-in is not configured on this server"
+# Per-IP throttle on the callback itself (MysteryMixClub-ali8.8) — every other
+# unauthenticated auth endpoint rate-limits per email, but the callback has no
+# email until *after* exchange_code, which is exactly the call being abused.
+# Looser than the per-email login limiter (10/15min): an IP can be a shared
+# office/NAT address with several legitimate users signing in concurrently,
+# not a single identity being brute-forced. The ali8.2 nonce fix already
+# limits one /google/login to exactly one usable callback attempt, so this is
+# a backstop against sustained abuse, not the primary defense.
+_OAUTH_CALLBACK_MAX = 20
+_OAUTH_CALLBACK_WINDOW = timedelta(hours=1)
 
 _NEUTRAL_MESSAGE = "If that email is registered, a sign-in link is on its way."
 _INVALID_LINK_MESSAGE = "invalid or expired link"
@@ -891,6 +904,7 @@ async def google_login(
 
 @router.get("/google/callback")
 async def google_callback(
+    request: Request,
     background_tasks: BackgroundTasks,
     state: str | None = None,
     code: str | None = None,
@@ -914,11 +928,31 @@ async def google_callback(
     links the identity onto the already-authenticated account that started the
     flow (link state, MysteryMixClub-ali8.4) -- the link path issues no new
     session; the caller's existing one is untouched.
+
+    Per-IP rate limited (MysteryMixClub-ali8.8) before any of that: a hit
+    here can't be attributed to an email/identity yet (that's the whole
+    reason the callback is a target), so this throttles by client IP instead.
     """
     if not client.is_configured:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=_GOOGLE_UNCONFIGURED_MESSAGE
         )
+
+    ip = _client_ip(request)
+    rate_limit_now = datetime.now(timezone.utc)
+    recent_attempts = await db.scalar(
+        select(func.count())
+        .select_from(OAuthCallbackAttempt)
+        .where(
+            OAuthCallbackAttempt.ip == ip,
+            OAuthCallbackAttempt.created_at > rate_limit_now - _OAUTH_CALLBACK_WINDOW,
+        )
+    )
+    if (recent_attempts or 0) >= _OAUTH_CALLBACK_MAX:
+        logger.warning("google callback: rate limit exceeded for ip %s", _log_safe(ip))
+        return _google_redirect(settings, "rate_limited")
+    db.add(OAuthCallbackAttempt(ip=ip, created_at=rate_limit_now))
+    await db.commit()
 
     sign_in_state = None
     link_state = None

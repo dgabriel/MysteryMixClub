@@ -78,6 +78,17 @@ here rather than added to the policy itself — but if EU/EEA users become a
 meaningful part of the user base, revisit whether the policy should say more
 than "DigitalOcean (hosting our servers and database)".
 
+## IP address retention (MysteryMixClub-ali8.8)
+
+`oauth_callback_attempts` (added for per-IP rate limiting on
+`/auth/google/callback`, since that endpoint has no email to key on until
+after the call being abused) stores the raw client IP alongside a
+timestamp. Same retention shape as `login_attempts`: purged after 24 hours
+by `app.jobs.purge_oauth_callback_attempts` (not yet wired to a systemd
+timer — see `docs/ci-cd.md`, `MysteryMixClub-9ej6`), same US hosting region
+as everything else on this page. No other purpose reads or retains this
+data; it exists solely for abuse-rate-limiting.
+
 ---
 
 *Last updated 2026-07-17. Re-confirm the staging Droplet's region and update

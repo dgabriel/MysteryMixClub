@@ -144,8 +144,9 @@ sufficient at 5-10 users; not building it speculatively).
 - This doesn't preclude ever introducing Redis later for something Postgres
   genuinely can't do well (e.g. the deferred rate-limiter, if it turns out
   to need true shared atomic counters at a volume Postgres can't serve
-  cheaply) — but per [[feedback_postgres-first-infra]], that would need its
-  own explicit argument, not a default reach.
+  cheaply) — but the standing preference is Postgres-first: reaching for a new
+  backing service like Redis needs its own explicit argument each time, not a
+  default reach just because it's a familiar tool.
 
 ## Revisit if
 

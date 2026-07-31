@@ -14,7 +14,7 @@ Before writing any code, read:
 
 - Read every file before editing it. Never assume current state.
 - Make the smallest change that accomplishes the goal. Surgical edits only.
-- Reference the Linear issue identifier (MMC-##) in your first message.
+- Reference the bd issue ID (e.g. MysteryMixClub-abc123) in your first message.
 - State your assumption explicitly before acting on anything ambiguous.
 - If a decision has architecture or design implications, flag it before proceeding.
 - No placeholder logic. No TODO comments. If you'd write one, ask instead.

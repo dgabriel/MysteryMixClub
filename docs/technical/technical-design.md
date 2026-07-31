@@ -1,7 +1,7 @@
 # MysteryMixClub — Technical Design
 
 **Document type:** Technical Design  
-**Status:** Draft v1.0  
+**Status:** Living spec — v1 MVP shipped and in production; updated as features ship  
 **Phase:** PDLC — Technical Definition  
 **Depends on:** `discovery/problem-statement.md`, `discovery/personas.md`, `prd/prd.md`
 
@@ -60,10 +60,10 @@ mysterymixclub/
 | PWA | Web App Manifest + Service Worker | Home screen install, offline shell, native-feel on mobile without App Store |
 | Backend | Python / FastAPI | Async-first, fast, Pydantic validation built in, proven in previous iteration |
 | Database | PostgreSQL | Relational model fits the data; row-level security enforced at DB layer |
-| Auth | Magic link + JWT + refresh tokens | No passwords, low friction, secure two-token session model |
+| Auth | Magic link + password + Google OAuth, JWT + refresh tokens (ADR 0007) | Magic link is passwordless-by-default; password and Google Sign-In are additive alternatives on the same two-token session model |
 | Email | Resend | Magic links and mystery-mix notifications; generous free tier; developer-friendly |
-| Song identity | Odesli / Songlink API | Cross-platform search and link resolution; ISRC canonical track identity |
-| Hosting | DigitalOcean App Platform | Simple, affordable, managed Postgres, no AWS complexity for v1 |
+| Song identity | Keyless resolver chain — Deezer + iTunes + Apple Music catalog + YouTube Data API (§8) | Odesli's public API retired 2026-07-31 (MYS-81); ISRC (from Deezer) remains the canonical identity backbone |
+| Hosting | DigitalOcean Droplet, self-managed (ADR 0002) | Migrated off App Platform 2026-07-23 (MYS-225) for cost/control; Nginx + systemd + local Postgres on both staging and prod |
 
 ---
 
@@ -320,7 +320,9 @@ title               TEXT NOT NULL
 artist              TEXT NOT NULL
 album               TEXT
 album_art_url       TEXT
-odesli_data         JSONB (full Odesli response, for platform resolution at playback)
+platform_links      JSONB (assembled {platform: url} cross-service links, best-effort — §8)
+youtube_video_id    TEXT (cached exact YouTube video id, resolved via YouTube Data API — MYS-78)
+spotify_track_uri   TEXT (cached spotify:track:... URI, resolved from ISRC at playlist-create time — MYS-83)
 note                TEXT (max 280 chars)
 participation_mode  TEXT (playing | vibing) — per-mix mode; defaults at submit from club_members.vibe_mode, overridable per mix (MYS-112)
 created_at          TIMESTAMP
@@ -496,7 +498,7 @@ POST   /clubs/:id/mixes       Create a new mystery mix (organizer only — co-or
 GET    /clubs/:id/mixes       Get all mystery mixes for a club
 GET    /mixes/:id             Get mystery mix detail
 PATCH  /mixes/:id             Update mystery mix (organizer only: theme, deadlines, state — co-organizers now have parity, MYS-99)
-GET    /mixes/:id/playlist    Get mystery mix playlist with Odesli universal links
+GET    /mixes/:id/playlist    Get mystery mix playlist with cross-platform links (§8)
 GET    /mixes/:id/results     Get mystery mix results (scores, Most Noted, vote breakdown, per-song voter identity once closed — MYS-173)
 ```
 
@@ -509,7 +511,7 @@ GET    /mixes/:id/submissions      Get all submissions (available after voting c
 
 ### Song Search & Resolution
 ```
-GET    /songs/search?q=        Search via Odesli API
+GET    /songs/search?q=        Search via Deezer (keyless, §8)
 POST   /songs/resolve          Resolve a pasted link to canonical track
 ```
 
@@ -523,36 +525,62 @@ GET    /submissions/:id/notes   Get notes on a submission
 
 ---
 
-## 8. Odesli Integration
+## 8. Song Identity & Cross-Platform Link Resolution
 
-Odesli (Songlink) is the core dependency for platform-agnostic song identity.
+Odesli (Songlink) was the original dependency for platform-agnostic song
+identity, but retired its public API 2026-07-31 (announced 2026-05-21).
+Migrated off it 2026-06-22 (MYS-81), ahead of the deadline — Odesli is not
+called anywhere in the current codebase. Song identity and cross-service
+links are instead assembled from several keyless (and, where a token is
+configured, keyed) per-platform sources.
 
 ### Search
-```
-GET https://api.song.link/v1-alpha.1/links?url=<encoded_search_url>
-```
-- Used for native in-app search
-- Returns canonical track data including ISRC when available
-- Full Odesli response stored as JSONB in `submissions.odesli_data`
+`GET /songs/search` (`app/routers/songs.py`) searches Deezer by title
+(+ optional artist) via `DeezerSearchClient`
+(`app/services/deezer_search.py`), keyless. Returns title/artist/ISRC/album/
+cover for the player to pick from.
 
-### Link Resolution
-```
-GET https://api.song.link/v1-alpha.1/links?url=<encoded_platform_url>
-```
-- Used when player pastes a link from any streaming service
-- Resolves to canonical track regardless of source platform
-- Same JSONB storage pattern as search
+### Paste-a-link resolution
+`POST /songs/resolve` identifies a pasted platform URL via `LinkResolver`
+(`app/services/link_resolver.py`, keyless). A submission requires an ISRC,
+and only Deezer returns one keyless, so every platform's identity funnels
+through a Deezer lookup:
 
-### Playback Resolution
-- At playlist generation time, Odesli data is used to surface platform-specific URLs
-- Player's `preferred_service` determines which URL is surfaced by default
-- All available platform links are returned so the player can switch
-- YouTube link always included as universal fallback
+- **Deezer** URL — direct `GET /track/{id}`, exact, no search needed.
+- **Apple Music** URL — iTunes lookup for title/artist (no ISRC) → Deezer search.
+- **Spotify** URL — oEmbed for track title only (no artist) → Deezer search on
+  title alone; the weakest path, expected.
+- **YouTube** URL — oEmbed's "Artist - Title (Official Video)"-style string,
+  cleaned → Deezer search.
+- **Bandcamp** URL — no oEmbed, no public API; OpenGraph `og:title` meta
+  (`"Track Title, by Artist Name"`) parsed → Deezer search.
 
-### Rate Limits & Resilience
-- Odesli free tier rate limits must be validated against expected usage before launch
-- Failed Odesli lookups must surface a clear error to the user, not a silent failure
-- Consider caching resolved track data in the database to reduce repeat API calls
+A caller can skip URL identification entirely by passing a known identity
+(title/artist/isrc) straight from a search result.
+
+### Cross-service link assembly
+`SongLinkAssembler` (`app/services/song_links.py`, MYS-52) builds the
+`{platform: url}` map persisted to `submissions.platform_links` — `spotify`,
+`appleMusic`, `deezer`, `youtube`, `youtubeMusic`, `bandcamp` — from
+per-platform lookups ranked against the query rather than trusted blindly
+(MYS-175):
+
+- **Deezer** — exact `/track/isrc:{isrc}` when an ISRC is known, else a
+  ranked search; keyless.
+- **Apple Music** — exact catalog link via `filter[isrc]` when a developer
+  token is configured (MYS-106); otherwise, and on any miss, ranked keyless
+  iTunes Search.
+- **YouTube** — exact video link via the YouTube Data API when a resolver is
+  configured (ranked, MYS-175), cached on `submissions.youtube_video_id`;
+  falls back to a search deep link when unconfigured or unmatched.
+  YouTube Music serves the same resolved video id.
+- **Spotify** — deep link only (keyless); `submissions.spotify_track_uri` is
+  resolved separately, lazily, at playlist-create time (MYS-83).
+- **Bandcamp** — deep link only; Bandcamp's API is partner-only, so there is
+  nothing keyless to resolve an exact link against.
+
+Every platform always gets at least a deep link; a failed lookup falls back
+to the deep link rather than raising (best-effort throughout).
 
 ### Source-only resolution (MYS-201)
 The keyless resolver funnels YouTube/Bandcamp links through a Deezer search to
@@ -610,7 +638,8 @@ These are non-negotiable requirements, not suggestions.
 - [ ] Input sanitization on all text fields (submission notes, display names)
 - [ ] Account deletion cascades to all personal data — no orphaned records
 - [ ] "Log out of all devices" invalidates all refresh tokens
-- [ ] Odesli API key stored server-side only, never exposed to client
+- [ ] Song-resolution credentials (Apple Music developer token, YouTube Data
+      API key) stored server-side only, never exposed to client
 - [ ] Dependency audit before launch (pip audit, npm audit)
 
 ---
@@ -638,7 +667,6 @@ All secrets and configuration are environment variables. Never committed to git.
 DATABASE_URL
 SECRET_KEY                  (JWT signing key)
 RESEND_API_KEY
-ODESLI_API_KEY
 ALLOWED_ORIGINS             (CORS)
 ENVIRONMENT                 (development | production)
 APP_BASE_URL                (base URL used to build magic-link URLs in emails)
@@ -659,7 +687,10 @@ These are deferred and will require their own technical specs when scoped:
 - Push notifications (email only for v1)
 - Taste profile data pipeline
 - Crowd-sourced mystery mix theme voting
-- Additional streaming platform integrations beyond Spotify, YouTube, Deezer
+- Additional streaming-platform *playlist-generation* integrations beyond
+  Spotify, YouTube, and Apple Music (all three shipped). Deezer was explored
+  and dropped (registration closed) — it remains in use only as a keyless
+  search/identity source (§8), not a playlist-generation target
 - Export / playlist copy features
 - AI features of any kind
 

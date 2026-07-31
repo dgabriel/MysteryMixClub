@@ -163,7 +163,7 @@ merge deploys to staging → PR `develop` → `main` → approve → deploys to 
 - `pre-commit` → `lint-staged`: ESLint `--fix` + Prettier on staged `*.ts/tsx`;
   `ruff check --fix` + `ruff format` on staged `*.py`.
 - `commit-msg` → `commitlint` enforces Conventional Commits (`.commitlintrc.json`).
-- `pre-push` → frontend `typecheck` + backend `pytest`.
+- `pre-push` → frontend `typecheck` + backend `mypy` + backend `pytest`.
 
 Re-install hooks after a fresh clone with `npm install` (runs `prepare` → `husky`).
 

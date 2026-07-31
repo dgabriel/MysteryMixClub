@@ -7,6 +7,23 @@ terraform {
       version = "~> 2.43"
     }
   }
+
+  # Remote state (MysteryMixClub-mpxwcs). Bucket provisioned by the one-off,
+  # permanently-local-state config in envs/bootstrap (see its main.tf for why).
+  # Spaces access keys come from AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY env
+  # vars — never hardcoded here. Distinct `key` per env so staging + prod share
+  # one bucket without colliding.
+  backend "s3" {
+    endpoints                   = { s3 = "https://nyc3.digitaloceanspaces.com" }
+    bucket                      = "mmc-tfstate"
+    key                         = "prod/terraform.tfstate"
+    region                      = "us-east-1" # ignored by Spaces, required by the backend
+    use_lockfile                = true
+    skip_credentials_validation = true
+    skip_metadata_api_check     = true
+    skip_region_validation      = true
+    skip_requesting_account_id  = true
+  }
 }
 
 provider "digitalocean" {}

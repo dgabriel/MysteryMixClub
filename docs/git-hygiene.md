@@ -140,11 +140,16 @@ Related: branch model in `docs/ci-cd.md`. Hook PATH gotcha at the bottom of this
   (`gh pr create --base develop …`) — never let the CLI default to `main`.
 - Keep the branch current with `git pull --rebase` (your own branch) or a merge
   from `develop`; don't let it drift far behind.
-- **Test before merging.** Run the app and verify the feature works end-to-end
-  manually. Get explicit confirmation from the person who requested the work
-  before running `gh pr merge`. Never merge on green CI alone.
-- **Merge promptly.** Once approved and CI is green, merge immediately. Open PRs
-  drift from `develop` and compound conflict risk for every other branch in flight.
+- **Feature/fix → `develop`: green CI is enough to merge.** Staging (what
+  `develop` deploys to) has no real users anymore — only testers — since the
+  app went live in prod (see [[project_beta-testers-live]]). Once
+  `ruff · mypy · pytest` + frontend typecheck all pass, merge; no manual
+  end-to-end smoke test or explicit go-ahead is required first. This does
+  **not** extend to `develop → main`: that promotion is a real prod deploy and
+  still requires Dawn's explicit approval regardless of CI status — see
+  [[feedback_main-merge-authority]].
+- **Merge promptly.** Once CI is green, merge immediately. Open PRs drift from
+  `develop` and compound conflict risk for every other branch in flight.
 
 ### Merging without losing code (the squash-merge trap)
 

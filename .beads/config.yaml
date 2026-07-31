@@ -67,4 +67,4 @@
 
 sync.remote: "git+https://github.com/dgabriel/MysteryMixClub.git"
 export:
-    auto: true
+    auto: false

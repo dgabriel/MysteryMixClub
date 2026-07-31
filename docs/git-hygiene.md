@@ -22,8 +22,11 @@ Related: branch model in `docs/ci-cd.md`. Hook PATH gotcha at the bottom of this
    how merges silently drop code). Always pull first so you start from the latest:
    ```
    git checkout develop && git pull --ff-only origin develop
-   git checkout -b feature/mys-XX-short-slug
+   git checkout -b feature/MysteryMixClub-<bd-id>-short-slug
    ```
+   (`scripts/bead-start.sh <bd-id>` does exactly this — sync, branch, claim —
+   in one step; use it instead of the manual sequence above when starting
+   work on a bd issue.)
    If a branch ends up based on anything other than current `develop`, rebase it
    onto `develop` before continuing (`git rebase origin/develop`).
    **Create the branch before writing a single line of code.** Never edit files
@@ -77,13 +80,12 @@ Related: branch model in `docs/ci-cd.md`. Hook PATH gotcha at the bottom of this
    that have already been pushed to a shared branch. Amend only local, unpushed
    commits.
 8. **Don't fast-forward `main` to `develop`.** The gap is intentional (un-promoted
-   staging work). See [[project_branch-topology]].
+   staging work).
 9. **Don't cherry-pick app/tooling changes into `main`.** They reach prod only via
    a deliberate `develop → main` promotion PR. Beta went live 2026-07-25 — the old
    pre-beta rule limiting promotions to README-only is retired; `main` and `develop`
    are now kept nearly in sync via routine full promotion PRs (app code, docs,
    tooling, all of it), same merge-commit-only mechanics as any other promotion.
-   See [[project_branch-topology]].
 
 ---
 
@@ -94,12 +96,15 @@ Related: branch model in `docs/ci-cd.md`. Hook PATH gotcha at the bottom of this
 - **Conventional Commits**, enforced by commitlint: `type(scope): subject`
   (`feat`, `fix`, `chore`, `docs`, `refactor`, `test`, …). Imperative subject,
   no trailing period.
-- **End commit messages with the Claude co-author trailer:**
+- **End commit messages with the Claude co-author trailer**, naming whichever
+  model is actually running the session — e.g.:
   ```
-  Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+  Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
   ```
-- **Only commit/push when the user asks** (or under a standing autonomy grant —
-  see [[feedback-commit-autonomy]]). Flag risky changes even then.
+  Don't pin a specific model name here as a hardcoded example to copy
+  verbatim; it'll go stale the next time the underlying model changes.
+- **Only commit/push when the user asks** (or under a standing autonomy grant
+  explicitly given for that scope of work). Flag risky changes even then.
 - **Stage intentionally.** Prefer naming paths over `git add -A`. Never commit
   secrets, `.env`, build artifacts, or scratch files — check `git status` first.
 - **Never use `git commit --no-verify`** to skip hooks. If a hook fails, fix the
@@ -142,12 +147,11 @@ Related: branch model in `docs/ci-cd.md`. Hook PATH gotcha at the bottom of this
   from `develop`; don't let it drift far behind.
 - **Feature/fix → `develop`: green CI is enough to merge.** Staging (what
   `develop` deploys to) has no real users anymore — only testers — since the
-  app went live in prod (see [[project_beta-testers-live]]). Once
-  `ruff · mypy · pytest` + frontend typecheck all pass, merge; no manual
-  end-to-end smoke test or explicit go-ahead is required first. This does
-  **not** extend to `develop → main`: that promotion is a real prod deploy and
-  still requires Dawn's explicit approval regardless of CI status — see
-  [[feedback_main-merge-authority]].
+  app went live in prod. Once `ruff · mypy · pytest` + frontend typecheck all
+  pass, merge; no manual end-to-end smoke test or explicit go-ahead is
+  required first. This does **not** extend to `develop → main`: that
+  promotion is a real prod deploy, and only Dawn merges it, regardless of CI
+  status — never Claude, even with everything green.
 - **Merge promptly.** Once CI is green, merge immediately. Open PRs drift from
   `develop` and compound conflict risk for every other branch in flight.
 
@@ -203,9 +207,9 @@ history first (see above), don't reach for `--squash` as the fast way out.
 
 ## Pre-flight before pushing (catch CI failures locally)
 
-- **Run `mypy` yourself** — it is **not** in the pre-push hook, only in CI.
-  See [[project_mypy-not-in-prepush]]. `cd backend && mypy app`.
-- Pre-push runs `pytest`; let it. Don't bypass.
+- Pre-push runs frontend typecheck, `mypy`, and `pytest` in that order; let
+  it. Don't bypass. (Before 2026-07-31, `mypy` was CI-only and had to be run
+  by hand pre-push — the hook now covers it, closing that gap.)
 - **Hook PATH gotcha — fixed 2026-07-26.** The hooks (`.beads/hooks/pre-commit`,
   `.beads/hooks/pre-push`, and the `.husky/*` originals kept in sync) now export
   `backend/.venv/bin` onto `PATH` themselves before calling `ruff`/`pytest`, so

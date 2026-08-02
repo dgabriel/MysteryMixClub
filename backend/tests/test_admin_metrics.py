@@ -34,6 +34,7 @@ EXPECTED_FIELDS = {
     "total_clubs",
     "active_clubs",
     "complete_clubs",
+    "abandoned_clubs",
     "total_mixes",
     "pending_mixes",
     "open_submission_mixes",
@@ -179,6 +180,12 @@ async def test_metrics_returns_all_aggregate_counts(client, db_session):
         "total_clubs": 2,
         "active_clubs": 1,
         "complete_clubs": 1,
+        # active_club has two opened, non-pending mixes with fewer than 2
+        # submissions and fewer than 2 votes each (open_sub_mix: 0/0;
+        # open_vote_mix: 1 submission/0 votes) — more than 1 weak round, so
+        # it's flagged regardless of the club's age. complete_club's one mix
+        # has 2 submissions and 2 votes, so it isn't.
+        "abandoned_clubs": 1,
         "total_mixes": 4,
         "pending_mixes": 1,
         "open_submission_mixes": 1,
@@ -243,6 +250,197 @@ async def test_metrics_averages_over_mixes_that_received_submissions(client, db_
 
 
 # ========================================================================== #
+# MysteryMixClub-r8l0 — abandoned_clubs
+# ========================================================================== #
+
+# Comfortably past and short of the 7-day staleness cutoff, so seeded clubs
+# land unambiguously on one side of it.
+_STALE = timedelta(days=10)
+_FRESH = timedelta(days=2)
+
+
+def _stale_club(admin, *, name: str, total_mixes: int = 1) -> Club:
+    return Club(
+        name=name,
+        organizer_id=admin.id,
+        total_mixes=total_mixes,
+        state="active",
+        created_at=datetime.now(timezone.utc) - _STALE,
+    )
+
+
+async def _submit(db_session, mix_, user, isrc: str) -> Submission:
+    sub = Submission(
+        mix_id=mix_.id,
+        user_id=user.id,
+        isrc=isrc,
+        title=isrc,
+        artist="Someone",
+        participation_mode="playing",
+    )
+    db_session.add(sub)
+    await db_session.flush()
+    return sub
+
+
+async def test_metrics_counts_stale_club_with_zero_submissions_as_abandoned(client, db_session):
+    admin = await _seed_admin(db_session)
+    club = _stale_club(admin, name="Ghost town")
+    db_session.add(club)
+    await db_session.flush()
+    db_session.add(Mix(club_id=club.id, mix_number=1, state="pending"))
+    await db_session.commit()
+
+    resp = await client.get(METRICS_URL, headers=_auth(admin.id))
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["abandoned_clubs"] == 1
+
+
+async def test_metrics_counts_stale_club_with_submissions_but_zero_votes_as_abandoned(
+    client, db_session
+):
+    # A submission with nobody ever voting on it is still "no real activity"
+    # once the club has had a week to get one.
+    admin = await _seed_admin(db_session)
+    club = _stale_club(admin, name="Submitted then silence")
+    db_session.add(club)
+    await db_session.flush()
+    mix_ = Mix(club_id=club.id, mix_number=1, state="open_voting")
+    db_session.add(mix_)
+    await db_session.flush()
+    await _submit(db_session, mix_, admin, "USABC9999999")
+    await db_session.commit()
+
+    resp = await client.get(METRICS_URL, headers=_auth(admin.id))
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["abandoned_clubs"] == 1
+
+
+async def test_metrics_excludes_stale_club_with_a_submission_and_a_vote(client, db_session):
+    admin = await _seed_admin(db_session)
+    bob = await _seed_user(db_session, "bob2@example.com", name="Bob")
+    club = _stale_club(admin, name="Still going")
+    db_session.add(club)
+    await db_session.flush()
+    mix_ = Mix(club_id=club.id, mix_number=1, state="open_voting")
+    db_session.add(mix_)
+    await db_session.flush()
+    sub = await _submit(db_session, mix_, admin, "USABC9999998")
+    db_session.add(Vote(mix_id=mix_.id, voter_id=bob.id, submission_id=sub.id))
+    await db_session.commit()
+
+    resp = await client.get(METRICS_URL, headers=_auth(admin.id))
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["abandoned_clubs"] == 0
+
+
+async def test_metrics_excludes_recently_created_club_with_zero_submissions(client, db_session):
+    # Not stale yet — a brand-new club hasn't had a fair chance to get
+    # activity, so it must not be flagged just for being new.
+    admin = await _seed_admin(db_session)
+    club = Club(
+        name="Just started",
+        organizer_id=admin.id,
+        total_mixes=1,
+        state="active",
+        created_at=datetime.now(timezone.utc) - _FRESH,
+    )
+    db_session.add(club)
+    await db_session.flush()
+    db_session.add(Mix(club_id=club.id, mix_number=1, state="pending"))
+    await db_session.commit()
+
+    resp = await client.get(METRICS_URL, headers=_auth(admin.id))
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["abandoned_clubs"] == 0
+
+
+async def test_metrics_counts_fresh_club_with_multiple_weak_rounds_as_abandoned(client, db_session):
+    # Not stale, but two opened rounds each drew fewer than 2 submissions and
+    # fewer than 2 votes — a club that's cycling through the scheduler with
+    # essentially nobody playing, independent of how old it is.
+    admin = await _seed_admin(db_session)
+    club = Club(
+        name="Weak rounds",
+        organizer_id=admin.id,
+        total_mixes=2,
+        state="active",
+        created_at=datetime.now(timezone.utc) - _FRESH,
+    )
+    db_session.add(club)
+    await db_session.flush()
+    weak_one = Mix(club_id=club.id, mix_number=1, state="closed")
+    weak_two = Mix(club_id=club.id, mix_number=2, state="open_voting")
+    db_session.add_all([weak_one, weak_two])
+    await db_session.flush()
+    await _submit(db_session, weak_one, admin, "USABC1000001")
+    await _submit(db_session, weak_two, admin, "USABC1000002")
+    await db_session.commit()
+
+    resp = await client.get(METRICS_URL, headers=_auth(admin.id))
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["abandoned_clubs"] == 1
+
+
+async def test_metrics_excludes_club_with_only_one_weak_round(client, db_session):
+    # One weak round alone isn't "more than 1" — a single quiet round can
+    # happen to an otherwise fine club.
+    admin = await _seed_admin(db_session)
+    club = Club(
+        name="One quiet round",
+        organizer_id=admin.id,
+        total_mixes=1,
+        state="active",
+        created_at=datetime.now(timezone.utc) - _FRESH,
+    )
+    db_session.add(club)
+    await db_session.flush()
+    mix_ = Mix(club_id=club.id, mix_number=1, state="closed")
+    db_session.add(mix_)
+    await db_session.flush()
+    await _submit(db_session, mix_, admin, "USABC1000003")
+    await db_session.commit()
+
+    resp = await client.get(METRICS_URL, headers=_auth(admin.id))
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["abandoned_clubs"] == 0
+
+
+async def test_metrics_ignores_pending_mixes_for_weak_round_count(client, db_session):
+    # A mix that hasn't opened yet trivially has 0 submissions/votes — it
+    # must not count as a "weak round" just for not having started.
+    admin = await _seed_admin(db_session)
+    club = Club(
+        name="Scheduled ahead",
+        organizer_id=admin.id,
+        total_mixes=3,
+        state="active",
+        created_at=datetime.now(timezone.utc) - _FRESH,
+    )
+    db_session.add(club)
+    await db_session.flush()
+    db_session.add_all(
+        [
+            Mix(club_id=club.id, mix_number=1, state="open_submission"),
+            Mix(club_id=club.id, mix_number=2, state="pending"),
+            Mix(club_id=club.id, mix_number=3, state="pending"),
+        ]
+    )
+    await db_session.commit()
+
+    resp = await client.get(METRICS_URL, headers=_auth(admin.id))
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["abandoned_clubs"] == 0
+
+
+# ========================================================================== #
 # Edge case — empty platform
 # ========================================================================== #
 
@@ -261,6 +459,7 @@ async def test_metrics_on_empty_platform_returns_zeros(client, db_session):
         "total_clubs": 0,
         "active_clubs": 0,
         "complete_clubs": 0,
+        "abandoned_clubs": 0,
         "total_mixes": 0,
         "pending_mixes": 0,
         "open_submission_mixes": 0,

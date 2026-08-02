@@ -1513,6 +1513,7 @@ export type AdminMetrics = {
   total_clubs: number;
   active_clubs: number;
   complete_clubs: number;
+  abandoned_clubs: number;
   total_mixes: number;
   pending_mixes: number;
   open_submission_mixes: number;

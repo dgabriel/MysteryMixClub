@@ -61,6 +61,9 @@ export function AdminMetricsScreen({
             <Stat label="clubs" value={metrics.total_clubs} />
             <Stat label="active clubs" value={metrics.active_clubs} />
             <Stat label="complete clubs" value={metrics.complete_clubs} />
+            {/* 30+ days old, zero submissions ever — mixes are still cycling
+                open/closed on the scheduler with nobody actually using them. */}
+            <Stat label="abandoned clubs" value={metrics.abandoned_clubs} />
           </StatGroup>
 
           <StatGroup title="mystery mixes">

@@ -383,8 +383,9 @@ sudo journalctl -u mysterymixclub-playlist-worker -f
   as an artifact. Staging still runs `npm ci && npm run build` on its own box;
   its `s-1vcpu-1gb` droplet is more exposed to this (less RAM than prod had
   before this change), so this is a candidate follow-up for staging too — not
-  done here to keep this change scoped to prod (see the Linear ticket note in
-  this doc's history / MYS-259 comments).
+  done here to keep this change scoped to prod (see the bd issue note in
+  this doc's history / MYS-259's original Linear comments, kept for
+  historical continuity).
 - **Swap provisioned at bootstrap** (MYS-259) — a 2G swapfile as an OOM safety
   net. Staging has none today; lower stakes on a non-production environment,
   and not required by this ticket's scope.

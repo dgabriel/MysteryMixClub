@@ -95,7 +95,7 @@ staging.mysterymixclub.com and CI/CD via GitHub Actions.
 - For maintenance tasks, produce or update a runbook entry in
   `infra/RUNBOOK.md` so the knowledge outlives the conversation.
 - When you identify infra work that shouldn't block the current task, note it
-  as a candidate Linear ticket (title + one-line rationale) rather than
+  as a candidate bd issue (title + one-line rationale) rather than
   expanding scope.
 
 ## Credentials

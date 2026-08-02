@@ -13,7 +13,7 @@ Before reviewing anything, read:
 ## What you check
 
 **Logic**
-- Does the implementation actually match what the Linear issue asked for?
+- Does the implementation actually match what the bd issue asked for?
 - Are there edge cases that aren't handled?
 - Is any new complexity justified, or could this be simpler?
 

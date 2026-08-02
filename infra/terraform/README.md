@@ -7,6 +7,9 @@ infra/terraform/
   modules/droplet-app/   shared module: droplet + firewall + reserved IP + DNS + monitor alerts + project
   envs/staging/          wires the module to the *existing* staging droplet (id 577618725)
   envs/prod/             droplet-shaped prod (MYS-213/MYS-225) — NOT App Platform, applied and live
+  envs/bootstrap/        one-off, permanently-local-state config: provisions the
+                          `mmc-tfstate` Spaces bucket + access key that staging/prod
+                          use as their remote-state backend (MYS-229)
 ```
 
 Both environments consume the same module; the only differences are data
@@ -193,3 +196,48 @@ terraform {
 
 Spaces access keys go in `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` env vars,
 never in the block.
+
+### Bootstrap: DONE — staging + prod are on the remote backend (MYS-229, applied 2026-07-30)
+
+`envs/bootstrap` created the `mmc-tfstate` Spaces bucket + a scoped `readwrite`
+access key, and `envs/staging` and `envs/prod` have both been migrated onto it
+(`tofu init -migrate-state`, verified with a clean `tofu plan` against the
+real infra afterward). Local `.tfstate` files in each env dir are now stale
+backups only (`terraform.tfstate.pre-migrate.bak`) — the remote backend is
+authoritative. `envs/bootstrap` itself stays on local state permanently (see
+the comment in its `main.tf`): you can't back a config with a bucket that
+config itself creates.
+
+The Terraform provider token used for this needs more than Spaces scope —
+`envs/staging`/`envs/prod` also read/write Droplet, Firewall, Monitoring,
+Project, Domain, Reserved IP, VPC, and SSH Key (read) resources. A
+Spaces-only token will 403 on `tofu plan`/`apply` for those envs even though
+the backend migration itself only touches Spaces.
+
+To redo this from scratch (e.g. rotating the bucket) or reproduce the steps:
+
+```bash
+cd envs/bootstrap
+export DIGITALOCEAN_TOKEN=...          # write-scoped, incl. Spaces + Spaces Key
+tofu init
+tofu plan                              # review: 1 bucket + 1 key to add
+tofu apply                             # creates a real, billed Spaces bucket (~$5/mo, shared with MYS-232's later offsite dumps)
+tofu output -raw access_key_id         # do not paste the value into chat/commits
+tofu output -raw secret_access_key
+```
+
+Then, per env, point existing local state at the new backend (one-way —
+back up the local `.tfstate` first):
+
+```bash
+cd envs/staging   # repeat for envs/prod with its own AWS_* keys if rotated separately
+export DIGITALOCEAN_TOKEN=...          # needs the broader scope list above, not just Spaces
+export AWS_ACCESS_KEY_ID=...           # from the bootstrap output above
+export AWS_SECRET_ACCESS_KEY=...
+cp terraform.tfstate terraform.tfstate.pre-migrate.bak   # belt-and-suspenders local backup
+tofu init -migrate-state
+tofu plan                              # MUST show "No changes" — confirms the migrated state matches reality
+```
+
+Repeat the `envs/staging` block for `envs/prod` (same bucket, `key =
+"prod/terraform.tfstate"` already set in its backend block — no collision).

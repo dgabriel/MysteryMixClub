@@ -1,12 +1,13 @@
 import logging
 import secrets
 import uuid
-from datetime import datetime, timezone
+from collections import defaultdict
+from datetime import date, datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.api.wire import WireModel
-from sqlalchemy import select
+from sqlalchemy import Date, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.clubs import (
@@ -20,9 +21,14 @@ from app.auth.tokens import generate_token, hash_token
 from app.config import Settings, get_settings
 from app.db.session import get_db
 from app.jobs.purge_accounts import hard_delete_users
+from app.models.club import Club
 from app.models.invite import Invite
 from app.models.magic_link_token import MagicLinkToken
+from app.models.mix import Mix
+from app.models.note import Note
+from app.models.submission import Submission
 from app.models.user import User
+from app.models.vote import Vote
 from app.models.waitlist_entry import WaitlistEntry
 from app.services.email import EmailSender, get_email_sender
 from app.services.notifications import send_waitlist_invite
@@ -34,6 +40,20 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 # Cap on the user-search result set — enough to find a target, bounded so a
 # broad substring can't return the whole table.
 _USER_SEARCH_LIMIT = 50
+
+# A club counts as "abandoned" (MysteryMixClub-r8l0) if EITHER:
+#   (a) it's this old with zero submissions across every mix, OR zero votes
+#       across every mix — a week is enough to tell a club isn't taking off,
+#       even if one lone submission trickled in with nothing behind it; OR
+#   (b) more than one of its *opened* mixes (state != "pending" — a mix that
+#       hasn't started yet hasn't had a chance to get activity) drew fewer
+#       than 2 submissions and fewer than 2 votes — a club that keeps
+#       cycling through weak rounds via the scheduler, not just one off week.
+_ABANDONED_CLUB_STALENESS_DAYS = 7
+_WEAK_ROUND_SUBMISSION_THRESHOLD = 2
+_WEAK_ROUND_VOTE_THRESHOLD = 2
+# "more than 1" weak round.
+_ABANDONED_CLUB_MIN_WEAK_ROUNDS = 2
 
 
 class AdminUserResponse(WireModel):
@@ -228,3 +248,193 @@ async def invite_from_waitlist(
     await db.refresh(entry)
 
     return _to_waitlist_response(entry)
+
+
+# --------------------------------------------------------------------------- #
+# Metrics — aggregate counts only (technical-design §10: no user-level
+# tracking). Every value here is a COUNT over an existing table.
+# --------------------------------------------------------------------------- #
+
+
+async def _count_abandoned_clubs(db: AsyncSession) -> int:
+    """See the ``_ABANDONED_CLUB_*`` constants above for the definition."""
+    mix_rows = (
+        await db.execute(
+            select(
+                Mix.club_id,
+                Mix.state,
+                func.count(func.distinct(Submission.id)).label("sub_count"),
+                func.count(func.distinct(Vote.id)).label("vote_count"),
+            )
+            .outerjoin(Submission, Submission.mix_id == Mix.id)
+            .outerjoin(Vote, Vote.mix_id == Mix.id)
+            .group_by(Mix.id, Mix.club_id, Mix.state)
+        )
+    ).all()
+
+    club_stats: dict[uuid.UUID, dict[str, int]] = defaultdict(
+        lambda: {"subs": 0, "votes": 0, "weak_rounds": 0}
+    )
+    for club_id, mix_state, sub_count, vote_count in mix_rows:
+        stats = club_stats[club_id]
+        stats["subs"] += sub_count
+        stats["votes"] += vote_count
+        if (
+            mix_state != "pending"
+            and sub_count < _WEAK_ROUND_SUBMISSION_THRESHOLD
+            and vote_count < _WEAK_ROUND_VOTE_THRESHOLD
+        ):
+            stats["weak_rounds"] += 1
+
+    stale_cutoff = datetime.now(timezone.utc) - timedelta(days=_ABANDONED_CLUB_STALENESS_DAYS)
+    club_created_at = (await db.execute(select(Club.id, Club.created_at))).all()
+
+    abandoned = 0
+    for club_id, created_at in club_created_at:
+        stats = club_stats.get(club_id, {"subs": 0, "votes": 0, "weak_rounds": 0})
+        stale_and_dead = created_at < stale_cutoff and (stats["subs"] == 0 or stats["votes"] == 0)
+        too_many_weak_rounds = stats["weak_rounds"] >= _ABANDONED_CLUB_MIN_WEAK_ROUNDS
+        if stale_and_dead or too_many_weak_rounds:
+            abandoned += 1
+    return abandoned
+
+
+class AdminMetricsResponse(WireModel):
+    total_users: int
+    total_clubs: int
+    active_clubs: int
+    complete_clubs: int
+    abandoned_clubs: int
+    total_mixes: int
+    pending_mixes: int
+    open_submission_mixes: int
+    open_voting_mixes: int
+    closed_mixes: int
+    total_submissions: int
+    avg_submissions_per_mix: float
+    total_votes: int
+    total_notes: int
+    waitlist_total: int
+    waitlist_pending: int
+    waitlist_invited: int
+
+
+@router.get("/metrics", response_model=AdminMetricsResponse)
+async def get_metrics(
+    _admin: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AdminMetricsResponse:
+    """Platform-wide aggregate snapshot (platform-admin)."""
+    total_users = (
+        await db.scalar(select(func.count()).select_from(User).where(User.deleted_at.is_(None)))
+        or 0
+    )
+    club_counts = {
+        state: count
+        for state, count in (
+            await db.execute(select(Club.state, func.count()).group_by(Club.state))
+        ).all()
+    }
+    mix_counts = {
+        state: count
+        for state, count in (
+            await db.execute(select(Mix.state, func.count()).group_by(Mix.state))
+        ).all()
+    }
+    total_submissions = await db.scalar(select(func.count()).select_from(Submission)) or 0
+    # Averaged over mixes that actually received a submission: every club
+    # auto-creates all of its mixes up front, so dividing by total mixes would
+    # mostly measure how far ahead clubs are scheduled.
+    mixes_with_submissions = (
+        await db.scalar(select(func.count(func.distinct(Submission.mix_id)))) or 0
+    )
+    abandoned_clubs = await _count_abandoned_clubs(db)
+    total_votes = await db.scalar(select(func.count()).select_from(Vote)) or 0
+    total_notes = await db.scalar(select(func.count()).select_from(Note)) or 0
+    waitlist_total = await db.scalar(select(func.count()).select_from(WaitlistEntry)) or 0
+    waitlist_invited = (
+        await db.scalar(
+            select(func.count())
+            .select_from(WaitlistEntry)
+            .where(WaitlistEntry.invited_at.is_not(None))
+        )
+        or 0
+    )
+
+    return AdminMetricsResponse(
+        total_users=total_users,
+        total_clubs=sum(club_counts.values()),
+        active_clubs=club_counts.get("active", 0),
+        complete_clubs=club_counts.get("complete", 0),
+        abandoned_clubs=abandoned_clubs,
+        total_mixes=sum(mix_counts.values()),
+        pending_mixes=mix_counts.get("pending", 0),
+        open_submission_mixes=mix_counts.get("open_submission", 0),
+        open_voting_mixes=mix_counts.get("open_voting", 0),
+        closed_mixes=mix_counts.get("closed", 0),
+        total_submissions=total_submissions,
+        avg_submissions_per_mix=(
+            total_submissions / mixes_with_submissions if mixes_with_submissions else 0.0
+        ),
+        total_votes=total_votes,
+        total_notes=total_notes,
+        waitlist_total=waitlist_total,
+        waitlist_pending=waitlist_total - waitlist_invited,
+        waitlist_invited=waitlist_invited,
+    )
+
+
+# Longest window the trend endpoint will serve, in days. A year of daily
+# buckets is more history than the chart can usefully render, and bounding it
+# caps how much of `users` a single request scans; anything larger is a 422.
+_MAX_SIGNUP_TREND_DAYS = 365
+
+
+class SignupBucket(WireModel):
+    day: date
+    count: int
+
+
+class AdminSignupsResponse(WireModel):
+    days: int
+    buckets: list[SignupBucket]
+
+
+# Kept separate from GET /admin/metrics rather than nested in it: the snapshot
+# there is a flat set of scalars with no parameters, and this one is a
+# parameterised series the chart refetches on its own when the window changes.
+@router.get("/metrics/signups", response_model=AdminSignupsResponse)
+async def get_signup_trend(
+    days: int = Query(default=30, ge=1, le=_MAX_SIGNUP_TREND_DAYS),
+    _admin: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AdminSignupsResponse:
+    """Daily live-account signup counts over the last ``days`` days (platform-admin).
+
+    Buckets are UTC calendar days, ending today, and every day in the window is
+    returned — days with no signups come back as zero so the series is
+    continuous. Deleted accounts are excluded, matching total_users above.
+    """
+    end_day = datetime.now(timezone.utc).date()
+    start_day = end_day - timedelta(days=days - 1)
+    window_start = datetime(start_day.year, start_day.month, start_day.day, tzinfo=timezone.utc)
+
+    day_column = cast(func.timezone("UTC", User.created_at), Date)
+    counts = {
+        day: count
+        for day, count in (
+            await db.execute(
+                select(day_column, func.count())
+                .where(User.deleted_at.is_(None), User.created_at >= window_start)
+                .group_by(day_column)
+            )
+        ).all()
+    }
+
+    return AdminSignupsResponse(
+        days=days,
+        buckets=[
+            SignupBucket(day=day, count=counts.get(day, 0))
+            for day in (start_day + timedelta(days=offset) for offset in range(days))
+        ],
+    )

@@ -1,4 +1,5 @@
 import { type FormEvent, useState } from "react";
+import { Link } from "react-router-dom";
 import type { AdminUser, SpotifyStatus, WaitlistEntry } from "../services/api";
 import { Badge } from "../components/Badge";
 import { Button } from "../components/Button";
@@ -98,6 +99,13 @@ export function AdminScreen({
       <p className="mt-4 font-mono text-[13px] font-light text-muted">
         find a user by email, then remove their account and all of their data.
       </p>
+
+      <Link
+        to="/admin/metrics"
+        className="mt-4 inline-block py-1.5 font-mono uppercase tracking-ui text-[11px] text-ink underline underline-offset-[3px] hover:text-sage"
+      >
+        metrics
+      </Link>
 
       <form onSubmit={handleSubmit} className="mt-8 flex items-end gap-4">
         <div className="flex-1">

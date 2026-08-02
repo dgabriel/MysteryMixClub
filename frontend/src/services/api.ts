@@ -1504,6 +1504,61 @@ export async function adminCreateInvite(): Promise<Invite> {
   return (await res.json()) as Invite;
 }
 
+/** Platform-wide aggregate snapshot (GET /api/v1/admin/metrics). Field names
+ *  are the backend's own — this response isn't aliased, so it stays snake_case.
+ *  `avg_submissions_per_mix` is averaged over mixes that received at least one
+ *  submission, not over every mix that exists. */
+export type AdminMetrics = {
+  total_users: number;
+  total_clubs: number;
+  active_clubs: number;
+  complete_clubs: number;
+  abandoned_clubs: number;
+  total_mixes: number;
+  pending_mixes: number;
+  open_submission_mixes: number;
+  open_voting_mixes: number;
+  closed_mixes: number;
+  total_submissions: number;
+  avg_submissions_per_mix: number;
+  total_votes: number;
+  total_notes: number;
+  waitlist_total: number;
+  waitlist_pending: number;
+  waitlist_invited: number;
+};
+
+/** Fetch the platform metrics snapshot (platform-admin only). */
+export async function adminGetMetrics(): Promise<AdminMetrics> {
+  const res = await authenticatedRequest("/api/v1/admin/metrics");
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as AdminMetrics;
+}
+
+/** One day of the signup trend. `day` is a UTC calendar day, `YYYY-MM-DD`. */
+export type SignupBucket = {
+  day: string;
+  count: number;
+};
+
+/** Daily signup counts over a trailing window, ascending oldest-first. Every
+ *  day in the window is present — days with no signups come back as zero. */
+export type AdminSignupTrend = {
+  days: number;
+  buckets: SignupBucket[];
+};
+
+/** Fetch the daily signup trend (platform-admin only). */
+export async function adminGetSignupTrend(days = 30): Promise<AdminSignupTrend> {
+  const res = await authenticatedRequest(`/api/v1/admin/metrics/signups?days=${days}`);
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as AdminSignupTrend;
+}
+
 /** A public waitlist join request (MYS-215, temporary pre-launch flow). */
 export type WaitlistEntry = {
   id: string;

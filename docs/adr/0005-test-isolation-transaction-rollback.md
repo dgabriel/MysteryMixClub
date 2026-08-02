@@ -29,8 +29,7 @@ Alternatives considered:
 - **`pytest-xdist` (`-n auto`) to parallelize across cores.** Investigated and
   rejected for now. This repo's tests share one real Postgres database
   (`mysterymixclub_test`); two full-suite pytest invocations running
-  concurrently against it are confirmed to deadlock
-  ([[project_serial-test-runs]]). `conftest.py`'s schema setup
+  concurrently against it are confirmed to deadlock. `conftest.py`'s schema setup
   (`Base.metadata.drop_all`/`create_all`, session-scoped, autouse) is not
   worker-safe as written — multiple xdist workers would independently race to
   drop/create the same tables in the same database, which is the identical
@@ -47,7 +46,7 @@ Alternatives considered:
   ~20-25s of fixed container/checkout/setup overhead before running anything.
 - **Narrowing the pre-push hook to a lighter test subset.** Rejected for now.
   The hook running the full suite before every push is intentional, documented
-  (`docs/git-hygiene.md`, [[feedback_targeted-test-runs]]), and — given the
+  in `docs/git-hygiene.md`, and — given the
   shared-DB deadlock constraint above — is part of what prevents a local run
   and a CI run (or two people's CI runs) from colliding. The friction being
   felt is overwhelmingly the fixture cost below, not the fact that the full

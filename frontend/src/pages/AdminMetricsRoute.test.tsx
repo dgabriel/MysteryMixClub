@@ -52,6 +52,7 @@ const snapshot: AdminMetrics = {
   total_clubs: 102,
   active_clubs: 103,
   complete_clubs: 104,
+  abandoned_clubs: 105,
   total_mixes: 205,
   pending_mixes: 206,
   open_submission_mixes: 207,
@@ -137,6 +138,7 @@ describe("AdminMetricsRoute", () => {
       expect(statValue("users and clubs", "clubs")).toBe("102");
       expect(statValue("users and clubs", "active clubs")).toBe("103");
       expect(statValue("users and clubs", "complete clubs")).toBe("104");
+      expect(statValue("users and clubs", "abandoned clubs")).toBe("105");
     });
 
     it("renders every mystery-mix count against its own label", async () => {
@@ -287,8 +289,8 @@ describe("AdminMetricsRoute", () => {
         }
       }
 
-      // All 16 stats are accounted for across the four lists.
-      expect(container.querySelectorAll("dd")).toHaveLength(16);
+      // All 17 stats are accounted for across the four lists.
+      expect(container.querySelectorAll("dd")).toHaveLength(17);
     });
 
     it("announces the failure as an alert, not as ordinary body copy", async () => {

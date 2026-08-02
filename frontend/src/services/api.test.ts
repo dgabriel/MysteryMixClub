@@ -990,6 +990,7 @@ describe("api.ts", () => {
       total_clubs: 7,
       active_clubs: 4,
       complete_clubs: 3,
+      abandoned_clubs: 1,
       total_mixes: 41,
       pending_mixes: 20,
       open_submission_mixes: 2,

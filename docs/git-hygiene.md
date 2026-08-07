@@ -33,22 +33,49 @@ Related: branch model in `docs/ci-cd.md`. Hook PATH gotcha at the bottom of this
    on `develop` and branch after — you will end up with uncommitted changes on a
    shared branch. Branch first, then code.
    **Start from origin state, not local state.** Dawn sometimes merges PRs from
-   the GitHub web UI, and this repo auto-deletes head branches on merge — so a
-   promotion PR (`develop → main`, head branch `develop`) can delete
-   `origin/develop` out from under you, while your local `develop` still looks
-   fine (it just doesn't know its upstream is gone). Before trusting any local
-   branch, always:
+   the GitHub web UI. Before trusting any local branch, always:
    ```
    git fetch --prune
    ```
    Then prune local branches whose upstream is gone (`git branch -vv | grep
    ': gone]'`) — each one either merged already (safe to delete) or needs a
    look before deleting, never silently kept around as if still live.
-   **Only if `origin/develop` doesn't exist at all**, create it from `main`:
-   ```
-   git checkout main && git pull --ff-only origin main
-   git checkout -b develop && git push -u origin develop
-   ```
+
+   **`develop` is a protected branch (since 2026-08-07).** The repo sets
+   `delete_branch_on_merge: true`, and a promotion PR's head branch *is*
+   `develop` — so until this protection existed, **every** `develop → main`
+   promotion deleted `origin/develop`, leaving your local copy looking fine
+   while its upstream was silently gone. That was the expected outcome of a
+   normal promotion, not a rare accident. Branch protection stops it, because
+   GitHub does not auto-delete a protected branch:
+
+   - `allow_deletions: false` — the setting that actually stops the auto-delete
+   - `allow_force_pushes: false`
+   - Require a PR before merging: on, with 0 required approvals
+   - Required status checks: none configured (green CI is still the merge gate
+     in practice — see Pull Requests below)
+   - `enforce_admins: false` — Dawn can still bypass deliberately
+
+   Do not remove this protection to work around an awkward merge. If
+   `origin/develop` goes missing anyway, recover — don't improvise:
+
+   - **Local `develop` still exists** (the normal case) — fast-forward it to
+     `main` and push it back. Prove containment first: if the promotion was a
+     real merge commit, local `develop` is an ancestor of `main`, so the
+     fast-forward loses nothing.
+     ```
+     git merge-base --is-ancestor develop origin/main   # must succeed first
+     git checkout develop && git merge --ff-only origin/main
+     git push -u origin develop
+     ```
+     If that `--is-ancestor` check fails, stop — `develop` has commits `main`
+     never absorbed, and fast-forwarding would strand them.
+   - **No local `develop` either** — only then create it from `main`:
+     ```
+     git checkout main && git pull --ff-only origin main
+     git checkout -b develop && git push -u origin develop
+     ```
+
    If `origin/develop` does exist but your local one doesn't (or is stale),
    just track/reset to it — don't recreate it from `main`, that would discard
    anything on `origin/develop` that `main` hasn't absorbed yet.

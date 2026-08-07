@@ -68,6 +68,8 @@ from app.services.spotify_playlist_generation import (
 )
 from app.services.source_tracks import source_fields
 from app.services.spotify_token_crypto import encrypt_refresh_token
+from app.services.youtube_playlist import build_watch_videos_url
+from app.services.youtube_resolver import YouTubeResolver, get_youtube_resolver
 
 router = APIRouter(tags=["spotify"])
 logger = logging.getLogger("app.api.routes.spotify")
@@ -124,10 +126,16 @@ class SpotifyPlaylistLinkResponse(WireModel):
 
     ``unmatched`` (MYS-201) accompanies an existing playlist and lists the mix's
     submissions that didn't make it, with a reason — empty when there's no
-    playlist yet (nothing generated, or nothing matched)."""
+    playlist yet (nothing generated, or nothing matched).
+
+    ``overflow_youtube_url`` (GH-232) is an ad-hoc ``watch_videos`` link built
+    from just the unmatched submissions' YouTube ids, so a member who wants
+    every song can still hear the ones Spotify's playlist skipped. Null
+    whenever ``unmatched`` is empty or none of it resolved to a YouTube id."""
 
     playlist_url: str | None
     unmatched: list[UnmatchedTrack] = []
+    overflow_youtube_url: str | None = None
     # The latest playlist_jobs status for this mix (MYS-258, ADR 0006 Slice 1):
     # "queued" / "running" / "complete" / "failed", or null when generation has
     # never been triggered for this mix (it hasn't opened for voting yet).
@@ -265,6 +273,7 @@ async def get_mix_spotify_playlist_link(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    youtube: YouTubeResolver = Depends(get_youtube_resolver),
 ) -> SpotifyPlaylistLinkResponse:
     """The mix page's read-only view (MYS-169): any club member can read the
     link an admin already generated, but never trigger generation themselves.
@@ -305,24 +314,53 @@ async def get_mix_spotify_playlist_link(
     # (Bandcamp/YouTube) track that can never match, otherwise the catalog simply
     # doesn't carry it. No Spotify call needed: the classification is the same one
     # generate_mix_playlist made when it built the playlist.
-    submissions = await db.scalars(
-        select(Submission).where(Submission.mix_id == round_id).order_by(Submission.id)
-    )
-    unmatched = [
-        UnmatchedTrack(
-            submission_id=s.id,
-            title=s.title,
-            artist=s.artist,
-            reason="source_only" if not s.isrc else "no_catalog_match",
-            source=source_fields(s.source_key)[0],
-            source_url=source_fields(s.source_key)[1],
+    submissions = list(
+        await db.scalars(
+            select(Submission).where(Submission.mix_id == round_id).order_by(Submission.id)
         )
-        for s in submissions
-        if not s.spotify_track_uri
-    ]
+    )
+    unmatched: list[UnmatchedTrack] = []
+    # Ad-hoc YouTube link for just these submissions (GH-232), so the gap
+    # summary can offer "hear the rest" rather than only "here's what's missing".
+    # Same lazy-backfill pattern as get_mix_playlist: a source-only submission
+    # already carries an exact id from submit time and is never fuzzy-resolved;
+    # anything else gets a best-effort title/artist lookup, cached back on hit.
+    overflow_video_ids: list[str] = []
+    backfilled = False
+    for s in submissions:
+        if s.spotify_track_uri:
+            continue
+        unmatched.append(
+            UnmatchedTrack(
+                submission_id=s.id,
+                title=s.title,
+                artist=s.artist,
+                reason="source_only" if not s.isrc else "no_catalog_match",
+                source=source_fields(s.source_key)[0],
+                source_url=source_fields(s.source_key)[1],
+            )
+        )
+        video_id = s.youtube_video_id
+        if not video_id and not s.source_key:
+            video_id = await youtube.video_id_for(s.title, s.artist)
+            if video_id:
+                s.youtube_video_id = video_id
+                backfilled = True
+        if video_id:
+            overflow_video_ids.append(video_id)
+
+    # Best-effort: persist any backfilled ids, but never let a write failure
+    # break the read — the link is still returned from the in-memory ids.
+    if backfilled:
+        try:
+            await db.commit()
+        except Exception:
+            await db.rollback()
+
     return SpotifyPlaylistLinkResponse(
         playlist_url=f"https://open.spotify.com/playlist/{stored.playlist_id}",
         unmatched=unmatched,
+        overflow_youtube_url=build_watch_videos_url(overflow_video_ids),
         status=job_status,
     )
 

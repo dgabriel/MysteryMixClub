@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { MusicNoteIcon } from "./MusicNoteIcon";
-import { getSpotifyPlaylistLink, type PlaylistJobStatus } from "../services/api";
+import { getSpotifyPlaylistLink, type PlaylistJobStatus, type UnmatchedTrack } from "../services/api";
 
 /**
  * Read-only Spotify playlist link for a mix (MYS-83, MYS-169).
@@ -23,6 +23,13 @@ import { getSpotifyPlaylistLink, type PlaylistJobStatus } from "../services/api"
  * Stays firmly in the Sage/Ink family — a sage underline-style link mirroring
  * the YouTube link. No Rust: on the voting screen that single signal is reserved
  * for the selected song.
+ *
+ * Also lists any submissions that didn't make the playlist (`unmatched`,
+ * MYS-201/GH-232) — the backend recomputes this on every fetch regardless of
+ * job status, so it's shown whenever present rather than gated on `complete`.
+ * A `source_only` track links back out to its original source. When at least
+ * one unmatched track resolved to a YouTube id, `overflow_youtube_url`
+ * (GH-232) offers a single ad-hoc link that plays all of them at once.
  */
 
 const LINK_CLASS =
@@ -36,9 +43,18 @@ const POLL_INTERVAL_MS = 7000;
 
 const IN_PROGRESS_STATUSES: PlaylistJobStatus[] = ["queued", "running"];
 
+// Human-readable reason text (MYS-201): `source_only` tracks were never in
+// any streaming catalog to begin with, `no_catalog_match` tracks are catalog
+// tracks Spotify's search just couldn't resolve.
+function reasonLabel(track: UnmatchedTrack): string {
+  return track.reason === "source_only" ? "not on spotify" : "not found on spotify";
+}
+
 type LinkState = {
   playlistUrl: string | null;
   status: PlaylistJobStatus | null;
+  unmatched: UnmatchedTrack[];
+  overflowYoutubeUrl: string | null;
 };
 
 export function SpotifyPlaylist({ mixId }: { mixId: string }) {
@@ -52,13 +68,19 @@ export function SpotifyPlaylist({ mixId }: { mixId: string }) {
       getSpotifyPlaylistLink(mixId)
         .then((r) => {
           if (!active) return;
-          setState({ playlistUrl: r.playlist_url, status: r.status });
+          setState({
+            playlistUrl: r.playlist_url,
+            status: r.status,
+            unmatched: r.unmatched,
+            overflowYoutubeUrl: r.overflow_youtube_url,
+          });
           if (r.status && IN_PROGRESS_STATUSES.includes(r.status)) {
             timer = setTimeout(fetchOnce, POLL_INTERVAL_MS);
           }
         })
         .catch(() => {
-          if (active) setState({ playlistUrl: null, status: null });
+          if (active)
+            setState({ playlistUrl: null, status: null, unmatched: [], overflowYoutubeUrl: null });
         });
     };
 
@@ -72,7 +94,7 @@ export function SpotifyPlaylist({ mixId }: { mixId: string }) {
   // undefined = still loading; render nothing rather than a flash of the note.
   if (state === undefined) return null;
 
-  const { playlistUrl, status } = state;
+  const { playlistUrl, status, unmatched, overflowYoutubeUrl } = state;
   const inProgress = !playlistUrl && !!status && IN_PROGRESS_STATUSES.includes(status);
 
   return (
@@ -87,6 +109,46 @@ export function SpotifyPlaylist({ mixId }: { mixId: string }) {
       ) : (
         <p className={NOTE_CLASS}>no spotify playlist yet</p>
       )}
+      {unmatched.length > 0 ? (
+        <div className="mt-2">
+          <p className={NOTE_CLASS}>
+            {unmatched.length} {unmatched.length === 1 ? "song didn't" : "songs didn't"} make the
+            spotify playlist:
+          </p>
+          {overflowYoutubeUrl ? (
+            <a
+              href={overflowYoutubeUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`${LINK_CLASS} mt-1`}
+            >
+              <MusicNoteIcon />
+              hear the rest on youtube
+            </a>
+          ) : null}
+          <ul className="mt-1 space-y-1">
+            {unmatched.map((track) => (
+              <li key={track.submission_id} className={NOTE_CLASS}>
+                {track.title} by {track.artist} ({reasonLabel(track)}
+                {track.source_url ? (
+                  <>
+                    ,{" "}
+                    <a
+                      href={track.source_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={LINK_CLASS}
+                    >
+                      listen on {track.source}
+                    </a>
+                  </>
+                ) : null}
+                )
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }

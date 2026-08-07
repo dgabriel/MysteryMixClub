@@ -6,8 +6,16 @@ import {
   createApplePlaylist,
   getAppleDeveloperToken,
   getApplePlaylistLink,
+  type UnmatchedTrack,
 } from "../services/api";
 import { authorizeAppleMusic } from "../services/musickit";
+
+// Human-readable reason text (MYS-201): `source_only` tracks were never in
+// any streaming catalog to begin with, `no_catalog_match` tracks are catalog
+// tracks Apple Music's search just couldn't resolve.
+function reasonLabel(track: UnmatchedTrack): string {
+  return track.reason === "source_only" ? "not on apple music" : "not found on apple music";
+}
 
 /**
  * Per-player Apple Music playlist for a mix (MYS-108).
@@ -23,6 +31,12 @@ import { authorizeAppleMusic } from "../services/musickit";
  *
  * Stays in the Sage/Ink family — no Rust: on the voting screen that single
  * signal belongs to the selected song.
+ *
+ * Also lists any submissions that didn't make the playlist (`unmatched`,
+ * MYS-201/GH-232). Unlike Spotify's read-only link, this is only known once
+ * this player has generated their own copy — `getApplePlaylistLink` (the
+ * read-only check on mount) doesn't return it, only `createApplePlaylist`'s
+ * result does — so the list stays empty until `handleGenerate` succeeds.
  */
 
 const LINK_CLASS =
@@ -55,6 +69,7 @@ export function AppleMusicPlaylist({ mixId }: { mixId: string }) {
   const [playlistUrl, setPlaylistUrl] = useState<string | null | undefined>(undefined);
   const [directPlaylistUrl, setDirectPlaylistUrl] = useState<string | null>(null);
   const [playlistName, setPlaylistName] = useState<string | null>(null);
+  const [unmatched, setUnmatched] = useState<UnmatchedTrack[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSignInModal, setShowSignInModal] = useState(false);
@@ -107,6 +122,7 @@ export function AppleMusicPlaylist({ mixId }: { mixId: string }) {
       setPlaylistUrl(result.playlist_url);
       setDirectPlaylistUrl(result.direct_playlist_url);
       setPlaylistName(result.playlist_name);
+      setUnmatched(result.unmatched);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         setError("apple music connection expired. try again.");
@@ -174,6 +190,35 @@ export function AppleMusicPlaylist({ mixId }: { mixId: string }) {
         </>
       )}
       {error ? <p className={NOTE_CLASS}>{error}</p> : null}
+      {unmatched.length > 0 ? (
+        <div className="mt-2">
+          <p className={NOTE_CLASS}>
+            {unmatched.length} {unmatched.length === 1 ? "song didn't" : "songs didn't"} make the
+            apple music playlist:
+          </p>
+          <ul className="mt-1 space-y-1">
+            {unmatched.map((track) => (
+              <li key={track.submission_id} className={NOTE_CLASS}>
+                {track.title} by {track.artist} ({reasonLabel(track)}
+                {track.source_url ? (
+                  <>
+                    ,{" "}
+                    <a
+                      href={track.source_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={LINK_CLASS}
+                    >
+                      listen on {track.source}
+                    </a>
+                  </>
+                ) : null}
+                )
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       {showSignInModal ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 px-4">
           <div className="w-full max-w-sm border border-border bg-cream p-6">

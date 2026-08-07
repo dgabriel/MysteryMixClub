@@ -273,6 +273,111 @@ describe("AppleMusicPlaylist", () => {
     expect(await screen.findByText(/couldn't build the playlist/i)).toBeInTheDocument();
   });
 
+  describe("unmatched tracks (MYS-201/GH-232)", () => {
+    it("does not show an unmatched list before generation", async () => {
+      render(<AppleMusicPlaylist mixId="r1" />);
+
+      await screen.findByRole("button", { name: /build this mystery mix in apple music/i });
+      expect(screen.queryByText(/didn't make the apple music playlist/i)).not.toBeInTheDocument();
+    });
+
+    it("shows the unmatched list with reason text after a successful generation", async () => {
+      mockCreate.mockResolvedValue({
+        playlist_url: "https://music.apple.com/library",
+        direct_playlist_url: "https://music.apple.com/library/playlist/p.NEW",
+        playlist_name: "Mix: Mix 1",
+        track_count: 4,
+        total_count: 5,
+        unmatched: [
+          {
+            submission_id: "s1",
+            title: "Song One",
+            artist: "Artist One",
+            reason: "no_catalog_match",
+            source: null,
+            source_url: null,
+          },
+        ],
+      });
+
+      render(<AppleMusicPlaylist mixId="r1" />);
+      await userEvent.click(
+        await screen.findByRole("button", { name: /build this mystery mix in apple music/i }),
+      );
+      await userEvent.click(screen.getByRole("button", { name: /continue to apple music/i }));
+
+      expect(
+        await screen.findByText(/1 song didn't make the apple music playlist:/i),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/Song One by Artist One \(not found on apple music\)/),
+      ).toBeInTheDocument();
+    });
+
+    it("renders a listen-on link with the correct href for a source_only track", async () => {
+      mockCreate.mockResolvedValue({
+        playlist_url: "https://music.apple.com/library",
+        direct_playlist_url: "https://music.apple.com/library/playlist/p.NEW",
+        playlist_name: "Mix: Mix 1",
+        track_count: 4,
+        total_count: 5,
+        unmatched: [
+          {
+            submission_id: "s2",
+            title: "Song Two",
+            artist: "Artist Two",
+            reason: "source_only",
+            source: "youtube",
+            source_url: "https://youtube.com/watch?v=abc123",
+          },
+        ],
+      });
+
+      render(<AppleMusicPlaylist mixId="r1" />);
+      await userEvent.click(
+        await screen.findByRole("button", { name: /build this mystery mix in apple music/i }),
+      );
+      await userEvent.click(screen.getByRole("button", { name: /continue to apple music/i }));
+
+      expect(
+        await screen.findByText(/Song Two by Artist Two \(not on apple music,/),
+      ).toBeInTheDocument();
+      const link = screen.getByRole("link", { name: /listen on youtube/i });
+      expect(link).toHaveAttribute("href", "https://youtube.com/watch?v=abc123");
+    });
+
+    it("does not render a listen-on link for a no_catalog_match track with no source_url", async () => {
+      mockCreate.mockResolvedValue({
+        playlist_url: "https://music.apple.com/library",
+        direct_playlist_url: "https://music.apple.com/library/playlist/p.NEW",
+        playlist_name: "Mix: Mix 1",
+        track_count: 4,
+        total_count: 5,
+        unmatched: [
+          {
+            submission_id: "s1",
+            title: "Song One",
+            artist: "Artist One",
+            reason: "no_catalog_match",
+            source: null,
+            source_url: null,
+          },
+        ],
+      });
+
+      render(<AppleMusicPlaylist mixId="r1" />);
+      await userEvent.click(
+        await screen.findByRole("button", { name: /build this mystery mix in apple music/i }),
+      );
+      await userEvent.click(screen.getByRole("button", { name: /continue to apple music/i }));
+
+      expect(
+        await screen.findByText(/Song One by Artist One \(not found on apple music\)/),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/listen on/i)).not.toBeInTheDocument();
+    });
+  });
+
   it("renders nothing when apple music is not configured", async () => {
     mockToken.mockResolvedValue({ token: null });
 

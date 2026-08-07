@@ -244,5 +244,19 @@ history first (see above), don't reach for `--squash` as the fast way out.
   first (e.g. Anaconda). No manual `PATH=...` prefix needed anymore — if you see
   ENOENT / ModuleNotFoundError from a hook, that's a real regression, not this
   old gotcha; investigate rather than reaching for the workaround.
+- **Start Postgres before you push.** The pre-push `pytest` run needs the local
+  docker-compose Postgres. If the Docker daemon isn't running, every test errors
+  at fixture setup and the hook prints a solid wall of `E`s — which reads like a
+  catastrophic code regression but is only an unreachable test DB. Check the
+  daemon and the container before diagnosing anything:
+  ```
+  docker compose up -d          # starts mmc-postgres
+  docker ps                     # confirm it's healthy, not just started
+  ```
+  Distinguish this from the PATH gotcha above: `E`s across the whole suite mean
+  no database, while ENOENT / ModuleNotFoundError means a broken interpreter
+  path. Neither is a reason to reach for `--no-verify`.
 - Pushes to `main`/`develop` share one Postgres test DB serially — **never run two
-  pushes concurrently** or pre-push deadlocks.
+  pushes concurrently** or pre-push deadlocks. This applies to any two concurrent
+  `pytest` runs, not just pushes: don't kick off a second push while one is still
+  running its hook.

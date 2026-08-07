@@ -98,6 +98,7 @@ async def _add_submission(
     spotify_track_uri=None,
     source_key=None,
     participation_mode="playing",
+    youtube_video_id=None,
 ):
     submission = Submission(
         mix_id=mix_id,
@@ -109,6 +110,7 @@ async def _add_submission(
         platform_links={},
         spotify_track_uri=spotify_track_uri,
         participation_mode=participation_mode,
+        youtube_video_id=youtube_video_id,
     )
     db_session.add(submission)
     await db_session.commit()
@@ -221,16 +223,39 @@ async def fake_spotify() -> FakeSpotifyClient:
     return FakeSpotifyClient(isrc_map={"I-MATCH": "spotify:track:matched"})
 
 
+class _FakeYouTube:
+    """Stands in for YouTubeResolver (GH-232, same contract as
+    test_playlist.py's ``_FakeYouTube``): resolves ``title`` -> video id from a
+    fixed map, recording every call so tests can assert a source-only
+    submission (or one that already has a cached id) never triggers a lookup.
+    Returns ``None`` for anything not in the map, matching the real
+    resolver's best-effort "never raises" contract — a bare ``None`` override
+    would crash the route with an AttributeError the moment it tried
+    ``youtube.video_id_for(...)``."""
+
+    def __init__(self, *, by_title: dict[str, str] | None = None):
+        self._by_title = by_title or {}
+        self.calls: list[tuple[str, str | None]] = []
+
+    async def video_id_for(self, title: str, artist: str | None = None) -> str | None:
+        self.calls.append((title, artist))
+        return self._by_title.get(title)
+
+
 def _client_with_spotify(
     session_factory,
     fake,
     *,
     playlist_account_id: uuid.UUID | None = _SHARED_ACCOUNT_ID,
+    youtube: _FakeYouTube | None = None,
 ) -> AsyncClient:
     """An ASGI client whose Spotify dependency is `fake` (no network, no
     dependence on the ambient .env). Defaults ``SPOTIFY_PLAYLIST_ACCOUNT_USER_ID``
     to ``_SHARED_ACCOUNT_ID`` (MYS-169); pass ``playlist_account_id=None`` to
-    exercise the "not configured" path."""
+    exercise the "not configured" path. ``youtube`` (GH-232) defaults to a
+    ``_FakeYouTube`` with an empty map, i.e. every lookup misses — the same
+    "unconfigured" shape the real resolver degrades to when no API key is set;
+    pass one seeded with ``by_title`` to exercise a resolvable overflow id."""
     app = create_app()
 
     async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -239,7 +264,7 @@ def _client_with_spotify(
 
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_spotify_client] = lambda: fake
-    app.dependency_overrides[get_youtube_resolver] = lambda: None
+    app.dependency_overrides[get_youtube_resolver] = lambda: youtube or _FakeYouTube()
     app.dependency_overrides[get_settings] = lambda: Settings(
         spotify_playlist_account_user_id=str(playlist_account_id) if playlist_account_id else "",
     )
@@ -651,7 +676,12 @@ async def test_link_null_before_generation(spotify_client, db_session):
     # status is None too: this mix was never enqueued (MYS-258) — generation
     # here happens by calling generate_mix_playlist directly, bypassing the
     # queue entirely, same as every other _generate()-based test in this file.
-    assert resp.json() == {"playlist_url": None, "unmatched": [], "status": None}
+    assert resp.json() == {
+        "playlist_url": None,
+        "unmatched": [],
+        "overflow_youtube_url": None,
+        "status": None,
+    }
 
 
 async def test_link_null_when_shared_account_not_configured(client, db_session):
@@ -659,7 +689,12 @@ async def test_link_null_when_shared_account_not_configured(client, db_session):
     mix_ = await _seed_mix(db_session, organizer)
     resp = await client.get(_link_url(mix_.id), headers=_auth(organizer.id))
     assert resp.status_code == 200
-    assert resp.json() == {"playlist_url": None, "unmatched": [], "status": None}
+    assert resp.json() == {
+        "playlist_url": None,
+        "unmatched": [],
+        "overflow_youtube_url": None,
+        "status": None,
+    }
 
 
 async def test_link_visible_to_any_member_after_generation(
@@ -680,6 +715,7 @@ async def test_link_visible_to_any_member_after_generation(
     assert link_resp.json() == {
         "playlist_url": "https://open.spotify.com/playlist/pl1",
         "unmatched": [],
+        "overflow_youtube_url": None,
         "status": None,
     }
 
@@ -724,6 +760,146 @@ async def test_link_reports_unmatched_gap_after_generation(
     assert by_id[str(src.id)]["source_url"] == "https://coolband.bandcamp.com/track/demo"
     assert by_id[str(miss.id)]["source"] is None
     assert by_id[str(miss.id)]["source_url"] is None
+    # No YouTube id resolved for either unmatched entry (default fake resolver
+    # has an empty map) -> no overflow link (GH-232).
+    assert body["overflow_youtube_url"] is None
+
+
+# --------------------------------------------------------------------------- #
+# overflow_youtube_url (GH-232) — "hear the rest on youtube"
+# --------------------------------------------------------------------------- #
+
+
+async def test_link_overflow_youtube_url_from_resolved_unmatched_track(
+    db_session, fake_spotify, session_factory
+):
+    # An unmatched, non-source-only submission with a resolvable YouTube id
+    # produces a watch_videos overflow link containing that id, and the
+    # resolved id is cached back onto the submission (same lazy-backfill
+    # pattern as GET /mixes/:id/playlist).
+    youtube = _FakeYouTube(by_title={"miss": "yt-miss-1"})
+    organizer = await _seed_user(db_session, "o@example.com")
+    mix_ = await _seed_mix(db_session, organizer)
+    await _seed_shared_account(db_session)
+    await _add_submission(db_session, mix_.id, organizer.id, isrc="I-MATCH", title="hit")
+    miss = await _add_submission(db_session, mix_.id, organizer.id, isrc="I-MISS", title="miss")
+
+    await _generate(db_session, mix_, fake_spotify)
+
+    async with _client_with_spotify(session_factory, fake_spotify, youtube=youtube) as c:
+        resp = await c.get(_link_url(mix_.id), headers=_auth(organizer.id))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["overflow_youtube_url"] is not None
+    assert body["overflow_youtube_url"].startswith(
+        "https://www.youtube.com/watch_videos?video_ids="
+    )
+    assert "yt-miss-1" in body["overflow_youtube_url"]
+    assert youtube.calls == [("miss", "A")]
+
+    # Best-effort cache: the resolved id is now persisted on the submission.
+    miss_id = miss.id
+    db_session.expire_all()
+    refreshed = await db_session.scalar(select(Submission).where(Submission.id == miss_id))
+    assert refreshed.youtube_video_id == "yt-miss-1"
+
+
+async def test_link_overflow_youtube_url_none_when_no_unmatched_resolve(
+    spotify_client, db_session, fake_spotify
+):
+    # Unmatched entries exist, but the (default, empty-map) fake resolver
+    # never finds an id for any of them -> no overflow link.
+    organizer = await _seed_user(db_session, "o@example.com")
+    mix_ = await _seed_mix(db_session, organizer)
+    await _seed_shared_account(db_session)
+    await _add_submission(db_session, mix_.id, organizer.id, isrc="I-MATCH", title="hit")
+    await _add_submission(db_session, mix_.id, organizer.id, isrc="I-MISS", title="miss")
+
+    await _generate(db_session, mix_, fake_spotify)
+
+    resp = await spotify_client.get(_link_url(mix_.id), headers=_auth(organizer.id))
+    assert resp.status_code == 200
+    assert resp.json()["overflow_youtube_url"] is None
+
+
+async def test_link_overflow_youtube_url_null_before_generation_and_no_unmatched(
+    spotify_client, db_session
+):
+    # No playlist generated yet (stored is None) -> overflow_youtube_url stays
+    # null, same as playlist_url and unmatched (confirms the exact-equality
+    # tests above aren't hiding a stray non-null default).
+    organizer = await _seed_user(db_session, "o@example.com")
+    mix_ = await _seed_mix(db_session, organizer)
+    await _seed_shared_account(db_session)
+    resp = await spotify_client.get(_link_url(mix_.id), headers=_auth(organizer.id))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["playlist_url"] is None
+    assert body["unmatched"] == []
+    assert body["overflow_youtube_url"] is None
+
+
+async def test_link_overflow_ignores_source_only_without_lookup(
+    db_session, fake_spotify, session_factory
+):
+    # A source-only (Bandcamp) unmatched submission never triggers a
+    # video_id_for lookup — its identity is source-anchored, never
+    # fuzzy-resolved — and, with no cached id of its own, doesn't contribute
+    # to the overflow link even though the resolver *could* have matched it.
+    youtube = _FakeYouTube(by_title={"demo": "should-never-be-used"})
+    organizer = await _seed_user(db_session, "o@example.com")
+    mix_ = await _seed_mix(db_session, organizer)
+    await _seed_shared_account(db_session)
+    await _add_submission(db_session, mix_.id, organizer.id, isrc="I-MATCH", title="hit")
+    await _add_submission(
+        db_session,
+        mix_.id,
+        organizer.id,
+        isrc=None,
+        source_key="bandcamp:coolband/demo",
+        title="demo",
+    )
+
+    await _generate(db_session, mix_, fake_spotify)
+
+    async with _client_with_spotify(session_factory, fake_spotify, youtube=youtube) as c:
+        resp = await c.get(_link_url(mix_.id), headers=_auth(organizer.id))
+    assert resp.status_code == 200
+    assert resp.json()["overflow_youtube_url"] is None
+    assert youtube.calls == []  # never looked up
+
+
+async def test_link_overflow_includes_source_only_with_already_cached_id(
+    db_session, fake_spotify, session_factory
+):
+    # A source-only submission that already carries a cached youtube_video_id
+    # (resolved earlier, e.g. via GET /mixes/:id/playlist) still contributes
+    # to the overflow link — only a *fresh* lookup is skipped for source-only
+    # tracks, not an already-known id.
+    youtube = _FakeYouTube()
+    organizer = await _seed_user(db_session, "o@example.com")
+    mix_ = await _seed_mix(db_session, organizer)
+    await _seed_shared_account(db_session)
+    await _add_submission(db_session, mix_.id, organizer.id, isrc="I-MATCH", title="hit")
+    await _add_submission(
+        db_session,
+        mix_.id,
+        organizer.id,
+        isrc=None,
+        source_key="bandcamp:coolband/demo",
+        title="demo",
+        youtube_video_id="yt-cached-src",
+    )
+
+    await _generate(db_session, mix_, fake_spotify)
+
+    async with _client_with_spotify(session_factory, fake_spotify, youtube=youtube) as c:
+        resp = await c.get(_link_url(mix_.id), headers=_auth(organizer.id))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["overflow_youtube_url"] is not None
+    assert "yt-cached-src" in body["overflow_youtube_url"]
+    assert youtube.calls == []  # cached id used, no lookup triggered
 
 
 # --------------------------------------------------------------------------- #

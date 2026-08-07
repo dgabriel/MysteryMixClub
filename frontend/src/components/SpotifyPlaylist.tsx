@@ -27,7 +27,9 @@ import { getSpotifyPlaylistLink, type PlaylistJobStatus, type UnmatchedTrack } f
  * Also lists any submissions that didn't make the playlist (`unmatched`,
  * MYS-201/GH-232) — the backend recomputes this on every fetch regardless of
  * job status, so it's shown whenever present rather than gated on `complete`.
- * A `source_only` track links back out to its original source.
+ * A `source_only` track links back out to its original source. When at least
+ * one unmatched track resolved to a YouTube id, `overflow_youtube_url`
+ * (GH-232) offers a single ad-hoc link that plays all of them at once.
  */
 
 const LINK_CLASS =
@@ -52,6 +54,7 @@ type LinkState = {
   playlistUrl: string | null;
   status: PlaylistJobStatus | null;
   unmatched: UnmatchedTrack[];
+  overflowYoutubeUrl: string | null;
 };
 
 export function SpotifyPlaylist({ mixId }: { mixId: string }) {
@@ -65,13 +68,19 @@ export function SpotifyPlaylist({ mixId }: { mixId: string }) {
       getSpotifyPlaylistLink(mixId)
         .then((r) => {
           if (!active) return;
-          setState({ playlistUrl: r.playlist_url, status: r.status, unmatched: r.unmatched });
+          setState({
+            playlistUrl: r.playlist_url,
+            status: r.status,
+            unmatched: r.unmatched,
+            overflowYoutubeUrl: r.overflow_youtube_url,
+          });
           if (r.status && IN_PROGRESS_STATUSES.includes(r.status)) {
             timer = setTimeout(fetchOnce, POLL_INTERVAL_MS);
           }
         })
         .catch(() => {
-          if (active) setState({ playlistUrl: null, status: null, unmatched: [] });
+          if (active)
+            setState({ playlistUrl: null, status: null, unmatched: [], overflowYoutubeUrl: null });
         });
     };
 
@@ -85,7 +94,7 @@ export function SpotifyPlaylist({ mixId }: { mixId: string }) {
   // undefined = still loading; render nothing rather than a flash of the note.
   if (state === undefined) return null;
 
-  const { playlistUrl, status, unmatched } = state;
+  const { playlistUrl, status, unmatched, overflowYoutubeUrl } = state;
   const inProgress = !playlistUrl && !!status && IN_PROGRESS_STATUSES.includes(status);
 
   return (
@@ -106,6 +115,17 @@ export function SpotifyPlaylist({ mixId }: { mixId: string }) {
             {unmatched.length} {unmatched.length === 1 ? "song didn't" : "songs didn't"} make the
             spotify playlist:
           </p>
+          {overflowYoutubeUrl ? (
+            <a
+              href={overflowYoutubeUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`${LINK_CLASS} mt-1`}
+            >
+              <MusicNoteIcon />
+              hear the rest on youtube
+            </a>
+          ) : null}
           <ul className="mt-1 space-y-1">
             {unmatched.map((track) => (
               <li key={track.submission_id} className={NOTE_CLASS}>

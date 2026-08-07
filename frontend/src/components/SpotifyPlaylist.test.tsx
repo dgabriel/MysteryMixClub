@@ -26,6 +26,7 @@ describe("SpotifyPlaylist", () => {
     mockGetLink.mockResolvedValue({
       playlist_url: "https://open.spotify.com/playlist/pl1",
       unmatched: [],
+      overflow_youtube_url: null,
       status: "complete",
     });
 
@@ -36,7 +37,12 @@ describe("SpotifyPlaylist", () => {
   });
 
   it("shows a quiet note when no playlist has been generated yet (status null — MYS-258)", async () => {
-    mockGetLink.mockResolvedValue({ playlist_url: null, unmatched: [], status: null });
+    mockGetLink.mockResolvedValue({
+      playlist_url: null,
+      unmatched: [],
+      overflow_youtube_url: null,
+      status: null,
+    });
 
     render(<SpotifyPlaylist mixId="r1" />);
 
@@ -48,7 +54,12 @@ describe("SpotifyPlaylist", () => {
   it("shows a quiet note (not an error state) when the job failed (MYS-258)", async () => {
     // Matches this component's existing no-error-state philosophy: a failed
     // background job degrades to the same "not yet" note as no job at all.
-    mockGetLink.mockResolvedValue({ playlist_url: null, unmatched: [], status: "failed" });
+    mockGetLink.mockResolvedValue({
+      playlist_url: null,
+      unmatched: [],
+      overflow_youtube_url: null,
+      status: "failed",
+    });
 
     render(<SpotifyPlaylist mixId="r1" />);
 
@@ -76,6 +87,7 @@ describe("SpotifyPlaylist", () => {
     it("renders the singular summary line and list item for exactly one unmatched track", async () => {
       mockGetLink.mockResolvedValue({
         playlist_url: null,
+        overflow_youtube_url: null,
         status: null,
         unmatched: [
           {
@@ -102,6 +114,7 @@ describe("SpotifyPlaylist", () => {
     it("renders the plural summary line for two or more unmatched tracks", async () => {
       mockGetLink.mockResolvedValue({
         playlist_url: null,
+        overflow_youtube_url: null,
         status: null,
         unmatched: [
           {
@@ -133,6 +146,7 @@ describe("SpotifyPlaylist", () => {
     it("renders a listen-on link with the correct href for a source_only track", async () => {
       mockGetLink.mockResolvedValue({
         playlist_url: null,
+        overflow_youtube_url: null,
         status: null,
         unmatched: [
           {
@@ -158,6 +172,7 @@ describe("SpotifyPlaylist", () => {
     it("does not render a listen-on link for a no_catalog_match track with no source_url", async () => {
       mockGetLink.mockResolvedValue({
         playlist_url: null,
+        overflow_youtube_url: null,
         status: null,
         unmatched: [
           {
@@ -183,6 +198,7 @@ describe("SpotifyPlaylist", () => {
     it("still renders the unmatched list when a playlist_url is already present", async () => {
       mockGetLink.mockResolvedValue({
         playlist_url: "https://open.spotify.com/playlist/pl1",
+        overflow_youtube_url: null,
         status: "complete",
         unmatched: [
           {
@@ -207,6 +223,57 @@ describe("SpotifyPlaylist", () => {
         screen.getByText(/Song One by Artist One \(not found on spotify\)/),
       ).toBeInTheDocument();
     });
+
+    it("renders the 'hear the rest on youtube' link when overflow_youtube_url is present alongside unmatched tracks", async () => {
+      mockGetLink.mockResolvedValue({
+        playlist_url: "https://open.spotify.com/playlist/pl1",
+        overflow_youtube_url: "https://www.youtube.com/watch_videos?video_ids=abc123",
+        status: "complete",
+        unmatched: [
+          {
+            submission_id: "s1",
+            title: "Song One",
+            artist: "Artist One",
+            reason: "no_catalog_match",
+            source: null,
+            source_url: null,
+          },
+        ],
+      });
+
+      render(<SpotifyPlaylist mixId="r1" />);
+
+      const overflowLink = await screen.findByRole("link", { name: /hear the rest on youtube/i });
+      expect(overflowLink).toHaveAttribute(
+        "href",
+        "https://www.youtube.com/watch_videos?video_ids=abc123",
+      );
+    });
+
+    it("does not render the 'hear the rest on youtube' link when overflow_youtube_url is null", async () => {
+      mockGetLink.mockResolvedValue({
+        playlist_url: "https://open.spotify.com/playlist/pl1",
+        overflow_youtube_url: null,
+        status: "complete",
+        unmatched: [
+          {
+            submission_id: "s1",
+            title: "Song One",
+            artist: "Artist One",
+            reason: "no_catalog_match",
+            source: null,
+            source_url: null,
+          },
+        ],
+      });
+
+      render(<SpotifyPlaylist mixId="r1" />);
+
+      await screen.findByText(/1 song didn't make the spotify playlist:/i);
+      expect(
+        screen.queryByRole("link", { name: /hear the rest on youtube/i }),
+      ).not.toBeInTheDocument();
+    });
   });
 
   describe("polling while a job is queued/running (MYS-258, ADR 0006)", () => {
@@ -223,7 +290,12 @@ describe("SpotifyPlaylist", () => {
     });
 
     it("shows a generating note while the job is queued, with no link yet", async () => {
-      mockGetLink.mockResolvedValue({ playlist_url: null, unmatched: [], status: "queued" });
+      mockGetLink.mockResolvedValue({
+        playlist_url: null,
+        unmatched: [],
+        overflow_youtube_url: null,
+        status: "queued",
+      });
 
       render(<SpotifyPlaylist mixId="r1" />);
 
@@ -234,10 +306,16 @@ describe("SpotifyPlaylist", () => {
 
     it("polls again and swaps in the link once the job completes", async () => {
       mockGetLink
-        .mockResolvedValueOnce({ playlist_url: null, unmatched: [], status: "queued" })
+        .mockResolvedValueOnce({
+          playlist_url: null,
+          unmatched: [],
+          overflow_youtube_url: null,
+          status: "queued",
+        })
         .mockResolvedValueOnce({
           playlist_url: "https://open.spotify.com/playlist/pl1",
           unmatched: [],
+          overflow_youtube_url: null,
           status: "complete",
         });
 
@@ -256,8 +334,18 @@ describe("SpotifyPlaylist", () => {
 
     it("stops polling once the job reaches a terminal status", async () => {
       mockGetLink
-        .mockResolvedValueOnce({ playlist_url: null, unmatched: [], status: "running" })
-        .mockResolvedValueOnce({ playlist_url: null, unmatched: [], status: "failed" });
+        .mockResolvedValueOnce({
+          playlist_url: null,
+          unmatched: [],
+          overflow_youtube_url: null,
+          status: "running",
+        })
+        .mockResolvedValueOnce({
+          playlist_url: null,
+          unmatched: [],
+          overflow_youtube_url: null,
+          status: "failed",
+        });
 
       render(<SpotifyPlaylist mixId="r1" />);
       expect(await screen.findByText(/generating spotify playlist/i)).toBeInTheDocument();
@@ -277,7 +365,12 @@ describe("SpotifyPlaylist", () => {
 
     it("clears the poll timer on unmount (no state update after unmount)", async () => {
       const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout");
-      mockGetLink.mockResolvedValue({ playlist_url: null, unmatched: [], status: "queued" });
+      mockGetLink.mockResolvedValue({
+        playlist_url: null,
+        unmatched: [],
+        overflow_youtube_url: null,
+        status: "queued",
+      });
 
       const { unmount } = render(<SpotifyPlaylist mixId="r1" />);
       await screen.findByText(/generating spotify playlist/i);

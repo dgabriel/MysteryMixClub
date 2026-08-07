@@ -1107,6 +1107,7 @@ export type PlaylistJobStatus = "queued" | "running" | "complete" | "failed";
 export async function getSpotifyPlaylistLink(mixId: string): Promise<{
   playlist_url: string | null;
   unmatched: UnmatchedTrack[];
+  overflow_youtube_url: string | null;
   status: PlaylistJobStatus | null;
 }> {
   const res = await authenticatedRequest(`/api/v1/mixes/${mixId}/spotify-playlist`);
@@ -1116,6 +1117,7 @@ export async function getSpotifyPlaylistLink(mixId: string): Promise<{
   return (await res.json()) as {
     playlist_url: string | null;
     unmatched: UnmatchedTrack[];
+    overflow_youtube_url: string | null;
     status: PlaylistJobStatus | null;
   };
 }

@@ -4,8 +4,86 @@
 
 /* Self-hosted (MYS-240) — replaces the fonts.googleapis.com stylesheet, which
    was a render-blocking request on first paint (~1.2s estimated in the
-   Lighthouse audit). Only the "latin" subset ships; the app has no copy
-   outside it. */
+   Lighthouse audit). The design-system repo ships an @import from
+   fonts.googleapis.com; that import is deliberately NOT carried over.
+   Only the "latin" subset ships; the app has no copy outside it. */
+
+/* Big Shoulders Display — display / headings. 600, 700, 800.
+   Google retired the "Big Shoulders Display" family in 2025 and renamed it
+   "Big Shoulders"; these files are that family's 600/700/800 static weights.
+   The @font-face family name stays "Big Shoulders Display" because that is
+   what the design system specifies. */
+@font-face {
+  font-family: "Big Shoulders Display";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/big-shoulders-display-600.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Big Shoulders Display";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/big-shoulders-display-700.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Big Shoulders Display";
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("/fonts/big-shoulders-display-800.woff2") format("woff2");
+}
+
+/* Libre Franklin — body. 400, 500, 400 italic. */
+@font-face {
+  font-family: "Libre Franklin";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/libre-franklin-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Libre Franklin";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/libre-franklin-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Libre Franklin";
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/libre-franklin-400-italic.woff2") format("woff2");
+}
+
+/* JetBrains Mono — data / labels. 400, 500. */
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/jetbrains-mono-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/jetbrains-mono-500.woff2") format("woff2");
+}
+
+/* LEGACY (deleted by the final sweep ticket, MysteryMixClub-0fnf.18).
+   DM Serif Display still backs the remaining `font-serif` usages on
+   un-migrated surfaces. DM Mono backs nothing as of R1 — `fontFamily.mono`
+   now resolves to JetBrains Mono, so all ~335 `font-mono` call sites moved to
+   the new face in one step. That is deliberate: swapping a typeface leaves
+   every surface readable, whereas repointing a legacy *color* would not, which
+   is why the legacy color tokens keep their original values and the mono
+   family does not. These two blocks are kept only so an arbitrary-value
+   `font-['DM_Mono']` escape hatch, if one exists anywhere, does not fall back
+   to a system monospace mid-migration. */
 @font-face {
   font-family: "DM Mono";
   font-style: normal;
@@ -35,9 +113,57 @@
   src: url("/fonts/dm-serif-display-italic.woff2") format("woff2");
 }
 
+/* Design System v1.0 custom properties, under the DS's own names (ADR 0009).
+   These mirror the design system's `theme.css`, so a `var(--card)` written
+   against the DS's own vocabulary resolves here instead of silently failing.
+
+   Note what this set is NOT: the style tile (`App.tsx`) uses inline `oklch()`
+   literals and references no custom property at all, and the only `var(--…)`
+   consumers in the DS repo are its stock shadcn `components/ui/*`, which
+   ADR 0009 §3 declines to adopt. So nothing in the app consumes these today —
+   they exist for CSS that can't reach a Tailwind class (keyframes, inline
+   style objects, third-party embeds) and as the documented CSS-side spelling
+   of the palette. The set is deliberately limited to the DS names that map
+   onto a token we actually ship; it is not a complete port of `theme.css`.
+
+   THESE ARE A DELIBERATE DUPLICATE of the color/shadow/radius tokens in
+   `tailwind.config.js`. EDIT BOTH TOGETHER. They are not derived from each
+   other on purpose: the Tailwind tokens carry the `<alpha-value>` placeholder
+   so opacity modifiers work, and pulling them in here via `theme()` would drag
+   that placeholder into a raw `var()` consumer, where it is not substituted
+   and leaks into the declaration.
+
+   Values here are plain literals for direct `var()` use. Tailwind-side names
+   differ where the DS name is ambiguous in our vocabulary (`--secondary` is
+   `tile`, `--muted` is `panel`); the value is identical in every case. */
+:root {
+  --background: oklch(0.1 0.004 270); /* Tailwind: floor  (Z0) */
+  --card: oklch(0.16 0.003 270); /* Tailwind: card   (Z1) */
+  --secondary: oklch(0.22 0.003 270); /* Tailwind: tile   (Z2) */
+  --muted: oklch(0.28 0.003 270); /* Tailwind: panel  (Z3) */
+  --foreground: oklch(0.97 0.006 80);
+  --muted-foreground: oklch(0.65 0.006 270);
+  --primary: oklch(0.72 0.17 55); /* Tailwind: accent */
+  --border: rgba(255, 255, 255, 0.09); /* Tailwind: hairline */
+  --radius: 0.125rem; /* Tailwind: rounded-tile (2px) */
+
+  --shadow-z0: none;
+  --shadow-z1: 0 1px 4px rgba(0, 0, 0, 0.65);
+  --shadow-z2:
+    0 4px 14px rgba(0, 0, 0, 0.72), 0 1px 0 rgba(255, 255, 255, 0.04);
+  --shadow-z3:
+    0 8px 26px rgba(0, 0, 0, 0.8), 0 2px 0 rgba(255, 255, 255, 0.05);
+  --shadow-z4:
+    0 18px 52px rgba(0, 0, 0, 0.88), 0 4px 8px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
+  --shadow-art:
+    0 24px 72px rgba(0, 0, 0, 0.95), 0 8px 24px rgba(0, 0, 0, 0.7),
+    0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
 @layer base {
   body {
-    @apply bg-cream text-ink font-mono antialiased;
+    @apply bg-floor text-foreground font-sans antialiased;
   }
 }
 

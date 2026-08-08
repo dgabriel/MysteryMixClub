@@ -78,26 +78,45 @@ Full spec: `docs/design/style-guide.md`
 
 Quick reference (never override these without reading the full guide first):
 
-| Token       | Value     | Usage                                      |
-|-------------|-----------|---------------------------------------------|
-| Cream       | `#F0EDE6` | Default background                          |
-| Ink         | `#2E2B27` | Primary text                                |
-| Sage        | `#506755` | Primary accent                              |
-| Sage Light  | `#A8C4AD` | Secondary accent                            |
-| Sage Pale   | `#D4E3D7` | Backgrounds, hover states                   |
-| Rust        | `#AD4F39` | **Signal color. One use per screen. Never decorative.** |
-| Gold        | `#83681A` | Achievement signal — winner/most-noted reveals only |
-| Vinyl       | `#6B7EB5` | Avatar illustrations only (the 5 hardware icons) |
-| Muted       | `#6D6A66` | Supporting text                             |
-| Border      | `#D6D2CA` | Dividers, input underlines, card borders    |
+Design System v1.0 — dark surfaces, one amber accent (ADR 0009).
 
-- Headings: `DM Serif Display`
-- Everything else: `DM Mono`
+| Token               | Hex       | Usage                                                        |
+|---------------------|-----------|--------------------------------------------------------------|
+| `floor`             | `#030304` | Z0 — page background                                         |
+| `sunken`            | `#070708` | Chrome below content — bottom nav, footer, wells             |
+| `card`              | `#0D0D0F` | Z1 — the primary content surface                             |
+| `popover`           | `#151617` | Menus, dropdowns, tooltips, input fills                      |
+| `tile`              | `#1A1B1C` | Z2 — interactive tile, secondary button                      |
+| `panel`             | `#28292A` | Z3 — elevated panel                                          |
+| `sheet`             | `#3A3A3C` | Z4 — modal, drawer, bottom sheet                             |
+| `foreground`        | `#F7F5F1` | Primary text and active icons                                |
+| `muted-foreground`  | `#8E8F93` | Supporting text, captions, mono labels                       |
+| `accent`            | `#F3821D` | **The one accent. Action or achievement. Never decorative.** |
+| `accent-foreground` | `#020202` | Text on an amber fill                                        |
+| `accent-surface`    | `#1A1512` | Amber-tinted achievement/callout row                         |
+| `destructive`       | `#D40924` | Destructive **fill** only — never text                       |
+| `destructive-text`  | `#F2716A` | Form-error text and error underlines (ADR 0004)              |
+| `hairline`          | `rgba(255,255,255,0.09)` | Card edges, section rules, dividers            |
+
+- Display / headings: `Big Shoulders Display` — always uppercase, 600–800
+- Body: `Libre Franklin` — always 400. `font-sans` is the page default;
+  `font-body` is an exact alias, for pairing with `font-display` in one block
+- Labels, numbers, badges, buttons: `JetBrains Mono` — uppercase + tracking
+- Elevation: `shadow-z0`…`shadow-z4` + `shadow-art`. **The shadow index does
+  not track the surface index** — a `bg-card` (Z1) card wears `shadow-z2`.
+- Radius: `rounded-hair` (1px) inner, `rounded-tile` (2px) containers
+- `text-micro` (8.8px) is non-information-bearing chrome only; the floor for
+  any label a user must read is `text-mini`
 - Inputs: underline style only — no border boxes
-- Aesthetic: clean, compact, simple — Duchamp Rotorelief / concentric rings
-- Tailwind: use named tokens (`text-ink`, `bg-sage`, etc.) — never raw hex in components
+- Tailwind: use named tokens (`text-foreground`, `bg-card`, etc.) — never raw
+  hex in components. Streaming-platform brand colors are not tokens.
+- Legacy cream/sage/rust/gold tokens are still *defined* during the redesign so
+  un-migrated surfaces render. Never use one in new work.
 
-**Rust rule:** If you are about to use Rust a second time in one screen, stop and ask.
+**Amber rule:** amber is a *category* rule, not a counting rule — it appears on
+action or achievement and nowhere decorative. A screen may carry both an amber
+CTA and an amber rank-1 marker. If you are about to use amber as ornament,
+texture, or pattern, stop and ask.
 
 ---
 

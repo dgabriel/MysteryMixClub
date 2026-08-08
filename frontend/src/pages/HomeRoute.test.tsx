@@ -104,7 +104,7 @@ describe("HomeRoute (My Clubs)", () => {
     expect(mockGetClubs).toHaveBeenCalledTimes(1);
   });
 
-  it("groups completed clubs below active ones under a 'completed' heading with gold accent", async () => {
+  it("groups completed clubs below active ones under a 'completed' heading with the crown marker", async () => {
     mockGetClubs.mockResolvedValue([
       clubWith({ id: "a1", name: "Active One", state: "active" }),
       clubWith({ id: "c1", name: "Finished One", state: "complete", current_mix: 6 }),
@@ -123,9 +123,11 @@ describe("HomeRoute (My Clubs)", () => {
       completedHeading.compareDocumentPosition(done) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
 
-    // Only the completed card wears the gold achievement accent.
-    expect(done.closest(".border-l-gold")).not.toBeNull();
-    expect(active.closest(".border-l-gold")).toBeNull();
+    // Only the completed card wears the achievement marker. The marker is the
+    // crown glyph (the only svg a club row renders) rather than the retired
+    // gold left bar — see ClubCard for why completion carries no accent color.
+    expect(done.closest("li")?.querySelector("svg")).not.toBeNull();
+    expect(active.closest("li")?.querySelector("svg")).toBeNull();
   });
 
   it("empty list: renders the empty-state copy", async () => {

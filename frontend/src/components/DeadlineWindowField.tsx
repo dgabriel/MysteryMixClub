@@ -11,8 +11,9 @@ type DeadlineWindowFieldProps = {
   onBlur?: () => void;
   disabled?: boolean;
   /** Calm, window-specific validation message, or null/undefined if valid.
-   *  Marks both the days and hours inputs Rust and renders once below the
-   *  pair (ADR 0004) rather than duplicating the message under each input. */
+   *  Switches both the days and hours underlines to `destructive-text` and
+   *  renders once below the pair (ADR 0004) rather than duplicating the
+   *  message under each input. */
   error?: string | null;
 };
 
@@ -37,7 +38,13 @@ export function DeadlineWindowField({
   const errorId = error ? `${idPrefix}-error` : undefined;
   return (
     <div>
-      <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
+      {/* Group eyebrow over the days/hours pair. `text-meta` at
+          `tracking-mono-wide` sits one step above the two TextField labels
+          below it (`text-mini`/`tracking-mono-caps`), so the pair reads as one
+          field without the group label competing with its own parts. It stays
+          `muted-foreground` when the pair is invalid — the message below is
+          what carries `destructive-text`, matching TextField's own label. */}
+      <span className="block font-mono uppercase tracking-mono-wide text-meta text-muted-foreground">
         {label}
       </span>
       <div className="mt-2 flex items-start gap-6">
@@ -72,11 +79,16 @@ export function DeadlineWindowField({
           aria-describedby={errorId}
         />
       </div>
+      {/* Field-level, not screen-level: this is one logical field's message, so
+          it takes TextField's inline-error treatment verbatim rather than
+          `FormError` (which is documented for the message that isn't about a
+          single field, and has no way to carry the `mt-2` that separates this
+          from the inputs above it). */}
       {error ? (
         <p
           id={errorId}
           role="alert"
-          className="mt-2 flex items-center gap-1.5 font-mono text-[13px] text-rust"
+          className="mt-2 flex items-center gap-1.5 font-mono text-sm text-destructive-text"
         >
           <WarningIcon className="shrink-0" />
           {error}

@@ -632,15 +632,11 @@ describe("LoginRoute", () => {
   // This is the executable form of the ADR 0004 category boundary: the same
   // sentence gets error styling when it is a claim about the user's own
   // submission, and plain styling when it is an external system's outcome.
-  // The boundary is unchanged by the redesign; only the color name moved
-  // (rust -> destructive-text).
-  //
-  // Note that the two halves are on different design systems right now. The
-  // `text-ink` assertion below pins EmailEntryScreen, which has not been
-  // migrated yet — its own redesign ticket flips it to `text-foreground` and
-  // must update that line in the same commit. Until then this proves "these
-  // two differ", which is the substance of the contract, but not yet "these
-  // two differ in the intended direction".
+  // The boundary is unchanged by the redesign; only the color names moved
+  // (rust -> destructive-text, ink -> foreground). Both halves are on Design
+  // System v1.0 now, so this asserts the intended direction and not merely
+  // that the two differ: a third-party outcome is ordinary `foreground` body
+  // copy, and the same sentence from the user's own submit is an error.
   it("google: outcome messages are plain, while the same words from a form submit get the error color", async () => {
     localStorage.setItem("pendingInvitePath", "/invite/inv-789");
     mockRegister.mockRejectedValue(
@@ -652,7 +648,7 @@ describe("LoginRoute", () => {
       // Same sentence, arriving from Google's redirect: an external system's
       // outcome, so it stays plain body text.
       const { unmount } = renderLogin("/login?google=invite_required");
-      expect(screen.getByRole("alert")).toHaveClass("text-ink");
+      expect(screen.getByRole("alert")).toHaveClass("text-foreground");
       expect(screen.getByRole("alert")).not.toHaveClass("text-destructive-text");
       unmount();
 

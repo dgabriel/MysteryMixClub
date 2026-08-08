@@ -35,18 +35,21 @@ export function CheckEmailScreen({ email, onBack }: CheckEmailScreenProps) {
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-4 sm:px-8">
       <div className="w-full max-w-sm text-center">
-        {/* Motif without the Rust dot — when the fallback below shows, its
-            "use a different email" link is the one Rust use on this screen;
-            the waitlist form has none. */}
+        {/* The disc, unaccented. Amber-as-identity is bounded to the shared
+            nav's mark plus at most one hero mark per screen, and this screen is
+            not one of the ones that carries the hero mark (ADR 0010). */}
         <ConcentricRings size={72} className="mx-auto" />
 
-        <h1 className="mt-8 font-serif text-[34px] leading-tight">check your email</h1>
+        <h1 className="mt-8 font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
+          check your email
+        </h1>
 
-        <p className="mt-4 font-mono text-[13px] font-light text-muted">
+        <p className="mt-4 text-sm leading-[1.72] text-muted-foreground">
           if you have an account, we sent a sign-in link to
         </p>
-        <p className="mt-1 font-mono text-[13px] text-ink break-all">{email}</p>
-        <p className="mt-4 font-mono text-[13px] font-light text-muted">
+        {/* The address is a value, so it takes mono at normal tracking. */}
+        <p className="mt-1 font-mono text-sm text-foreground break-all">{email}</p>
+        <p className="mt-4 text-sm leading-[1.72] text-muted-foreground">
           open it on this device to continue. the link expires soon.
         </p>
 
@@ -54,13 +57,13 @@ export function CheckEmailScreen({ email, onBack }: CheckEmailScreenProps) {
           <WaitlistForm />
         ) : (
           <>
-            <p className="mt-6 font-mono text-[13px] font-light text-muted">
+            <p className="mt-6 text-sm leading-[1.72] text-muted-foreground">
               no account yet? you won&apos;t receive anything — you&apos;ll need an invite.{" "}
               <ContactEmail
                 user="info"
                 domain="mysterymixclub.com"
                 label="email us"
-                className="text-ink underline underline-offset-[3px]"
+                className="text-accent underline underline-offset-[3px] hover:text-foreground"
               />{" "}
               to request one.
             </p>

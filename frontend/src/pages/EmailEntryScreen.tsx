@@ -33,15 +33,17 @@ type EmailEntryScreenProps = {
    *  invite token is stashed. Without one, register is guaranteed to fail, so
    *  the affordance is hidden rather than offered as a dead end. */
   canRegister: boolean;
-  /** Field-level validation message for the password input — renders in Rust
-   *  with a warning icon (ADR 0004), independent of the screen's Rust budget. */
+  /** Field-level validation message for the password input — renders in
+   *  `destructive-text` with a warning icon (ADR 0004). Form errors are their
+   *  own color category and consume nothing from the screen's amber. */
   passwordError?: string | null;
-  /** Outcome of a failed Google round-trip (`?google=<outcome>`). Rendered in
-   *  plain Ink, NOT Rust: Rust is reserved for messages that make a claim about
-   *  the user's own attempt (a field error, an invite rejection, a rate limit),
-   *  not for a third party's outcome. Kept separate from `error` because the two
-   *  share wording in places (invite_required, at_capacity, club_full) and the
-   *  split is by source, not by text. */
+  /** Outcome of a failed Google round-trip (`?google=<outcome>`). Rendered as
+   *  plain `foreground` body copy, NOT `destructive-text`: the error color is
+   *  reserved for messages that make a claim about the user's own attempt (a
+   *  field error, an invite rejection, a rate limit), not for a third party's
+   *  outcome. Kept separate from `error` because the two share wording in places
+   *  (invite_required, at_capacity, club_full) and the split is by source, not
+   *  by text. */
   googleError?: string | null;
   /** Neutral confirmation after a reset request. Says nothing about whether the
    *  address is registered, so it is never phrased as "sent". */
@@ -52,17 +54,19 @@ type EmailEntryScreenProps = {
 };
 
 /** Dev/staging convenience: a clickable link so testers don't need a delivered
- *  email. Styled understated (ink, not Rust — Rust on this screen belongs to
- *  form validation only). */
+ *  email. The eyebrow above it is a mono label; the link itself is an action, so
+ *  it takes `accent` — amber is a category rule now, not a per-screen budget,
+ *  and a sign-in link is squarely in the action category. The URL sits in mono
+ *  at normal tracking, which is the treatment for a value rather than a label. */
 function DevLink({ href, label }: { href: string; label: string }) {
   return (
-    <div className="mt-8 border-t border-border pt-6">
-      <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
+    <div className="mt-8 border-t border-hairline pt-6">
+      <p className="font-mono uppercase tracking-mono-wide text-mini text-muted-foreground">
         dev · staging only
       </p>
       <a
         href={href}
-        className="mt-3 inline-block font-mono text-[13px] font-light text-ink underline underline-offset-[3px] break-all"
+        className="mt-3 inline-block font-mono text-xs text-accent underline underline-offset-[3px] break-all"
       >
         {label}
       </a>
@@ -70,18 +74,16 @@ function DevLink({ href, label }: { href: string; label: string }) {
   );
 }
 
-/** Understated secondary action inside the form. Deliberately not Button's
- *  "link" variant, which is Rust — a screen with form errors doesn't get to
- *  spend Rust on navigation. */
+/** Secondary action inside the form. Now the shared Button's "link" variant:
+ *  under the old system this was hand-rolled specifically to avoid Rust, but
+ *  amber marks action or achievement rather than being rationed one-per-screen,
+ *  and every one of these is an action. `py-2` is kept as a passthrough so the
+ *  touch target does not shrink to the cap height of `text-label`. */
 function InlineAction({ onClick, children }: { onClick: () => void; children: string }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="py-2 font-mono text-[11px] text-muted underline underline-offset-[3px] hover:text-ink"
-    >
+    <Button variant="link" type="button" onClick={onClick} className="py-2">
       {children}
-    </button>
+    </Button>
   );
 }
 
@@ -216,33 +218,43 @@ export function EmailEntryScreen({
     forgot: submitting ? "sending…" : "email a reset link",
   }[mode];
 
+  // Mono button type. The selected method carries an `accent` underline — the
+  // iconography rule's "accent for selected" — while both labels stay on the
+  // foreground ramp, so the amber marks the choice rather than the words.
   const tabClass = (active: boolean) =>
     [
-      "-mb-px flex-1 border-b-2 py-3 font-mono uppercase tracking-label text-[11px]",
-      active ? "border-sage text-ink" : "border-transparent text-muted hover:text-ink",
+      "-mb-px flex-1 border-b-2 py-3 font-mono uppercase tracking-mono-caps text-label transition-colors duration-150",
+      active
+        ? "border-accent text-foreground"
+        : "border-transparent text-muted-foreground hover:text-foreground",
     ].join(" ");
+
+  // Footer chrome, matching TopNav's link treatment: mono label at
+  // `muted-foreground`, resolving to `foreground` on hover.
+  const footerLinkClass =
+    "py-1 font-mono uppercase tracking-mono text-label text-muted-foreground transition-colors duration-150 hover:text-foreground";
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-4 sm:px-8">
       <div className="w-full max-w-sm">
-        {/* Motif without the Rust dot: this screen can show form validation
-            errors, which are the screen's Rust (ADR 0004) — so the decorative
-            accent comes off. */}
+        {/* The disc, unaccented. Amber-as-identity is bounded to the shared
+            nav's mark plus at most one hero mark per screen, and this screen is
+            not one of the ones that carries the hero mark (ADR 0010). */}
         <ConcentricRings size={72} className="mx-auto" />
 
-        <h1 className="mt-8 flex items-center justify-center gap-3 text-center font-serif text-[34px] leading-tight">
+        <h1 className="mt-8 flex items-center justify-center gap-3 text-center font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
           mysterymixclub
           <Badge>beta</Badge>
         </h1>
-        <p className="mt-2 text-center font-mono text-[13px] font-light text-muted">
+        <p className="mt-2 text-center text-sm leading-[1.72] text-muted-foreground">
           invite-only. sign in with your email.
         </p>
 
-        {/* What happened on the way back from Google, in plain Ink — it reports
-            an external system's outcome rather than judging anything the user
-            typed, so it is not a Rust message. */}
+        {/* What happened on the way back from Google, as plain `foreground` body
+            copy — it reports an external system's outcome rather than judging
+            anything the user typed, so it is not a form error (ADR 0004). */}
         {googleError ? (
-          <p role="alert" className="mt-6 text-center font-mono text-[13px] font-light text-ink">
+          <p role="alert" className="mt-6 text-center text-sm leading-[1.72] text-foreground">
             {googleError}
           </p>
         ) : null}
@@ -254,7 +266,7 @@ export function EmailEntryScreen({
         <div
           role="group"
           aria-label="sign-in method"
-          className="mt-10 flex border-b border-border"
+          className="mt-10 flex border-b border-hairline"
         >
           <button
             type="button"
@@ -280,7 +292,9 @@ export function EmailEntryScreen({
 
         <form onSubmit={handleSubmit} noValidate className="mt-6 space-y-8">
           {eyebrow ? (
-            <p className="font-mono uppercase tracking-label text-[9px] text-muted">{eyebrow}</p>
+            <p className="font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
+              {eyebrow}
+            </p>
           ) : null}
 
           <TextField
@@ -326,7 +340,7 @@ export function EmailEntryScreen({
                 error={passwordRequired ?? passwordError}
               />
               {mode === "register" && !(passwordRequired ?? passwordError) ? (
-                <p className="mt-2 font-mono text-[11px] font-light text-muted">
+                <p className="mt-2 text-meta leading-[1.6] text-muted-foreground">
                   {PASSWORD_MIN_LENGTH} characters or more.
                 </p>
               ) : null}
@@ -336,7 +350,7 @@ export function EmailEntryScreen({
           {error ? <FormError id={SCREEN_ERROR_ID}>{error}</FormError> : null}
 
           {resetNotice ? (
-            <p role="status" className="font-mono text-[13px] font-light text-ink">
+            <p role="status" className="text-sm leading-[1.72] text-foreground">
               {resetNotice}
             </p>
           ) : null}
@@ -377,9 +391,11 @@ export function EmailEntryScreen({
         {googleEnabled ? (
           <>
             <div className="mt-12 flex items-center gap-4">
-              <span className="h-px flex-1 bg-border" />
-              <span className="font-mono uppercase tracking-label text-[9px] text-muted">or</span>
-              <span className="h-px flex-1 bg-border" />
+              <span className="h-px flex-1 bg-hairline" />
+              <span className="font-mono uppercase tracking-mono-wide text-mini text-muted-foreground">
+                or
+              </span>
+              <span className="h-px flex-1 bg-hairline" />
             </div>
             <div className="mt-6">
               <GoogleSignInButton href={googleUrl} />
@@ -398,13 +414,13 @@ export function EmailEntryScreen({
           waitlistEnabled ? (
             <WaitlistForm />
           ) : waitlistEnabled === undefined ? null : (
-            <p className="mt-12 text-center font-mono text-[13px] font-light text-muted">
+            <p className="mt-12 text-center text-sm leading-[1.72] text-muted-foreground">
               no invite yet?{" "}
               <ContactEmail
                 user="info"
                 domain="mysterymixclub.com"
                 label="email us"
-                className="text-ink underline underline-offset-[3px]"
+                className="text-accent underline underline-offset-[3px] hover:text-foreground"
               />{" "}
               to request one.
             </p>
@@ -412,16 +428,16 @@ export function EmailEntryScreen({
         ) : null}
 
         <div className="mt-10 flex flex-wrap justify-center gap-4 text-center">
-          <Link to="/about" className="py-1 font-mono text-[11px] text-muted hover:text-ink">
+          <Link to="/about" className={footerLinkClass}>
             about mysterymixclub
           </Link>
-          <Link to="/help" className="py-1 font-mono text-[11px] text-muted hover:text-ink">
+          <Link to="/help" className={footerLinkClass}>
             help
           </Link>
-          <Link to="/terms" className="py-1 font-mono text-[11px] text-muted hover:text-ink">
+          <Link to="/terms" className={footerLinkClass}>
             terms
           </Link>
-          <Link to="/privacy" className="py-1 font-mono text-[11px] text-muted hover:text-ink">
+          <Link to="/privacy" className={footerLinkClass}>
             privacy
           </Link>
         </div>

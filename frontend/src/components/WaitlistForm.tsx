@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from "react";
 import { ApiError, joinWaitlist } from "../services/api";
 import { Button } from "./Button";
+import { FormError } from "./FormError";
 import { TextField } from "./TextField";
 
 /**
@@ -10,8 +11,9 @@ import { TextField } from "./TextField";
  * and only mounts this when the waitlist is actually on, so this component
  * assumes it should render and just handles the join itself.
  *
- * Stays in the Sage/Ink/Muted family — no Rust: EmailEntryScreen's single
- * Rust use is already spent on the concentric-rings motif above this form.
+ * The join failures are form validation, so they render through the shared
+ * `FormError` in `destructive-text` (ADR 0004) rather than as plain copy — form
+ * errors are their own color category and take nothing from the accent.
  */
 export function WaitlistForm() {
   const [email, setEmail] = useState("");
@@ -43,7 +45,7 @@ export function WaitlistForm() {
 
   if (joined) {
     return (
-      <p className="mt-10 text-center font-mono text-[13px] font-light text-muted">
+      <p className="mt-10 text-center text-sm leading-[1.72] text-muted-foreground">
         you&apos;re on the waitlist. we&apos;ll email you when a spot opens up.
       </p>
     );
@@ -51,7 +53,9 @@ export function WaitlistForm() {
 
   return (
     <div className="mt-10 text-center">
-      <p className="font-mono text-[13px] font-light text-muted">no invite yet? join the waitlist.</p>
+      <p className="text-sm leading-[1.72] text-muted-foreground">
+        no invite yet? join the waitlist.
+      </p>
       <form onSubmit={handleSubmit} noValidate className="mt-3 flex items-end justify-center gap-3">
         <div className="w-full max-w-[220px] text-left">
           <TextField
@@ -67,6 +71,13 @@ export function WaitlistForm() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             disabled={submitting}
+            // Underline-only: `invalid` switches the rule to `destructive-text`
+            // so the field itself shows the state, not just the message below
+            // the form. `error` is not used here because the message is rendered
+            // outside the form, centred. The rendered `aria-invalid` is
+            // unchanged either way — TextField emits `true` when `invalid` is
+            // set and falls through to the explicit prop below when it isn't.
+            invalid={Boolean(error)}
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? "waitlist-email-error" : undefined}
           />
@@ -76,9 +87,12 @@ export function WaitlistForm() {
         </Button>
       </form>
       {error ? (
-        <p id="waitlist-email-error" role="alert" className="mt-2 font-mono text-[13px] text-ink">
-          {error}
-        </p>
+        // FormError owns the `role="alert"`, the id, and the warning icon; the
+        // wrapper only re-centres it inside this centred block, since the
+        // primitive takes no className.
+        <div className="mt-2 flex justify-center">
+          <FormError id="waitlist-email-error">{error}</FormError>
+        </div>
       ) : null}
     </div>
   );

@@ -29,21 +29,39 @@ function reasonLabel(track: UnmatchedTrack): string {
  * Renders nothing at all when Apple Music isn't configured on the deployment,
  * so an unconfigured environment shows no dead option.
  *
- * Stays in the Sage/Ink family — no Rust: on the voting screen that single
- * signal belongs to the selected song.
- *
  * Also lists any submissions that didn't make the playlist (`unmatched`,
  * MYS-201/GH-232). Unlike Spotify's read-only link, this is only known once
  * this player has generated their own copy — `getApplePlaylistLink` (the
  * read-only check on mount) doesn't return it, only `createApplePlaylist`'s
  * result does — so the list stays empty until `handleGenerate` succeeds.
+ *
+ * **No Apple Music red anywhere.** Third-party brand values live in
+ * `lib/platformBrand.ts`, not in the theme, and this component has never used
+ * one — the service is named in the link text, which is enough. `#FC3C44`
+ * isn't even in that module yet, and adding it would buy nothing the label
+ * doesn't already say while inheriting the module's placement constraint.
+ *
+ * **Where the amber goes.** The one whole-playlist action — build it, or open
+ * it once built — and nothing else. The per-track "listen on …" links in the
+ * unmatched list stay neutral: that list is one row per unmatched submission
+ * and unbounded, so an accent there would repeat down the list and become
+ * amber as pattern.
  */
 
+/** The whole-playlist action link — the `link` button variant as an anchor. */
 const LINK_CLASS =
-  "inline-flex items-center gap-1.5 font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink";
+  "inline-flex items-center gap-1.5 font-mono uppercase tracking-mono text-label text-accent underline underline-offset-[3px] transition-colors duration-150 hover:text-foreground";
+/** Same treatment on a <button>. Disabled drops the box entirely — no
+ *  underline, label to `muted-foreground` — rather than fading it, matching
+ *  the `Button` primitive. `disabled:` is emitted after `hover:` by Tailwind,
+ *  so a disabled control can't pick up the hover color. */
 const BUTTON_CLASS =
-  "inline-flex items-center gap-1.5 font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink disabled:cursor-default disabled:text-muted disabled:no-underline";
-const NOTE_CLASS = "font-mono text-[13px] font-light text-muted";
+  "inline-flex items-center gap-1.5 font-mono uppercase tracking-mono text-label text-accent underline underline-offset-[3px] transition-colors duration-150 hover:text-foreground disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline";
+/** A per-row link inside the unmatched list. Neutral at rest, amber on hover
+ *  only — hover applies to one row at a time, so it never repeats. */
+const ROW_LINK_CLASS =
+  "font-mono text-sm text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-accent";
+const NOTE_CLASS = "font-mono text-sm text-muted-foreground";
 
 /**
  * True on a mobile OS with a native Apple Music app — where a direct
@@ -159,7 +177,7 @@ export function AppleMusicPlaylist({ mixId }: { mixId: string }) {
           {opensExactPlaylist ? (
             playlistName ? (
               <p className={NOTE_CLASS}>
-                opens <span className="text-ink">“{playlistName}”</span> directly
+                opens <span className="text-foreground">“{playlistName}”</span> directly
               </p>
             ) : null
           ) : (
@@ -167,7 +185,7 @@ export function AppleMusicPlaylist({ mixId }: { mixId: string }) {
               {playlistName ? (
                 <>
                   go to your Apple Music playlists and look for{" "}
-                  <span className="text-ink">“{playlistName}”</span>
+                  <span className="text-foreground">“{playlistName}”</span>
                 </>
               ) : (
                 "go to your Apple Music playlists to find it"
@@ -207,7 +225,7 @@ export function AppleMusicPlaylist({ mixId }: { mixId: string }) {
                       href={track.source_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className={LINK_CLASS}
+                      className={ROW_LINK_CLASS}
                     >
                       listen on {track.source}
                     </a>
@@ -219,13 +237,17 @@ export function AppleMusicPlaylist({ mixId }: { mixId: string }) {
           </ul>
         </div>
       ) : null}
+      {/* The reassurance interstitial is a modal, so it sits at the top of the
+          surface ladder: a `sheet` (Z4) panel wearing `shadow-z4`, whose 1px
+          white ring IS the token — no border alongside it. `muted-foreground`
+          fails AA on `sheet`, so every string here is `foreground`. */}
       {showSignInModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 px-4">
-          <div className="w-full max-w-sm border border-border bg-cream p-6">
-            <p className="font-mono text-[13px] font-light text-ink">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-floor/80 px-4">
+          <div className="w-full max-w-sm rounded-tile bg-sheet px-6 py-5 shadow-z4">
+            <p className="text-sm leading-[1.72] text-foreground">
               opens apple&apos;s own sign-in. we never see or store your apple id password.
             </p>
-            <p className="mt-3 font-mono text-[13px] font-light text-ink">
+            <p className="mt-3 text-sm leading-[1.72] text-foreground">
               before you sign in, check that the page&apos;s address reads apple.com.
             </p>
             <div className="mt-6 flex gap-4">

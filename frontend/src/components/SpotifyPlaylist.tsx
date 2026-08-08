@@ -20,21 +20,35 @@ import { getSpotifyPlaylistLink, type PlaylistJobStatus, type UnmatchedTrack } f
  * note as no job at all, matching this component's existing no-error-state
  * philosophy above.
  *
- * Stays firmly in the Sage/Ink family — a sage underline-style link mirroring
- * the YouTube link. No Rust: on the voting screen that single signal is reserved
- * for the selected song.
- *
  * Also lists any submissions that didn't make the playlist (`unmatched`,
  * MYS-201/GH-232) — the backend recomputes this on every fetch regardless of
  * job status, so it's shown whenever present rather than gated on `complete`.
  * A `source_only` track links back out to its original source. When at least
  * one unmatched track resolved to a YouTube id, `overflow_youtube_url`
  * (GH-232) offers a single ad-hoc link that plays all of them at once.
+ *
+ * **No Spotify green anywhere.** Third-party brand values live in
+ * `lib/platformBrand.ts`, not in the theme, and this component has never used
+ * one — the service is named in the link text, which is enough. Adding
+ * `#1DB954` here would also be constrained by the placement table in that
+ * module, and buys nothing the label doesn't already say.
+ *
+ * **Where the amber goes.** Two whole-playlist actions carry it — "open
+ * playlist in Spotify" and the single overflow "hear the rest on youtube"
+ * link. Both are actions, and there is at most one of each. The per-track
+ * "listen on …" links do not: that list is one row per unmatched submission
+ * and unbounded, so an accent there would repeat down the list and become
+ * amber as pattern.
  */
 
+/** A whole-playlist action link — the `link` button variant as an anchor. */
 const LINK_CLASS =
-  "inline-flex items-center gap-1.5 font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink";
-const NOTE_CLASS = "font-mono text-[13px] font-light text-muted";
+  "inline-flex items-center gap-1.5 font-mono uppercase tracking-mono text-label text-accent underline underline-offset-[3px] transition-colors duration-150 hover:text-foreground";
+/** A per-row link inside the unmatched list. Neutral at rest, amber on hover
+ *  only — hover applies to one row at a time, so it never repeats. */
+const ROW_LINK_CLASS =
+  "font-mono text-sm text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-accent";
+const NOTE_CLASS = "font-mono text-sm text-muted-foreground";
 
 // How often to re-check while a job is queued/running. Plain polling (ADR
 // 0006) — not fast enough to feel like a live stream, fast enough that a
@@ -137,7 +151,7 @@ export function SpotifyPlaylist({ mixId }: { mixId: string }) {
                       href={track.source_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className={LINK_CLASS}
+                      className={ROW_LINK_CLASS}
                     >
                       listen on {track.source}
                     </a>

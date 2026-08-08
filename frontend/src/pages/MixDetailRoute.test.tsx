@@ -1883,7 +1883,7 @@ describe("MixDetailRoute", () => {
       expect(svg?.querySelector("polyline")).toHaveAttribute("points", "1.5 6.5 4.5 9.5 10.5 2.5");
     });
 
-    it("uses Sage styling for the voted row, never Rust (Rust is reserved elsewhere on this screen)", async () => {
+    it("marks the voted row without the accent — a locked tally is neither an action nor an achievement", async () => {
       setupLockedTally({
         voteCounts: [
           { submission_id: "p1", title: "Debaser", artist: "Pixies", vote_count: 2 },
@@ -1891,22 +1891,29 @@ describe("MixDetailRoute", () => {
         ],
         myVotes: ["p1"],
       });
-      const { container } = renderMix();
+      renderMix();
 
       await screen.findByText(/vote tally/i);
 
+      // The row the caller voted for is told apart by weight, not color: the
+      // strongest hairline step and a `foreground` label.
       const votedRow = tallyRowFor("Debaser");
-      expect(votedRow.className).toMatch(/border-sage/);
+      expect(votedRow.className).toMatch(/border-hairline-strong/);
       const voteLabel = within(votedRow).getByText("your vote", { exact: true });
-      expect(voteLabel.className).toMatch(/text-sage/);
+      expect(voteLabel.className).toMatch(/text-foreground/);
 
-      // The unvoted row keeps its neutral border.
+      // The unvoted row keeps the quieter in-card divider weight.
       const heyRow = tallyRowFor("Hey");
-      expect(heyRow.className).toMatch(/border-border/);
+      expect(heyRow.className).toMatch(/border-hairline-soft/);
 
-      // Rust is never used in the locked tally view.
-      expect(container.innerHTML).not.toMatch(/border-rust/);
-      expect(container.innerHTML).not.toMatch(/text-rust/);
+      // No row in the tally carries the accent, in any form. Scoped to the
+      // tally's own rows container rather than the whole page: the organizer's
+      // "close mix" CTA elsewhere on this screen is an amber fill and is a
+      // legitimate action, so a page-wide assertion would either fail or have
+      // to be weakened.
+      const tallyRows = votedRow.parentElement as HTMLElement;
+      expect(tallyRows.innerHTML).not.toMatch(/text-accent/);
+      expect(tallyRows.innerHTML).not.toMatch(/bg-accent/);
     });
 
     it("zero-votes case: no checkmark anywhere and the locked-footer doesn't render when myVotes is empty", async () => {

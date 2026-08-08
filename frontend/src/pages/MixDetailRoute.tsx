@@ -46,6 +46,7 @@ import { Button } from "../components/Button";
 import { Badge } from "../components/Badge";
 import { Card } from "../components/Card";
 import { TextField } from "../components/TextField";
+import { FormError } from "../components/FormError";
 import { ConcentricRings } from "../components/ConcentricRings";
 import { SongSearchCard } from "../components/songs/SongSearchCard";
 import { SourceBadge } from "../components/SourceBadge";
@@ -100,6 +101,28 @@ const PLATFORM_LABELS: { key: string; label: string }[] = [
   { key: "youtubeMusic", label: "YouTube Music" },
   { key: "bandcamp", label: "Bandcamp" },
 ];
+
+/**
+ * The inline text-button treatment used by the per-row controls on this
+ * screen (change song, remove, note affordances, the notes disclosure).
+ *
+ * Neutral at rest with an amber *hover*, rather than the `link` Button
+ * variant's resting amber. Every one of these buttons sits inside a repeated
+ * card — one per submitted song, one per playlist entry, one per pick — so a
+ * resting accent would appear once per row and read as the list's styling
+ * rather than as a signal. Hover is transient and applies to one control at a
+ * time, so it keeps the accent. Same treatment R10 landed on for
+ * `ClubHomeScreen`'s per-member controls.
+ *
+ * Two weights, mirroring what these rows already distinguished: the primary
+ * action of a row is `foreground`, its secondary/undo action is
+ * `muted-foreground`. Disabled drops the underline and the label to
+ * `muted-foreground` — never `opacity-50`.
+ */
+const ROW_ACTION_CLASS =
+  "font-mono uppercase tracking-mono text-label text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-accent disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline";
+const ROW_ACTION_MUTED_CLASS =
+  "font-mono uppercase tracking-mono text-label text-muted-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-foreground disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline";
 
 /** Partial-submission leave-warning copy (MYS-250) — the submitted/cap count
  *  alone didn't convey the deadline pressure, so a deadline nudge replaces
@@ -543,8 +566,14 @@ export function MixDetailRoute() {
 
   if (error || !mix || !id) {
     return (
+      // A failed *load*, not a form error: the mix never resolved, so this is
+      // the whole content of the screen rather than a message about a field.
+      // ADR 0004's `destructive-text` category is for form validation, so this
+      // stays plain `foreground` — matching ClubHomeScreen's error state.
       <main className="flex flex-1 flex-col items-center justify-center px-4 text-center sm:px-8">
-        <p className="font-mono text-[13px] font-light text-muted">{error ?? "mystery mix not found."}</p>
+        <p className="text-sm leading-[1.72] text-foreground">
+          {error ?? "mystery mix not found."}
+        </p>
         <div className="mt-6">
           <Button variant="ghost" type="button" onClick={() => navigate("/home")}>
             home
@@ -554,12 +583,33 @@ export function MixDetailRoute() {
     );
   }
 
+  // Amber budget (category rule, not a count). Every amber on this screen is
+  // an ACTION or an ACHIEVEMENT, and none of it is per-row on an unbounded
+  // list:
+  //  - ACTION: the organizer CTAs, the cast-votes CTA, the playlist/listen
+  //    links, the `link`-variant text buttons, and hover/focus states.
+  //  - ACTION (interactive state): a selected vote card. Bounded by
+  //    `votes_per_player`, entirely user-driven, and the design system's own
+  //    AlbumCard "guessed" state marks exactly this with amber.
+  //  - ACHIEVEMENT: Most Noted and the Winner(s) — one section of each per
+  //    mix.
+  //  - ACTION: `DeadlineChip`, which grades its own urgency and goes amber
+  //    only while the deadline is actually closing.
+  // Dropped to neutral on purpose (see each component): the rank medals in the
+  // picks list, the locked vote tally, the per-row source/platform/unmatched
+  // links, submitter-note rules, and the "your submission" own-song card.
+  // The shared TopNav is rendered by AuthedLayout, so this is content-only.
   return (
     <>
+      {/* `useBlocker` renders in-app UI, not a native `window.confirm`, so this
+          is a real modal and takes the top of the surface ladder: a `sheet`
+          (Z4) panel wearing `shadow-z4`. That shadow token carries its own 1px
+          white ring, so the panel deliberately has no `border`. `sheet` is the
+          one surface `muted-foreground` fails on, so the copy is `foreground`. */}
       {blocker.state === "blocked" ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 px-4">
-          <div className="w-full max-w-sm border border-border bg-cream p-6">
-            <p className="font-mono text-[13px] font-light text-ink">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-floor/80 px-4">
+          <div className="w-full max-w-sm rounded-tile bg-sheet px-6 py-5 shadow-z4">
+            <p className="text-sm leading-[1.72] text-foreground">
               {leaveWarningMessage(mix, mySubmissions.length, submissionCap)}
             </p>
             <div className="mt-6 flex gap-4">
@@ -581,17 +631,17 @@ export function MixDetailRoute() {
           <button
             type="button"
             onClick={() => navigate(`/clubs/${mix.club_id}`)}
-            className="inline-flex items-center gap-1.5 font-mono uppercase tracking-ui text-[11px] text-sage transition-colors duration-150 hover:text-ink"
+            className="inline-flex items-center gap-1.5 font-mono uppercase tracking-mono text-label text-foreground transition-colors duration-150 hover:text-accent"
           >
             <span aria-hidden="true">←</span>
             {club.name}
           </button>
         ) : null}
-        <span className="mt-3 block font-mono uppercase tracking-label text-[9px] text-muted">
+        <span className="mt-3 block font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
           mystery mix {mix.mix_number}
         </span>
         <div className="mt-1 flex items-start justify-between gap-4">
-          <h1 className="font-serif text-[32px] leading-tight text-ink">
+          <h1 className="font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
             {mix.theme ?? `Mystery Mix ${mix.mix_number}`}
           </h1>
           <div className="shrink-0 pt-2">
@@ -600,9 +650,7 @@ export function MixDetailRoute() {
         </div>
         <MixStateAnnouncer state={mix.state} />
         {mix.description ? (
-          <p className="mt-3 font-mono text-[13px] font-light leading-relaxed text-muted">
-            {mix.description}
-          </p>
+          <p className="mt-3 text-sm leading-[1.72] text-muted-foreground">{mix.description}</p>
         ) : null}
 
         {/* Prominent, phase-appropriate deadline chip (MYS-161) — viewer-local
@@ -636,20 +684,22 @@ export function MixDetailRoute() {
           </>
         ) : null}
 
+        {/* A failed mutation is a screen-level form error (ADR 0004) — its own
+            color category, so it consumes nothing from this screen's amber. */}
         {actionError ? (
-          <p role="alert" className="mt-6 font-mono text-[13px] text-ink">
-            {actionError}
-          </p>
+          <div className="mt-6">
+            <FormError>{actionError}</FormError>
+          </div>
         ) : null}
         {clubRepeatWarning && !actionError ? (
-          <p className="mt-6 font-mono text-[13px] text-muted">
+          <p className="mt-6 text-sm leading-[1.72] text-muted-foreground">
             this song was submitted in a previous mystery mix — submitted anyway.
           </p>
         ) : null}
 
         <section className="mt-10">
           {mix.state === "pending" ? (
-            <p className="font-mono text-[13px] font-light text-muted">
+            <p className="text-sm leading-[1.72] text-muted-foreground">
               this mystery mix hasn&apos;t opened yet.
             </p>
           ) : mix.state === "open_submission" ? (
@@ -810,8 +860,8 @@ function OrganizerControls({
 
   if (next === "closed" && confirmingClose) {
     return (
-      <div className="mt-6 space-y-4 border-t border-border pt-6">
-        <p className="font-mono text-[13px] font-light text-muted">
+      <div className="mt-6 space-y-4 border-t border-hairline pt-6">
+        <p className="text-sm leading-[1.72] text-muted-foreground">
           {isFinalMix
             ? "this closes the mystery mix and completes the club. it can't be undone."
             : "this closes the mystery mix and opens the next one, starting its submission deadline. it can't be undone."}
@@ -835,8 +885,8 @@ function OrganizerControls({
 
   if (state === "open_voting" && confirmingRollback) {
     return (
-      <div className="mt-6 space-y-4 border-t border-border pt-6">
-        <p className="font-mono text-[13px] font-light text-muted">
+      <div className="mt-6 space-y-4 border-t border-hairline pt-6">
+        <p className="text-sm leading-[1.72] text-muted-foreground">
           {totalVotes > 0
             ? `this reopens submissions with a fresh window and discards ${totalVotes} vote${totalVotes === 1 ? "" : "s"} already cast. it can't be undone.`
             : "this reopens submissions with a fresh window. it can't be undone."}
@@ -860,11 +910,17 @@ function OrganizerControls({
 
   if (state === "open_voting" && extendingOpen) {
     return (
-      <div className="mt-6 space-y-4 border-t border-border pt-6">
+      <div className="mt-6 space-y-4 border-t border-hairline pt-6">
         <label htmlFor="extend-voting-deadline" className="block">
-          <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
+          <span className="block font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
             new voting deadline (up to 48h later)
           </span>
+          {/* Underline-only, matching TextField exactly: the resting underline
+              is `muted-foreground` rather than `hairline` because here the
+              underline IS the affordance and a ~1.2:1 edge fails WCAG 1.4.11.
+              `focus:outline-none` is only acceptable because `focus:border-accent`
+              replaces the indicator it removes. Disabled drops the value to
+              `muted-foreground` instead of fading the field (no opacity-50). */}
           <input
             id="extend-voting-deadline"
             type="datetime-local"
@@ -873,7 +929,7 @@ function OrganizerControls({
             max={maxDatetime}
             onChange={(e) => setChosenDeadline(e.target.value)}
             disabled={extendingVoting}
-            className="mt-2 w-full border-0 border-b border-ink bg-transparent px-0 py-1 font-mono text-[13px] font-light text-ink focus:border-sage focus:outline-none disabled:opacity-50"
+            className="mt-2 w-full rounded-none border-0 border-b border-muted-foreground bg-transparent px-0 py-1 font-mono text-sm text-foreground focus:border-accent focus:outline-none disabled:cursor-not-allowed disabled:text-muted-foreground"
           />
         </label>
         <div className="flex items-center gap-4">
@@ -904,7 +960,7 @@ function OrganizerControls({
   const blockedByMissingTheme = state === "pending" && !hasTheme;
 
   return (
-    <div className="mt-6 border-t border-border pt-6">
+    <div className="mt-6 border-t border-hairline pt-6">
       <div className="flex items-center gap-4">
         <Button
           type="button"
@@ -930,7 +986,7 @@ function OrganizerControls({
         ) : null}
       </div>
       {blockedByMissingTheme ? (
-        <p className="mt-3 font-mono text-[13px] font-light text-muted">
+        <p className="mt-3 text-sm leading-[1.72] text-muted-foreground">
           set a theme below before opening this mystery mix.
         </p>
       ) : null}
@@ -944,8 +1000,8 @@ function OrganizerControls({
  * Once the mix opens there's nothing left to edit here, so the affordance
  * simply doesn't render for non-pending mixes.
  *
- * No Rust on this screen: the single Rust signal is reserved elsewhere (the
- * closed-mix reveal).
+ * No accent of its own: the amber here belongs to the `Button` primitives and
+ * the focused input underline, both of which are actions.
  */
 function EditMixForm({
   mix,
@@ -1025,7 +1081,7 @@ function EditMixForm({
     <form
       onSubmit={handleSubmit}
       noValidate
-      className="mt-6 space-y-6 border-t border-border pt-6"
+      className="mt-6 space-y-6 border-t border-hairline pt-6"
     >
       <div>
         <TextField
@@ -1042,24 +1098,22 @@ function EditMixForm({
       </div>
 
       <label htmlFor="edit-mix-description" className="block">
-        <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
+        <span className="block font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
           description
         </span>
+        {/* Same underline treatment as TextField, including its resting
+            `muted-foreground` rule — there is no textarea primitive. */}
         <textarea
           id="edit-mix-description"
           rows={2}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           disabled={saving}
-          className="mt-2 w-full resize-none rounded-none border-0 border-b border-ink bg-transparent px-0 py-1 font-mono text-[13px] font-light text-ink placeholder:text-muted focus:border-sage focus:outline-none disabled:opacity-50"
+          className="mt-2 w-full resize-none rounded-none border-0 border-b border-muted-foreground bg-transparent px-0 py-1 font-mono text-sm text-foreground placeholder:text-muted-foreground focus:border-accent focus:outline-none disabled:cursor-not-allowed disabled:text-muted-foreground"
         />
       </label>
 
-      {error ? (
-        <p id="edit-mix-error" role="alert" className="font-mono text-[13px] text-ink">
-          {error}
-        </p>
-      ) : null}
+      {error ? <FormError id="edit-mix-error">{error}</FormError> : null}
 
       <div className="flex items-center gap-4">
         <Button type="submit" disabled={saving}>
@@ -1075,9 +1129,9 @@ function EditMixForm({
 
 /**
  * Submission progress (MYS-101): "X of Y submitted" while a mix is open for
- * submissions, so members can see how many picks are in. A quiet muted label —
- * no Rust (this screen reserves its single Rust use for the voting/reveal
- * states). Renders nothing until the club's member count is known.
+ * submissions, so members can see how many picks are in. A quiet mono label,
+ * never the accent — a progress readout is neither an action nor an
+ * achievement. Renders nothing until the club's member count is known.
  */
 function SubmissionProgress({ submitted, total }: { submitted: number; total: number }) {
   if (total <= 0) return null;
@@ -1085,15 +1139,78 @@ function SubmissionProgress({ submitted, total }: { submitted: number; total: nu
     <p
       role="status"
       aria-live="polite"
-      className="mb-6 font-mono uppercase tracking-label text-[9px] text-muted"
+      className="mb-6 font-mono uppercase tracking-mono-caps text-mini text-muted-foreground"
     >
       {submitted} of {total} submitted
     </p>
   );
 }
 
-/** One of the player's submitted songs, with change/remove affordances. Stays in
- *  the Sage/Ink family — no Rust on the submission screen. */
+/**
+ * Album artwork at Z-Art — the one class of object that sits above the Z4
+ * ceiling of the surface ladder, matching R11's `SongSearchCard` treatment. A
+ * same-size `panel` block is laid down first and the image floats over it,
+ * offset up and to the left, so the art reads as a physical object resting on
+ * the card rather than as a picture printed into it. The block is what shows
+ * while the image loads, and it is the entire treatment when `album_art_url`
+ * is null (which it is for every legacy submission) — a null `src` would
+ * render a broken image.
+ *
+ * The 1px white ring lives inside `shadow-z4` / `shadow-art`, so the art
+ * carries no `border`. Art inside a hoverable row rests at `shadow-z4` and
+ * rises to `shadow-art` on that row's hover; art in a non-interactive card
+ * wears `shadow-art` at rest rather than advertising a hover that does
+ * nothing.
+ *
+ * The offset only works if nothing clips it. No wrapper on any path to this
+ * component sets `overflow-hidden` (`Card` does not, and neither do the vote
+ * card, the tally rows, or any `<li>` here), and every offset stays inside its
+ * container's own padding, so the art overlaps padding rather than escaping.
+ *
+ * Duplicated from `SongSearchCard`'s private `Thumb` rather than shared: that
+ * one is not exported and this ticket's scope is these four files. The sweep
+ * ticket can hoist a single `AlbumArt` primitive.
+ */
+function AlbumArt({
+  url,
+  alt,
+  size,
+  interactive = false,
+}: {
+  url: string | null;
+  alt: string;
+  size: number;
+  /** Art inside a hoverable row: rest at `shadow-z4`, rise to `shadow-art`.
+   *  Requires a `group` on the hover target. */
+  interactive?: boolean;
+}) {
+  // Both inside the 4–12px the treatment calls for, and inside their
+  // container's own padding.
+  const offset = size >= 64 ? 6 : 4;
+  return (
+    <span className="relative block shrink-0" style={{ width: size, height: size }}>
+      <span aria-hidden="true" className="block h-full w-full rounded-hair bg-panel" />
+      {url ? (
+        <img
+          src={url}
+          alt={alt}
+          width={size}
+          height={size}
+          className={[
+            "absolute rounded-hair object-cover transition-shadow duration-150",
+            interactive ? "shadow-z4 group-hover:shadow-art" : "shadow-art",
+          ].join(" ")}
+          style={{ width: size, height: size, top: -offset, left: -offset }}
+        />
+      ) : null}
+    </span>
+  );
+}
+
+/** One of the player's submitted songs, with change/remove affordances. No
+ *  accent beyond the `link`-style actions: a song you have already submitted
+ *  is a completed fact, not an achievement, and at a club's song cap there can
+ *  be several of these cards at once. */
 function SubmittedSongCard({
   submission,
   eyebrow,
@@ -1132,11 +1249,24 @@ function SubmittedSongCard({
 
   return (
     <Card>
-      <span className="font-mono uppercase tracking-label text-[9px] text-muted">{eyebrow}</span>
-      <h3 className="mt-1 font-serif text-[20px] leading-tight text-ink">{submission.title}</h3>
-      {submission.artist ? (
-        <p className="mt-1 font-mono text-[11px] font-light text-muted">{submission.artist}</p>
-      ) : null}
+      <div className="flex items-start gap-4">
+        <AlbumArt
+          url={submission.album_art_url}
+          alt={`${submission.title} album art`}
+          size={56}
+        />
+        <div className="min-w-0 flex-1">
+          <span className="font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
+            {eyebrow}
+          </span>
+          <h3 className="mt-2 font-display text-sm font-bold uppercase leading-none">
+            {submission.title}
+          </h3>
+          {submission.artist ? (
+            <p className="mt-2 font-mono text-mini text-muted-foreground">{submission.artist}</p>
+          ) : null}
+        </div>
+      </div>
 
       {editingNote ? (
         <div className="mt-3">
@@ -1150,14 +1280,14 @@ function SubmittedSongCard({
             // above) — a disclosure pattern, not an unannounced page-load focus jump.
             // eslint-disable-next-line jsx-a11y/no-autofocus
             autoFocus
-            className="w-full resize-none border-b border-ink bg-transparent font-mono text-[13px] font-light text-ink placeholder:text-muted focus:border-sage focus:outline-none"
+            className="w-full resize-none rounded-none border-0 border-b border-muted-foreground bg-transparent px-0 py-1 font-mono text-sm text-foreground placeholder:text-muted-foreground focus:border-accent focus:outline-none"
           />
           <div className="mt-2 flex items-center gap-4">
             <button
               type="button"
               disabled={savingNote}
               onClick={() => void handleNoteSave()}
-              className="font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink disabled:opacity-50"
+              className={ROW_ACTION_CLASS}
             >
               {savingNote ? "saving…" : "save note"}
             </button>
@@ -1165,7 +1295,7 @@ function SubmittedSongCard({
               type="button"
               disabled={savingNote}
               onClick={() => setEditingNote(false)}
-              className="font-mono uppercase tracking-ui text-[11px] text-muted underline underline-offset-[3px] transition-colors duration-150 hover:text-ink disabled:opacity-50"
+              className={ROW_ACTION_MUTED_CLASS}
             >
               cancel
             </button>
@@ -1173,8 +1303,11 @@ function SubmittedSongCard({
         </div>
       ) : (
         <>
+          {/* The quote rule is a plain `hairline`: it appears on every card
+              that carries a note, so an accent rule here would repeat down
+              the list and read as the list's styling. */}
           {submission.note ? (
-            <p className="mt-3 border-l-2 border-sage pl-3 font-mono text-[13px] font-light text-ink">
+            <p className="mt-3 border-l-2 border-hairline pl-3 text-sm leading-[1.65] text-foreground">
               &ldquo;{submission.note}&rdquo;
             </p>
           ) : null}
@@ -1183,7 +1316,7 @@ function SubmittedSongCard({
               type="button"
               disabled={busy}
               onClick={openNoteEditor}
-              className="font-mono uppercase tracking-ui text-[11px] text-muted underline underline-offset-[3px] transition-colors duration-150 hover:text-ink disabled:opacity-50"
+              className={ROW_ACTION_MUTED_CLASS}
             >
               {submission.note ? "edit note" : "add a note"}
             </button>
@@ -1192,20 +1325,10 @@ function SubmittedSongCard({
       )}
 
       <div className="mt-5 flex items-center gap-5">
-        <button
-          type="button"
-          onClick={onEdit}
-          disabled={busy}
-          className="font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink disabled:opacity-50"
-        >
+        <button type="button" onClick={onEdit} disabled={busy} className={ROW_ACTION_CLASS}>
           change song
         </button>
-        <button
-          type="button"
-          onClick={onRemove}
-          disabled={busy}
-          className="font-mono uppercase tracking-ui text-[11px] text-muted underline underline-offset-[3px] transition-colors duration-150 hover:text-ink disabled:opacity-50"
-        >
+        <button type="button" onClick={onRemove} disabled={busy} className={ROW_ACTION_MUTED_CLASS}>
           {removing ? "removing…" : "remove"}
         </button>
       </div>
@@ -1268,8 +1391,9 @@ function ComposerSlot({
  * club creation; there is no per-player toggle here, so the stance is uniform
  * across all of a player's songs.
  *
- * No Rust here — the mix screen reserves its single Rust signal for the
- * voting/reveal states.
+ * No accent of its own — the amber here is the `Button` primitives (the
+ * confirm CTA and the composer's submit) and hover states, all of which are
+ * actions.
  */
 function SubmissionManager({
   submissions,
@@ -1309,7 +1433,7 @@ function SubmissionManager({
   return (
     <>
       {numbered && submissions.length > 0 ? (
-        <h2 className="mb-4 font-mono uppercase tracking-label text-[9px] text-muted">
+        <h2 className="mb-4 font-mono uppercase tracking-mono-wide text-meta text-muted-foreground">
           your songs · {submissions.length} of {cap}
         </h2>
       ) : null}
@@ -1364,7 +1488,7 @@ function SubmissionManager({
       </ul>
 
       {allSubmitted ? (
-        <div className="mt-6 border-t border-border pt-6">
+        <div className="mt-6 border-t border-hairline pt-6">
           <Button type="button" onClick={onConfirm} disabled={busy}>
             confirm
           </Button>
@@ -1398,6 +1522,11 @@ function PlatformLinks({
   });
   if (available.length === 0) return null;
   return (
+    // The ghost-button treatment as an anchor (matching R11's ResultView): a
+    // `tile` fill rather than a bare hairline box, so each control is
+    // identifiable without relying on a ~1.1:1 edge (WCAG 1.4.11). Neutral,
+    // never amber — up to six of these render on every card in a list of
+    // cards, which is the clearest case of amber-as-pattern on this screen.
     <ul className="mt-3 flex flex-wrap gap-2">
       {available.map((p) => (
         <li key={p.key}>
@@ -1406,7 +1535,7 @@ function PlatformLinks({
             target="_blank"
             rel="noopener noreferrer"
             aria-label={`open ${title} on ${p.label} (opens in a new tab)`}
-            className="inline-flex items-center rounded-[2px] border border-border px-2.5 py-1.5 font-mono uppercase tracking-ui text-[11px] text-ink transition-colors duration-150 hover:bg-sage-pale"
+            className="inline-flex items-center rounded-hair border border-hairline bg-tile px-3 py-2 font-mono uppercase tracking-mono text-label text-foreground transition-colors duration-150 hover:bg-panel"
           >
             {p.label}
           </a>
@@ -1419,9 +1548,14 @@ function PlatformLinks({
 /**
  * One-click "open the whole mix in YouTube" affordance (MYS-78). Renders only
  * when the backend resolved at least one track to YouTube (`youtubePlaylistUrl`
- * non-null). Stays firmly in the Sage/Ink family — a sage underline-style link,
- * no Rust (reserved for the voted-song outline) and no YouTube red. The subtle
- * count line tells the listener how much of the mix made it across.
+ * non-null). The subtle count line tells the listener how much of the mix made
+ * it across.
+ *
+ * An amber `link`-variant anchor: opening the mix is an action, and there is
+ * at most one of these per view. **No YouTube red.** Brand values live in
+ * `lib/platformBrand.ts` and this affordance has never used one — the service
+ * is named in the link text, and `SourceBadge` is the only place the app
+ * spends a brand tint.
  */
 function YouTubePlaylistLink({
   youtubePlaylistUrl,
@@ -1439,12 +1573,12 @@ function YouTubePlaylistLink({
         href={youtubePlaylistUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex items-center gap-1.5 font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink"
+        className="inline-flex items-center gap-1.5 font-mono uppercase tracking-mono text-label text-accent underline underline-offset-[3px] transition-colors duration-150 hover:text-foreground"
       >
         <MusicNoteIcon />
         open playlist in YouTube
       </a>
-      <span className="mt-1 block font-mono uppercase tracking-label text-[9px] text-muted">
+      <span className="mt-1 block font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
         {youtubeTrackCount} of {entryCount} on YouTube
       </span>
     </div>
@@ -1453,10 +1587,10 @@ function YouTubePlaylistLink({
 
 /**
  * Voting progress (MYS-102, terminology updated MYS-238): "X of Y competitive
- * mode voted or noted · Z casual mode". A quiet muted label so the room can
- * see how participation is filling in. No Rust — the voting screen reserves
- * its single Rust signal for the selected-vote outline. Renders nothing until
- * there are eligible (playing) voters.
+ * mode voted or noted · Z casual mode". A quiet mono label so the room can see
+ * how participation is filling in, never the accent — a progress readout is
+ * neither an action nor an achievement. Renders nothing until there are
+ * eligible (playing) voters.
  */
 function VotingProgress({
   acted,
@@ -1469,7 +1603,7 @@ function VotingProgress({
 }) {
   if (eligible <= 0) return null;
   return (
-    <p className="mb-6 font-mono uppercase tracking-label text-[9px] text-muted">
+    <p className="mb-6 font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
       {acted} of {eligible} competitive mode voted or noted
       {vibing > 0 ? ` · ${vibing} casual mode` : ""}
     </p>
@@ -1503,8 +1637,8 @@ function toSourceOnly(
  * Listen affordance for a closed mix (MYS-133): the whole-mix YouTube +
  * Spotify links, so members can still play the mix after it closes. Reuses the
  * voting-screen components; renders nothing when the mix had no submissions.
- * Stays in the Sage/Ink family — the reveal reserves its one Rust use for Most
- * Noted.
+ * The accent it carries belongs to the listen links themselves, which are
+ * actions; the reveal's achievement amber is Most Noted and the Winner(s).
  */
 function ClosedListen({
   mixId,
@@ -1522,7 +1656,9 @@ function ClosedListen({
   if (entryCount === 0) return null;
   return (
     <div className="mb-10">
-      <h2 className="mb-4 font-mono uppercase tracking-label text-[9px] text-muted">listen back</h2>
+      <h2 className="mb-4 font-mono uppercase tracking-mono-wide text-meta text-muted-foreground">
+        listen back
+      </h2>
       <YouTubePlaylistLink
         youtubePlaylistUrl={youtubePlaylistUrl}
         youtubeTrackCount={youtubeTrackCount}
@@ -1592,7 +1728,7 @@ function VotingSection({
   }
 
   if (entries.length === 0) {
-    return <p className="font-mono text-[13px] font-light text-muted">no submissions yet</p>;
+    return <p className="text-sm leading-[1.72] text-muted-foreground">no submissions yet</p>;
   }
 
   function toggle(id: string) {
@@ -1613,11 +1749,11 @@ function VotingSection({
     return (
       <>
         <VotingProgress acted={votingActed} eligible={votingEligible} vibing={vibingCount} />
-        <p className="font-mono text-[13px] font-light text-muted">
+        <p className="text-sm leading-[1.72] text-muted-foreground">
           you&apos;re in casual mode for this one, so you sit voting out. settle in and enjoy
           the mix.
         </p>
-        <h2 className="mt-8 font-mono uppercase tracking-label text-[9px] text-muted">
+        <h2 className="mt-8 font-mono uppercase tracking-mono-wide text-meta text-muted-foreground">
           playlist ({entries.length})
         </h2>
         <div className="mt-4">
@@ -1633,18 +1769,34 @@ function VotingSection({
         <ul className="mt-4 space-y-4">
           {entries.map((entry) => (
             <li key={entry.submission_id}>
+              {/* The SourceBadge below sits directly on `card` (4.74:1 for
+                  YouTube, 5.98:1 for Bandcamp). Nothing lighter may go under
+                  it — see the placement table in lib/platformBrand.ts. */}
               <Card>
-                <h3 className="font-serif text-[18px] leading-tight text-ink">{entry.title}</h3>
-                {entry.artist ? (
-                  <p className="mt-1 font-mono text-[11px] font-light text-muted">{entry.artist}</p>
-                ) : null}
-                {entry.source ? (
-                  <div className="mt-2">
-                    <SourceBadge source={entry.source} />
+                <div className="flex items-start gap-4">
+                  <AlbumArt
+                    url={entry.album_art_url}
+                    alt={`${entry.title} album art`}
+                    size={56}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-display text-sm font-bold uppercase leading-none">
+                      {entry.title}
+                    </h3>
+                    {entry.artist ? (
+                      <p className="mt-2 font-mono text-mini text-muted-foreground">
+                        {entry.artist}
+                      </p>
+                    ) : null}
+                    {entry.source ? (
+                      <div className="mt-2">
+                        <SourceBadge source={entry.source} />
+                      </div>
+                    ) : null}
                   </div>
-                ) : null}
+                </div>
                 {entry.submitter_note ? (
-                  <p className="mt-3 border-l-2 border-sage pl-3 font-mono text-[13px] font-light text-ink">
+                  <p className="mt-3 border-l-2 border-hairline pl-3 text-sm leading-[1.65] text-foreground">
                     &ldquo;{entry.submitter_note}&rdquo;
                   </p>
                 ) : null}
@@ -1677,14 +1829,14 @@ function VotingSection({
       <AppleMusicPlaylist mixId={mixId} />
       <div className="flex items-baseline justify-between gap-4">
         <span className="flex items-center gap-2">
-          <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
+          <h2 className="font-mono uppercase tracking-mono-wide text-meta text-muted-foreground">
             cast your votes
           </h2>
           <HelpLink anchor="voting-results" />
         </span>
         <span
           aria-live="polite"
-          className="font-mono uppercase tracking-label text-[9px] text-muted"
+          className="font-mono uppercase tracking-mono-caps text-mini text-muted-foreground"
         >
           {selected.length} / {votesPerPlayer} selected
         </span>
@@ -1695,34 +1847,51 @@ function VotingSection({
           // Your own song: shown in the playlist but never a vote toggle — you
           // can't vote for it (MYS-73), and it's clearly marked as yours
           // (MYS-74/75). No notes affordance either — you can't leave a note on
-          // your own submission (MYS-77). Stays in the Sage/Ink family; Rust is
-          // reserved for the songs you've voted for.
+          // your own submission (MYS-77).
+          //
+          // No accent: "this one is mine" is a fact about the row, not an
+          // action you can take on it or an achievement. The `your submission`
+          // Badge and the explanatory line carry it, and the card drops to the
+          // plain `card` surface every other row uses (the retired tinted fill
+          // has no analogue here, and a lighter fill would also break the
+          // SourceBadge placement constraint).
           if (entry.is_own) {
             return (
               <li key={entry.submission_id}>
-                <div className="rounded-[3px] border border-border bg-sage-pale/40 px-6 py-5">
-                  <div className="flex items-start justify-between gap-3">
-                    <h3 className="font-serif text-[18px] leading-tight text-ink">{entry.title}</h3>
-                    <span className="shrink-0">
-                      <Badge>your submission</Badge>
-                    </span>
-                  </div>
-                  {entry.artist ? (
-                    <p className="mt-1 font-mono text-[11px] font-light text-sage">
-                      {entry.artist}
-                    </p>
-                  ) : null}
-                  {entry.source ? (
-                    <div className="mt-2">
-                      <SourceBadge source={entry.source} />
+                <Card>
+                  <div className="flex items-start gap-4">
+                    <AlbumArt
+                      url={entry.album_art_url}
+                      alt={`${entry.title} album art`}
+                      size={56}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <h3 className="font-display text-sm font-bold uppercase leading-none">
+                          {entry.title}
+                        </h3>
+                        <span className="shrink-0">
+                          <Badge>your submission</Badge>
+                        </span>
+                      </div>
+                      {entry.artist ? (
+                        <p className="mt-2 font-mono text-mini text-muted-foreground">
+                          {entry.artist}
+                        </p>
+                      ) : null}
+                      {entry.source ? (
+                        <div className="mt-2">
+                          <SourceBadge source={entry.source} />
+                        </div>
+                      ) : null}
                     </div>
-                  ) : null}
+                  </div>
                   {entry.submitter_note ? (
-                    <p className="mt-3 border-l-2 border-sage pl-3 font-mono text-[13px] font-light text-ink">
+                    <p className="mt-3 border-l-2 border-hairline pl-3 text-sm leading-[1.65] text-foreground">
                       &ldquo;{entry.submitter_note}&rdquo;
                     </p>
                   ) : null}
-                  <p className="mt-2 font-mono text-[11px] font-light text-sage">
+                  <p className="mt-2 font-mono text-mini text-muted-foreground">
                     you can&apos;t vote for your own song
                   </p>
                   <PlatformLinks
@@ -1730,7 +1899,7 @@ function VotingSection({
                   title={entry.title}
                   source={entry.source}
                 />
-                </div>
+                </Card>
               </li>
             );
           }
@@ -1738,45 +1907,81 @@ function VotingSection({
           const disabled = !isSelected && atLimit;
           return (
             <li key={entry.submission_id}>
-              {/* Card wrapper — owns the border/radius so notes can live inside
-                  without nesting interactive elements inside the vote button. */}
+              {/* Card wrapper — owns the surface/border/radius so notes can live
+                  inside without nesting interactive elements inside the vote
+                  button. Hand-built rather than the `Card` primitive because
+                  the border is stateful and the button has to reach the card's
+                  own edges.
+
+                  **Amber marks the selected row, and this is the one place on
+                  this screen where a per-row accent survives.** It is an
+                  interactive state (amber's action half), it is entirely
+                  user-driven rather than a property of the data, it is bounded
+                  by `votes_per_player`, and the design system's own AlbumCard
+                  marks exactly this "I picked this one" state in amber. The
+                  `voted` label carries the state too, so the border is never
+                  the sole identifier (WCAG 1.4.11).
+
+                  A row you can no longer select (at the vote limit) drops its
+                  title to `muted-foreground` rather than taking `opacity-50` —
+                  on a near-black page opacity flattens a card into the
+                  background instead of quieting it. */}
               <div
                 className={[
-                  "rounded-[3px] border bg-white transition-colors duration-150",
-                  isSelected ? "border-rust" : "border-border",
-                  disabled ? "opacity-50" : "",
+                  "rounded-tile border bg-card shadow-z2 transition-colors duration-150",
+                  isSelected ? "border-accent" : "border-hairline",
                 ].join(" ")}
               >
-                {/* Vote toggle — only the top portion of the card is clickable. */}
+                {/* Vote toggle — only the top portion of the card is clickable.
+                    Hover lifts to `popover`, the lightest surface a brand-tinted
+                    SourceBadge may sit on (4.40:1 for YouTube); `tile` and above
+                    would fail AA. See lib/platformBrand.ts. */}
                 <button
                   type="button"
                   aria-pressed={isSelected}
                   disabled={disabled}
                   onClick={() => toggle(entry.submission_id)}
                   className={[
-                    "group block w-full px-6 pt-5 pb-3 text-left",
+                    "group block w-full rounded-t-tile px-6 pt-5 pb-3 text-left",
                     disabled ? "cursor-not-allowed" : "cursor-pointer",
-                    !isSelected && !disabled ? "hover:bg-sage-pale/60" : "",
+                    !isSelected && !disabled ? "hover:bg-popover" : "",
                   ].join(" ")}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <h3 className="font-serif text-[18px] leading-tight text-ink">{entry.title}</h3>
-                    <span className="shrink-0 pt-1 font-mono uppercase tracking-label text-[9px] text-rust">
-                      {isSelected ? "voted" : ""}
-                    </span>
-                  </div>
-                  {entry.artist ? (
-                    <p className="mt-1 font-mono text-[11px] font-light text-muted group-hover:text-sage">
-                      {entry.artist}
-                    </p>
-                  ) : null}
-                  {entry.source ? (
-                    <div className="mt-2">
-                      <SourceBadge source={entry.source} />
+                  <div className="flex items-start gap-4">
+                    <AlbumArt
+                      url={entry.album_art_url}
+                      alt={`${entry.title} album art`}
+                      size={56}
+                      interactive
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <h3
+                          className={[
+                            "font-display text-sm font-bold uppercase leading-none",
+                            disabled ? "text-muted-foreground" : "text-foreground",
+                          ].join(" ")}
+                        >
+                          {entry.title}
+                        </h3>
+                        <span className="shrink-0 font-mono uppercase tracking-mono-caps text-mini text-accent">
+                          {isSelected ? "voted" : ""}
+                        </span>
+                      </div>
+                      {entry.artist ? (
+                        <p className="mt-2 font-mono text-mini text-muted-foreground transition-colors duration-150 group-hover:text-foreground">
+                          {entry.artist}
+                        </p>
+                      ) : null}
+                      {entry.source ? (
+                        <div className="mt-2">
+                          <SourceBadge source={entry.source} />
+                        </div>
+                      ) : null}
                     </div>
-                  ) : null}
+                  </div>
                   {entry.submitter_note ? (
-                    <p className="mt-3 border-l-2 border-sage pl-3 font-mono text-[13px] font-light text-ink">
+                    <p className="mt-3 border-l-2 border-hairline pl-3 text-sm leading-[1.65] text-foreground">
                       &ldquo;{entry.submitter_note}&rdquo;
                     </p>
                   ) : null}
@@ -1796,7 +2001,7 @@ function VotingSection({
         })}
       </ul>
 
-      <div className="mt-6 border-t border-border pt-6">
+      <div className="mt-6 border-t border-hairline pt-6">
         <Button
           type="button"
           onClick={() => onCast(selected)}
@@ -1804,10 +2009,13 @@ function VotingSection({
         >
           {casting ? "casting…" : "cast votes"}
         </Button>
+        {/* `foreground`, not the accent: "your votes saved" is a completed
+            fact, not an action or an achievement — the same reasoning R10 used
+            for its viewer-participation checks. */}
         {votesSaved ? (
           <p
             aria-live="polite"
-            className="mt-3 font-mono uppercase tracking-label text-[9px] text-sage"
+            className="mt-3 font-mono uppercase tracking-mono-caps text-mini text-foreground"
           >
             votes saved
           </p>
@@ -1825,6 +2033,15 @@ function VotingSection({
  *
  * Keeps the playlist links visible (MYS-236) — locking in a vote shouldn't cut
  * a player off from actually listening to the mix.
+ *
+ * **No accent anywhere in the tally.** A locked tally is informational: the
+ * caller can no longer act on it, and a running vote count is nobody's
+ * achievement until the mix closes. It is also one row per song, unbounded, so
+ * even an in-category marker would repeat down the list and read as the list's
+ * styling. The row the caller voted for is told apart structurally instead —
+ * a `hairline-strong` edge (the step meant for an element that has to read
+ * against its neighbours), a `foreground` label, and the checkmark glyph, so
+ * the distinction survives without color at all.
  */
 function VotingTally({
   mixId,
@@ -1860,10 +2077,10 @@ function VotingTally({
 
   return (
     <>
-      <p className="font-mono text-[13px] font-light text-muted">
+      <p className="text-sm leading-[1.72] text-muted-foreground">
         you&apos;ve locked in your votes — check back to see how the voting goes.
       </p>
-      <h2 className="mt-8 font-mono uppercase tracking-label text-[9px] text-muted">
+      <h2 className="mt-8 font-mono uppercase tracking-mono-wide text-meta text-muted-foreground">
         playlist ({entries.length})
       </h2>
       <div className="mt-4">
@@ -1876,7 +2093,7 @@ function VotingTally({
         <SpotifyPlaylist mixId={mixId} />
         <AppleMusicPlaylist mixId={mixId} />
       </div>
-      <h2 className="mt-8 font-mono uppercase tracking-label text-[9px] text-muted">
+      <h2 className="mt-8 font-mono uppercase tracking-mono-wide text-meta text-muted-foreground">
         vote tally ({voteCounts.length} songs)
       </h2>
       <p role="status" aria-live="polite" className="sr-only">
@@ -1889,42 +2106,32 @@ function VotingTally({
             <div
               key={entry.submission_id}
               className={[
-                "flex items-center justify-between rounded-[2px] border px-4 py-3",
-                isVoted ? "border-sage bg-white" : "border-border bg-sage-pale/20",
+                "flex items-center justify-between rounded-hair border bg-card px-4 py-3",
+                isVoted ? "border-hairline-strong" : "border-hairline-soft",
               ].join(" ")}
             >
               <div className="flex items-center gap-3 overflow-hidden">
-                <span
-                  className={[
-                    "w-6 shrink-0 font-mono text-[13px] font-light",
-                    isVoted ? "text-muted" : "text-sage",
-                  ].join(" ")}
-                >
+                <span className="w-6 shrink-0 font-mono text-mini text-muted-foreground">
                   #{i + 1}
                 </span>
                 <div className="min-w-0 flex-1">
                   <p
-                    className="font-serif text-[16px] leading-snug text-ink truncate"
+                    className="truncate font-display text-sm font-semibold uppercase leading-none"
                     title={entry.title}
                   >
                     {entry.title}
                   </p>
-                  <p
-                    className={[
-                      "font-mono text-[11px] font-light leading-normal truncate",
-                      isVoted ? "text-muted" : "text-sage",
-                    ].join(" ")}
-                  >
+                  <p className="mt-1.5 truncate font-mono text-mini text-muted-foreground">
                     {entry.artist}
                   </p>
                 </div>
               </div>
               <div className="shrink-0 text-right">
-                <span className="block font-mono text-[13px] font-light text-ink">
+                <span className="block font-mono text-sm text-foreground">
                   {entry.vote_count} {entry.vote_count === 1 ? "vote" : "votes"}
                 </span>
                 {isVoted && (
-                  <span className="inline-flex items-center gap-1 font-mono uppercase tracking-ui text-[9px] text-sage">
+                  <span className="inline-flex items-center gap-1 font-mono uppercase tracking-mono text-mini text-foreground">
                     <CheckmarkIcon />
                     your vote
                   </span>
@@ -1935,8 +2142,8 @@ function VotingTally({
         })}
       </div>
       {myVotes.length > 0 && (
-        <div className="mt-6 border-t border-border pt-6">
-          <p className="font-mono uppercase tracking-label text-[9px] text-muted">
+        <div className="mt-6 border-t border-hairline pt-6">
+          <p className="font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
             your votes are locked — they will be revealed when the mystery mix closes
           </p>
         </div>
@@ -1945,7 +2152,7 @@ function VotingTally({
       {votesSaved && (
         <p
           aria-live="polite"
-          className="mt-6 font-mono uppercase tracking-label text-[9px] text-sage"
+          className="mt-6 font-mono uppercase tracking-mono-caps text-mini text-foreground"
         >
           votes saved
         </p>
@@ -2070,7 +2277,7 @@ function SongNotes({
           type="button"
           onClick={() => void reveal()}
           aria-expanded={open}
-          className="font-mono uppercase tracking-ui text-[11px] text-muted underline underline-offset-[3px] transition-colors duration-150 hover:text-ink"
+          className={ROW_ACTION_MUTED_CLASS}
         >
           notes{loaded ? ` (${notes.length})` : ""}
         </button>
@@ -2078,7 +2285,7 @@ function SongNotes({
           <button
             type="button"
             onClick={() => void startComposing()}
-            className="font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink"
+            className={ROW_ACTION_CLASS}
           >
             {ownNote ? "edit note" : "leave a note"}
           </button>
@@ -2090,10 +2297,10 @@ function SongNotes({
           {composing ? (
             <div className="mt-4">
               {composerHint ? (
-                <p className="font-mono text-[11px] font-light text-muted">{composerHint}</p>
+                <p className="text-meta leading-[1.6] text-muted-foreground">{composerHint}</p>
               ) : null}
               <label className="mt-2 block">
-                <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
+                <span className="block font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
                   your note
                 </span>
                 <textarea
@@ -2101,13 +2308,13 @@ function SongNotes({
                   maxLength={NOTE_MAX}
                   rows={2}
                   onChange={(e) => setDraft(e.target.value)}
-                  className="mt-2 w-full resize-none rounded-none border-0 border-b border-ink bg-transparent px-0 py-1 font-mono text-[13px] font-light text-ink placeholder:text-muted focus:border-sage focus:outline-none"
+                  className="mt-2 w-full resize-none rounded-none border-0 border-b border-muted-foreground bg-transparent px-0 py-1 font-mono text-sm text-foreground placeholder:text-muted-foreground focus:border-accent focus:outline-none"
                 />
               </label>
               <div className="mt-2 flex items-center justify-between gap-4">
                 <span
                   aria-live="polite"
-                  className="font-mono uppercase tracking-label text-[9px] text-muted"
+                  className="font-mono uppercase tracking-mono-caps text-mini text-muted-foreground"
                 >
                   {count} / {NOTE_MAX}
                 </span>
@@ -2118,7 +2325,7 @@ function SongNotes({
                       setComposing(false);
                       setDraft("");
                     }}
-                    className="font-mono uppercase tracking-ui text-[11px] text-muted underline underline-offset-[3px] transition-colors duration-150 hover:text-ink"
+                    className={ROW_ACTION_MUTED_CLASS}
                   >
                     cancel
                   </button>
@@ -2131,13 +2338,11 @@ function SongNotes({
           ) : null}
 
           {loaded && notes.length > 0 && !composing ? (
-            <ul className="mt-4 space-y-3 border-t border-border pt-4">
+            <ul className="mt-4 space-y-3 border-t border-hairline-soft pt-4">
               {notes.map((note) => (
                 <li key={note.id}>
-                  <p className="font-mono text-[13px] font-light leading-relaxed text-ink">
-                    {note.body}
-                  </p>
-                  <span className="mt-1 block font-mono uppercase tracking-label text-[9px] text-muted">
+                  <p className="text-sm leading-[1.65] text-foreground">{note.body}</p>
+                  <span className="mt-1 block font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
                     {note.author_display_name}
                   </span>
                 </li>
@@ -2146,7 +2351,7 @@ function SongNotes({
           ) : null}
 
           {loaded && notes.length === 0 && !composing ? (
-            <p className="mt-3 font-mono text-[11px] font-light text-muted">no notes yet</p>
+            <p className="mt-3 text-meta leading-[1.6] text-muted-foreground">no notes yet</p>
           ) : null}
         </>
       ) : null}
@@ -2161,8 +2366,8 @@ function ResultNoteList({ notes }: { notes: ResultNote[] }) {
     <ul className="space-y-3">
       {notes.map((note, i) => (
         <li key={i}>
-          <p className="font-mono text-[13px] font-light leading-relaxed text-ink">{note.body}</p>
-          <span className="mt-1 block font-mono uppercase tracking-label text-[9px] text-muted">
+          <p className="text-sm leading-[1.65] text-foreground">{note.body}</p>
+          <span className="mt-1 block font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
             {note.author_display_name}
           </span>
         </li>
@@ -2207,8 +2412,7 @@ function groupByPlayer(submissions: ResultSubmission[]): PlayerGroup[] {
  * The winning player(s) of the mix — the most votes by per-player total, so
  * the highlight matches the leaderboard (MYS-116). A tie shows every winner.
  * Returns [] when nobody drew a vote. Every submitter competes, vibers included
- * (MYS-112). Stays in the Sage/Ink family — no Rust, which the reveal reserves
- * for Most Noted (MYS-71).
+ * (MYS-112).
  */
 function topPlayers(groups: PlayerGroup[]): PlayerGroup[] {
   const top = groups.reduce((max, g) => Math.max(max, g.total), 0);
@@ -2225,12 +2429,12 @@ function CollapsibleNotes({ notes }: { notes: ResultNote[] }) {
   const [open, setOpen] = useState(false);
   const label = `${notes.length} ${notes.length === 1 ? "note" : "notes"}`;
   return (
-    <div className="mt-4 border-t border-border pt-4">
+    <div className="mt-4 border-t border-hairline-soft pt-4">
       <button
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="font-mono uppercase tracking-label text-[9px] text-muted underline underline-offset-[3px] transition-colors duration-150 hover:text-ink"
+        className={ROW_ACTION_MUTED_CLASS}
       >
         {open ? `hide ${label}` : `show ${label}`}
       </button>
@@ -2246,12 +2450,15 @@ function CollapsibleNotes({ notes }: { notes: ResultNote[] }) {
 /**
  * Closed-mix reveal (MYS-24 / MYS-71). A static results moment — subtle
  * fade-in only, no staged animation (deferred to MYS-54). Top to bottom: Most
- * Noted (the one Rust signal on this screen), the Winner(s) by votes, the
- * Playing leaderboard, then a single ranked "the picks" list with every
- * submission's full detail (submitter, notes, platforms, voters) — the
- * standalone compact song-rank list was folded into this one to avoid listing
- * every song twice (MYS-173 follow-up). Top 3 ranks get a filled Sage badge
- * (RankBadge) so they read as distinct without a second Rust/Gold signal.
+ * Noted, the Winner(s) by votes, the Playing leaderboard, then a single ranked
+ * "the picks" list with every submission's full detail (submitter, notes,
+ * platforms, voters) — the standalone compact song-rank list was folded into
+ * this one to avoid listing every song twice (MYS-173 follow-up).
+ *
+ * **Where the reveal's achievement amber goes.** Most Noted and the Winner(s):
+ * exactly one section of each per mix, and each is a genuine achievement, so
+ * both keep it (the crown glyph, and Most Noted's accent bar). The picks list
+ * does NOT — see `RankBadge`.
  */
 function ResultsSection({
   results,
@@ -2263,7 +2470,7 @@ function ResultsSection({
   onActionError: (message: string | null) => void;
 }) {
   if (!results) {
-    return <p className="font-mono text-[13px] font-light text-muted">no submissions</p>;
+    return <p className="text-sm leading-[1.72] text-muted-foreground">no submissions</p>;
   }
 
   // A vibing viewer gets the trimmed reveal — winner(s) + Most Noted + their own
@@ -2273,7 +2480,7 @@ function ResultsSection({
   }
 
   if (results.submissions.length === 0) {
-    return <p className="font-mono text-[13px] font-light text-muted">no submissions</p>;
+    return <p className="text-sm leading-[1.72] text-muted-foreground">no submissions</p>;
   }
 
   const { submissions, leaderboard, most_noted } = results;
@@ -2291,7 +2498,7 @@ function ResultsSection({
 
       {submissions.length > 0 ? (
         <section>
-          <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
+          <h2 className="font-mono uppercase tracking-mono-wide text-meta text-muted-foreground">
             the picks ({submissions.length})
           </h2>
           <ul className="mt-4 space-y-4">
@@ -2300,29 +2507,31 @@ function ResultsSection({
                 <Card>
                   <div className="flex items-start gap-4">
                     <RankBadge rank={s.rank} />
+                    {/* 40px, not the 56px the standalone song cards use: this
+                        row already spends a rail on the rank badge, and the
+                        picks list is the densest one on the screen. */}
+                    <AlbumArt url={s.album_art_url} alt={`${s.title} album art`} size={40} />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-3">
-                        <span className="font-mono uppercase tracking-label text-[9px] text-muted">
+                        <span className="font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
                           {nameFor(s.user_id, s.submitter_display_name)}
                         </span>
                         <span className="flex shrink-0 flex-col items-end">
-                          <span className="font-mono uppercase tracking-label text-[9px] text-sage">
+                          <span className="font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
                             {s.vote_count} {s.vote_count === 1 ? "vote" : "votes"}
                           </span>
                           {s.tied ? (
-                            <span className="mt-0.5 font-mono uppercase tracking-label text-[9px] text-muted">
+                            <span className="mt-0.5 font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
                               tied
                             </span>
                           ) : null}
                         </span>
                       </div>
-                      <h3 className="mt-1 font-serif text-[18px] leading-tight text-ink">
+                      <h3 className="mt-2 font-display text-sm font-bold uppercase leading-none">
                         {s.title}
                       </h3>
                       {s.artist ? (
-                        <p className="mt-1 font-mono text-[11px] font-light text-muted">
-                          {s.artist}
-                        </p>
+                        <p className="mt-2 font-mono text-mini text-muted-foreground">{s.artist}</p>
                       ) : null}
                       {s.source ? (
                         <div className="mt-2">
@@ -2330,13 +2539,13 @@ function ResultsSection({
                         </div>
                       ) : null}
                       {s.submitter_note ? (
-                        <p className="mt-2 font-mono text-[11px] font-light text-ink">
+                        <p className="mt-2 text-meta leading-[1.6] text-foreground">
                           “{s.submitter_note}”
                         </p>
                       ) : null}
                       <PlatformLinks platforms={s.platforms} title={s.title} source={s.source} />
                       {s.voters.length > 0 ? (
-                        <p className="mt-2 font-mono text-[11px] font-light text-muted">
+                        <p className="mt-2 text-meta leading-[1.6] text-muted-foreground">
                           voted by {s.voters.map((v) => v.display_name).join(", ")}
                         </p>
                       ) : null}
@@ -2353,35 +2562,49 @@ function ResultsSection({
   );
 }
 
-/** A song's rank within its mix. Top 3 get a filled Sage badge — the app's
- *  hierarchy color, not a new signal — so they read as distinct at a glance
- *  without competing with the Rust/Gold signals used elsewhere on this screen. */
+/**
+ * A song's rank within its mix. Top 3 get a medal glyph so they read as
+ * distinct at a glance; rank 4 and below is a plain numeral.
+ *
+ * **The medals are neutral, and this is a deliberate drop.** Amber's category
+ * does cover achievement, and the style guide names "rank-1 indicators" among
+ * its uses — but this is a per-row marker on the full ranked tracklist, which
+ * runs one row per submission with no cap, and three of every list would carry
+ * it. That is amber as pattern, which the category rule forbids however
+ * in-category the rank-1 row alone would be. It would also be the *second*
+ * amber statement of the same fact: the Winner(s) section directly above
+ * already marks who won, and it is bounded to one section per mix. Same
+ * conclusion R8 reached about completed club cards and R10 about per-mix
+ * winner lines. Weight carries the ranking instead — a larger `foreground`
+ * medal for 1st, `muted-foreground` for 2nd/3rd.
+ */
 function RankBadge({ rank }: { rank: number }) {
   if (rank > 3) {
     return (
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center font-mono text-[11px] text-muted">
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center font-mono text-mini text-muted-foreground">
         {rank}
       </span>
     );
   }
-  // 1st place reads slightly larger than 2nd/3rd, and in Gold — the app's
-  // existing achievement-signal color (crown icons above use it too) — since
-  // this medal marks the same winner moment. The numeral sits inside the
-  // medal's disc — centered on its (6, 4.5) midpoint in the icon's 0-12
-  // viewBox, i.e. 50% across / 37.5% down the rendered icon.
+  // 1st place reads slightly larger and brighter than 2nd/3rd. The numeral
+  // sits inside the medal's disc — centered on its (6, 4.5) midpoint in the
+  // icon's 0-12 viewBox, i.e. 50% across / 37.5% down the rendered icon.
   const first = rank === 1;
   return (
     <span
-      className={["relative shrink-0", first ? "h-7 w-7 text-gold" : "h-6 w-6 text-sage"].join(" ")}
+      className={[
+        "relative shrink-0",
+        first ? "h-7 w-7 text-foreground" : "h-6 w-6 text-muted-foreground",
+      ].join(" ")}
     >
       <MedalIcon className="h-full w-full" />
-      {/* The numeral is real text (not decorative like the medal outline above),
-          so it needs its own AA-contrast color — gold/sage-on-cream both fail
-          WCAG 1.4.3 at this size (MYS-186). */}
+      {/* The numeral is real text (not decorative like the medal outline
+          above), so it carries `foreground` in both cases rather than
+          inheriting the 2nd/3rd medal's dimmer stroke color. */}
       <span
         className={[
-          "absolute left-1/2 top-[37.5%] -translate-x-1/2 -translate-y-1/2 font-mono leading-none text-ink",
-          first ? "text-[12px]" : "text-[10px]",
+          "absolute left-1/2 top-[37.5%] -translate-x-1/2 -translate-y-1/2 font-mono leading-none text-foreground",
+          first ? "text-label" : "text-mini",
         ].join(" ")}
       >
         {rank}
@@ -2391,9 +2614,10 @@ function RankBadge({ rank }: { rank: number }) {
 }
 
 /**
- * The reveal a vibing viewer sees (MYS-112 / MYS-134): Most Noted (the screen's
- * one Rust signal), the winner(s) by votes — named, no counts — and the full
- * tracklist with notes but NO scores or leaderboard.
+ * The reveal a vibing viewer sees (MYS-112 / MYS-134): Most Noted, the
+ * winner(s) by votes — named, no counts — and the full tracklist with notes
+ * but NO scores or leaderboard. Same amber budget as the full reveal: the two
+ * achievement sections, and nothing per-row.
  */
 function VibingReveal({
   results,
@@ -2421,23 +2645,27 @@ function VibeWinnersSection({ winners }: { winners: WinnerReveal[] }) {
   const tie = winners.length > 1;
   return (
     <section>
-      <h2 className="inline-flex items-center gap-1.5 font-mono uppercase tracking-label text-[9px] text-muted">
-        <CrownIcon className="text-gold" />
+      {/* The crown is amber: winning a mix is an achievement, and there is
+          exactly one winner section per reveal. */}
+      <h2 className="inline-flex items-center gap-1.5 font-mono uppercase tracking-mono-wide text-meta text-muted-foreground">
+        <CrownIcon className="text-accent" />
         {tie ? "winners" : "winner"}
       </h2>
-      <p className="mt-2 font-mono text-[13px] font-light text-muted">
+      <p className="mt-2 text-sm leading-[1.72] text-muted-foreground">
         {tie ? "the most-loved picks this mystery mix" : "the most-loved pick this mystery mix"}
       </p>
       <ul className="mt-4 space-y-4">
         {winners.map((w) => (
           <li key={w.submission_id}>
             <Card>
-              <span className="font-mono uppercase tracking-label text-[9px] text-muted">
+              <span className="font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
                 {w.submitter_display_name ?? "someone"}
               </span>
-              <h3 className="mt-1 font-serif text-[24px] leading-tight text-ink">{w.title}</h3>
+              <h3 className="mt-2 font-display text-sm font-bold uppercase leading-none">
+                {w.title}
+              </h3>
               {w.artist ? (
-                <p className="mt-1 font-mono text-[11px] font-light text-muted">{w.artist}</p>
+                <p className="mt-2 font-mono text-mini text-muted-foreground">{w.artist}</p>
               ) : null}
             </Card>
           </li>
@@ -2462,19 +2690,24 @@ function VibePicksSection({
 }) {
   return (
     <section>
-      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
+      <h2 className="font-mono uppercase tracking-mono-wide text-meta text-muted-foreground">
         the picks ({picks.length})
       </h2>
       <ul className="mt-4 space-y-4">
         {picks.map((p) => (
+          // `RevealPick` carries no `album_art_url` (the vibe-safe shape is
+          // deliberately narrower than `ResultSubmission`), so there is no
+          // artwork to render here.
           <li key={p.submission_id}>
             <Card>
-              <span className="font-mono uppercase tracking-label text-[9px] text-muted">
+              <span className="font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
                 {p.submitter_display_name ?? "someone"}
               </span>
-              <h3 className="mt-1 font-serif text-[18px] leading-tight text-ink">{p.title}</h3>
+              <h3 className="mt-2 font-display text-sm font-bold uppercase leading-none">
+                {p.title}
+              </h3>
               {p.artist ? (
-                <p className="mt-1 font-mono text-[11px] font-light text-muted">{p.artist}</p>
+                <p className="mt-2 font-mono text-mini text-muted-foreground">{p.artist}</p>
               ) : null}
               {p.source ? (
                 <div className="mt-2">
@@ -2482,7 +2715,7 @@ function VibePicksSection({
                 </div>
               ) : null}
               {p.submitter_note ? (
-                <p className="mt-2 font-mono text-[11px] font-light text-ink">
+                <p className="mt-2 text-meta leading-[1.6] text-foreground">
                   “{p.submitter_note}”
                 </p>
               ) : null}
@@ -2498,36 +2731,41 @@ function VibePicksSection({
 
 /**
  * The single most important element on the reveal — the song(s) that drew the
- * most notes. This is the screen's one Rust use: the Card's Rust left accent
- * bar. A tie shows every winner as co-recognized.
+ * most notes. A tie shows every winner as co-recognized.
+ *
+ * This is the reveal's strongest achievement statement and it keeps the accent
+ * on both counts: an amber crown in the heading and the `Card`'s amber left
+ * bar. There is exactly one most-noted section per mix, so neither repeats —
+ * a tie co-recognizes at most a handful of picks and is the rare case, not the
+ * shape of the list.
  */
 function MostNotedSection({ winners }: { winners: MostNotedWinner[] }) {
   const tie = winners.length > 1;
   return (
     <section>
-      <h2 className="inline-flex items-center gap-1.5 font-mono uppercase tracking-label text-[9px] text-muted">
-        <CrownIcon className="text-gold" />
+      <h2 className="inline-flex items-center gap-1.5 font-mono uppercase tracking-mono-wide text-meta text-muted-foreground">
+        <CrownIcon className="text-accent" />
         most noted
       </h2>
-      <p className="mt-2 font-mono text-[13px] font-light text-muted">
+      <p className="mt-2 text-sm leading-[1.72] text-muted-foreground">
         {tie ? "the picks that got everyone talking" : "the pick that got everyone talking"}
       </p>
       <ul className="mt-4 space-y-4">
         {winners.map((w) => (
           <li key={w.submission_id}>
-            {/* Rust accent bar — the one Rust signal on this screen. */}
+            {/* `MostNotedWinner` carries no `album_art_url`, so no artwork. */}
             <Card accent>
               <div className="flex items-start justify-between gap-3">
-                <h3 className="font-serif text-[24px] leading-tight text-ink">{w.title}</h3>
-                <span className="shrink-0 pt-1 font-mono uppercase tracking-label text-[9px] text-muted">
+                <h3 className="font-display text-sm font-bold uppercase leading-none">{w.title}</h3>
+                <span className="shrink-0 font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
                   {w.note_count} {w.note_count === 1 ? "note" : "notes"}
                 </span>
               </div>
               {w.artist ? (
-                <p className="mt-1 font-mono text-[11px] font-light text-muted">{w.artist}</p>
+                <p className="mt-2 font-mono text-mini text-muted-foreground">{w.artist}</p>
               ) : null}
               {w.notes.length > 0 ? (
-                <div className="mt-5 border-t border-border pt-5">
+                <div className="mt-5 border-t border-hairline-soft pt-5">
                   <ResultNoteList notes={w.notes} />
                 </div>
               ) : null}
@@ -2540,9 +2778,13 @@ function MostNotedSection({ winners }: { winners: MostNotedWinner[] }) {
 }
 
 /**
- * The mix's winner(s) by votes — prominent but secondary to Most Noted (no
- * Rust accent here, so Most Noted keeps the screen's single Rust signal). A tie
+ * The mix's winner(s) by votes — prominent but secondary to Most Noted. A tie
  * co-recognizes every top-voted pick.
+ *
+ * Winning is an achievement and there is one winner section per mix, so the
+ * heading crown is amber. The card itself stays plain rather than taking
+ * `Card accent` too: Most Noted keeps the accent *bar* so the two achievement
+ * sections still read in order rather than as one undifferentiated block.
  */
 function WinnersSection({
   winners,
@@ -2554,11 +2796,11 @@ function WinnersSection({
   const tie = winners.length > 1;
   return (
     <section>
-      <h2 className="inline-flex items-center gap-1.5 font-mono uppercase tracking-label text-[9px] text-muted">
-        <CrownIcon className="text-gold" />
+      <h2 className="inline-flex items-center gap-1.5 font-mono uppercase tracking-mono-wide text-meta text-muted-foreground">
+        <CrownIcon className="text-accent" />
         {tie ? "winners" : "winner"}
       </h2>
-      <p className="mt-2 font-mono text-[13px] font-light text-muted">
+      <p className="mt-2 text-sm leading-[1.72] text-muted-foreground">
         {tie ? "tied for the most votes this mystery mix" : "the most votes this mystery mix"}
       </p>
       <ul className="mt-4 space-y-4">
@@ -2566,11 +2808,11 @@ function WinnersSection({
           <li key={w.userId}>
             <Card>
               <div className="flex items-start justify-between gap-3">
-                <span className="font-mono uppercase tracking-label text-[9px] text-muted">
+                <span className="font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
                   {nameFor(w.userId, w.displayName)}
                 </span>
                 {/* The per-player total — the score the leaderboard ranks on. */}
-                <span className="shrink-0 pt-1 font-mono uppercase tracking-label text-[9px] text-sage">
+                <span className="shrink-0 font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
                   {w.total} {w.total === 1 ? "vote" : "votes"}
                 </span>
               </div>
@@ -2582,13 +2824,25 @@ function WinnersSection({
                 return w.songs
                   .filter((s) => s.vote_count === peak)
                   .map((s, i) => (
-                    <div key={s.submission_id} className={i === 0 ? "mt-1" : "mt-3"}>
-                      <h3 className="font-serif text-[24px] leading-tight text-ink">{s.title}</h3>
-                      {s.artist ? (
-                        <p className="mt-1 font-mono text-[11px] font-light text-muted">
-                          {s.artist}
-                        </p>
-                      ) : null}
+                    <div
+                      key={s.submission_id}
+                      className={["flex items-start gap-4", i === 0 ? "mt-2" : "mt-4"].join(" ")}
+                    >
+                      <AlbumArt
+                        url={s.album_art_url}
+                        alt={`${s.title} album art`}
+                        size={56}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <h3 className="font-display text-sm font-bold uppercase leading-none">
+                          {s.title}
+                        </h3>
+                        {s.artist ? (
+                          <p className="mt-2 font-mono text-mini text-muted-foreground">
+                            {s.artist}
+                          </p>
+                        ) : null}
+                      </div>
                     </div>
                   ));
               })()}
@@ -2618,22 +2872,31 @@ function rankSongs(
   return ranked.map((s) => ({ ...s, tied: (countByRank.get(s.rank) ?? 0) > 1 }));
 }
 
-/** The Playing leaderboard — already ranked, vibing excluded. Calm and compact;
- *  no Rust (rank #1 included stays in the Sage/Ink family). */
+/**
+ * The Playing leaderboard — already ranked, vibing excluded. Calm and compact.
+ *
+ * **No accent, not even on rank 1.** Unlike `ClubHomeScreen`'s all-time
+ * standings — the one table on that screen, where rank 1 legitimately takes
+ * the amber row — this leaderboard sits directly beneath a Winner(s) section
+ * that already marks the same player as the achievement. Marking them twice
+ * on one screen makes the accent read as decoration on the second pass.
+ */
 function LeaderboardSection({ entries }: { entries: LeaderboardEntry[] }) {
   return (
     <section>
-      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">leaderboard</h2>
-      <ul className="mt-4 divide-y divide-border border-y border-border">
+      <h2 className="font-mono uppercase tracking-mono-wide text-meta text-muted-foreground">
+        leaderboard
+      </h2>
+      <ul className="mt-4 divide-y divide-hairline-soft border-y border-hairline">
         {entries.map((e) => (
           <li key={e.user_id} className="flex items-baseline justify-between gap-4 py-3">
             <div className="flex items-baseline gap-4">
-              <span className="w-6 shrink-0 font-mono text-[13px] font-light text-muted">
+              <span className="w-6 shrink-0 font-mono text-mini text-muted-foreground">
                 {e.rank}
               </span>
-              <span className="font-mono text-[13px] font-light text-ink">{e.display_name}</span>
+              <span className="font-mono text-sm text-foreground">{e.display_name}</span>
             </div>
-            <span className="shrink-0 font-mono uppercase tracking-label text-[9px] text-sage">
+            <span className="shrink-0 font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
               {e.vote_count} {e.vote_count === 1 ? "vote" : "votes"}
             </span>
           </li>

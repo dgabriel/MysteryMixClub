@@ -86,12 +86,19 @@ export function ResetPasswordRoute() {
     return (
       <main className="min-h-screen flex flex-col items-center justify-center px-4 sm:px-8">
         <div className="w-full max-w-sm text-center">
+          {/* Unaccented, as on every screen in this family: amber-as-identity is
+              bounded to the shared nav's mark plus at most one hero mark per
+              screen, and this is not one of those screens (ADR 0010). */}
           <ConcentricRings size={72} className="mx-auto" />
-          <h1 className="mt-8 font-serif text-[28px] leading-tight">password updated</h1>
-          <p className="mt-4 font-mono text-[13px] font-light text-muted">
+          <h1 className="mt-8 font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
+            password updated
+          </h1>
+          <p className="mt-4 text-sm leading-[1.72] text-muted-foreground">
             you&apos;ve been signed out everywhere. sign in with your new password.
           </p>
           <div className="mt-10">
+            {/* The one thing left to do here, so it keeps the primary amber
+                fill — action is squarely inside amber's category. */}
             <Button type="button" onClick={() => navigate("/login", { replace: true })}>
               sign in
             </Button>
@@ -104,10 +111,13 @@ export function ResetPasswordRoute() {
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-4 sm:px-8">
       <div className="w-full max-w-sm">
-        {/* No Rust accent on the motif: this screen shows form validation
-            errors, which are the screen's Rust (ADR 0004). */}
+        {/* Unaccented. Amber-as-identity is bounded to the shared nav's mark
+            plus at most one hero mark per screen, and this screen is not one of
+            the ones that carries the hero mark (ADR 0010). Form validation
+            errors below are their own color category and consume nothing from
+            this screen's amber either way (ADR 0004). */}
         <ConcentricRings size={72} className="mx-auto" />
-        <h1 className="mt-8 text-center font-serif text-[28px] leading-tight">
+        <h1 className="mt-8 text-center font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
           set a new password
         </h1>
 
@@ -126,7 +136,7 @@ export function ResetPasswordRoute() {
               error={passwordError}
             />
             {passwordError ? null : (
-              <p className="mt-2 font-mono text-[11px] font-light text-muted">
+              <p className="mt-2 text-meta leading-[1.6] text-muted-foreground">
                 {PASSWORD_MIN_LENGTH} characters or more.
               </p>
             )}

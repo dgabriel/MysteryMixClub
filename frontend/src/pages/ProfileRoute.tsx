@@ -20,9 +20,9 @@ import { useAuth } from "../hooks/useAuth";
 
 /** Calm copy for the outcome flag Google's link callback redirects back with
  *  (?google_link=<outcome>, MysteryMixClub-ali8.6). `isError` only changes
- *  whether the message reads as a problem -- it never renders in Rust, per the
- *  style guide's carve-out for a third-party outcome the user didn't do
- *  anything invalid to cause (ADR 0004). */
+ *  whether the message reads as a problem -- it never takes the form-error
+ *  color, per the style guide's carve-out for a third-party outcome the user
+ *  didn't do anything invalid to cause (ADR 0004). */
 function googleLinkOutcomeCopy(outcome: string): { message: string; isError: boolean } {
   switch (outcome) {
     case "linked":

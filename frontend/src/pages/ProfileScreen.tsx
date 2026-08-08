@@ -4,7 +4,9 @@ import { Button } from "../components/Button";
 import { TextField } from "../components/TextField";
 import { Badge } from "../components/Badge";
 import { Card } from "../components/Card";
+import { FormError } from "../components/FormError";
 import { ConcentricRings } from "../components/ConcentricRings";
+import { CrownIcon } from "../components/CrownIcon";
 import { UserAvatar } from "../components/avatars/UserAvatar";
 import { HelpLink } from "../components/HelpLink";
 
@@ -37,8 +39,8 @@ type ProfileScreenProps = {
   /** Calm message from returning to /profile?google_link=<outcome> (the
    *  Google-link redirect's return leg) -- e.g. "google account linked." or an
    *  explanation for a denial/conflict. `isError` only changes whether it reads
-   *  as a problem; it is never rendered in Rust (ADR 0004 excludes a third-party
-   *  outcome the user didn't do anything invalid to cause). */
+   *  as a problem; it never takes the form-error color (ADR 0004 excludes a
+   *  third-party outcome the user didn't do anything invalid to cause). */
   googleLinkNotice?: { message: string; isError: boolean } | null;
   onLogoutAll: () => void;
   logoutAllBusy?: boolean;
@@ -52,10 +54,26 @@ type ProfileScreenProps = {
 
 /**
  * Profile screen: edit display name, preferred service, browse archived clubs,
- * and manage account (log out all devices, delete account).
+ * and manage account (log out all devices, export data, delete account).
  *
- * Rust budget: the single Rust use is the accent bar on the most-recently-completed
- * archived club card. The delete-account confirm uses ghost/ink styling only.
+ * Amber budget (category rule, not a count). This screen spends amber in
+ * exactly one in-category way, and nowhere decorative: the `primary` fill on
+ * the two submit buttons ("save" the display name, "set password"), which are
+ * actions. Everything else that could have taken it deliberately does not:
+ *  - The archived clubs list carries NO amber. It is the same `GET /clubs`
+ *    data R8 renders, filtered to `complete` — an unbounded, monotonically
+ *    growing set with no pagination and no way to hide a club — so a per-card
+ *    accent bar would render a column of amber, which is amber as pattern
+ *    however in-category one card would be. Completion is carried instead by
+ *    the "archived" grouping, a `muted-foreground` crown glyph, and the state
+ *    Badge already reading "complete".
+ *  - Delete-account is irreversible and takes `Button variant="destructive"`,
+ *    never the amber `link` variant. See DeleteAccountSection.
+ *  - The three recoverable account actions (log out everywhere, export data,
+ *    arm the delete confirm, cancel it) stay `ghost`, matching R10's split
+ *    between delete-club and leave-club.
+ * The shared TopNav is rendered by AuthedLayout, so this is content-only and
+ * this screen renders no hero mark of its own (ADR 0010).
  */
 export function ProfileScreen({
   userId,
@@ -103,21 +121,30 @@ export function ProfileScreen({
 
   return (
     <main className="mx-auto w-full max-w-lg px-4 pb-16 sm:px-8">
-      <div className="flex items-center gap-5">
+      <div className="flex items-center gap-4">
         {userId ? <UserAvatar userId={userId} size={56} /> : null}
-        <h1 className="font-serif lowercase text-[28px] leading-tight text-ink">profile</h1>
+        <h1 className="font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
+          profile
+        </h1>
       </div>
 
       {error ? (
-        <p role="alert" className="mt-6 font-mono text-[13px] font-light text-muted">
+        // A failed *load*, not a form error: the profile never resolved, so
+        // this replaces the screen's content rather than describing a field.
+        // ADR 0004's `destructive-text` category is form validation only, so
+        // this stays ordinary body copy in `foreground`.
+        <p role="alert" className="mt-6 text-sm leading-[1.72] text-foreground">
           {error}
         </p>
       ) : (
         <div className="mt-8">
           {email ? (
             <section className="mb-12">
-              <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">email</h2>
-              <p className="mt-2 font-mono text-[13px] font-light text-ink">{email}</p>
+              <h2 className="font-mono text-meta uppercase tracking-mono-wide text-muted-foreground">
+                email
+              </h2>
+              {/* Mono at normal tracking is the system's signature for a value. */}
+              <p className="mt-2 font-mono text-sm text-foreground">{email}</p>
             </section>
           ) : null}
 
@@ -152,11 +179,14 @@ export function ProfileScreen({
             googleLinkNotice={googleLinkNotice}
           />
 
-          <section className="mt-12 border-t border-border pt-10">
-            <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">security</h2>
-            <p className="mt-2 font-mono text-[13px] font-light text-muted">
+          <section className="mt-12 border-t border-hairline pt-10">
+            <h2 className="font-mono text-meta uppercase tracking-mono-wide text-muted-foreground">
+              security
+            </h2>
+            <p className="mt-2 text-sm leading-[1.72] text-muted-foreground">
               signs you out on every device and browser.
             </p>
+            {/* Recoverable — you sign back in. `ghost`, not `destructive`. */}
             <div className="mt-4">
               <Button variant="ghost" onClick={onLogoutAll} disabled={logoutAllBusy}>
                 {logoutAllBusy ? "signing out…" : "log out of all devices"}
@@ -205,8 +235,14 @@ function NameForm({
 
   return (
     <section>
-      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">display name</h2>
+      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-muted-foreground">
+        display name
+      </h2>
       <form onSubmit={handleSubmit} noValidate className="mt-4 space-y-6">
+        {/* `invalid` rather than TextField's own `error` prop: the message is
+            rendered by this form (it always was) and keeps its own id, and
+            `invalid` emits exactly the `aria-invalid` this field carried
+            before while also turning the underline `destructive-text`. */}
         <TextField
           id="profile-display-name"
           label="name"
@@ -216,20 +252,18 @@ function NameForm({
           value={name}
           onChange={(e) => setName(e.target.value)}
           disabled={saving}
-          aria-invalid={saveError ? true : undefined}
+          invalid={Boolean(saveError)}
           aria-describedby={saveError ? "profile-display-name-error" : undefined}
         />
-        {saveError ? (
-          <p id="profile-display-name-error" role="alert" className="font-mono text-[13px] text-ink">
-            {saveError}
-          </p>
-        ) : null}
+        {saveError ? <FormError id="profile-display-name-error">{saveError}</FormError> : null}
         <div className="flex items-center gap-4">
           <Button type="submit" disabled={saving}>
             {saving ? "saving…" : "save"}
           </Button>
           {saved ? (
-            <span className="font-mono text-[11px] font-light text-muted">saved</span>
+            <span className="font-mono text-mini uppercase tracking-mono-caps text-muted-foreground">
+              saved
+            </span>
           ) : null}
         </div>
       </form>
@@ -244,6 +278,20 @@ const SERVICES = [
   { value: null, label: "none" },
 ] as const;
 
+/**
+ * Which service's link shows first. The selected option is `foreground` with an
+ * underline and the rest are `muted-foreground` — the same neutral pair the
+ * retired system used, not amber: exactly one option is selected at all times,
+ * so an amber selection would be permanent screen furniture rather than a
+ * signal that something happened. Hover goes amber (R10's inline text-button
+ * treatment), which is transient and one-at-a-time.
+ *
+ * The selected option is `disabled` by design, so it deliberately carries no
+ * `disabled:` recolor — dropping it to `muted-foreground` would erase the
+ * selection. The unselected options take the primitive's disabled treatment
+ * (no hover, `cursor-not-allowed`) while a save is in flight. Never
+ * `disabled:opacity-50`.
+ */
 function PreferredServicePicker({
   current,
   onSave,
@@ -260,12 +308,12 @@ function PreferredServicePicker({
   return (
     <section className="mt-12">
       <span className="flex items-center gap-2">
-        <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
+        <h2 className="font-mono text-meta uppercase tracking-mono-wide text-muted-foreground">
           preferred service
         </h2>
         <HelpLink anchor="listening-playlists" />
       </span>
-      <p className="mt-1 font-mono text-[13px] font-light text-muted">
+      <p className="mt-1 text-sm leading-[1.72] text-muted-foreground">
         platform links show this service first.
       </p>
       <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2">
@@ -278,10 +326,10 @@ function PreferredServicePicker({
               disabled={saving || isActive}
               onClick={() => onSave(value)}
               className={[
-                "py-1.5 font-mono uppercase tracking-ui text-[11px] transition-colors duration-150",
+                "py-1.5 font-mono uppercase tracking-mono text-mini transition-colors duration-150",
                 isActive
-                  ? "text-ink underline underline-offset-[3px] cursor-default"
-                  : "text-muted hover:text-ink disabled:opacity-50",
+                  ? "text-foreground underline underline-offset-[3px] cursor-default"
+                  : "text-muted-foreground hover:text-accent disabled:cursor-not-allowed disabled:text-muted-foreground",
               ].join(" ")}
             >
               {label}
@@ -289,18 +337,33 @@ function PreferredServicePicker({
           );
         })}
         {saved ? (
-          <span className="font-mono text-[11px] font-light text-muted">saved</span>
+          <span className="font-mono text-mini uppercase tracking-mono-caps text-muted-foreground">
+            saved
+          </span>
         ) : null}
       </div>
       {saveError ? (
-        <p role="alert" className="mt-2 font-mono text-[13px] text-ink">
-          {saveError}
-        </p>
+        <div className="mt-2">
+          <FormError>{saveError}</FormError>
+        </div>
       ) : null}
     </section>
   );
 }
 
+/**
+ * The archived (completed) clubs, on R8's list-card pattern: a `card` surface
+ * with the pure-CSS hover lift, a mono eyebrow, a `font-display` uppercase item
+ * title, and a mono meta row.
+ *
+ * **No amber here, on any card.** R8 settled this for the same data: `GET
+ * /clubs` is unbounded and only grows, a completed club stays completed
+ * forever, and nothing lets a user hide one — so the accent bar the retired
+ * system put on the most-recently-completed card would, on a long-lived
+ * account, sit at the top of a column that keeps growing beneath it. Amber's
+ * category covers achievement, but not as a per-row pattern. The crown glyph
+ * is `muted-foreground` and the state Badge stays `default`.
+ */
 function ArchivedClubs({
   clubs,
   onOpenClub,
@@ -310,34 +373,30 @@ function ArchivedClubs({
 }) {
   return (
     <section className="mt-12">
-      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
+      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-muted-foreground">
         archived ({clubs.length})
       </h2>
       {clubs.length === 0 ? (
-        <p className="mt-4 font-mono text-[13px] font-light text-muted">no completed clubs yet</p>
+        <p className="mt-4 text-sm leading-[1.72] text-muted-foreground">no completed clubs yet</p>
       ) : (
         <ul className="mt-4 space-y-4">
-          {clubs.map((club, index) => (
+          {clubs.map((club) => (
             <li key={club.id}>
-              {/* The screen's single Rust use: accent bar on the most-recently
-                  completed club only (index 0). */}
-              <Card
-                accent={index === 0}
-                className="group transition-colors duration-150 hover:bg-sage-pale"
-              >
+              <Card className="transition-[box-shadow,transform] duration-150 hover:-translate-y-0.5 hover:shadow-z3">
                 <button
                   type="button"
                   onClick={() => onOpenClub(club.id)}
                   className="block w-full text-left"
                 >
-                  <span className="font-mono uppercase tracking-label text-[9px] text-muted group-hover:text-sage">
+                  <span className="flex items-center gap-1.5 font-mono text-mini uppercase tracking-mono-caps text-muted-foreground">
+                    <CrownIcon className="text-muted-foreground" />
                     club
                   </span>
-                  <h3 className="mt-1 font-serif text-[20px] leading-tight text-ink">
+                  <h3 className="mt-2 font-display text-sm font-bold uppercase leading-none">
                     {club.name}
                   </h3>
-                  <div className="mt-3 flex items-center justify-between">
-                    <span className="font-mono text-[11px] font-light text-muted group-hover:text-sage">
+                  <div className="mt-4 flex items-center justify-between">
+                    <span className="font-mono text-meta text-muted-foreground">
                       {club.total_mixes} mixes
                     </span>
                     <Badge>{club.state}</Badge>
@@ -358,10 +417,11 @@ function ArchivedClubs({
  * (`hasPassword` / `googleLinked`) so a completed action swaps its form for a
  * plain status line rather than staying interactive.
  *
- * No Rust here: every message (client hint, save error, link error, or the
- * google-redirect outcome) renders in ink/muted, matching this screen's error
- * convention -- the screen's one Rust use is already spent on the archived
- * club accent bar.
+ * A failed save or a failed link-start is a form error and takes `FormError`
+ * (ADR 0004 — its own color category, and several may show at once). The
+ * google-redirect *outcome* notice does not: a third-party sign-in being
+ * denied or cancelled is explicitly outside that category, so it stays
+ * ordinary body copy.
  */
 function AccountSettingsSection({
   hasPassword,
@@ -387,8 +447,8 @@ function AccountSettingsSection({
   googleLinkNotice?: { message: string; isError: boolean } | null;
 }) {
   return (
-    <section className="mt-12 border-t border-border pt-10">
-      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
+    <section className="mt-12 border-t border-hairline pt-10">
+      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-muted-foreground">
         account settings
       </h2>
 
@@ -403,7 +463,7 @@ function AccountSettingsSection({
 
       {googleEnabled ? (
         <div className="mt-8">
-          <p className="font-mono uppercase tracking-label text-[9px] text-muted">
+          <p className="font-mono text-mini uppercase tracking-mono-caps text-muted-foreground">
             google account
           </p>
 
@@ -411,8 +471,8 @@ function AccountSettingsSection({
             <p
               role={googleLinkNotice.isError ? "alert" : "status"}
               className={[
-                "mt-2 font-mono text-[13px] font-light",
-                googleLinkNotice.isError ? "text-ink" : "text-muted",
+                "mt-2 text-sm leading-[1.72]",
+                googleLinkNotice.isError ? "text-foreground" : "text-muted-foreground",
               ].join(" ")}
             >
               {googleLinkNotice.message}
@@ -420,16 +480,16 @@ function AccountSettingsSection({
           ) : null}
 
           {googleLinked ? (
-            <p className="mt-2 font-mono text-[13px] font-light text-muted">linked</p>
+            <p className="mt-2 font-mono text-sm text-muted-foreground">linked</p>
           ) : (
             <div className="mt-3">
               <Button variant="ghost" type="button" onClick={onLinkGoogle} disabled={linkingGoogle}>
                 {linkingGoogle ? "connecting…" : "link google account"}
               </Button>
               {linkGoogleError ? (
-                <p role="alert" className="mt-3 font-mono text-[13px] text-ink">
-                  {linkGoogleError}
-                </p>
+                <div className="mt-3">
+                  <FormError>{linkGoogleError}</FormError>
+                </div>
               ) : null}
             </div>
           )}
@@ -461,16 +521,20 @@ function SetPasswordForm({
   if (hasPassword) {
     return (
       <>
-        <p className="font-mono uppercase tracking-label text-[9px] text-muted">password</p>
-        <p className="mt-2 font-mono text-[13px] font-light text-muted">password set</p>
+        <p className="font-mono text-mini uppercase tracking-mono-caps text-muted-foreground">
+          password
+        </p>
+        <p className="mt-2 font-mono text-sm text-muted-foreground">password set</p>
       </>
     );
   }
 
   return (
     <>
-      <p className="font-mono uppercase tracking-label text-[9px] text-muted">password</p>
-      <p className="mt-1 font-mono text-[13px] font-light text-muted">
+      <p className="font-mono text-mini uppercase tracking-mono-caps text-muted-foreground">
+        password
+      </p>
+      <p className="mt-1 text-sm leading-[1.72] text-muted-foreground">
         add a password so you can sign in without a magic link.
       </p>
       <form onSubmit={handleSubmit} noValidate className="mt-4 space-y-3">
@@ -488,15 +552,14 @@ function SetPasswordForm({
             aria-describedby={saveError ? "profile-set-password-error" : "profile-set-password-hint"}
           />
           {saveError ? (
-            <p
-              id="profile-set-password-error"
-              role="alert"
-              className="mt-2 font-mono text-[13px] text-ink"
-            >
-              {saveError}
-            </p>
+            <div className="mt-2">
+              <FormError id="profile-set-password-error">{saveError}</FormError>
+            </div>
           ) : (
-            <p id="profile-set-password-hint" className="mt-2 font-mono text-[11px] font-light text-muted">
+            <p
+              id="profile-set-password-hint"
+              className="mt-2 text-meta leading-[1.6] text-muted-foreground"
+            >
               {PASSWORD_MIN_LENGTH} characters or more.
             </p>
           )}
@@ -511,6 +574,8 @@ function SetPasswordForm({
   );
 }
 
+/** Downloading your own data changes nothing and can be repeated, so the
+ *  control is `ghost`. A failed export is a form error (ADR 0004). */
 function ExportDataSection({
   onExportData,
   exportingData,
@@ -521,13 +586,15 @@ function ExportDataSection({
   exportDataError?: string | null;
 }) {
   return (
-    <section className="mt-12 border-t border-border pt-10">
-      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">your data</h2>
-      <p className="mt-2 font-mono text-[13px] font-light text-muted">
+    <section className="mt-12 border-t border-hairline pt-10">
+      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-muted-foreground">
+        your data
+      </h2>
+      <p className="mt-2 text-sm leading-[1.72] text-muted-foreground">
         download a copy of everything tied to your account: profile, submissions, votes, and
         notes.
       </p>
-      <p className="mt-2 font-mono text-[13px] font-light text-muted">
+      <p className="mt-2 text-sm leading-[1.72] text-muted-foreground">
         we provide this to meet gdpr's right of access (article 15) and data portability (article
         20).
       </p>
@@ -537,14 +604,26 @@ function ExportDataSection({
         </Button>
       </div>
       {exportDataError ? (
-        <p role="alert" className="mt-3 font-mono text-[13px] text-ink">
-          {exportDataError}
-        </p>
+        <div className="mt-3">
+          <FormError>{exportDataError}</FormError>
+        </div>
       ) : null}
     </section>
   );
 }
 
+/**
+ * The most destructive action in the app, on R10's two-step confirm pattern:
+ * the first control arms the confirm, the second commits, and the arming step
+ * is unchanged in every respect.
+ *
+ * The commit takes `Button variant="destructive"` (R2). Deleting an account is
+ * irreversible — it takes every club membership, submission, vote and note with
+ * it and there is no restore — so it reads as danger rather than as an ordinary
+ * amber action. The arming control and the cancel stay `ghost`, exactly as R10
+ * kept the recoverable leave-club on `ghost`: only the irreversible commit gets
+ * the red fill, or the section becomes one undifferentiated danger zone.
+ */
 function DeleteAccountSection({
   onDeleteAccount,
   deletingAccount,
@@ -557,8 +636,8 @@ function DeleteAccountSection({
   const [confirming, setConfirming] = useState(false);
 
   return (
-    <section className="mt-12 border-t border-border pt-10">
-      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
+    <section className="mt-12 border-t border-hairline pt-10">
+      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-muted-foreground">
         delete account
       </h2>
       {!confirming ? (
@@ -569,33 +648,33 @@ function DeleteAccountSection({
         </div>
       ) : (
         <div className="mt-4 space-y-4">
-          <p className="font-mono text-[13px] font-light text-ink">
+          <p className="text-sm leading-[1.72] text-muted-foreground">
             this permanently deletes your account and all your data. are you sure?
           </p>
           <div className="flex items-center gap-4">
             <Button
-              variant="ghost"
+              variant="destructive"
               type="button"
               onClick={onDeleteAccount}
               disabled={deletingAccount}
             >
               {deletingAccount ? "deleting…" : "yes, delete my account"}
             </Button>
-            <button
+            <Button
+              variant="ghost"
               type="button"
               onClick={() => setConfirming(false)}
               disabled={deletingAccount}
-              className="py-1.5 font-mono uppercase tracking-ui text-[11px] text-muted hover:text-ink disabled:opacity-50"
             >
               cancel
-            </button>
+            </Button>
           </div>
         </div>
       )}
       {deleteAccountError ? (
-        <p role="alert" className="mt-3 font-mono text-[13px] text-ink">
-          {deleteAccountError}
-        </p>
+        <div className="mt-3">
+          <FormError>{deleteAccountError}</FormError>
+        </div>
       ) : null}
     </section>
   );

@@ -134,10 +134,25 @@ until the sweep ticket.
   amber CTA *and* an amber rank-1 marker — both are in category. What is
   forbidden is amber as pattern, texture, or ornament. Component tickets
   enforce the category, not a count.
-  - **Exception — the nav brand mark's accent dot.** The brand mark in the
-    shared nav may carry one small amber dot as persistent *brand identity*.
-    Brand is not signal; this dot is outside every screen's reasoning about
-    amber. Do not delete it as a violation.
+  - **Exception — identity. Amber may mark the brand.** The `ConcentricRings`
+    disc renders an amber centre label when `accent` is set, and that is the
+    brand mark. Identity is a **third category alongside action and
+    achievement**, and stating it that way is a deliberate addition to the
+    design system's two-category rule — the DS's own style tile puts amber in
+    the disc's centre label, so the mark carrying amber is sanctioned by the
+    tile rather than invented here, but the DS never named the category, and a
+    brand mark is plainly neither an action nor an achievement.
+
+    Identity is bounded to two placements and no more:
+    - the shared nav's persistent 28px mark, which is chrome, appears on every
+      screen, and sits outside any individual screen's reasoning about amber;
+    - **at most one** amber hero mark in a screen's own content (`AboutRoute`,
+      `TermsRoute`, `PrivacyRoute`, `HelpRoute`, `OnboardingScreen`,
+      `JoinClubScreen`, `MyClubsScreen`).
+
+    The exception licenses nothing else. It does not make amber available as
+    decoration, pattern, or ornament on the screens that use it, and a second
+    hero mark is a violation. Do not delete the brand mark's amber as one.
   - **Exception — the About page's second decorative accent.** `AboutRoute.tsx`
     renders a small `<3` on the support section in the accent color. This was a
     deliberate override by Dawn under the old system and it survives the
@@ -178,11 +193,13 @@ until the sweep ticket.
   that `chart-1` *is* `accent` — a single-series chart legitimately renders
   amber, and that is the one sanctioned amber-not-on-action case. Baselines use
   `hairline`; tick labels use `muted-foreground`, never a series color.
-- **The `vinyl` avatar color is unresolved.** The five music-hardware SVG
-  avatars still stroke with the legacy `#6B7EB5`. A mid-blue stroke on a
-  near-black card was never contrast-checked, and the name now collides with
-  the DS's VinylDisc component. The avatar ticket resolves both. Do not assume
-  it is settled.
+- **The `vinyl` avatar color is resolved, and there was never more than one
+  avatar.** The old guide claimed five music-hardware illustrations; only
+  `CassetteAvatar` was ever built, and `UserAvatar` is its only caller. R3 moved
+  `UserAvatar` off `border`/`cream`/`vinyl` onto a `hairline` edge, a `tile`
+  fill, and a `muted-foreground` stroke (5.37:1 on `tile`, well clear of the
+  3:1 floor for non-text graphics). The legacy `vinyl` mid-blue now has no call
+  sites and the name no longer collides with the disc motif.
 - **The Ink time-signal badge is replaced by an urgency-graded chip.** The old
   guide's one sanctioned dark-filled chip (for deadlines and countdowns) worked
   by contrast inversion — the densest object on a light page — and has no
@@ -430,12 +447,35 @@ established system-wide, and binding on all of them:
 
 ## Motif
 
-The record is the visual signature. The concentric-ring mark and its
-transition to the DS's VinylDisc belong to the motif ticket; until that lands,
-the existing `ConcentricRings` component stands.
+The record is the visual signature. `ConcentricRings` **is** the vinyl disc: a
+`card`-dark platter carrying a repeating-radial-gradient groove texture, a
+centre label, a spindle hole, and `shadow-art` — whose `0 0 0 1px
+rgba(255,255,255,0.10)` ring is the thing that makes it read as an object on a
+near-black page, since `card` on `floor` is only ~1.3:1 on its own. Per the
+elevation rule, that ring **is** the shadow token; do not add a `border`.
 
-The brand mark's single amber dot is persistent brand identity and survives
-(see Color → Usage rules).
+The component keeps the name `ConcentricRings` because a record literally is
+concentric rings. The motif was translated, not replaced, and all 29 existing
+call sites across 19 files needed no edit.
+
+| Prop        | Default | Meaning                                                                 |
+|-------------|---------|-------------------------------------------------------------------------|
+| `size`      | `96`    | Pixel diameter. Ships from 28px (nav mark) to 88px (page hero).         |
+| `spinning`  | `false` | Applies `animate-rotate-rings` — a 6s linear loop, matching the tile.   |
+| `accent`    | `false` | Amber centre label — the brand mark. See the identity exception under Color. |
+| `className` | `""`    | Passthrough, appended last so a caller can override.                    |
+
+The disc is a `<div>`, not an `<svg>`, because groove spacing has to be in
+**physical pixels**: a viewBox-scaled stroke that reads correctly at 88px
+collapses to sub-pixel mush at 28px, and CSS has no SVG equivalent of
+`repeating-radial-gradient`. It stays `role="presentation"` / `aria-hidden`.
+
+**Degradation.** The style tile drops its secondary label below 60px; this
+component uses that same 60px threshold to drop the spindle hole (under ~4px it
+is noise rather than detail) and to tighten the groove period from 4px to 3px,
+because a 28px mark leaves only a ~6px annulus outside the label to carry
+texture. At 28px the mark correctly resolves to its irreducible form: a dark
+disc with an amber centre.
 
 **Do not use the motif decoratively.** It appears in one place per screen,
 purposefully.

@@ -149,7 +149,11 @@ export default {
         },
       },
       animation: {
-        "rotate-rings": "rotate-rings 8s linear infinite",
+        // 6s matches the style tile's VinylDisc rotation. The animation and
+        // keyframe NAMES are load-bearing — AdminMetricsRoute.test.tsx queries
+        // `.animate-rotate-rings` in five places — but those assert the class,
+        // never the duration, so retuning is safe where renaming would not be.
+        "rotate-rings": "rotate-rings 6s linear infinite",
         // Subtle page/section fade per the style guide — no staged motion.
         "fade-in": "fade-in 200ms ease",
       },

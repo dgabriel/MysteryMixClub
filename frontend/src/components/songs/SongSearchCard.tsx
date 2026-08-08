@@ -10,6 +10,7 @@ import {
 import { Card } from "../Card";
 import { Button } from "../Button";
 import { TextField } from "../TextField";
+import { FormError } from "../FormError";
 import { ConcentricRings } from "../ConcentricRings";
 import { SourceBadge } from "../SourceBadge";
 import { HelpLink } from "../HelpLink";
@@ -20,10 +21,22 @@ import { HelpLink } from "../HelpLink";
  *  - "link":   paste a Spotify/YouTube URL → resolve to the canonical song
  *  - "search": search by title (+ optional artist) → pick a result → resolve
  *
- * Style guide: DM Serif Display heading, DM Mono everywhere else, underline-only
- * inputs (via TextField), the concentric-ring motif as the loader. This card is
- * intentionally Rust-free — the home screen spends its single Rust accent on the
- * My Clubs empty-state ring, so nothing here may compete for it.
+ * Design System v1.0: a `Card` (Z1) surface, a `font-display` card title over a
+ * mono eyebrow, mono labels, underline-only inputs via `TextField`, and the
+ * record motif as the loader.
+ *
+ * **Where the amber goes.** Under the category rule the accent marks action or
+ * achievement and nothing else, so here it marks only actions: the selected
+ * mode tab, the primary CTA, and the `link`-variant text buttons. It never
+ * touches a results row. A search returns up to ten rows, and an accent
+ * repeated down a list stops being a signal and becomes the list's styling —
+ * that is amber as pattern, which the rule forbids however in-category one row
+ * would be. There is also no persistent selection to mark: clicking a row
+ * resolves it immediately and replaces the whole list with the result view, so
+ * a "selected row" state never exists to be accented. Rows are told apart by
+ * their artwork and a `tile` hover fill instead.
+ *
+ * Album artwork gets the Z-Art treatment — see `Thumb`.
  */
 
 type Mode = "link" | "search";
@@ -297,9 +310,11 @@ export function SongSearchCard({
 
   return (
     <Card>
-      <span className="font-mono uppercase tracking-label text-[9px] text-muted">{eyebrow}</span>
-      <div className="mt-1 flex items-center gap-2">
-        <h2 className="font-serif text-[20px] leading-tight text-ink">{heading}</h2>
+      <span className="font-mono text-mini uppercase tracking-mono-caps text-muted-foreground">
+        {eyebrow}
+      </span>
+      <div className="mt-2 flex items-center gap-2">
+        <h2 className="font-display text-sm font-bold uppercase leading-none">{heading}</h2>
         {helpAnchor ? <HelpLink anchor={helpAnchor} /> : null}
       </div>
 
@@ -344,10 +359,10 @@ export function SongSearchCard({
           {mode === "link" ? (
             <form onSubmit={handleResolveLink} noValidate className="mt-5">
               <div>
-                <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
+                <span className="block font-mono text-mini uppercase tracking-mono-caps text-muted-foreground">
                   service
                 </span>
-                <p className="mt-1 font-mono text-[13px] text-ink">
+                <p className="mt-2 font-mono text-sm text-foreground">
                   {SERVICES.find((s) => s.key === service)?.label ?? "auto-detected"}
                 </p>
               </div>
@@ -364,7 +379,7 @@ export function SongSearchCard({
                   aria-invalid={error ? true : undefined}
                   aria-describedby={error ? `${idPrefix}-search-error` : undefined}
                 />
-                <p className="mt-2 font-mono text-[13px] font-light text-muted">
+                <p className="mt-2 text-meta leading-[1.6] text-muted-foreground">
                   paste any link — we'll detect the service automatically
                 </p>
               </div>
@@ -405,24 +420,23 @@ export function SongSearchCard({
 
           {loading ? <Loader label={loadingLabel} /> : null}
 
+          {/* A failed resolve/search is a form-level validation message, so it
+              takes the ADR 0004 treatment (destructive-text + warning icon) —
+              its own color category, spending nothing from the accent. */}
           {error ? (
-            <p
-              id={`${idPrefix}-search-error`}
-              role="alert"
-              className="mt-5 font-mono text-[13px] font-light text-ink"
-            >
-              {error}
-            </p>
+            <div className="mt-5">
+              <FormError id={`${idPrefix}-search-error`}>{error}</FormError>
+            </div>
           ) : null}
 
           {/* Search results */}
           {!loading && results !== null ? (
             <div className="mt-6">
               {tooMany ? (
-                <p className="mb-3 font-mono text-[11px] font-light text-muted">{TOO_MANY}</p>
+                <p className="mb-3 text-meta leading-[1.6] text-muted-foreground">{TOO_MANY}</p>
               ) : null}
               {results.length === 0 ? (
-                <p className="font-mono text-[11px] font-light text-muted">no matches</p>
+                <p className="text-meta leading-[1.6] text-muted-foreground">no matches</p>
               ) : (
                 <ul className="space-y-2">
                   {results.map((track) => (
@@ -455,10 +469,14 @@ function ModeTab({
       aria-pressed={active}
       onClick={onClick}
       className={[
-        "py-1.5 font-mono uppercase tracking-ui text-[11px] pb-1 transition-colors duration-150",
+        "py-1.5 pb-1 font-mono uppercase tracking-mono text-label transition-colors duration-150",
+        // Amber marks the selected tab — a selection is an interactive state,
+        // and exactly one of the two tabs can hold it, so it never repeats.
+        // The label carries the state too (`foreground` vs `muted-foreground`),
+        // so the 1px rule is never the sole identifier (WCAG 1.4.11).
         active
-          ? "text-ink border-b border-sage"
-          : "text-muted border-b border-transparent hover:text-ink",
+          ? "border-b border-accent text-foreground"
+          : "border-b border-transparent text-muted-foreground hover:text-foreground",
       ].join(" ")}
     >
       {children}
@@ -471,15 +489,18 @@ function ResultRow({ track, onSelect }: { track: SongSearchTrack; onSelect: () =
     <button
       type="button"
       onClick={onSelect}
-      className="group flex w-full items-center gap-3 rounded-[2px] px-2 py-2 text-left transition-colors duration-150 hover:bg-sage-pale"
+      className="group flex w-full items-center gap-4 rounded-tile px-2 py-2 text-left transition-colors duration-150 hover:bg-tile"
     >
-      <Thumb url={track.thumbnail_url} alt={`${track.title} album art`} size={40} />
+      <Thumb url={track.thumbnail_url} alt={`${track.title} album art`} size={40} interactive />
       <span className="min-w-0">
-        <span className="block truncate font-mono text-[13px] text-ink" title={track.title}>
+        <span
+          className="block truncate font-display text-sm font-semibold uppercase leading-none"
+          title={track.title}
+        >
           {track.title}
         </span>
         {track.artist ? (
-          <span className="block truncate font-mono text-[11px] font-light text-muted group-hover:text-sage">
+          <span className="mt-1.5 block truncate font-mono text-mini text-muted-foreground transition-colors duration-150 group-hover:text-foreground">
             {track.artist}
           </span>
         ) : null}
@@ -491,9 +512,17 @@ function ResultRow({ track, onSelect }: { track: SongSearchTrack; onSelect: () =
 /**
  * Confirmation step for a source-only pick (MYS-201). A Bandcamp/YouTube track
  * with no catalog ISRC resolved, but it won't land on the auto-generated
- * Spotify/Apple playlists — so we say so plainly before it's submitted. Sage Pale
- * panel, Default (Sage) source badge; no Rust — this is calm information, not the
- * screen's signal.
+ * Spotify/Apple playlists — so we say so plainly before it's submitted.
+ *
+ * The well is `sunken`, not `panel` or `tile`. A brand-tinted `SourceBadge` is
+ * read against its own ~6% tint composited over whatever is beneath it, and it
+ * is AA-safe on `floor`/`sunken`/`card`/`popover` only — YouTube red falls to
+ * 4.22:1 on `tile` and worse above (see the table in `lib/platformBrand.ts`).
+ * `sunken` is the one inset surface that satisfies that and still separates the
+ * callout from the `card` around it, so this is a well rather than a raised
+ * panel. It measures 4.91:1 for YouTube and 6.24:1 for Bandcamp.
+ *
+ * The copy is calm information; the accent sits on the two actions only.
  */
 function SourceOnlyConfirm({
   song,
@@ -508,27 +537,25 @@ function SourceOnlyConfirm({
 }) {
   const sourceLabel = source === "bandcamp" ? "Bandcamp" : "YouTube";
   return (
-    <div className="mt-5 rounded-[3px] bg-sage-pale/60 px-6 py-5">
+    <div className="mt-5 rounded-tile border border-hairline bg-sunken px-6 py-5">
       <SourceBadge source={source} />
-      <h3 className="mt-3 font-serif text-[18px] leading-tight text-ink">{song.title}</h3>
+      <h3 className="mt-4 font-display text-sm font-semibold uppercase leading-none">
+        {song.title}
+      </h3>
       {song.artist ? (
-        <p className="mt-1 font-mono text-[11px] font-light text-sage">{song.artist}</p>
+        <p className="mt-2 font-mono text-mini text-muted-foreground">{song.artist}</p>
       ) : null}
-      <p className="mt-4 font-mono text-[13px] font-light leading-relaxed text-ink">
+      <p className="mt-4 text-sm leading-[1.65] text-foreground">
         this one lives on {sourceLabel} only, so it won&apos;t be on the auto-generated Spotify or
         Apple Music playlists. everyone can still play it from its link.
       </p>
-      <div className="mt-5 flex items-center gap-5">
+      <div className="mt-6 flex items-center gap-6">
         <Button type="button" onClick={onConfirm}>
           add it anyway
         </Button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink"
-        >
+        <Button variant="link" type="button" onClick={onCancel}>
           search again
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -557,44 +584,48 @@ function ResultView({
   const noteId = useId();
   return (
     <div className="mt-5">
-      <div className="flex items-start gap-4">
+      <div className="flex items-start gap-6">
         <Thumb url={song.thumbnail_url} alt={`${song.title} album art`} size={72} />
         <div className="min-w-0">
-          <h3 className="truncate font-serif text-[18px] leading-tight text-ink" title={song.title}>
+          <h3
+            className="truncate font-display text-sm font-semibold uppercase leading-none"
+            title={song.title}
+          >
             {song.title}
           </h3>
           {song.artist ? (
-            <p className="mt-1 truncate font-mono text-[11px] font-light text-muted">
-              {song.artist}
-            </p>
+            <p className="mt-2 truncate font-mono text-mini text-muted-foreground">{song.artist}</p>
           ) : null}
+          {/* The badge sits directly on the Card's `card` surface — 4.74:1 for
+              YouTube, 5.98:1 for Bandcamp. Nothing lighter may go under it. */}
           {song.source ? (
             <span className="mt-2 inline-block">
               <SourceBadge source={song.source} />
             </span>
           ) : null}
           {song.album ? (
-            <p className="mt-0.5 truncate font-mono text-[11px] font-light text-muted">
-              {song.album}
-            </p>
+            <p className="mt-1 truncate font-mono text-mini text-muted-foreground">{song.album}</p>
           ) : null}
         </div>
       </div>
 
       {available.length > 0 ? (
-        <div className="mt-5">
-          <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
+        <div className="mt-6">
+          <span className="block font-mono text-mini uppercase tracking-mono-caps text-muted-foreground">
             listen on
           </span>
-          <ul className="mt-3 flex flex-wrap gap-2">
+          <ul className="mt-4 flex flex-wrap gap-2">
             {available.map((p) => (
               <li key={p.key}>
+                {/* The ghost-button treatment as an anchor: a `tile` fill, not a
+                    bare hairline box, so the control is identifiable without
+                    relying on a ~1.1:1 edge. */}
                 <a
                   href={song.platforms[p.key]}
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label={`open ${song.title} on ${p.label} (opens in a new tab)`}
-                  className="inline-flex items-center gap-1.5 rounded-[2px] border border-border px-2.5 py-1.5 font-mono uppercase tracking-ui text-[11px] text-ink transition-colors duration-150 hover:bg-sage-pale"
+                  className="inline-flex items-center gap-2 rounded-hair border border-hairline bg-tile px-3 py-2 font-mono uppercase tracking-mono text-label text-foreground transition-colors duration-150 hover:bg-panel"
                 >
                   <ExternalLinkIcon />
                   {p.label}
@@ -604,19 +635,23 @@ function ResultView({
           </ul>
         </div>
       ) : (
-        <p className="mt-5 font-mono text-[13px] font-light text-muted">
+        <p className="mt-6 text-meta leading-[1.6] text-muted-foreground">
           no streaming links available for this song
         </p>
       )}
 
       {onNoteChange !== undefined ? (
-        <div className="mt-5">
+        <div className="mt-6">
           <label
             htmlFor={noteId}
-            className="block font-mono uppercase tracking-label text-[9px] text-muted"
+            className="block font-mono text-mini uppercase tracking-mono-caps text-muted-foreground"
           >
             leave a note (optional)
           </label>
+          {/* Same underline-only treatment as TextField, including its resting
+              `muted-foreground` rule (a hairline underline would be the sole
+              affordance at ~1.2:1). Disabled drops the value to
+              `muted-foreground` rather than fading the field out. */}
           <textarea
             id={noteId}
             value={noteText ?? ""}
@@ -625,51 +660,81 @@ function ResultView({
             rows={2}
             disabled={submitting}
             placeholder="why this song?"
-            className="mt-2 w-full resize-none border-b border-ink bg-transparent font-mono text-[13px] font-light text-ink placeholder:text-muted focus:border-ink focus:outline-none disabled:opacity-50"
+            className="mt-2 w-full resize-none rounded-none border-0 border-b border-muted-foreground bg-transparent px-0 py-1 font-mono text-sm text-foreground placeholder:text-muted-foreground focus:border-accent focus:outline-none disabled:cursor-not-allowed disabled:text-muted-foreground"
           />
         </div>
       ) : null}
 
-      <div className="mt-6 flex items-center gap-5">
+      <div className="mt-6 flex items-center gap-6">
         {onSubmit ? (
           <Button type="button" onClick={() => onSubmit(song)} disabled={submitting}>
             {submitting ? "submitting…" : "submit this song"}
           </Button>
         ) : null}
-        <button
-          type="button"
-          onClick={onReset}
-          disabled={submitting}
-          className="font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink disabled:opacity-50"
-        >
+        <Button variant="link" type="button" onClick={onReset} disabled={submitting}>
           search again
-        </button>
+        </Button>
       </div>
     </div>
   );
 }
 
-/** Album-art thumbnail with a ring-motif fallback when no art is available. */
-function Thumb({ url, alt, size }: { url: string | null; alt: string; size: number }) {
-  if (url) {
-    return (
-      <img
-        src={url}
-        alt={alt}
-        width={size}
-        height={size}
-        className="flex-shrink-0 rounded-[2px] object-cover"
-        style={{ width: size, height: size }}
-      />
-    );
-  }
+/**
+ * Album artwork at Z-Art — the one class of object that sits above the Z4
+ * ceiling of the surface ladder. A same-size `panel` block is laid down first
+ * and the image floats over it, offset up and to the left, so the art reads as
+ * a physical object resting on the card rather than as a picture printed into
+ * it. The block is what shows through while the image is still loading, and it
+ * is the entire treatment when there is no art: `thumbnail_url` is the only art
+ * field either `ResolvedSong` or `SongSearchTrack` carries (neither has
+ * `album_art_url`, which belongs to the submission types), and it is nullable
+ * on both — a null `src` would render a broken image, so the null case renders
+ * the placeholder and nothing else.
+ *
+ * The 1px white ring lives inside `shadow-z4` / `shadow-art`, so the art
+ * deliberately carries no `border`. Artwork inside an interactive row rests at
+ * `shadow-z4` and rises to `shadow-art` on that row's hover; the resolved
+ * view's art is not interactive, so it wears `shadow-art` at rest as the hero
+ * object of that view instead of advertising a hover that does nothing (the
+ * same reasoning `Card` uses for having no hover elevation of its own).
+ *
+ * The offset only works if nothing clips it. Neither `Card` nor any wrapper on
+ * the path sets `overflow-hidden`, and both offsets stay inside their
+ * container's own padding, so the art overlaps padding rather than escaping the
+ * card.
+ */
+function Thumb({
+  url,
+  alt,
+  size,
+  interactive = false,
+}: {
+  url: string | null;
+  alt: string;
+  size: number;
+  /** Art inside a hoverable row: rest at `shadow-z4`, rise to `shadow-art`.
+   *  Requires a `group` on the hover target. */
+  interactive?: boolean;
+}) {
+  // 4px on a 40px row thumb, 6px on the 72px resolved-view art — both inside
+  // the 4-12px the treatment calls for, and inside their container's padding.
+  const offset = size >= 64 ? 6 : 4;
   return (
-    <span
-      className="flex flex-shrink-0 items-center justify-center rounded-[2px] bg-sage-pale"
-      style={{ width: size, height: size }}
-      aria-hidden="true"
-    >
-      <ConcentricRings size={Math.round(size * 0.6)} />
+    <span className="relative block shrink-0" style={{ width: size, height: size }}>
+      <span aria-hidden="true" className="block h-full w-full rounded-hair bg-panel" />
+      {url ? (
+        <img
+          src={url}
+          alt={alt}
+          width={size}
+          height={size}
+          className={[
+            "absolute rounded-hair object-cover transition-shadow duration-150",
+            interactive ? "shadow-z4 group-hover:shadow-art" : "shadow-art",
+          ].join(" ")}
+          style={{ width: size, height: size, top: -offset, left: -offset }}
+        />
+      ) : null}
     </span>
   );
 }

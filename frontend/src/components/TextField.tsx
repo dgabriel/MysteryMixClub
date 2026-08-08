@@ -4,10 +4,11 @@ import { WarningIcon } from "./WarningIcon";
 type TextFieldProps = InputHTMLAttributes<HTMLInputElement> & {
   label: string;
   /** Calm, field-specific validation message. Renders below the input in
-   *  Rust with a warning icon and switches the underline to Rust (ADR 0004
-   *  — form errors are their own Rust budget, independent of one-per-screen). */
+   *  `destructive-text` with a warning icon and switches the underline to the
+   *  same color (ADR 0004 — form errors are their own color category, and
+   *  every invalid field on a form may show it at once). */
   error?: string | null;
-  /** Rust underline without an inline message — for fields that share one
+  /** Error underline without an inline message — for fields that share one
    *  error message rendered by a parent (e.g. a days/hours pair). */
   invalid?: boolean;
   /** Opt-in show/hide control for a `type="password"` field, so someone can
@@ -41,9 +42,15 @@ function EyeIcon({ revealed }: { revealed: boolean }) {
 }
 
 /**
- * Underline-only input per the style guide — no box, transparent background.
- * Label sits above in 9px ALL CAPS Muted. Underline shifts to Sage on focus,
- * or to Rust when invalid.
+ * Underline-only input per the style guide — no box, transparent background,
+ * so it inherits whatever surface it sits on and carries no shadow. The label
+ * sits above in `text-mini` all-caps `muted-foreground`. The underline shifts
+ * to `accent` on focus, or to `destructive-text` when invalid.
+ *
+ * The resting underline is `muted-foreground` (6.01:1 on `card`), not
+ * `hairline`. When the underline IS the affordance, WCAG 1.4.11 applies and a
+ * hairline at ~1.2:1 fails it. `focus:outline-none` is only acceptable here
+ * because `focus:border-accent` (7.42:1) replaces the indicator it removes.
  *
  * The input is associated by `htmlFor`/`id` rather than by being wrapped in the
  * label, so the optional reveal button isn't interactive content nested inside a
@@ -72,7 +79,10 @@ export function TextField({
   const canReveal = revealToggle && type === "password";
   return (
     <div className="block">
-      <label htmlFor={id} className="block font-mono uppercase tracking-label text-[9px] text-muted">
+      <label
+        htmlFor={id}
+        className="block font-mono uppercase tracking-mono-caps text-mini text-muted-foreground"
+      >
         {label}
       </label>
       <div className="relative">
@@ -84,12 +94,12 @@ export function TextField({
           aria-invalid={isInvalid ? true : rest["aria-invalid"]}
           aria-describedby={describedBy}
           className={[
-            "mt-2 w-full bg-transparent font-mono text-[13px] text-ink",
+            "mt-2 w-full bg-transparent font-mono text-sm text-foreground",
             "border-0 border-b rounded-none px-0 py-1",
             canReveal ? "pr-9" : "",
-            isInvalid ? "border-rust" : "border-ink",
-            "placeholder:text-muted",
-            "focus:outline-none focus:border-sage",
+            isInvalid ? "border-destructive-text" : "border-muted-foreground",
+            "placeholder:text-muted-foreground",
+            "focus:outline-none focus:border-accent",
             className,
           ]
             .filter(Boolean)
@@ -100,7 +110,7 @@ export function TextField({
             type="button"
             onClick={() => setRevealed((v) => !v)}
             aria-label={revealed ? "hide password" : "show password"}
-            className="absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center text-muted hover:text-ink"
+            className="absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center text-muted-foreground hover:text-foreground"
           >
             <EyeIcon revealed={revealed} />
           </button>
@@ -110,7 +120,7 @@ export function TextField({
         <p
           id={errorId}
           role="alert"
-          className="mt-2 flex items-center gap-1.5 font-mono text-[13px] text-rust"
+          className="mt-2 flex items-center gap-1.5 font-mono text-sm text-destructive-text"
         >
           <WarningIcon className="shrink-0" />
           {error}

@@ -629,7 +629,19 @@ describe("LoginRoute", () => {
     await waitFor(() => expect(screen.getByTestId("search")).toHaveTextContent(""));
   });
 
-  it("google: outcome messages are plain Ink, while the same words from a form submit are Rust", async () => {
+  // This is the executable form of the ADR 0004 category boundary: the same
+  // sentence gets error styling when it is a claim about the user's own
+  // submission, and plain styling when it is an external system's outcome.
+  // The boundary is unchanged by the redesign; only the color name moved
+  // (rust -> destructive-text).
+  //
+  // Note that the two halves are on different design systems right now. The
+  // `text-ink` assertion below pins EmailEntryScreen, which has not been
+  // migrated yet — its own redesign ticket flips it to `text-foreground` and
+  // must update that line in the same commit. Until then this proves "these
+  // two differ", which is the substance of the contract, but not yet "these
+  // two differ in the intended direction".
+  it("google: outcome messages are plain, while the same words from a form submit get the error color", async () => {
     localStorage.setItem("pendingInvitePath", "/invite/inv-789");
     mockRegister.mockRejectedValue(
       new ApiError(403, "you need an invite to create an account"),
@@ -638,21 +650,21 @@ describe("LoginRoute", () => {
 
     try {
       // Same sentence, arriving from Google's redirect: an external system's
-      // outcome, so it stays Ink.
+      // outcome, so it stays plain body text.
       const { unmount } = renderLogin("/login?google=invite_required");
       expect(screen.getByRole("alert")).toHaveClass("text-ink");
-      expect(screen.getByRole("alert")).not.toHaveClass("text-rust");
+      expect(screen.getByRole("alert")).not.toHaveClass("text-destructive-text");
       unmount();
 
       // Same sentence, from the user's own register submission: a claim about
-      // their attempt, so it gets the Rust validation treatment.
+      // their attempt, so it gets the validation-error treatment.
       renderLogin();
       await openPasswordTab(user);
       await user.type(screen.getByLabelText(/^email$/i), "new@example.com");
       await user.type(passwordInput(), "long-enough-pw");
       await user.click(screen.getByRole("button", { name: /^create account$/i }));
 
-      expect(await screen.findByRole("alert")).toHaveClass("text-rust");
+      expect(await screen.findByRole("alert")).toHaveClass("text-destructive-text");
     } finally {
       localStorage.clear();
     }

@@ -61,6 +61,7 @@ The ladder is named for *what the surface is*, not by Z-number, so JSX reads
 | Token               | Hex       | Role                                                                       |
 |---------------------|-----------|----------------------------------------------------------------------------|
 | `accent`            | `#F3821D` | The one accent. Interactive state, mix/season numbers, rank-1 indicators, focus ring. |
+| `accent-hover`      | `#FDA258` | Hover step for an `accent` fill. Brightens, never dims. `accent-foreground` on it is 10.36:1. |
 | `accent-foreground` | `#020202` | Text and icons *on* an amber fill. Near-black, no hue. 7.96:1.             |
 | `accent-hairline`   | `rgba(201,139,48,0.25)` | Amber-tinted 1px rule bounding an `accent-surface` region.   |
 
@@ -72,6 +73,7 @@ for the same color.
 | Token                     | Hex       | Role                                                              |
 |---------------------------|-----------|-------------------------------------------------------------------|
 | `destructive`             | `#D40924` | Destructive **fill** — delete buttons, danger badges. Never text.  |
+| `destructive-hover`       | `#BE222A` | Hover step for a `destructive` fill. **Deepens** where `accent-hover` brightens. |
 | `destructive-foreground`  | `#F5F5F5` | Text on a `destructive` fill. 4.99:1.                             |
 | `destructive-text`        | `#F2716A` | Form-error text and error underlines (ADR 0004). 6.77:1 on `card`. |
 | `positive`                | `#5DA260` | Upward score delta, success.                                      |
@@ -79,6 +81,23 @@ for the same color.
 
 `destructive` as text is 3.57:1 on `card` — an outright AA failure. Error copy
 always uses `destructive-text`; `destructive` is a fill color and nothing else.
+
+The two hover steps move in opposite directions on purpose.
+`destructive-foreground` on `destructive` has only 0.49 of headroom over
+4.5:1, and brightening the red spends it (a lightness step to `#DF202E` drops
+the label to 4.39:1, an AA failure). Deepening buys headroom instead — 5.58:1
+— and `destructive-hover` still clears 3:1 against `card` (3.19:1) and `floor`
+(3.39:1). It does not go deeper than L 0.52 because that is where the boundary
+ratio would fall below 3:1.
+
+**Every `oklch()` value in `tailwind.config.js` must be inside the sRGB gamut,
+and the hex in this guide must be its true computed value.** This guide is the
+source for contrast math, so a wrong hex propagates into every later
+calculation. An out-of-gamut value is worse than merely imprecise: below one
+JND of excursion, CSS Color 4's gamut-mapping binary search and naive clipping
+disagree about the result, so the rendered color stops being knowable and any
+ratio computed from it is fiction. Verify the linear-RGB channels land in
+[0, 1] *before* mapping, and round-trip the hex back to oklch.
 
 ### Hairlines
 
@@ -146,7 +165,15 @@ until the sweep ticket.
   Music `#FC3C44`, YouTube `#FF0000`, Bandcamp `#1DA0C3`, Deezer `#EF5466`,
   Tidal `#00FFFF` are third-party brand values — the same category as the
   Google button. They do **not** go in `tailwind.config.js`. They live in one
-  TS constant module with the ADR-0007 rationale in a header comment.
+  TS constant module with the ADR-0007 rationale in a header comment
+  (`frontend/src/lib/platformBrand.ts`).
+  - **A brand-tinted badge is valid on `card` or darker only** — that is
+    `floor`, `sunken`, `card`, `popover`. Brand text is read against its own
+    ~6% tint composited over the surface below, so the surface moves the
+    ratio. YouTube red measures 4.74:1 on `card` but **4.22:1 on `tile`, an AA
+    failure**; Bandcamp runs 6.41:1 on `floor` down to 5.23:1 on `tile`. This
+    is a hard placement constraint, not a rounding concern. The full table
+    lives in `platformBrand.ts`.
 - **Charts use the chart ramp and never borrow `accent` as decoration.** Note
   that `chart-1` *is* `accent` — a single-series chart legitimately renders
   amber, and that is the one sanctioned amber-not-on-action case. Baselines use
@@ -156,12 +183,19 @@ until the sweep ticket.
   near-black card was never contrast-checked, and the name now collides with
   the DS's VinylDisc component. The avatar ticket resolves both. Do not assume
   it is settled.
-- **The Ink time-signal badge has no successor yet.** The old guide's one
-  sanctioned dark-filled chip (for deadlines and countdowns) has no analogue in
-  a system where everything is already dark. The likely replacement is
-  `accent-surface` + `accent-hairline` + `accent` text, but that collides with
-  amber's action/achievement meaning. **Open design question** — the deadline
-  chip ticket decides it; do not improvise one.
+- **The Ink time-signal badge is replaced by an urgency-graded chip.** The old
+  guide's one sanctioned dark-filled chip (for deadlines and countdowns) worked
+  by contrast inversion — the densest object on a light page — and has no
+  analogue in a system where everything is already dark. Resolved in R2
+  (`DeadlineChip`): the chip is **neutral by default** (`tile` fill,
+  `hairline` edge, `foreground` text) and takes the amber callout treatment
+  (`accent-surface` + `accent-hairline` + `accent`) **only while the deadline
+  is actually closing**. Grading by urgency is what keeps it inside amber's
+  category — "closing soon" is an action prompt, "closes jul 5" is a date — and
+  it stops a list of mixes from rendering a page of amber chips. Neutral text
+  is `foreground` rather than `muted-foreground` so a time signal still
+  outranks a `Badge` status word; that prominence is what survives from the Ink
+  fill.
 
 ---
 
@@ -346,8 +380,43 @@ established system-wide, and binding on all of them:
   error copy below the field (ADR 0004), with the small warning-triangle line
   icon inline before the message. Multiple fields may show it at once.
 - **Buttons** use mono type: `text-label`, uppercase, `tracking-mono`,
-  `rounded-hair`. A primary button is an `accent` fill with
-  `accent-foreground` text; a secondary button is a `tile` fill.
+  `rounded-hair`, and never a shadow — a button sits *on* a surface rather than
+  being one. Four variants:
+  - `primary` — an `accent` fill with `accent-foreground` text, hovering to
+    `accent-hover`.
+  - `ghost` — a `tile` fill with `foreground` text and a `hairline` edge,
+    hovering one surface step to `panel`. It is a *fill*, not a transparent
+    box: a hairline alone is ~1.1:1 and cannot be the sole thing identifying a
+    control.
+  - `destructive` — a `destructive` fill with `destructive-foreground` text,
+    hovering to `destructive-hover`. **Target state, not current state:** the
+    variant shipped in R2 with zero call sites. Delete affordances still render
+    the amber `link` variant, and **R10** (`ClubHomeScreen.tsx:371`, delete
+    club) and **R15** (`AdminScreen.tsx:452`, delete account) are the tickets
+    that adopt it. Once they land, this is the rule: delete and other
+    irreversible actions use `destructive`, never `link`, because amber means
+    action or achievement and a delete is neither in the sense that matters.
+  - `link` — a text button in `accent`, hovering to `foreground`.
+- **Disabled controls** drop the box entirely — no fill, no edge — and drop the
+  label to `muted-foreground` (6.01:1 on `card`, 6.38:1 on `floor`). Two things
+  this is *not*:
+  - Not `disabled:opacity-50`. Over an `accent` fill that puts the near-black
+    label at 2.72:1, and on a near-black page opacity flattens a control into
+    the background rather than quieting it.
+  - Not a `tile` fill. `tile` is what an *enabled* `ghost` button already is,
+    so a disabled primary beside a ghost "cancel" would read as a second
+    secondary button.
+
+  Removing the fill is the only direction that recedes without brightening:
+  nothing is darker than the surface to recede into. Against a ghost button
+  next to it, the disabled control has no fill, no edge, and a label at 6.01:1
+  versus the ghost's 15.84:1. `cursor-not-allowed` supplements that; it is
+  never the signal, because it does not exist on touch.
+
+  **WCAG exempts inactive components from both 1.4.3 and 1.4.11**, so none of
+  these ratios is an obligation — holding a disabled label to 4.5:1 exceeds the
+  requirement rather than scraping past it. It is held anyway because a user
+  still has to read what the unavailable control would have done.
 - **Charts** follow ADR 0008 unchanged: **d3 for math only** — scales, extents,
   and shape generators; d3 never touches the DOM, the SVG is JSX, React owns
   every node. Tick text stays an HTML overlay at fixed size rather than SVG
@@ -415,7 +484,7 @@ MYS-121 and MYS-186 darkened the old palette twice specifically to clear
   there, or not amber.
 - **A control is never identified by a hairline alone.** Hairlines are
   ~1.2:1 and invisible to the contrast formula, and a `tile`-on-`card` step is
-  only 1.32:1. WCAG 1.4.11 requires 3:1 for a boundary that is the *sole* means
+  only 1.126:1. WCAG 1.4.11 requires 3:1 for a boundary that is the *sole* means
   of identifying a control, so every control must also carry a text or icon
   affordance. This is the most likely a11y regression a dark system
   introduces.

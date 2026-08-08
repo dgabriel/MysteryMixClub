@@ -5,8 +5,17 @@ import { ClockIcon } from "./ClockIcon";
 
 /**
  * Phase-appropriate deadline chip (MYS-161). Renders the shared formatDeadline()
- * label as the style guide's "Time signal (Ink)" chip — Ink fill, Cream text,
- * with an inline clock icon — reserved for time-critical info (one per screen).
+ * label in a chip with an inline clock icon.
+ *
+ * The retired system's dark-filled "time signal" chip worked by contrast
+ * inversion — the densest object on a light page. On a near-black page a dark
+ * fill inverts nothing, so there is no direct analogue and this chip is graded
+ * by urgency instead: a neutral `tile` chip for a plain date, and the amber
+ * callout treatment only once the deadline is actually closing. That keeps
+ * amber inside its category ("closing soon" is an action prompt; "closes jul 5"
+ * is a date) and gives sighted users the urgency cue that until now only the
+ * aria-live announcement carried.
+ *
  * Renders nothing at all for legacy mixes (null deadline) or non-open states —
  * the helper returns null there. `className` carries the per-page top margin so
  * spacing fits each layout; the chip itself is identical on every screen.
@@ -50,7 +59,17 @@ export function DeadlineChip({
 
   return (
     <div className={className}>
-      <span className="inline-flex items-center gap-1.5 rounded-[1px] bg-ink px-[10px] py-[4px] font-mono uppercase tracking-ui text-[11px] text-cream">
+      <span
+        className={[
+          "inline-flex items-center gap-1.5 rounded-hair border px-2 py-1 font-mono uppercase tracking-mono text-label",
+          // Neutral text is `foreground`, not `muted-foreground`, so a time
+          // signal still outranks a `Badge` status word — that hierarchy is
+          // what survives from the old Ink fill's prominence.
+          closingSoon
+            ? "bg-accent-surface border-accent-hairline text-accent"
+            : "bg-tile border-hairline text-foreground",
+        ].join(" ")}
+      >
         <ClockIcon />
         {countdown ? `${label} · ${countdown}` : label}
       </span>

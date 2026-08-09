@@ -66,7 +66,7 @@ function DevLink({ href, label }: { href: string; label: string }) {
       </p>
       <a
         href={href}
-        className="mt-3 inline-block font-mono text-xs text-accent underline underline-offset-[3px] break-all"
+        className="mt-3 inline-block font-mono text-xs text-link underline underline-offset-[3px] break-all"
       >
         {label}
       </a>
@@ -425,7 +425,7 @@ export function EmailEntryScreen({
                 user="info"
                 domain="mysterymixclub.com"
                 label="email us"
-                className="text-accent underline underline-offset-[3px] hover:text-foreground"
+                className="text-link underline underline-offset-[3px] hover:text-foreground"
               />{" "}
               to request one.
             </p>

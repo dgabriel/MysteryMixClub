@@ -79,7 +79,7 @@ export function TermsRoute() {
                 personal data — see the{" "}
                 <a
                   href="/privacy"
-                  className="text-accent underline underline-offset-[3px] hover:text-foreground"
+                  className="text-link underline underline-offset-[3px] hover:text-foreground"
                 >
                   privacy policy
                 </a>{" "}
@@ -117,7 +117,7 @@ export function TermsRoute() {
                   user="privacy"
                   domain="mysterymixclub.com"
                   label="email us"
-                  className="text-accent underline underline-offset-[3px] hover:text-foreground"
+                  className="text-link underline underline-offset-[3px] hover:text-foreground"
                 />{" "}
                 with any questions about these terms.
               </p>

@@ -2,7 +2,7 @@ import { BrandLockup } from "../components/BrandLockup";
 import { TopNav } from "../components/TopNav";
 
 const LINK_CLASS =
-  "font-mono uppercase tracking-mono text-label text-accent underline underline-offset-[3px] transition-colors duration-150 hover:text-foreground";
+  "font-mono uppercase tracking-mono text-label text-link underline underline-offset-[3px] transition-colors duration-150 hover:text-foreground";
 
 /**
  * Public "about" page (MYS-155) — no auth required, reachable from the login
@@ -62,7 +62,7 @@ export function AboutRoute() {
                 href="https://claude.com/claude-code"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-accent underline underline-offset-[3px] hover:text-foreground"
+                className="text-link underline underline-offset-[3px] hover:text-foreground"
               >
                 claude code
               </a>{" "}
@@ -71,7 +71,7 @@ export function AboutRoute() {
                 href="https://ollama.com"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-accent underline underline-offset-[3px] hover:text-foreground"
+                className="text-link underline underline-offset-[3px] hover:text-foreground"
               >
                 ollama
               </a>

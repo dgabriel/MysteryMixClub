@@ -75,6 +75,39 @@ fine on any surface. (`accent-hairline` is `#c98b30`-based rather than `accent`
 itself — a deliberate second amber confined to 1px rules at ≤25% alpha, where the
 difference is imperceptible. See ADR 0011; don't "fix" it.)
 
+### Link
+
+| Token  | Hex       | Role                                                     |
+|--------|-----------|----------------------------------------------------------|
+| `link` | `#3FB1EA` | Navigation. Anything that looks like a link. Always underlined. |
+
+**Blue is navigation, amber is action.** Until 2026-08-09 links were `accent`,
+which meant amber simultaneously carried links, actions, achievements, the brand
+mark and the active nav item — five jobs, so none of them read. Links have their
+own hue now, and that is what lets the amber ones land.
+
+Not an arbitrary blue: `accent` is OKLCH hue 55, so `link` sits at hue **235**,
+its exact complement — the opposite side of the same wheel. Lightness matches
+`accent` (0.72) so the two read as siblings rather than one being borrowed from
+elsewhere. Chroma is 0.13 against amber's 0.17, because blue at high chroma
+glares on near-black and a link should not shout louder than a button.
+
+8.03:1 on `card`, 8.53:1 on `floor`. **Links are always underlined**, so the
+affordance never rests on hue alone — which also covers the one colour-vision
+case (tritanopia) where blue and amber converge.
+
+Three things deliberately did **not** become blue:
+
+- **The toolbar.** `TopNav`'s links are chrome, not content: inactive
+  `subtle-foreground`, active `accent`. Excluded by name.
+- **Segmented-control options** (`ProfileScreen`'s service picker,
+  `AdminScreen`'s status filter). They hover to `accent` and are toggles, not
+  links — the active one is `foreground` + underline.
+- **Underlined text buttons at rest.** Several controls sit at `foreground` with
+  an underline and were amber only on hover; that resting de-emphasis is
+  deliberate. Only their *hover* moved to `link`, so blue consistently means
+  "link affordance" without changing which controls shout at rest.
+
 ### Status
 
 | Token                     | Hex       | Role                                                              |
@@ -418,7 +451,8 @@ established system-wide, and binding on all of them:
     that adopt it. Once they land, this is the rule: delete and other
     irreversible actions use `destructive`, never `link`, because amber means
     action or achievement and a delete is neither in the sense that matters.
-  - `link` — a text button in `accent`, hovering to `foreground`.
+  - `link` — a text button in `link` (blue), underlined, hovering to
+    `foreground`. Blue rather than amber since 2026-08-09: see Link below.
 - **Disabled controls** drop the box entirely — no fill, no edge — and drop the
   label to `muted-foreground` (6.01:1 on `card`, 6.38:1 on `floor`). Two things
   this is *not*:

@@ -113,7 +113,7 @@ export function OnboardingScreen({
                     to="/terms"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-accent underline underline-offset-[3px] hover:text-foreground"
+                    className="text-link underline underline-offset-[3px] hover:text-foreground"
                   >
                     terms of service
                   </Link>{" "}
@@ -122,7 +122,7 @@ export function OnboardingScreen({
                     to="/privacy"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-accent underline underline-offset-[3px] hover:text-foreground"
+                    className="text-link underline underline-offset-[3px] hover:text-foreground"
                   >
                     privacy policy
                   </Link>

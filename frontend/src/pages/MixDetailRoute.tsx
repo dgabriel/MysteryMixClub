@@ -120,7 +120,7 @@ const PLATFORM_LABELS: { key: string; label: string }[] = [
  * `muted-foreground` — never `opacity-50`.
  */
 const ROW_ACTION_CLASS =
-  "font-mono uppercase tracking-mono text-label text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-accent disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline";
+  "font-mono uppercase tracking-mono text-label text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-link disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline";
 const ROW_ACTION_MUTED_CLASS =
   "font-mono uppercase tracking-mono text-label text-muted-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-foreground disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline";
 
@@ -1573,7 +1573,7 @@ function YouTubePlaylistLink({
         href={youtubePlaylistUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex items-center gap-1.5 font-mono uppercase tracking-mono text-label text-accent underline underline-offset-[3px] transition-colors duration-150 hover:text-foreground"
+        className="inline-flex items-center gap-1.5 font-mono uppercase tracking-mono text-label text-link underline underline-offset-[3px] transition-colors duration-150 hover:text-foreground"
       >
         <MusicNoteIcon />
         open playlist in YouTube

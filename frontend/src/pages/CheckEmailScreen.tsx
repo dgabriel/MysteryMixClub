@@ -63,7 +63,7 @@ export function CheckEmailScreen({ email, onBack }: CheckEmailScreenProps) {
                 user="info"
                 domain="mysterymixclub.com"
                 label="email us"
-                className="text-accent underline underline-offset-[3px] hover:text-foreground"
+                className="text-link underline underline-offset-[3px] hover:text-foreground"
               />{" "}
               to request one.
             </p>

@@ -42,6 +42,23 @@ export default {
         "accent-foreground": "oklch(0.08 0 0 / <alpha-value>)", // #020202 text on amber
         "accent-hairline": "rgba(201, 139, 48, 0.25)", // amber-tinted 1px rule
 
+        // --- Link -----------------------------------------------------------
+        // Navigation, not action. Amber was carrying links as well as actions,
+        // achievements, the brand mark and the active nav item; giving links
+        // their own hue is what lets the amber ones read.
+        //
+        // Not an arbitrary blue: `accent` is hue 55, so its exact OKLCH
+        // complement is hue 235 — the opposite side of the same wheel. Lightness
+        // matches `accent` (0.72) so the two read as siblings in one system
+        // rather than a blue borrowed from elsewhere. Chroma is 0.13 against
+        // amber's 0.17 on purpose: blue at high chroma glares on near-black, and
+        // a link should not shout louder than a button.
+        //
+        // 8.03:1 on `card`, 8.53:1 on `floor`. Verified in sRGB gamut and
+        // round-trips to oklch(0.720 0.130 235.0). Links are always underlined,
+        // so the affordance never rests on hue alone.
+        link: "oklch(0.72 0.13 235 / <alpha-value>)", // #3FB1EA navigation
+
         // --- Status ---------------------------------------------------------
         destructive: "oklch(0.55 0.22 25 / <alpha-value>)", // #D40924 fill only, never text
         // Hover step for a `destructive` fill. This one DEEPENS where

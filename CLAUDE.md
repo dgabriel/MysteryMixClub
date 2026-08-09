@@ -91,7 +91,8 @@ Design System v1.0 — dark surfaces, one amber accent (ADR 0009).
 | `sheet`             | `#3A3A3C` | Z4 — modal, drawer, bottom sheet                             |
 | `foreground`        | `#F7F5F1` | Primary text and active icons                                |
 | `muted-foreground`  | `#8E8F93` | Supporting text, captions, mono labels                       |
-| `accent`            | `#F3821D` | **The one accent. Action or achievement. Never decorative.** |
+| `accent`            | `#F3821D` | **Action, achievement, brand. Never decorative.**            |
+| `link`              | `#3FB1EA` | Navigation — anything link-shaped. Always underlined.        |
 | `accent-foreground` | `#020202` | Text on an amber fill                                        |
 | `accent-surface`    | `#1A1512` | Amber-tinted achievement/callout row                         |
 | `destructive`       | `#D40924` | Destructive **fill** only — never text                       |
@@ -124,6 +125,10 @@ Only two things still bind:
   doesn't belong;
 - **it must clear contrast on its surface** — `accent` as *text* is 4.34:1 on
   `sheet` and fails AA there.
+
+**Blue is navigation, amber is action.** Links use `link` and are always
+underlined. `TopNav` is excluded — its chrome stays `subtle-foreground` with an
+`accent` active item — as are segmented-control toggles.
 
 ---
 

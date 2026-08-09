@@ -126,7 +126,7 @@ export function PrivacyRoute() {
                   user="privacy"
                   domain="mysterymixclub.com"
                   label="email us"
-                  className="text-accent underline underline-offset-[3px] hover:text-foreground"
+                  className="text-link underline underline-offset-[3px] hover:text-foreground"
                 />{" "}
                 with any privacy questions or requests.
               </p>

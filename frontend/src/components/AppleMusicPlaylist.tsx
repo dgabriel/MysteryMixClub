@@ -50,17 +50,17 @@ function reasonLabel(track: UnmatchedTrack): string {
 
 /** The whole-playlist action link — the `link` button variant as an anchor. */
 const LINK_CLASS =
-  "inline-flex items-center gap-1.5 font-mono uppercase tracking-mono text-label text-accent underline underline-offset-[3px] transition-colors duration-150 hover:text-foreground";
+  "inline-flex items-center gap-1.5 font-mono uppercase tracking-mono text-label text-link underline underline-offset-[3px] transition-colors duration-150 hover:text-foreground";
 /** Same treatment on a <button>. Disabled drops the box entirely — no
  *  underline, label to `muted-foreground` — rather than fading it, matching
  *  the `Button` primitive. `disabled:` is emitted after `hover:` by Tailwind,
  *  so a disabled control can't pick up the hover color. */
 const BUTTON_CLASS =
-  "inline-flex items-center gap-1.5 font-mono uppercase tracking-mono text-label text-accent underline underline-offset-[3px] transition-colors duration-150 hover:text-foreground disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline";
+  "inline-flex items-center gap-1.5 font-mono uppercase tracking-mono text-label text-link underline underline-offset-[3px] transition-colors duration-150 hover:text-foreground disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline";
 /** A per-row link inside the unmatched list. Neutral at rest, amber on hover
  *  only — hover applies to one row at a time, so it never repeats. */
 const ROW_LINK_CLASS =
-  "font-mono text-sm text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-accent";
+  "font-mono text-sm text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-link";
 const NOTE_CLASS = "font-mono text-sm text-muted-foreground";
 
 /**

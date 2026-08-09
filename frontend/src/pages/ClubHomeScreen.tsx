@@ -287,7 +287,7 @@ export function ClubHomeScreen({
                             onChangeMemberRole(entry.user_id, member.is_admin ? "member" : "admin")
                           }
                           disabled={changingRoleUserId === entry.user_id}
-                          className="py-1.5 font-mono uppercase tracking-mono text-mini text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-accent disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline"
+                          className="py-1.5 font-mono uppercase tracking-mono text-mini text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-link disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline"
                         >
                           {changingRoleUserId === entry.user_id
                             ? "saving…"
@@ -301,7 +301,7 @@ export function ClubHomeScreen({
                           type="button"
                           onClick={() => onRemoveMember(entry.user_id)}
                           disabled={removingUserId === entry.user_id}
-                          className="py-1.5 font-mono uppercase tracking-mono text-mini text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-accent disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline"
+                          className="py-1.5 font-mono uppercase tracking-mono text-mini text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-link disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline"
                         >
                           {removingUserId === entry.user_id ? "removing…" : "remove"}
                         </button>
@@ -735,7 +735,7 @@ function MixRow({
             <button
               type="button"
               onClick={() => setEditing(true)}
-              className="font-mono uppercase tracking-mono text-mini text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-accent"
+              className="font-mono uppercase tracking-mono text-mini text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-link"
             >
               {named ? "edit" : "add a theme"}
             </button>

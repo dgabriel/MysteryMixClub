@@ -124,7 +124,7 @@ export function AdminScreen({
 
       <Link
         to="/admin/metrics"
-        className="mt-4 inline-block py-1.5 font-mono uppercase tracking-mono text-label text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-accent"
+        className="mt-4 inline-block py-1.5 font-mono uppercase tracking-mono text-label text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-link"
       >
         metrics
       </Link>
@@ -485,7 +485,7 @@ function AdminUserRow({
           <button
             type="button"
             onClick={() => setConfirming(true)}
-            className="shrink-0 py-1.5 font-mono uppercase tracking-mono text-mini text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-accent"
+            className="shrink-0 py-1.5 font-mono uppercase tracking-mono text-mini text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-link"
           >
             delete
           </button>

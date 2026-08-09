@@ -18,7 +18,7 @@ export type SourceOnlyTrack = {
  * controls.
  */
 const TITLE_LINK_CLASS =
-  "font-mono text-meta text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-accent";
+  "font-mono text-meta text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-link";
 
 /**
  * One unified list of a mix's Bandcamp/YouTube-only picks — the tracks that,

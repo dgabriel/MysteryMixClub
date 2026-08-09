@@ -51,7 +51,7 @@ const variants: Record<Variant, string> = {
   destructive:
     "rounded-hair px-6 py-3 bg-destructive text-destructive-foreground hover:bg-destructive-hover",
   // Text button. Amber because a text button is still an action.
-  link: "text-accent underline underline-offset-[3px] hover:text-foreground",
+  link: "text-link underline underline-offset-[3px] hover:text-foreground",
 };
 
 export function Button({ variant = "primary", className = "", ...rest }: ButtonProps) {

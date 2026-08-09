@@ -198,11 +198,11 @@ describe("SignupTrendChart", () => {
       expect(container.innerHTML).not.toMatch(/rust|gold/i);
     });
 
-    it("draws the series in Sage and the baseline in Border", () => {
+    it("draws the series in chart-1 and the baseline in hairline", () => {
       const { container } = render(<SignupTrendChart buckets={THIRTY_DAYS} />);
 
-      expect(container.querySelector("path")?.getAttribute("class")).toContain("stroke-sage");
-      expect(container.querySelector("line")?.getAttribute("class")).toContain("stroke-border");
+      expect(container.querySelector("path")?.getAttribute("class")).toContain("stroke-chart-1");
+      expect(container.querySelector("line")?.getAttribute("class")).toContain("stroke-hairline");
     });
 
     it("sets tick labels in the mono face at the muted weight", () => {
@@ -212,17 +212,19 @@ describe("SignupTrendChart", () => {
       expect(labels.length).toBeGreaterThan(0);
       for (const tick of labels) {
         expect(tick.className).toContain("font-mono");
-        expect(tick.className).toContain("text-muted");
+        expect(tick.className).toContain("text-muted-foreground");
       }
     });
 
-    it("keeps the tick labels at a fixed 11px instead of scaling them", () => {
+    it("keeps the tick labels at a fixed size instead of scaling them", () => {
       const { container } = render(<SignupTrendChart buckets={THIRTY_DAYS} />);
 
       // The whole point of hoisting ticks out of the SVG: viewBox scaling can't
-      // shrink them under the Label role's 9px floor on a phone-width card.
+      // shrink them under the readable floor on a phone-width card. `text-meta`
+      // is 11.2px — comfortably above `text-mini`, the floor for a label a user
+      // has to read.
       for (const tick of ticks(container)) {
-        expect(tick.className).toContain("text-[11px]");
+        expect(tick.className).toContain("text-meta");
       }
     });
 

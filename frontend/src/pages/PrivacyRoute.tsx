@@ -29,44 +29,44 @@ export function PrivacyRoute() {
           </p>
 
           <p className="mt-8 text-sm font-medium leading-[1.72] text-foreground">
-            while ai was used to help write the code, there are no ai features in this app and no
-            ai will ingest your data.
+            while ai was used to help write the code, there are no ai features in this app and no ai
+            will ingest your data.
           </p>
 
           <div className="mt-8 space-y-8 text-sm leading-[1.72] text-foreground">
             <section>
               <p>
-                this page explains what mysterymixclub collects, why, and what control you have
-                over it.
+                this page explains what mysterymixclub collects, why, and what control you have over
+                it.
               </p>
             </section>
 
             <section>
-              <p className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
                 what we collect
-              </p>
+              </h2>
               <p className="mt-3">
                 your email, display name, and preferred streaming service; the songs, notes, and
-                votes you submit to clubs you're a member of; and basic session data needed to
-                keep you signed in.
+                votes you submit to clubs you're a member of; and basic session data needed to keep
+                you signed in.
               </p>
             </section>
 
             <section>
-              <p className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
                 what we don't do
-              </p>
+              </h2>
               <p className="mt-3">
                 no individual behavior tracking and no third-party analytics scripts (no google
-                analytics, no mixpanel). we only look at aggregate, app-wide numbers — total
-                clubs, total mystery mixes, total submissions — never a single user's activity pattern.
+                analytics, no mixpanel). we only look at aggregate, app-wide numbers — total clubs,
+                total mystery mixes, total submissions — never a single user's activity pattern.
               </p>
             </section>
 
             <section>
-              <p className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
                 cookies
-              </p>
+              </h2>
               <p className="mt-3">
                 the only cookie we set is a strictly-necessary, HttpOnly session cookie that keeps
                 you signed in. it isn't used for tracking or advertising, and it's not readable by
@@ -75,14 +75,14 @@ export function PrivacyRoute() {
             </section>
 
             <section>
-              <p className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
                 subprocessors
-              </p>
+              </h2>
               <p className="mt-3">
-                two services process personal data on our behalf, each under its own data
-                processing agreement: resend (your email address, to deliver sign-in links and
-                notifications) and digitalocean (hosting our servers and database, so everything
-                you store in the app).
+                two services process personal data on our behalf, each under its own data processing
+                agreement: resend (your email address, to deliver sign-in links and notifications)
+                and digitalocean (hosting our servers and database, so everything you store in the
+                app).
               </p>
               <p className="mt-3">
                 spotify, youtube, apple music, and deezer help us look up and play the songs you
@@ -94,33 +94,32 @@ export function PrivacyRoute() {
             </section>
 
             <section>
-              <p className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
                 your data, your control
-              </p>
+              </h2>
               <p className="mt-3">
-                download a copy of everything tied to your account (profile, submissions, votes,
-                and notes) any time from your profile page, satisfying your right of access and
-                data portability under gdpr articles 15 and 20. delete your account any time from
-                the same page: this cascades to your submissions, votes, notes, sessions, and
-                club memberships, with a scheduled hard purge of any remaining trace within 30
-                days.
+                download a copy of everything tied to your account (profile, submissions, votes, and
+                notes) any time from your profile page, satisfying your right of access and data
+                portability under gdpr articles 15 and 20. delete your account any time from the
+                same page: this cascades to your submissions, votes, notes, sessions, and club
+                memberships, with a scheduled hard purge of any remaining trace within 30 days.
               </p>
             </section>
 
             <section>
-              <p className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
                 changes to this policy
-              </p>
+              </h2>
               <p className="mt-3">
-                if we make a material change to how we handle your data, we'll update this page
-                and ask returning members to review it again.
+                if we make a material change to how we handle your data, we'll update this page and
+                ask returning members to review it again.
               </p>
             </section>
 
             <section className="border-t border-hairline pt-6">
-              <p className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
                 questions
-              </p>
+              </h2>
               <p className="mt-3">
                 <ContactEmail
                   user="privacy"

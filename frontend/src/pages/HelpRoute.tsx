@@ -108,7 +108,7 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
         a: "no. everything else is fair game, up to your club's vote limit.",
       },
       {
-        q: "what's \"most noted\"?",
+        q: 'what\'s "most noted"?',
         a: "a separate recognition from winning: the song that collected the most written notes from other members. it runs alongside the vote-based winner, not instead of it, and can be won by a different song entirely.",
       },
       {
@@ -177,7 +177,7 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
       },
       {
         q: "can i download my data?",
-        a: "yes, your profile has a \"download my data\" option that exports everything tied to your account.",
+        a: 'yes, your profile has a "download my data" option that exports everything tied to your account.',
       },
       {
         q: "can i delete my account?",
@@ -252,9 +252,7 @@ export function HelpRoute() {
                   {section.items.map((item) => (
                     <div key={item.q}>
                       <p className="text-sm leading-[1.72] text-foreground">{item.q}</p>
-                      <p className="mt-1 text-sm leading-[1.72] text-muted-foreground">
-                        {item.a}
-                      </p>
+                      <p className="mt-1 text-sm leading-[1.72] text-muted-foreground">{item.a}</p>
                     </div>
                   ))}
                 </div>
@@ -262,9 +260,9 @@ export function HelpRoute() {
             ))}
 
             <section className="border-t border-hairline pt-6">
-              <p className="font-mono text-mini uppercase tracking-mono-wide text-accent">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
                 still have questions
-              </p>
+              </h2>
               <p className="mt-3 text-sm leading-[1.72] text-foreground">
                 <ContactEmail
                   user="info"

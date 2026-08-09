@@ -31,15 +31,15 @@ export function TermsRoute() {
           <div className="mt-10 space-y-8 text-sm leading-[1.72] text-foreground">
             <section>
               <p>
-                mysterymixclub ("we," "us," "the app") is an invite-only music club for
-                close-knit friend groups. by creating an account, you agree to these terms.
+                mysterymixclub ("we," "us," "the app") is an invite-only music club for close-knit
+                friend groups. by creating an account, you agree to these terms.
               </p>
             </section>
 
             <section>
-              <p className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
                 the basics
-              </p>
+              </h2>
               <p className="mt-3">
                 mysterymixclub is currently in beta. features, availability, and these terms may
                 change as the product develops. we'll do our best to give you notice of material
@@ -48,21 +48,21 @@ export function TermsRoute() {
             </section>
 
             <section>
-              <p className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
                 your account
-              </p>
+              </h2>
               <p className="mt-3">
-                access is invite-only. you're responsible for the songs, notes, and display name
-                you submit, and for keeping your sign-in email under your control. don't submit
-                content you don't have the right to share, and don't use the app to harass or
-                impersonate other members.
+                access is invite-only. you're responsible for the songs, notes, and display name you
+                submit, and for keeping your sign-in email under your control. don't submit content
+                you don't have the right to share, and don't use the app to harass or impersonate
+                other members.
               </p>
             </section>
 
             <section>
-              <p className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
                 third-party services
-              </p>
+              </h2>
               <p className="mt-3">
                 submitting and resolving songs relies on third-party streaming platforms (spotify,
                 youtube, deezer, apple music) and song-matching services. we don't control their
@@ -71,9 +71,9 @@ export function TermsRoute() {
             </section>
 
             <section>
-              <p className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
                 account deletion
-              </p>
+              </h2>
               <p className="mt-3">
                 you can delete your account at any time from your profile. this removes your
                 personal data — see the{" "}
@@ -88,20 +88,20 @@ export function TermsRoute() {
             </section>
 
             <section>
-              <p className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
                 as-is, beta software
-              </p>
+              </h2>
               <p className="mt-3">
-                mysterymixclub is provided "as is," without warranties of any kind, during this
-                beta period. we're not liable for lost data, service interruptions, or issues
-                arising from third-party platforms this app depends on.
+                mysterymixclub is provided "as is," without warranties of any kind, during this beta
+                period. we're not liable for lost data, service interruptions, or issues arising
+                from third-party platforms this app depends on.
               </p>
             </section>
 
             <section>
-              <p className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
                 governing law
-              </p>
+              </h2>
               <p className="mt-3">
                 these terms are governed by the laws of the State of New York, without regard to
                 conflict-of-law principles.
@@ -109,9 +109,9 @@ export function TermsRoute() {
             </section>
 
             <section className="border-t border-hairline pt-6">
-              <p className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
                 questions
-              </p>
+              </h2>
               <p className="mt-3">
                 <ContactEmail
                   user="privacy"

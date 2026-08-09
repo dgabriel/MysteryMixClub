@@ -27,9 +27,9 @@ export function AboutRoute() {
           </h1>
 
           <p className="mt-6 text-sm leading-[1.72] text-foreground">
-            mysterymixclub is a place for friends to trade songs, discover what everyone's
-            been listening to, and put their taste on the line. no algorithm, no popularity
-            contest, just people who love music, sharing it with people they love.
+            mysterymixclub is a place for friends to trade songs, discover what everyone's been
+            listening to, and put their taste on the line. no algorithm, no popularity contest, just
+            people who love music, sharing it with people they love.
           </p>
           <p className="mt-4 text-sm leading-[1.72] text-foreground">
             you can search and verify songs across spotify, apple music, deezer, youtube, youtube
@@ -39,13 +39,13 @@ export function AboutRoute() {
           </p>
 
           <div className="mt-10 border-t border-hairline pt-6">
-            <p className="font-mono text-mini uppercase tracking-mono-wide text-accent">
+            <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
               who built this
-            </p>
+            </h2>
             <p className="mt-3 text-sm leading-[1.72] text-foreground">
               dawn gabriel, a software engineer who loves art and poems and rock and roll.
             </p>
-                        <a
+            <a
               href="https://dawngabriel.com"
               target="_blank"
               rel="noopener noreferrer"
@@ -53,7 +53,7 @@ export function AboutRoute() {
             >
               see more about me at dawngabriel.com
             </a>
-            <br/>
+            <br />
             <a
               href="https://github.com/dgabriel"
               target="_blank"
@@ -86,18 +86,18 @@ export function AboutRoute() {
           </div>
 
           <div className="mt-8 border-t border-hairline pt-6">
-            <p className="font-mono text-mini uppercase tracking-mono-wide text-accent">
+            <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
               support
-            </p>
+            </h2>
             <p className="mt-3 text-sm leading-[1.72] text-foreground">
-              i will never *make* you look at an ad.  i won't use ai to scrape your data and sell it.
-              for many people, the app is free, but it does cost me a lil money to run.  the
-              total cost for developing this app was about <b>$220</b> including hosting on digital ocean,
-               domain registration, apple developer program, apple music, and extra claude usage tokens.
-               monthly ongoing cost is just hosting and claude tokens, which is about <b>$30-$40</b>.  annual costs
-               include apple developer program and domain renewal, which is about <b>$120</b>.  
-               if you want to help me keep this app running, or if you just want to say thanks,
-              you can tip me on venmo.  any amount is appreciated{" "}
+              i will never *make* you look at an ad. i won't use ai to scrape your data and sell it.
+              for many people, the app is free, but it does cost me a lil money to run. the total
+              cost for developing this app was about <b>$220</b> including hosting on digital ocean,
+              domain registration, apple developer program, apple music, and extra claude usage
+              tokens. monthly ongoing cost is just hosting and claude tokens, which is about{" "}
+              <b>$30-$40</b>. annual costs include apple developer program and domain renewal, which
+              is about <b>$120</b>. if you want to help me keep this app running, or if you just
+              want to say thanks, you can tip me on venmo. any amount is appreciated{" "}
               {/* Deliberate: Dawn added this as a second decorative accent under the
                   retired system, and the style guide carries it forward by name. It is
                   the one sanctioned exception to amber being action, achievement, or
@@ -115,9 +115,7 @@ export function AboutRoute() {
           </div>
 
           <div className="mt-8 border-t border-hairline pt-6">
-            <p className="font-mono text-mini uppercase tracking-mono-wide text-accent">
-              thanks
-            </p>
+            <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">thanks</h2>
             <p className="mt-3 text-sm leading-[1.72] text-foreground">
               thanks to my dear slam family pals, nv pals, and my lovely family here in brooklyn.
             </p>

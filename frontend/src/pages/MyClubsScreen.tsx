@@ -173,13 +173,21 @@ function ClubCard({
   return (
     <Card className="transition-[box-shadow,transform] duration-150 hover:-translate-y-0.5 hover:shadow-z3">
       <button type="button" onClick={() => onOpen(club.id)} className="block w-full text-left">
-        <span className="flex items-center gap-1.5 font-mono text-mini uppercase tracking-mono-caps text-muted-foreground">
-          {complete ? <CrownIcon className="text-muted-foreground" /> : null}
+        {/* The card's chrome recedes to `subtle-foreground` so the club name has
+            somewhere to be prominent from. Everything here used to sit at
+            `muted-foreground` within a 9.6-14px band — eyebrow, name, counter
+            and badge all one rank, which is what made the list read as uniform.
+            The name is the thing you scan for, so it takes the display face at a
+            size the rest of the card doesn't reach. */}
+        <span className="flex items-center gap-1.5 font-mono text-mini uppercase tracking-mono-caps text-subtle-foreground">
+          {complete ? <CrownIcon className="text-subtle-foreground" /> : null}
           club
         </span>
-        <h2 className="mt-2 font-display text-sm font-bold uppercase leading-none">{club.name}</h2>
+        <h2 className="mt-2 font-display text-[1.375rem] font-bold uppercase leading-none tracking-display-snug">
+          {club.name}
+        </h2>
         <div className="mt-4 flex items-center justify-between">
-          <span className="font-mono text-meta text-muted-foreground">
+          <span className="font-mono text-meta text-subtle-foreground">
             mix {club.current_mix} of {club.total_mixes}
           </span>
           <Badge>{club.state}</Badge>

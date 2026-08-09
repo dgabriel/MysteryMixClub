@@ -70,8 +70,15 @@ export function MyClubsScreen({
               </div>
             ) : (
               <>
+                {/* The signed-in user's own name, in amber: the eyebrow answers
+                    "whose clubs are these", so it is marking something rather
+                    than decorating. `accent` on `floor` is 7.87:1. Note this is
+                    the *viewer's own* name — other people's names (submitters,
+                    voters, members) stay `muted-foreground`, so amber here reads
+                    as "you". That's a content judgement, not a rule: amber
+                    placement is a design decision (ADR 0012). */}
                 {displayName ? (
-                  <p className="font-mono text-mini uppercase tracking-mono-caps text-muted-foreground">
+                  <p className="font-mono text-mini uppercase tracking-mono-caps text-accent">
                     {displayName}
                   </p>
                 ) : null}

@@ -58,7 +58,7 @@ export function AdminMetricsScreen({
   }
 
   return (
-    <main className="mx-auto w-full max-w-lg px-4 pb-16 sm:px-8">
+    <main className="mx-auto w-full max-w-lg px-4 pt-8 pb-16 sm:px-8">
       <h1 className="font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
         metrics
       </h1>

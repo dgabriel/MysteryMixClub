@@ -626,7 +626,7 @@ export function MixDetailRoute() {
       {/* Content-only: the shared TopNav is rendered once by AuthedLayout. The
         mix's club is reached via a named link above the title (not a generic
         "← club" in the nav), so members always see which club they're in. */}
-      <main className="mx-auto w-full max-w-lg px-4 pb-16 sm:px-8">
+      <main className="mx-auto w-full max-w-lg px-4 pt-8 pb-16 sm:px-8">
         {club ? (
           <button
             type="button"

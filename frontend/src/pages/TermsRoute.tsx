@@ -37,7 +37,7 @@ export function TermsRoute() {
             </section>
 
             <section>
-              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
                 the basics
               </h2>
               <p className="mt-3">
@@ -48,7 +48,7 @@ export function TermsRoute() {
             </section>
 
             <section>
-              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
                 your account
               </h2>
               <p className="mt-3">
@@ -60,7 +60,7 @@ export function TermsRoute() {
             </section>
 
             <section>
-              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
                 third-party services
               </h2>
               <p className="mt-3">
@@ -71,7 +71,7 @@ export function TermsRoute() {
             </section>
 
             <section>
-              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
                 account deletion
               </h2>
               <p className="mt-3">
@@ -88,7 +88,7 @@ export function TermsRoute() {
             </section>
 
             <section>
-              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
                 as-is, beta software
               </h2>
               <p className="mt-3">
@@ -99,7 +99,7 @@ export function TermsRoute() {
             </section>
 
             <section>
-              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
                 governing law
               </h2>
               <p className="mt-3">
@@ -109,7 +109,7 @@ export function TermsRoute() {
             </section>
 
             <section className="border-t border-hairline pt-6">
-              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
                 questions
               </h2>
               <p className="mt-3">

@@ -42,7 +42,7 @@ export function PrivacyRoute() {
             </section>
 
             <section>
-              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
                 what we collect
               </h2>
               <p className="mt-3">
@@ -53,7 +53,7 @@ export function PrivacyRoute() {
             </section>
 
             <section>
-              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
                 what we don't do
               </h2>
               <p className="mt-3">
@@ -64,7 +64,7 @@ export function PrivacyRoute() {
             </section>
 
             <section>
-              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
                 cookies
               </h2>
               <p className="mt-3">
@@ -75,7 +75,7 @@ export function PrivacyRoute() {
             </section>
 
             <section>
-              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
                 subprocessors
               </h2>
               <p className="mt-3">
@@ -94,7 +94,7 @@ export function PrivacyRoute() {
             </section>
 
             <section>
-              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
                 your data, your control
               </h2>
               <p className="mt-3">
@@ -107,7 +107,7 @@ export function PrivacyRoute() {
             </section>
 
             <section>
-              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
                 changes to this policy
               </h2>
               <p className="mt-3">
@@ -117,7 +117,7 @@ export function PrivacyRoute() {
             </section>
 
             <section className="border-t border-hairline pt-6">
-              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
                 questions
               </h2>
               <p className="mt-3">

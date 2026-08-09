@@ -92,11 +92,11 @@ export function AboutRoute() {
             <p className="mt-3 text-sm leading-[1.72] text-foreground">
               i will never *make* you look at an ad. i won't use ai to scrape your data and sell it.
               for many people, the app is free, but it does cost me a lil money to run. the total
-              cost for developing this app was about <b>$220</b> including hosting on digital ocean,
+              cost for developing this app was about <b className="font-medium">$220</b> including hosting on digital ocean,
               domain registration, apple developer program, apple music, and extra claude usage
               tokens. monthly ongoing cost is just hosting and claude tokens, which is about{" "}
-              <b>$30-$40</b>. annual costs include apple developer program and domain renewal, which
-              is about <b>$120</b>. if you want to help me keep this app running, or if you just
+              <b className="font-medium">$30-$40</b>. annual costs include apple developer program and domain renewal, which
+              is about <b className="font-medium">$120</b>. if you want to help me keep this app running, or if you just
               want to say thanks, you can tip me on venmo. any amount is appreciated{" "}
               {/* Deliberate: Dawn added this as a second decorative accent under the
                   retired system, and the style guide carries it forward by name. It is

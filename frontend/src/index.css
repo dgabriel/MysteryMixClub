@@ -8,31 +8,29 @@
    fonts.googleapis.com; that import is deliberately NOT carried over.
    Only the "latin" subset ships; the app has no copy outside it. */
 
-/* Big Shoulders Display — display / headings. 600, 700, 800.
-   Google retired the "Big Shoulders Display" family in 2025 and renamed it
-   "Big Shoulders"; these files are that family's 600/700/800 static weights.
-   The @font-face family name stays "Big Shoulders Display" because that is
-   what the design system specifies. */
+/* Big Shoulders Display — display / headings. One variable file, weight axis.
+   The `wght` range is declared 600–800 rather than the file's full 100–900 so
+   the DS's sanctioned display weights are the only ones reachable; the browser
+   clamps anything outside it.
+
+   This file must be "Big Shoulders **Display**" and not "Big Shoulders". Google
+   published a separate, wider family under the shorter name, and the two are
+   different typefaces, not a rename. The app previously shipped three static
+   "Big Shoulders" instances under this @font-face's `font-family` — which is an
+   alias, so nothing errored; the headings simply rendered in the wrong face,
+   ~11% wider per glyph and visibly blockier than the design system. Verify a
+   replacement with `TTFont(path)["name"]`: nameID 16/1 must read
+   "Big Shoulders Display", and `fvar` must be present.
+
+   Source: fonts.gstatic.com/s/bigshouldersdisplay/v24 (latin subset), i.e. the
+   `family=Big+Shoulders+Display` the DS's own fonts.css requests. We self-host
+   it (MYS-240, ADR 0009 §4) rather than carry over the DS's @import. */
 @font-face {
   font-family: "Big Shoulders Display";
   font-style: normal;
-  font-weight: 600;
+  font-weight: 600 800;
   font-display: swap;
-  src: url("/fonts/big-shoulders-display-600.woff2") format("woff2");
-}
-@font-face {
-  font-family: "Big Shoulders Display";
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url("/fonts/big-shoulders-display-700.woff2") format("woff2");
-}
-@font-face {
-  font-family: "Big Shoulders Display";
-  font-style: normal;
-  font-weight: 800;
-  font-display: swap;
-  src: url("/fonts/big-shoulders-display-800.woff2") format("woff2");
+  src: url("/fonts/big-shoulders-display-var.woff2") format("woff2");
 }
 
 /* Libre Franklin — body. 400, 500, 400 italic. */

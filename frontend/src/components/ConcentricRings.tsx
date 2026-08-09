@@ -11,9 +11,8 @@ type ConcentricRingsProps = {
    *  disc does. Implies `accent`, and inverts the label: the wordmark is amber
    *  on a warm near-black rather than the label itself being an amber fill.
    *
-   *  Only meaningful on a large disc. The DS sizes the wordmark at
-   *  `size * 0.072`, so a 28px nav mark would set it at 2px — hence this is
-   *  opt-in per call site rather than derived from `size`.
+   *  Opt-in per call site rather than derived from `size`: a spinner or a
+   *  background motif is not the brand and should not carry the mark.
    *
    *  It is also what makes `spinning` legible: the grooves are concentric and
    *  therefore rotationally symmetric, so a disc with no wordmark rotates
@@ -63,6 +62,9 @@ const DISC = {
   labelBrandLow: "#150F0A",
   /** `accent` — the `mmc` wordmark set on `labelBrand*` */
   wordmarkInk: "#F3821D",
+  /** `accent-foreground` — the `mmc` wordmark printed on the amber label at
+   *  compact sizes, where the label keeps its fill. 7.93:1 on `accent`. */
+  wordmarkInkOnAmber: "#020202",
 } as const;
 
 /** The style tile drops its secondary label under 60px; the same threshold
@@ -125,23 +127,33 @@ export function ConcentricRings({
         style={{
           width: label,
           height: label,
-          background: wordmark
-            ? `radial-gradient(circle at 38% 35%, ${DISC.labelBrandHigh}, ${DISC.labelBrandLow})`
-            : accent
-              ? `radial-gradient(circle at 38% 35%, ${DISC.labelAccentHigh}, ${DISC.labelAccentLow})`
-              : `radial-gradient(circle at 38% 35%, ${DISC.labelNeutralHigh}, ${DISC.labelNeutralLow})`,
+          background:
+            wordmark && detailed
+              ? `radial-gradient(circle at 38% 35%, ${DISC.labelBrandHigh}, ${DISC.labelBrandLow})`
+              : accent
+                ? `radial-gradient(circle at 38% 35%, ${DISC.labelAccentHigh}, ${DISC.labelAccentLow})`
+                : `radial-gradient(circle at 38% 35%, ${DISC.labelNeutralHigh}, ${DISC.labelNeutralLow})`,
         }}
       >
         {wordmark ? (
           /* The wordmark replaces the spindle dot rather than joining it — the
              DS's label has no visible spindle, because its own spindle gradient
-             sits under this opaque label. Sized at the DS's `size * 0.072`. */
+             sits under this opaque label.
+             Two registers, because the DS's `size * 0.072` only works big:
+             - detailed (>=60px): the DS treatment verbatim — amber on the warm
+               near-black label, 6.9px at the 96px hero size.
+             - compact (28px nav mark): 0.072 would be 2px, i.e. nothing. The
+               ratio is broken deliberately and floored at 4.5px, and the label
+               keeps its amber fill with the mark printed in near-black on it
+               (7.93:1) instead of inverting. Inverting at this size would trade
+               the amber dot's presence in the chrome for text too small to read
+               — the label reads as brand, the mark reads as detail on it. */
           <span
-            className="block select-none font-mono uppercase tracking-mono"
+            className={`block select-none font-mono uppercase ${detailed ? "tracking-mono" : "tracking-mono-sm"}`}
             style={{
-              fontSize: Math.round(size * 0.072 * 10) / 10,
+              fontSize: detailed ? Math.round(size * 0.072 * 10) / 10 : 4.5,
               lineHeight: 1,
-              color: DISC.wordmarkInk,
+              color: detailed ? DISC.wordmarkInk : DISC.wordmarkInkOnAmber,
             }}
           >
             mmc

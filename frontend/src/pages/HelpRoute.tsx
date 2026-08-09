@@ -262,7 +262,7 @@ export function HelpRoute() {
             ))}
 
             <section className="border-t border-hairline pt-6">
-              <p className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
+              <p className="font-mono text-mini uppercase tracking-mono-wide text-accent">
                 still have questions
               </p>
               <p className="mt-3 text-sm leading-[1.72] text-foreground">

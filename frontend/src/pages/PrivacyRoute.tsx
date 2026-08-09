@@ -14,22 +14,24 @@ export function PrivacyRoute() {
       <TopNav />
       <main className="flex-1 flex flex-col items-center px-4 py-16 sm:px-8">
         <div className="w-full max-w-md">
-          {/* Motif — the screen's single Rust use lives in the off-center ring dot. */}
+          {/* The brand mark. Its amber is the identity category (ADR 0010), not a
+              decorative accent: this page's one hero mark, alongside the nav's
+              persistent mark, is exactly the two-placement bound. */}
           <ConcentricRings size={72} accent className="mx-auto" />
 
-          <h1 className="mt-8 text-center font-serif text-[34px] leading-tight">
+          <h1 className="mt-8 text-center font-display text-[2rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
             privacy policy
           </h1>
-          <p className="mt-2 text-center font-mono text-[11px] font-light text-muted">
+          <p className="mt-2 text-center font-mono text-meta text-muted-foreground">
             last updated july 2026
           </p>
 
-          <p className="mt-8 font-mono text-[13px] font-semibold leading-relaxed text-ink">
+          <p className="mt-8 text-sm font-medium leading-[1.72] text-foreground">
             while ai was used to help write the code, there are no ai features in this app and no
             ai will ingest your data.
           </p>
 
-          <div className="mt-8 space-y-8 font-mono text-[13px] font-light leading-relaxed text-ink">
+          <div className="mt-8 space-y-8 text-sm leading-[1.72] text-foreground">
             <section>
               <p>
                 this page explains what mysterymixclub collects, why, and what control you have
@@ -38,7 +40,7 @@ export function PrivacyRoute() {
             </section>
 
             <section>
-              <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
+              <p className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
                 what we collect
               </p>
               <p className="mt-3">
@@ -49,7 +51,7 @@ export function PrivacyRoute() {
             </section>
 
             <section>
-              <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
+              <p className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
                 what we don't do
               </p>
               <p className="mt-3">
@@ -60,7 +62,7 @@ export function PrivacyRoute() {
             </section>
 
             <section>
-              <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
+              <p className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
                 cookies
               </p>
               <p className="mt-3">
@@ -71,7 +73,7 @@ export function PrivacyRoute() {
             </section>
 
             <section>
-              <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
+              <p className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
                 subprocessors
               </p>
               <p className="mt-3">
@@ -90,7 +92,7 @@ export function PrivacyRoute() {
             </section>
 
             <section>
-              <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
+              <p className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
                 your data, your control
               </p>
               <p className="mt-3">
@@ -104,7 +106,7 @@ export function PrivacyRoute() {
             </section>
 
             <section>
-              <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
+              <p className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
                 changes to this policy
               </p>
               <p className="mt-3">
@@ -113,8 +115,8 @@ export function PrivacyRoute() {
               </p>
             </section>
 
-            <section className="border-t border-border pt-6">
-              <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
+            <section className="border-t border-hairline pt-6">
+              <p className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
                 questions
               </p>
               <p className="mt-3">
@@ -122,7 +124,7 @@ export function PrivacyRoute() {
                   user="privacy"
                   domain="mysterymixclub.com"
                   label="email us"
-                  className="text-sage underline underline-offset-[3px] hover:text-ink"
+                  className="text-accent underline underline-offset-[3px] hover:text-foreground"
                 />{" "}
                 with any privacy questions or requests.
               </p>

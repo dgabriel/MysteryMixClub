@@ -14,17 +14,19 @@ export function TermsRoute() {
       <TopNav />
       <main className="flex-1 flex flex-col items-center px-4 py-16 sm:px-8">
         <div className="w-full max-w-md">
-          {/* Motif — the screen's single Rust use lives in the off-center ring dot. */}
+          {/* The brand mark. Its amber is the identity category (ADR 0010), not a
+              decorative accent: this page's one hero mark, alongside the nav's
+              persistent mark, is exactly the two-placement bound. */}
           <ConcentricRings size={72} accent className="mx-auto" />
 
-          <h1 className="mt-8 text-center font-serif text-[34px] leading-tight">
+          <h1 className="mt-8 text-center font-display text-[2rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
             terms of service
           </h1>
-          <p className="mt-2 text-center font-mono text-[13px] font-light text-muted">
+          <p className="mt-2 text-center text-sm leading-[1.72] text-muted-foreground">
             last updated july 2026
           </p>
 
-          <div className="mt-10 space-y-8 font-mono text-[13px] font-light leading-relaxed text-ink">
+          <div className="mt-10 space-y-8 text-sm leading-[1.72] text-foreground">
             <section>
               <p>
                 mysterymixclub ("we," "us," "the app") is an invite-only music club for
@@ -33,7 +35,7 @@ export function TermsRoute() {
             </section>
 
             <section>
-              <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
+              <p className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
                 the basics
               </p>
               <p className="mt-3">
@@ -44,7 +46,7 @@ export function TermsRoute() {
             </section>
 
             <section>
-              <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
+              <p className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
                 your account
               </p>
               <p className="mt-3">
@@ -56,7 +58,7 @@ export function TermsRoute() {
             </section>
 
             <section>
-              <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
+              <p className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
                 third-party services
               </p>
               <p className="mt-3">
@@ -67,7 +69,7 @@ export function TermsRoute() {
             </section>
 
             <section>
-              <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
+              <p className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
                 account deletion
               </p>
               <p className="mt-3">
@@ -75,7 +77,7 @@ export function TermsRoute() {
                 personal data — see the{" "}
                 <a
                   href="/privacy"
-                  className="text-sage underline underline-offset-[3px] hover:text-ink"
+                  className="text-accent underline underline-offset-[3px] hover:text-foreground"
                 >
                   privacy policy
                 </a>{" "}
@@ -84,7 +86,7 @@ export function TermsRoute() {
             </section>
 
             <section>
-              <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
+              <p className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
                 as-is, beta software
               </p>
               <p className="mt-3">
@@ -95,7 +97,7 @@ export function TermsRoute() {
             </section>
 
             <section>
-              <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
+              <p className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
                 governing law
               </p>
               <p className="mt-3">
@@ -104,8 +106,8 @@ export function TermsRoute() {
               </p>
             </section>
 
-            <section className="border-t border-border pt-6">
-              <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
+            <section className="border-t border-hairline pt-6">
+              <p className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
                 questions
               </p>
               <p className="mt-3">
@@ -113,7 +115,7 @@ export function TermsRoute() {
                   user="privacy"
                   domain="mysterymixclub.com"
                   label="email us"
-                  className="text-sage underline underline-offset-[3px] hover:text-ink"
+                  className="text-accent underline underline-offset-[3px] hover:text-foreground"
                 />{" "}
                 with any questions about these terms.
               </p>

@@ -113,10 +113,17 @@ Design System v1.0 — dark surfaces, one amber accent (ADR 0009).
 - Legacy cream/sage/rust/gold tokens are still *defined* during the redesign so
   un-migrated surfaces render. Never use one in new work.
 
-**Amber rule:** amber is a *category* rule, not a counting rule — it appears on
-action or achievement and nowhere decorative. A screen may carry both an amber
-CTA and an amber rank-1 marker. If you are about to use amber as ornament,
-texture, or pattern, stop and ask.
+**Amber rule (ADR 0012):** amber marks what matters on a screen, and **where it
+goes is a design decision.** There is no category list, no per-screen budget, and
+no count — a screen may carry as many amber elements as the design calls for. Do
+not ask for permission to place amber, and do not flag a placement as
+out-of-category; that gate was retired on 2026-08-09.
+
+Only two things still bind:
+- **never as texture, pattern, or ornament** — if it isn't marking something, it
+  doesn't belong;
+- **it must clear contrast on its surface** — `accent` as *text* is 4.34:1 on
+  `sheet` and fails AA there.
 
 ---
 

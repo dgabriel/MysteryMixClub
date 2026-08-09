@@ -1,7 +1,14 @@
 # ADR 0010: Identity is a third amber category, alongside action and achievement
 
-**Status:** Accepted
+**Status:** Superseded by ADR 0012
 **Date:** 2026-08-08
+
+> **Retired 2026-08-09.** The category gate this ADR extends — and the
+> one-hero-mark-per-screen bound it introduced — were removed by ADR 0012:
+> amber placement is now a design decision, constrained only by "never
+> decorative" and contrast. The brand mark keeps its amber; it simply no longer
+> needs the licence this ADR granted. Kept for the reasoning, which is the
+> argument for why a brand mark needed licensing at all under a category rule.
 
 ## Context
 
@@ -91,6 +98,12 @@ decoration, pattern, or ornament on the screens that use it.
   rather than reasoning by analogy from it. Three categories is already one
   more than the design system shipped with; the value of a category rule is
   that it is short.
+
+  > **This is what retired the rule.** A fourth category was drafted on
+  > 2026-08-09 (personal identity — the signed-in user's own name). On reading
+  > it Dawn's response was that the constraint would be superseded regularly,
+  > which made the gate a recurring tax rather than a rule. ADR 0012 removes it
+  > instead of extending it a fourth time.
 
 ## Revisit if
 

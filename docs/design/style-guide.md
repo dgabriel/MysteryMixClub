@@ -134,32 +134,30 @@ until the sweep ticket.
 
 ### Usage rules
 
-- **Amber is a category rule, not a counting rule.** This is the single biggest
-  behavioral change from the old guide. The retired system said "Rust once per
-  screen" and reviewers counted. The new rule is: **amber appears on action or
-  achievement, and nowhere decorative.** A screen may legitimately carry an
-  amber CTA *and* an amber rank-1 marker — both are in category. What is
-  forbidden is amber as pattern, texture, or ornament. Component tickets
-  enforce the category, not a count.
-  - **Exception — identity. Amber may mark the brand.** The `ConcentricRings`
-    disc renders an amber centre label when `accent` is set, and that is the
-    brand mark. Identity is a **third category alongside action and
-    achievement**, and stating it that way is a deliberate addition to the
-    design system's two-category rule — the DS's own style tile puts amber in
-    the disc's centre label, so the mark carrying amber is sanctioned by the
-    tile rather than invented here, but the DS never named the category, and a
-    brand mark is plainly neither an action nor an achievement.
+- **Where amber goes is a design decision (ADR 0012).** Amber marks what matters
+  on a screen. There is no category list to satisfy, no per-screen budget, and
+  no count. A screen may carry as many amber elements as the design calls for.
 
-    Identity is bounded to two placements and no more:
-    - the shared nav's persistent 28px mark, which is chrome, appears on every
-      screen, and sits outside any individual screen's reasoning about amber;
-    - **at most one** amber hero mark in a screen's own content (`AboutRoute`,
-      `TermsRoute`, `PrivacyRoute`, `HelpRoute`, `OnboardingScreen`,
-      `JoinClubScreen`, `MyClubsScreen`).
+  Two things remain binding, and they are the whole rule:
+  - **Never as texture, pattern, or ornament.** Amber is not a way to fill
+    space, decorate a border, or add visual interest to a quiet area. If it is
+    not marking something, it does not belong.
+  - **It must clear contrast on the surface behind it.** See the accent table
+    above — most surfaces are comfortable, but `accent` as *text* is 4.34:1 on
+    `sheet` and fails AA there.
 
-    The exception licenses nothing else. It does not make amber available as
-    decoration, pattern, or ornament on the screens that use it, and a second
-    hero mark is a violation. Do not delete the brand mark's amber as one.
+  **What this replaced, so old review comments read correctly.** Until
+  2026-08-09 amber was gated by a category list — action, achievement, and
+  brand identity — and identity was further capped at one hero mark per screen
+  (ADR 0010). Under that rule any new amber placement needed an ADR to license
+  it. The gate produced more process than design value and was dropped; ADR 0012
+  supersedes ADR 0010 and records why. **A reviewer or agent citing "that isn't
+  one of the sanctioned amber categories" is quoting a retired rule.**
+
+  Consequence worth knowing: a few surfaces already carried amber under specific
+  documented licences that no longer need one — the `ConcentricRings` brand mark,
+  and the signed-in user's own name on `/home`. They stay exactly as they are;
+  they simply no longer need a justification attached.
   - **Exception — the About page's second decorative accent.** `AboutRoute.tsx`
     renders a small `<3` on the support section in the accent color. This was a
     deliberate override by Dawn under the old system and it survives the
@@ -469,7 +467,7 @@ call sites across 19 files needed no edit.
 |-------------|---------|-------------------------------------------------------------------------|
 | `size`      | `96`    | Pixel diameter. Ships from 28px (nav mark) to 88px (page hero).         |
 | `spinning`  | `false` | Applies `animate-rotate-rings` — a 6s linear loop, matching the tile.   |
-| `accent`    | `false` | Amber centre label — the brand mark. See the identity exception under Color. |
+| `accent`    | `false` | Amber centre label — the brand mark. Set it where the disc is the brand, not where it is a spinner or a decorative motif. |
 | `className` | `""`    | Passthrough, appended last so a caller can override.                    |
 
 The disc is a `<div>`, not an `<svg>`, because groove spacing has to be in

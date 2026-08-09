@@ -22,8 +22,16 @@ type BrandLockupProps = {
 };
 
 /**
- * The brand lockup: the spinning disc over the two-line wordmark, typeset as the
- * design system's hero (DS `App.tsx:428-437`).
+ * The brand lockup: the spinning disc beside the two-line wordmark, in the
+ * design system's own hero arrangement (DS `App.tsx:427-437`) — a row that
+ * stacks to a column below `sm`, exactly as the DS's `flex-col sm:flex-row`
+ * does.
+ *
+ * The wordmark clamps at 3.5rem rather than the DS's 5.5rem, and the row uses a
+ * 28px gap rather than 32px. The DS sets this hero beside a 96px disc in a 72rem
+ * page; ours has to fit a 24rem (sign-in) or 28rem (public pages) column, and at
+ * 4.5rem the disc + gap + wordmark came to 344px inside 352px of usable width —
+ * technically fitting, visibly cramped.
  *
  * Deliberately NOT `aria-hidden`. `TopNav`'s 28px mark is labelled "home" /
  * "login", so before this component the brand name was never announced in the
@@ -41,10 +49,12 @@ export function BrandLockup({
   className = "",
 }: BrandLockupProps) {
   return (
-    <div className={className}>
-      <ConcentricRings size={96} spinning accent wordmark className="mx-auto" />
-      <div className="mt-8 mx-auto w-fit">
-        <Wordmark className="text-left font-display text-[clamp(2.5rem,8vw,4.5rem)] font-extrabold uppercase leading-[0.88] tracking-display-hero text-foreground">
+    <div
+      className={`flex flex-col items-center gap-6 sm:flex-row sm:items-start sm:justify-center sm:gap-7 ${className}`}
+    >
+      <ConcentricRings size={96} spinning accent wordmark className="shrink-0" />
+      <div>
+        <Wordmark className="text-left font-display text-[clamp(2.5rem,7vw,3.5rem)] font-extrabold uppercase leading-[0.88] tracking-display-hero text-foreground">
           mystery
           <br />
           mix<span className="text-accent">club</span>

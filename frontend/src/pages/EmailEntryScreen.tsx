@@ -247,7 +247,7 @@ export function EmailEntryScreen({
             left, where a lone badge would look stranded. This screen renders no
             `TopNav`, so it is the only place the badge has to come from here. */}
         <BrandLockup as="h1">
-          <div className="mt-3 flex justify-center">
+          <div className="mt-3 flex justify-center sm:justify-start">
             <Badge>beta</Badge>
           </div>
         </BrandLockup>

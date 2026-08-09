@@ -56,24 +56,29 @@ type ProfileScreenProps = {
  * Profile screen: edit display name, preferred service, browse archived clubs,
  * and manage account (log out all devices, export data, delete account).
  *
- * Amber budget (category rule, not a count). This screen spends amber in
- * exactly one in-category way, and nowhere decorative: the `primary` fill on
- * the two submit buttons ("save" the display name, "set password"), which are
- * actions. Everything else that could have taken it deliberately does not:
- *  - The archived clubs list carries NO amber. It is the same `GET /clubs`
- *    data R8 renders, filtered to `complete` — an unbounded, monotonically
- *    growing set with no pagination and no way to hide a club — so a per-card
- *    accent bar would render a column of amber, which is amber as pattern
- *    however in-category one card would be. Completion is carried instead by
- *    the "archived" grouping, a `muted-foreground` crown glyph, and the state
- *    Badge already reading "complete".
+ * Amber here. Placement is a design decision (ADR 0012), and this screen leans
+ * on it more than most: the section headings are all `accent`, and the cassette
+ * avatar is drawn in it because it is the *viewer's own*. That last point is the
+ * line worth holding — `ClubHomeScreen`'s member roster passes no `accent`, so
+ * amber on a person keeps meaning "you", the same rule the `/home` display-name
+ * eyebrow follows.
+ *
+ * Two things still deliberately decline it:
+ *  - The archived clubs list carries NO amber. It is the same `GET /clubs` data
+ *    R8 renders, filtered to `complete` — an unbounded, monotonically growing
+ *    set with no pagination and no way to hide a club — so a per-card accent bar
+ *    would render a column of amber, which is amber as pattern. That is the one
+ *    constraint ADR 0012 kept. Completion is carried instead by the "archived"
+ *    grouping, a `muted-foreground` crown glyph, and the state Badge already
+ *    reading "complete".
  *  - Delete-account is irreversible and takes `Button variant="destructive"`,
- *    never the amber `link` variant. See DeleteAccountSection.
- *  - The three recoverable account actions (log out everywhere, export data,
- *    arm the delete confirm, cancel it) stay `ghost`, matching R10's split
- *    between delete-club and leave-club.
+ *    never the amber `link` variant. See DeleteAccountSection. The three
+ *    recoverable account actions (log out everywhere, export data, arm/cancel
+ *    the delete confirm) stay `ghost`, matching R10's split between delete-club
+ *    and leave-club.
+ *
  * The shared TopNav is rendered by AuthedLayout, so this is content-only and
- * this screen renders no hero mark of its own (ADR 0010).
+ * this screen renders no disc mark of its own.
  */
 export function ProfileScreen({
   userId,
@@ -122,7 +127,9 @@ export function ProfileScreen({
   return (
     <main className="mx-auto w-full max-w-lg px-4 pt-8 pb-16 sm:px-8">
       <div className="flex items-center gap-4">
-        {userId ? <UserAvatar userId={userId} size={56} /> : null}
+        {/* Amber because this is the viewer's own avatar — the roster on
+            ClubHomeScreen deliberately stays neutral. */}
+        {userId ? <UserAvatar userId={userId} size={56} accent /> : null}
         <h1 className="font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
           profile
         </h1>
@@ -140,7 +147,7 @@ export function ProfileScreen({
         <div className="mt-8">
           {email ? (
             <section className="mb-12">
-              <h2 className="font-mono text-meta uppercase tracking-mono-wide text-muted-foreground">
+              <h2 className="font-mono text-meta uppercase tracking-mono-wide text-accent">
                 email
               </h2>
               {/* Mono at normal tracking is the system's signature for a value. */}
@@ -180,7 +187,7 @@ export function ProfileScreen({
           />
 
           <section className="mt-12 border-t border-hairline pt-10">
-            <h2 className="font-mono text-meta uppercase tracking-mono-wide text-muted-foreground">
+            <h2 className="font-mono text-meta uppercase tracking-mono-wide text-accent">
               security
             </h2>
             <p className="mt-2 text-sm leading-[1.72] text-muted-foreground">
@@ -235,7 +242,7 @@ function NameForm({
 
   return (
     <section>
-      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-muted-foreground">
+      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-accent">
         display name
       </h2>
       <form onSubmit={handleSubmit} noValidate className="mt-4 space-y-6">
@@ -308,7 +315,7 @@ function PreferredServicePicker({
   return (
     <section className="mt-12">
       <span className="flex items-center gap-2">
-        <h2 className="font-mono text-meta uppercase tracking-mono-wide text-muted-foreground">
+        <h2 className="font-mono text-meta uppercase tracking-mono-wide text-accent">
           preferred service
         </h2>
         <HelpLink anchor="listening-playlists" />
@@ -373,7 +380,7 @@ function ArchivedClubs({
 }) {
   return (
     <section className="mt-12">
-      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-muted-foreground">
+      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-accent">
         archived ({clubs.length})
       </h2>
       {clubs.length === 0 ? (
@@ -448,7 +455,7 @@ function AccountSettingsSection({
 }) {
   return (
     <section className="mt-12 border-t border-hairline pt-10">
-      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-muted-foreground">
+      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-accent">
         account settings
       </h2>
 
@@ -587,7 +594,7 @@ function ExportDataSection({
 }) {
   return (
     <section className="mt-12 border-t border-hairline pt-10">
-      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-muted-foreground">
+      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-accent">
         your data
       </h2>
       <p className="mt-2 text-sm leading-[1.72] text-muted-foreground">
@@ -637,7 +644,7 @@ function DeleteAccountSection({
 
   return (
     <section className="mt-12 border-t border-hairline pt-10">
-      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-muted-foreground">
+      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-accent">
         delete account
       </h2>
       {!confirming ? (

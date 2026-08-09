@@ -245,7 +245,7 @@ export function HelpRoute() {
           <div className="mt-10 space-y-10">
             {SECTIONS.map((section) => (
               <section key={section.slug} id={section.slug} className="scroll-mt-8">
-                <h2 className="font-mono text-mini uppercase tracking-mono-wide text-muted-foreground">
+                <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
                   {section.label}
                 </h2>
                 <div className="mt-4 space-y-5">

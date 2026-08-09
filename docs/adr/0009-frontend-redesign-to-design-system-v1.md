@@ -146,6 +146,11 @@ Specifically:
   around the current values. Flagged here so it is a known open item rather
   than a discovery in R12. (Relatedly, the tile's prose at App.tsx:629–632
   contradicts its own `SURFACES` constant; the code was taken as authoritative.)
+  **CLOSED 2026-08-09 by ADR 0011: the annotation is not adopted — `accent` stays
+  `#F3821D` and nothing moves.** `#c98b30` was implemented and rendered on the
+  real app rather than argued on paper; it read as dull at button scale (−25%
+  chroma, +17° hue) and was reverted the same session. Do not reopen this on
+  rediscovering the disagreement in the DS repo.
 - **The default hairline ships at 0.09, not the 0.07 the ticket specified.**
   `MysteryMixClub-0fnf.1` called for `border: rgba(255,255,255,.07)`. Shipped
   instead: three steps — `hairline-soft` 0.05, `hairline` **0.09**,

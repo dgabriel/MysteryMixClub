@@ -68,6 +68,13 @@ The ladder is named for *what the surface is*, not by Z-number, so JSX reads
 There is exactly one accent name. Do not introduce `primary` as a second name
 for the same color.
 
+`accent` as **text** clears AA from `floor` (7.87:1) through `panel` (5.57:1),
+but measures **4.34:1 on `sheet`** and fails there. Amber text does not go on a
+modal, drawer, or bottom sheet; an amber *fill* with `accent-foreground` on it is
+fine on any surface. (`accent-hairline` is `#c98b30`-based rather than `accent`
+itself — a deliberate second amber confined to 1px rules at ≤25% alpha, where the
+difference is imperceptible. See ADR 0011; don't "fix" it.)
+
 ### Status
 
 | Token                     | Hex       | Role                                                              |

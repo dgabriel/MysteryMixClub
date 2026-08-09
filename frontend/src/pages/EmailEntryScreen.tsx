@@ -6,7 +6,7 @@ import { ContactEmail } from "../components/ContactEmail";
 import { FormError } from "../components/FormError";
 import { GoogleSignInButton } from "../components/GoogleSignInButton";
 import { TextField } from "../components/TextField";
-import { ConcentricRings } from "../components/ConcentricRings";
+import { BrandLockup } from "../components/BrandLockup";
 import { WaitlistForm } from "../components/WaitlistForm";
 import { PASSWORD_MIN_LENGTH, getGoogleEnabled, getWaitlistEnabled } from "../services/api";
 
@@ -237,15 +237,20 @@ export function EmailEntryScreen({
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-4 sm:px-8">
       <div className="w-full max-w-sm">
-        {/* The disc, unaccented. Amber-as-identity is bounded to the shared
-            nav's mark plus at most one hero mark per screen, and this screen is
-            not one of the ones that carries the hero mark (ADR 0010). */}
-        <ConcentricRings size={72} className="mx-auto" />
+        {/* `as="h1"` here and nowhere else: this screen has no title of its own,
+            so the wordmark genuinely is its heading. Every other page passes the
+            default `p` and keeps its own `h1`.
 
-        <h1 className="mt-8 flex items-center justify-center gap-3 text-center font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
-          mysterymixclub
-          <Badge>beta</Badge>
-        </h1>
+            The badge sits under the wordmark rather than inline in it — the
+            release stage is not part of the name, and inline it reads oddly
+            against a two-line mark. Centred under the mark rather than flush
+            left, where a lone badge would look stranded. This screen renders no
+            `TopNav`, so it is the only place the badge has to come from here. */}
+        <BrandLockup as="h1">
+          <div className="mt-3 flex justify-center">
+            <Badge>beta</Badge>
+          </div>
+        </BrandLockup>
         <p className="mt-2 text-center text-sm leading-[1.72] text-muted-foreground">
           invite-only. sign in with your email.
         </p>

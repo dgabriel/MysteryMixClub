@@ -1,4 +1,4 @@
-import { ConcentricRings } from "../components/ConcentricRings";
+import { BrandLockup } from "../components/BrandLockup";
 import { ContactEmail } from "../components/ContactEmail";
 import { TopNav } from "../components/TopNav";
 
@@ -14,12 +14,14 @@ export function TermsRoute() {
       <TopNav />
       <main className="flex-1 flex flex-col items-center px-4 py-16 sm:px-8">
         <div className="w-full max-w-md">
-          {/* The brand mark. Its amber is the identity category (ADR 0010), not a
-              decorative accent: this page's one hero mark, alongside the nav's
-              persistent mark, is exactly the two-placement bound. */}
-          <ConcentricRings size={72} accent className="mx-auto" />
+          {/* Brand first, page second. The lockup's wordmark is a `p`, not a
+              heading — `terms of service` below stays this page's one `h1`, so
+              the heading outline still describes the document rather than the
+              site. Visual weight and heading semantics are independent; the
+              wordmark is the loudest thing here without being a heading. */}
+          <BrandLockup />
 
-          <h1 className="mt-8 text-center font-display text-[2rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
+          <h1 className="mt-10 border-t border-hairline pt-8 text-center font-display text-[2rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
             terms of service
           </h1>
           <p className="mt-2 text-center text-sm leading-[1.72] text-muted-foreground">

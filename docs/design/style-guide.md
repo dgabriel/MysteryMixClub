@@ -520,6 +520,13 @@ MYS-121 and MYS-186 darkened the old palette twice specifically to clear
 - **Tightest pair in the system:** `muted-foreground` on `panel` at 4.51:1. Any
   Z3 lightness adjustment breaks it. Re-run the contrast pass after any
   surface change.
+- **Verified at the end of the redesign (R18).** Every shipped text/surface
+  pair was recomputed from the `oklch()` values that actually render. The only
+  pairs below 4.5:1 anywhere in the system are on `sheet` — `muted-foreground`
+  3.49, `destructive-text` 3.94, `accent` 4.33 — and the app's two Z4 surfaces
+  (the unsaved-changes modal and Apple's reassurance interstitial) both carry
+  `foreground` text only, so none of the three is actually rendered. `panel`
+  remains the tightest pair in use.
 - **Amber text in a modal** is 4.33:1 on `sheet` — it must be large or bold
   there, or not amber.
 - **A control is never identified by a hairline alone.** Hairlines are

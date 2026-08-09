@@ -20,22 +20,6 @@ v1.1. Copyright holders, by file:
       Copyright 2020 The JetBrains Mono Project Authors
       (https://github.com/JetBrains/JetBrainsMono)
 
-  dm-mono-{300,400}.woff2
-      Copyright 2020 The DM Mono Project Authors
-      (https://github.com/googlefonts/dm-mono)
-      LEGACY - see below.
-
-  dm-serif-display-{normal,italic}.woff2
-      Copyright 2014-2017 Indian Type Foundry, Colophon Foundry, and
-      Jonny Pinhorn (https://github.com/googlefonts/dm-fonts)
-      LEGACY - see below.
-
-  The two DM families are retained only while the redesign migrates off the
-  previous design system (ADR 0009); the final sweep ticket removes them.
-  They carry separate notices because they are separate upstream projects
-  under separate copyright, and OFL clause 2 requires each redistributed
-  font to carry its own.
-
 All files are the latin subset only, self-hosted rather than loaded from
 fonts.googleapis.com (MYS-240 - the CDN stylesheet was render-blocking on
 first paint).

@@ -77,20 +77,6 @@ export default {
         "chart-4": "oklch(0.62 0.18 25 / <alpha-value>)", // #DE4E4B red
         "chart-5": "oklch(0.78 0.08 80 / <alpha-value>)", // #D2B27C sand
 
-        // --- LEGACY (Duchamp/Rotorelief system) -----------------------------
-        // Kept defined at their original values through the redesign so
-        // un-migrated surfaces keep rendering. Never aliased onto a new value.
-        // The R18 sweep ticket deletes this block.
-        cream: "#F0EDE6",
-        ink: "#2E2B27",
-        sage: "#506755",
-        "sage-light": "#A8C4AD",
-        "sage-pale": "#D4E3D7",
-        rust: "#AD4F39",
-        gold: "#83681A",
-        vinyl: "#6B7EB5",
-        muted: "#6D6A66",
-        border: "#D6D2CA",
       },
       // Elevation. The shadow index does NOT track the surface index — a Z1
       // card wears shadow-z2 at rest. See docs/design/style-guide.md.
@@ -109,8 +95,6 @@ export default {
         // to `font-display` than `font-sans` would.
         body: ['"Libre Franklin"', "system-ui", "-apple-system", "sans-serif"],
         mono: ['"JetBrains Mono"', "ui-monospace", "monospace"],
-        // LEGACY — backs the remaining `font-serif` usages until the sweep.
-        serif: ['"DM Serif Display"', "serif"],
       },
       // Sub-`text-xs` steps the DS needs. `text-micro` is non-information-
       // bearing chrome only; the floor for any label a user must read is
@@ -134,9 +118,6 @@ export default {
         "mono-caps": "0.08em",
         "mono-wide": "0.10em",
         "mono-widest": "0.12em",
-        // LEGACY — deleted by the sweep ticket.
-        label: "0.15em",
-        ui: "0.12em",
       },
       keyframes: {
         "rotate-rings": {

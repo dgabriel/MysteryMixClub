@@ -74,45 +74,6 @@
   src: url("/fonts/jetbrains-mono-500.woff2") format("woff2");
 }
 
-/* LEGACY (deleted by the final sweep ticket, MysteryMixClub-0fnf.18).
-   DM Serif Display still backs the remaining `font-serif` usages on
-   un-migrated surfaces. DM Mono backs nothing as of R1 — `fontFamily.mono`
-   now resolves to JetBrains Mono, so all ~335 `font-mono` call sites moved to
-   the new face in one step. That is deliberate: swapping a typeface leaves
-   every surface readable, whereas repointing a legacy *color* would not, which
-   is why the legacy color tokens keep their original values and the mono
-   family does not. These two blocks are kept only so an arbitrary-value
-   `font-['DM_Mono']` escape hatch, if one exists anywhere, does not fall back
-   to a system monospace mid-migration. */
-@font-face {
-  font-family: "DM Mono";
-  font-style: normal;
-  font-weight: 300;
-  font-display: swap;
-  src: url("/fonts/dm-mono-300.woff2") format("woff2");
-}
-@font-face {
-  font-family: "DM Mono";
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url("/fonts/dm-mono-400.woff2") format("woff2");
-}
-@font-face {
-  font-family: "DM Serif Display";
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url("/fonts/dm-serif-display-normal.woff2") format("woff2");
-}
-@font-face {
-  font-family: "DM Serif Display";
-  font-style: italic;
-  font-weight: 400;
-  font-display: swap;
-  src: url("/fonts/dm-serif-display-italic.woff2") format("woff2");
-}
-
 /* Design System v1.0 custom properties, under the DS's own names (ADR 0009).
    These mirror the design system's `theme.css`, so a `var(--card)` written
    against the DS's own vocabulary resolves here instead of silently failing.

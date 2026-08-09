@@ -43,11 +43,17 @@ export function AboutRoute() {
               who built this
             </p>
             <p className="mt-3 text-sm leading-[1.72] text-foreground">
-              dawn gabriel, a software engineer who loves art and poems and rock and roll. i design and
-              build mysterymixclub end to end: the backend, the interface, the concentric rings
-              on this page.  please reach out if you have questions, feedback, or want to contribute! 
-              d gabriel at gmail dot com.
+              dawn gabriel, a software engineer who loves art and poems and rock and roll.
             </p>
+                        <a
+              href="https://dawngabriel.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`mt-3 inline-block ${LINK_CLASS}`}
+            >
+              see more about me at dawngabriel.com
+            </a>
+            <br/>
             <a
               href="https://github.com/dgabriel"
               target="_blank"
@@ -86,10 +92,10 @@ export function AboutRoute() {
             <p className="mt-3 text-sm leading-[1.72] text-foreground">
               i will never *make* you look at an ad.  i won't use ai to scrape your data and sell it.
               for many people, the app is free, but it does cost me a lil money to run.  the
-              total cost for developing this app was about $220 including hosting on digital ocean,
+              total cost for developing this app was about <b>$220</b> including hosting on digital ocean,
                domain registration, apple developer program, apple music, and extra claude usage tokens.
-               monthly ongoing cost is just hosting and claude tokens, which is about $30-$40.  annual costs
-               include apple developer program and domain renewal, which is about $120.  
+               monthly ongoing cost is just hosting and claude tokens, which is about <b>$30-$40</b>.  annual costs
+               include apple developer program and domain renewal, which is about <b>$120</b>.  
                if you want to help me keep this app running, or if you just want to say thanks,
               you can tip me on venmo.  any amount is appreciated{" "}
               {/* Deliberate: Dawn added this as a second decorative accent under the

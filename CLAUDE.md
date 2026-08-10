@@ -15,7 +15,34 @@ Run these steps before writing any code:
    Do not touch git (branch, commit, push, merge, rebase) without having read the
    git hygiene guide. These rules are non-negotiable — never improvise around a git mess.
 
-2. **Sync, then load your sprint**
+2. **Start the local stack**
+   The backend test suite, the pre-push hook (which runs `pytest`), and the app
+   itself all need the local Postgres. Bring it up — plus the agent-metrics
+   stack — before anything that runs tests:
+   ```
+   docker compose up -d
+   docker compose -f observability/docker-compose.yml up -d
+   ```
+   Then **verify** — "started" is not "ready". Postgres accepts connections only
+   once its health check passes:
+   ```
+   docker ps --format '{{.Names}}\t{{.Status}}'
+   docker inspect --format '{{.State.Health.Status}}' mmc-postgres
+   ```
+   `mmc-postgres` must report `healthy`, not `starting`. If the Docker daemon
+   isn't running at all, start Docker Desktop first (`open -a Docker`) and poll
+   until `docker info` succeeds before running the compose commands.
+
+   Skipping this is what makes the pre-push hook print a solid wall of pytest
+   `E`s — it reads like a catastrophic code regression but is only an
+   unreachable test DB (`docs/git-hygiene.md` → Pre-flight before pushing
+   documents the same failure mode from the push side).
+
+   At session end, `docker compose down` for each stack. **Never pass `-v`** —
+   that deletes the `mmc-pgdata`, Grafana, and Prometheus volumes along with
+   the containers.
+
+3. **Sync, then load your sprint**
    Use bd, not Linear — Linear is retired for this project. Pull first so you're
    not working off a stale set of issues if another clone/session closed or
    created any since your last session:
@@ -30,7 +57,7 @@ Run these steps before writing any code:
    allowed). Summarize the active sprint in one sentence, then list the
    in-scope issues before asking what to work on.
 
-3. **Confirm before acting**
+4. **Confirm before acting**
    State what you're about to do and which issue it maps to.
    If it doesn't map to an open bd issue, flag it.
 
@@ -242,6 +269,8 @@ docs/
 - [ ] Read `docs/design/style-guide.md`
 - [ ] Read `docs/technical/technical-design.md`
 - [ ] Read `docs/git-hygiene.md`
+- [ ] Started the local stack (`docker compose up -d` + `observability/`) and
+      confirmed `mmc-postgres` reports `healthy`, not `starting`
 - [ ] Ran `bd dolt pull`, then fetched active bd issues
 - [ ] Confirmed which issue we're working on today
 - [ ] Stated one-sentence sprint goal back to user

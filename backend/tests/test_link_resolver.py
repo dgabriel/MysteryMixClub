@@ -831,6 +831,47 @@ async def test_youtube_no_catalog_match_returns_source_identity():
     assert song.source == "youtube"
     assert song.source_key == "youtube:PRpiBpDy7MQ"
     assert song.source_url == "https://www.youtube.com/watch?v=PRpiBpDy7MQ"
+    # The channel is the display artist of last resort. Without it the artist is
+    # null, and the submission schema rejects a null/empty artist outright — which
+    # made exactly this kind of YouTube-only track unsubmittable (MysteryMixClub-2ps5).
+    assert song.artist == "Nobody"
+
+
+async def test_youtube_channel_artist_is_display_only_not_a_search_term():
+    # The regression guard for the fix above: the channel supplies a *display*
+    # artist only after catalog matching has already failed. It must never enter
+    # the Deezer query, or a channel like "DonMcLeanVEVO" would turn today's
+    # catalog hits into misses.
+    seen: dict[str, str] = {}
+
+    def search_miss(request: httpx.Request) -> httpx.Response:
+        # Records the query like _search_spy, but misses so the fallback fires.
+        seen.update(dict(request.url.params))
+        return httpx.Response(200, json={"data": [], "total": 0})
+
+    handler = _router(
+        search=search_miss,
+        youtube=lambda r: httpx.Response(
+            200, json={"title": "Bedroom Demo", "author_name": "DonMcLeanVEVO"}
+        ),
+    )
+    song = await _resolver(handler).resolve("https://www.youtube.com/watch?v=PRpiBpDy7MQ")
+    assert seen["q"] == "Bedroom Demo"  # channel absent from the query
+    assert song.artist == "DonMcLeanVEVO"  # but present for display
+    assert song.isrc is None
+
+
+async def test_youtube_source_identity_without_author_has_no_artist():
+    # Residual gap, documented rather than papered over: oEmbed with no
+    # author_name leaves the artist null, and such a track still cannot be
+    # submitted. Rare (author_name is effectively always present) but real.
+    handler = _router(
+        search=_EMPTY_SEARCH,
+        youtube=lambda r: httpx.Response(200, json={"title": "Bedroom Demo"}),
+    )
+    song = await _resolver(handler).resolve("https://www.youtube.com/watch?v=PRpiBpDy7MQ")
+    assert song.source_key == "youtube:PRpiBpDy7MQ"
+    assert song.artist is None
 
 
 async def test_bandcamp_no_catalog_match_returns_source_identity():

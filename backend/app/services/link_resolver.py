@@ -305,6 +305,19 @@ def _topic_artist(author: str | None) -> str | None:
     return None
 
 
+def _channel_artist(author: str | None) -> str | None:
+    """The uploading channel as a *display* artist of last resort, else None.
+
+    Deliberately separate from :func:`_topic_artist`, and used only where that
+    one has already declined. The channel is a poor identity signal — it is the
+    uploader, not necessarily the performer — so this value is for display only
+    and is never fed to catalog search (see ``_resolve_youtube``).
+    """
+    if not author:
+        return None
+    return author.strip() or None
+
+
 class LinkResolver:
     """Identifies the song behind a pasted platform URL, keyless.
 
@@ -527,8 +540,18 @@ class LinkResolver:
             return identity
         # No catalog match: fall back to a source-only identity keyed on the exact
         # video id — the link is exact, so no fuzzy guess is ever substituted.
+        #
+        # The uploading channel is the display artist of last resort here: with no
+        # " - " in the title and no "- Topic" channel there is nothing else to show,
+        # and a null artist made the track unsubmittable outright (the submission
+        # schema requires a non-empty artist). It is applied *after* the Deezer
+        # lookup above and never passed into it — searching the catalog for
+        # artist="DonMcLeanVEVO" would turn today's catalog hits into misses, which
+        # is why `_topic_artist` refuses to guess from channel names in the first
+        # place. Display only, and only once catalog matching has already failed.
+        display_artist = search_artist or _channel_artist(data.get("author_name"))
         return self._youtube_source_identity(
-            url, search_title, search_artist, data.get("thumbnail_url")
+            url, search_title, display_artist, data.get("thumbnail_url")
         )
 
     async def _resolve_bandcamp(self, url: str) -> SongIdentity:

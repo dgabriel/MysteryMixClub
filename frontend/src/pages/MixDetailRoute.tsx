@@ -46,6 +46,10 @@ import { Button } from "../components/Button";
 import { Badge } from "../components/Badge";
 import { Card } from "../components/Card";
 import { PaperSurface } from "../components/PaperSurface";
+import { PlaylistRow } from "../components/playlists/PlaylistRow";
+import { ServiceMark } from "../components/playlists/ServiceMark";
+import { PlaylistsSection } from "../components/playlists/PlaylistsSection";
+import { PlaylistLink } from "../components/playlists/PlaylistAction";
 import { MIX_BADGE, MIX_STATE_LABEL, mixGroup } from "../utils/mixState";
 import { TextField } from "../components/TextField";
 import { FormError } from "../components/FormError";
@@ -54,7 +58,10 @@ import { SongSearchCard } from "../components/songs/SongSearchCard";
 import { SourceBadge } from "../components/SourceBadge";
 import { AppleMusicPlaylist } from "../components/AppleMusicPlaylist";
 import { SpotifyPlaylist } from "../components/SpotifyPlaylist";
-import { SourceOnlyTracks, type SourceOnlyTrack } from "../components/SourceOnlyTracks";
+import {
+  SongsMaybeMissing,
+  type MaybeMissingTrack,
+} from "../components/playlists/SongsMaybeMissing";
 import { CheckmarkIcon } from "../components/CheckmarkIcon";
 import { CrownIcon } from "../components/CrownIcon";
 import { MedalIcon } from "../components/MedalIcon";
@@ -1609,7 +1616,7 @@ function PlatformLinks({
  * is named in the link text, and `SourceBadge` is the only place the app
  * spends a brand tint.
  */
-function YouTubePlaylistLink({
+function YouTubePlaylistRow({
   youtubePlaylistUrl,
   youtubeTrackCount,
   entryCount,
@@ -1619,21 +1626,21 @@ function YouTubePlaylistLink({
   entryCount: number;
 }) {
   if (!youtubePlaylistUrl) return null;
+  const complete = youtubeTrackCount >= entryCount;
   return (
-    <div className="mb-8">
-      <a
-        href={youtubePlaylistUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center gap-1.5 font-mono uppercase tracking-mono text-label text-ink-link underline underline-offset-[3px] transition-colors duration-150 hover:text-ink"
-      >
-        <MusicNoteIcon />
-        open playlist in YouTube
-      </a>
-      <span className="mt-1 block font-mono uppercase tracking-mono-caps text-mini text-ink-muted">
-        {youtubeTrackCount} of {entryCount} on YouTube
-      </span>
-    </div>
+    <PlaylistRow
+      service="youtube"
+      mark={<ServiceMark service="youtube" />}
+      // Same phrasing as every other row, so completeness is comparable at a
+      // glance rather than needing the numbers read.
+      status={complete ? `all ${entryCount} songs` : `${youtubeTrackCount} of ${entryCount} songs`}
+      action={
+        <PlaylistLink href={youtubePlaylistUrl} label="open playlist in youtube">
+          <MusicNoteIcon />
+          open playlist
+        </PlaylistLink>
+      }
+    />
   );
 }
 
@@ -1673,7 +1680,7 @@ function toSourceOnly(
     source: "youtube" | "bandcamp" | null;
     source_url: string | null;
   }[],
-): SourceOnlyTrack[] {
+): MaybeMissingTrack[] {
   return items
     .filter((i) => i.source != null && i.source_url != null)
     .map((i) => ({
@@ -1703,22 +1710,21 @@ function ClosedListen({
   youtubePlaylistUrl: string | null;
   youtubeTrackCount: number;
   entryCount: number;
-  sourceOnly: SourceOnlyTrack[];
+  sourceOnly: MaybeMissingTrack[];
 }) {
   if (entryCount === 0) return null;
   return (
     <div className="mb-10">
-      <h2 className="mb-4 font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
-        listen back
-      </h2>
-      <YouTubePlaylistLink
-        youtubePlaylistUrl={youtubePlaylistUrl}
-        youtubeTrackCount={youtubeTrackCount}
-        entryCount={entryCount}
-      />
-      <SourceOnlyTracks tracks={sourceOnly} />
-      <SpotifyPlaylist mixId={mixId} />
-      <AppleMusicPlaylist mixId={mixId} />
+      <PlaylistsSection>
+        <YouTubePlaylistRow
+          youtubePlaylistUrl={youtubePlaylistUrl}
+          youtubeTrackCount={youtubeTrackCount}
+          entryCount={entryCount}
+        />
+        <SpotifyPlaylist mixId={mixId} entryCount={entryCount} />
+        <AppleMusicPlaylist mixId={mixId} entryCount={entryCount} />
+      </PlaylistsSection>
+      <SongsMaybeMissing mixId={mixId} sourceOnly={sourceOnly} />
     </div>
   );
 }
@@ -1805,19 +1811,16 @@ function VotingSection({
           you&apos;re in casual mode for this one, so you sit voting out. settle in and enjoy the
           mix.
         </p>
-        <h2 className="mt-8 font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
-          playlist ({entries.length})
-        </h2>
-        <div className="mt-4">
-          <YouTubePlaylistLink
+        <PlaylistsSection>
+          <YouTubePlaylistRow
             youtubePlaylistUrl={youtubePlaylistUrl}
             youtubeTrackCount={youtubeTrackCount}
             entryCount={entries.length}
           />
-          <SourceOnlyTracks tracks={toSourceOnly(entries)} />
-          <SpotifyPlaylist mixId={mixId} />
-          <AppleMusicPlaylist mixId={mixId} />
-        </div>
+          <SpotifyPlaylist mixId={mixId} entryCount={entries.length} />
+          <AppleMusicPlaylist mixId={mixId} entryCount={entries.length} />
+        </PlaylistsSection>
+        <SongsMaybeMissing mixId={mixId} sourceOnly={toSourceOnly(entries)} />
         <ul className="mt-4 space-y-4">
           {entries.map((entry) => (
             <li key={entry.submission_id}>
@@ -1867,14 +1870,16 @@ function VotingSection({
   return (
     <>
       <VotingProgress acted={votingActed} eligible={votingEligible} vibing={vibingCount} />
-      <YouTubePlaylistLink
-        youtubePlaylistUrl={youtubePlaylistUrl}
-        youtubeTrackCount={youtubeTrackCount}
-        entryCount={entries.length}
-      />
-      <SourceOnlyTracks tracks={toSourceOnly(entries)} />
-      <SpotifyPlaylist mixId={mixId} />
-      <AppleMusicPlaylist mixId={mixId} />
+      <PlaylistsSection>
+        <YouTubePlaylistRow
+          youtubePlaylistUrl={youtubePlaylistUrl}
+          youtubeTrackCount={youtubeTrackCount}
+          entryCount={entries.length}
+        />
+        <SpotifyPlaylist mixId={mixId} entryCount={entries.length} />
+        <AppleMusicPlaylist mixId={mixId} entryCount={entries.length} />
+      </PlaylistsSection>
+      <SongsMaybeMissing mixId={mixId} sourceOnly={toSourceOnly(entries)} />
       <div className="flex items-baseline justify-between gap-4">
         <span className="flex items-center gap-2">
           <h2 className="font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
@@ -2163,19 +2168,16 @@ function VotingTally({
       <p className="text-sm leading-[1.72] text-muted-foreground">
         you&apos;ve locked in your votes — check back to see how the voting goes.
       </p>
-      <h2 className="mt-8 font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
-        playlist ({entries.length})
-      </h2>
-      <div className="mt-4">
-        <YouTubePlaylistLink
+      <PlaylistsSection>
+        <YouTubePlaylistRow
           youtubePlaylistUrl={youtubePlaylistUrl}
           youtubeTrackCount={youtubeTrackCount}
           entryCount={entries.length}
         />
-        <SourceOnlyTracks tracks={toSourceOnly(entries)} />
-        <SpotifyPlaylist mixId={mixId} />
-        <AppleMusicPlaylist mixId={mixId} />
-      </div>
+        <SpotifyPlaylist mixId={mixId} entryCount={entries.length} />
+        <AppleMusicPlaylist mixId={mixId} entryCount={entries.length} />
+      </PlaylistsSection>
+      <SongsMaybeMissing mixId={mixId} sourceOnly={toSourceOnly(entries)} />
       <h2 className="mt-8 font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
         vote tally ({voteCounts.length} songs)
       </h2>

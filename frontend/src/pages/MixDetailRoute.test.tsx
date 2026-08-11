@@ -1147,7 +1147,7 @@ describe("MixDetailRoute", () => {
     expect(screen.getByRole("button", { name: /close mix/i })).toBeInTheDocument();
   });
 
-  it("open_voting: lists bandcamp/youtube-only tracks above the playlist links", async () => {
+  it("open_voting: lists songs that may not be on all playlists", async () => {
     mockGetMix.mockResolvedValue(mix({ state: "open_voting" }));
     mockGetPlaylist.mockResolvedValue({
       mix_id: "r1",
@@ -1172,10 +1172,10 @@ describe("MixDetailRoute", () => {
       vibing_count: 0,
     });
     renderMix();
+    // One agnostic, hedged section now, rather than a bandcamp/youtube-specific
+    // list plus a per-service gap list under each playlist row.
     expect(
-      await screen.findByText(
-        "bandcamp or YouTube only tracks that may not appear on your playlists",
-      ),
+      await screen.findByRole("heading", { name: /songs that may not be on all playlists/i }),
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Only Here" })).toHaveAttribute(
       "href",
@@ -1183,7 +1183,7 @@ describe("MixDetailRoute", () => {
     );
   });
 
-  it("open_voting: omits the source-only list when every track is a catalog track", async () => {
+  it("open_voting: omits the section when nothing is known to be missing", async () => {
     mockGetMix.mockResolvedValue(mix({ state: "open_voting" }));
     mockGetPlaylist.mockResolvedValue({
       mix_id: "r1",
@@ -1404,7 +1404,7 @@ describe("MixDetailRoute", () => {
       expect(link).toHaveAttribute("href", "https://www.youtube.com/watch_videos?video_ids=a,b");
       expect(link).toHaveAttribute("target", "_blank");
       // N (youtube_track_count) of M (entry count) on YouTube
-      expect(screen.getByText("1 of 2 on YouTube")).toBeInTheDocument();
+      expect(screen.getByText("1 of 2 songs")).toBeInTheDocument();
     });
 
     it("open YouTube affordance: hidden entirely when youtube_playlist_url is null (MYS-78)", async () => {
@@ -2007,7 +2007,7 @@ describe("MixDetailRoute", () => {
 
       const link = screen.getByRole("link", { name: /open playlist in youtube/i });
       expect(link).toHaveAttribute("href", "https://www.youtube.com/watch_videos?video_ids=a,b");
-      expect(screen.getByText("2 of 2 on YouTube")).toBeInTheDocument();
+      expect(screen.getByText("all 2 songs")).toBeInTheDocument();
     });
   });
 
@@ -2925,7 +2925,7 @@ describe("MixDetailRoute", () => {
 
     // ----- Data loading ---------------------------------------------------- //
 
-    it("closed mix shows a 'listen back' affordance when there are tracks (MYS-133)", async () => {
+    it("closed mix shows the playlists section when there are tracks (MYS-133)", async () => {
       mockGetPlaylist.mockResolvedValue({
         mix_id: "r1",
         mix_number: 1,
@@ -2941,7 +2941,9 @@ describe("MixDetailRoute", () => {
       setupClosed({ submissions: [sub({ title: "Debaser" })] });
       renderMix();
 
-      expect(await screen.findByRole("heading", { name: /listen back/i })).toBeInTheDocument();
+      // One heading for this block in every state now — it used to be "listen
+      // back" when closed and "playlist (N)" elsewhere, for identical content.
+      expect(await screen.findByRole("heading", { name: /^playlists$/i })).toBeInTheDocument();
       expect(screen.getByRole("link", { name: /open playlist in youtube/i })).toBeInTheDocument();
     });
 

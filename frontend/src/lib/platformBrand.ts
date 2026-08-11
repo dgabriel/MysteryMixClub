@@ -55,3 +55,30 @@ export const PLATFORM_BRAND: Record<
   youtube: { text: "#FF0000", tint: "#FF000010", edge: "#FF000040" },
   bandcamp: { text: "#1DA0C3", tint: "#1DA0C310", edge: "#1DA0C340" },
 };
+
+/**
+ * Brand colors for the small service marks in the playlists section.
+ *
+ * Separate from `PLATFORM_BRAND` above because the constraint is different.
+ * That table governs brand *text* on a tinted badge, where the surface changes
+ * the ratio and a placement rule applies. These are solid marks, and they are
+ * **decorative**: each one sits immediately beside the service's name in text
+ * and is `aria-hidden`, so nothing about the page depends on recognising it.
+ *
+ * That is what makes brand color legitimate here rather than a compromise.
+ * WCAG 1.4.11's 3:1 floor covers graphics *required to understand the content*;
+ * a purely decorative graphic is exempt. Worth knowing because the numbers
+ * would otherwise forbid it — on `paper`, YouTube red is 4.00:1 and Apple red
+ * 3.58:1, but **Spotify green is 2.59:1**.
+ *
+ * The dependency runs one way: **if a mark ever loses its adjacent text label,
+ * it stops being decorative and Spotify's green becomes a real failure.** Keep
+ * the label.
+ */
+export type ServiceMarkKey = "youtube" | "spotify" | "appleMusic";
+
+export const SERVICE_MARK_BRAND: Record<ServiceMarkKey, string> = {
+  youtube: "#FF0000",
+  spotify: "#1DB954",
+  appleMusic: "#FC3C44",
+};

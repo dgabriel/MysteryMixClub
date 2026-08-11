@@ -46,6 +46,8 @@ import { Button } from "../components/Button";
 import { Badge } from "../components/Badge";
 import { Card } from "../components/Card";
 import { PaperSurface } from "../components/PaperSurface";
+import { PlaylistRow } from "../components/playlists/PlaylistRow";
+import { PlaylistLink } from "../components/playlists/PlaylistAction";
 import { MIX_BADGE, MIX_STATE_LABEL, mixGroup } from "../utils/mixState";
 import { TextField } from "../components/TextField";
 import { FormError } from "../components/FormError";
@@ -1609,7 +1611,7 @@ function PlatformLinks({
  * is named in the link text, and `SourceBadge` is the only place the app
  * spends a brand tint.
  */
-function YouTubePlaylistLink({
+function YouTubePlaylistRow({
   youtubePlaylistUrl,
   youtubeTrackCount,
   entryCount,
@@ -1619,21 +1621,20 @@ function YouTubePlaylistLink({
   entryCount: number;
 }) {
   if (!youtubePlaylistUrl) return null;
+  const complete = youtubeTrackCount >= entryCount;
   return (
-    <div className="mb-8">
-      <a
-        href={youtubePlaylistUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center gap-1.5 font-mono uppercase tracking-mono text-label text-ink-link underline underline-offset-[3px] transition-colors duration-150 hover:text-ink"
-      >
-        <MusicNoteIcon />
-        open playlist in YouTube
-      </a>
-      <span className="mt-1 block font-mono uppercase tracking-mono-caps text-mini text-ink-muted">
-        {youtubeTrackCount} of {entryCount} on YouTube
-      </span>
-    </div>
+    <PlaylistRow
+      service="youtube"
+      // Same phrasing as every other row, so completeness is comparable at a
+      // glance rather than needing the numbers read.
+      status={complete ? `all ${entryCount} songs` : `${youtubeTrackCount} of ${entryCount} songs`}
+      action={
+        <PlaylistLink href={youtubePlaylistUrl} label="open playlist in youtube">
+          <MusicNoteIcon />
+          open playlist
+        </PlaylistLink>
+      }
+    />
   );
 }
 
@@ -1711,14 +1712,16 @@ function ClosedListen({
       <h2 className="mb-4 font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
         listen back
       </h2>
-      <YouTubePlaylistLink
-        youtubePlaylistUrl={youtubePlaylistUrl}
-        youtubeTrackCount={youtubeTrackCount}
-        entryCount={entryCount}
-      />
+      <div className="divide-y divide-ink-hairline border-y border-ink-hairline">
+        <YouTubePlaylistRow
+          youtubePlaylistUrl={youtubePlaylistUrl}
+          youtubeTrackCount={youtubeTrackCount}
+          entryCount={entryCount}
+        />
+        <SpotifyPlaylist mixId={mixId} entryCount={entryCount} />
+        <AppleMusicPlaylist mixId={mixId} entryCount={entryCount} />
+      </div>
       <SourceOnlyTracks tracks={sourceOnly} />
-      <SpotifyPlaylist mixId={mixId} />
-      <AppleMusicPlaylist mixId={mixId} />
     </div>
   );
 }
@@ -1809,14 +1812,16 @@ function VotingSection({
           playlist ({entries.length})
         </h2>
         <div className="mt-4">
-          <YouTubePlaylistLink
-            youtubePlaylistUrl={youtubePlaylistUrl}
-            youtubeTrackCount={youtubeTrackCount}
-            entryCount={entries.length}
-          />
+          <div className="divide-y divide-ink-hairline border-y border-ink-hairline">
+            <YouTubePlaylistRow
+              youtubePlaylistUrl={youtubePlaylistUrl}
+              youtubeTrackCount={youtubeTrackCount}
+              entryCount={entries.length}
+            />
+            <SpotifyPlaylist mixId={mixId} entryCount={entries.length} />
+            <AppleMusicPlaylist mixId={mixId} entryCount={entries.length} />
+          </div>
           <SourceOnlyTracks tracks={toSourceOnly(entries)} />
-          <SpotifyPlaylist mixId={mixId} />
-          <AppleMusicPlaylist mixId={mixId} />
         </div>
         <ul className="mt-4 space-y-4">
           {entries.map((entry) => (
@@ -1867,14 +1872,16 @@ function VotingSection({
   return (
     <>
       <VotingProgress acted={votingActed} eligible={votingEligible} vibing={vibingCount} />
-      <YouTubePlaylistLink
-        youtubePlaylistUrl={youtubePlaylistUrl}
-        youtubeTrackCount={youtubeTrackCount}
-        entryCount={entries.length}
-      />
+      <div className="divide-y divide-ink-hairline border-y border-ink-hairline">
+        <YouTubePlaylistRow
+          youtubePlaylistUrl={youtubePlaylistUrl}
+          youtubeTrackCount={youtubeTrackCount}
+          entryCount={entries.length}
+        />
+        <SpotifyPlaylist mixId={mixId} entryCount={entries.length} />
+        <AppleMusicPlaylist mixId={mixId} entryCount={entries.length} />
+      </div>
       <SourceOnlyTracks tracks={toSourceOnly(entries)} />
-      <SpotifyPlaylist mixId={mixId} />
-      <AppleMusicPlaylist mixId={mixId} />
       <div className="flex items-baseline justify-between gap-4">
         <span className="flex items-center gap-2">
           <h2 className="font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
@@ -2167,14 +2174,16 @@ function VotingTally({
         playlist ({entries.length})
       </h2>
       <div className="mt-4">
-        <YouTubePlaylistLink
-          youtubePlaylistUrl={youtubePlaylistUrl}
-          youtubeTrackCount={youtubeTrackCount}
-          entryCount={entries.length}
-        />
+        <div className="divide-y divide-ink-hairline border-y border-ink-hairline">
+          <YouTubePlaylistRow
+            youtubePlaylistUrl={youtubePlaylistUrl}
+            youtubeTrackCount={youtubeTrackCount}
+            entryCount={entries.length}
+          />
+          <SpotifyPlaylist mixId={mixId} entryCount={entries.length} />
+          <AppleMusicPlaylist mixId={mixId} entryCount={entries.length} />
+        </div>
         <SourceOnlyTracks tracks={toSourceOnly(entries)} />
-        <SpotifyPlaylist mixId={mixId} />
-        <AppleMusicPlaylist mixId={mixId} />
       </div>
       <h2 className="mt-8 font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
         vote tally ({voteCounts.length} songs)

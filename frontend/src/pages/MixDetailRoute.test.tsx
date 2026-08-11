@@ -1404,7 +1404,7 @@ describe("MixDetailRoute", () => {
       expect(link).toHaveAttribute("href", "https://www.youtube.com/watch_videos?video_ids=a,b");
       expect(link).toHaveAttribute("target", "_blank");
       // N (youtube_track_count) of M (entry count) on YouTube
-      expect(screen.getByText("1 of 2 on YouTube")).toBeInTheDocument();
+      expect(screen.getByText("1 of 2 songs")).toBeInTheDocument();
     });
 
     it("open YouTube affordance: hidden entirely when youtube_playlist_url is null (MYS-78)", async () => {
@@ -2007,7 +2007,7 @@ describe("MixDetailRoute", () => {
 
       const link = screen.getByRole("link", { name: /open playlist in youtube/i });
       expect(link).toHaveAttribute("href", "https://www.youtube.com/watch_videos?video_ids=a,b");
-      expect(screen.getByText("2 of 2 on YouTube")).toBeInTheDocument();
+      expect(screen.getByText("all 2 songs")).toBeInTheDocument();
     });
   });
 

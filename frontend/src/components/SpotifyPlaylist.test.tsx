@@ -47,7 +47,7 @@ describe("SpotifyPlaylist", () => {
     render(<SpotifyPlaylist mixId="r1" />);
 
     await waitFor(() => expect(mockGetLink).toHaveBeenCalledWith("r1"));
-    expect(await screen.findByText(/no spotify playlist yet/i)).toBeInTheDocument();
+    expect(await screen.findByText(/not built yet/i)).toBeInTheDocument();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 
@@ -63,8 +63,8 @@ describe("SpotifyPlaylist", () => {
 
     render(<SpotifyPlaylist mixId="r1" />);
 
-    expect(await screen.findByText(/no spotify playlist yet/i)).toBeInTheDocument();
-    expect(screen.queryByText(/generating/i)).not.toBeInTheDocument();
+    expect(await screen.findByText(/not built yet/i)).toBeInTheDocument();
+    expect(screen.queryByText(/building/i)).not.toBeInTheDocument();
   });
 
   it("degrades to the quiet note when the fetch fails", async () => {
@@ -72,7 +72,7 @@ describe("SpotifyPlaylist", () => {
 
     render(<SpotifyPlaylist mixId="r1" />);
 
-    expect(await screen.findByText(/no spotify playlist yet/i)).toBeInTheDocument();
+    expect(await screen.findByText(/not built yet/i)).toBeInTheDocument();
   });
 
   it("renders nothing while the link is still loading", () => {
@@ -84,7 +84,7 @@ describe("SpotifyPlaylist", () => {
   });
 
   describe("unmatched tracks (MYS-201/GH-232)", () => {
-    it("renders the singular summary line and list item for exactly one unmatched track", async () => {
+    it("lists an unmatched track, with the row still reporting no playlist", async () => {
       mockGetLink.mockResolvedValue({
         playlist_url: null,
         overflow_youtube_url: null,
@@ -103,15 +103,14 @@ describe("SpotifyPlaylist", () => {
 
       render(<SpotifyPlaylist mixId="r1" />);
 
-      expect(
-        await screen.findByText(/1 song didn't make the spotify playlist:/i),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText(/Song One by Artist One \(not found on spotify\)/),
-      ).toBeInTheDocument();
+      // The old "1 song didn't make the spotify playlist:" sentence is gone —
+      // the row's status slot carries readiness now, and the missing tracks are
+      // nested beneath it. With no playlist built, the status says exactly that.
+      expect(await screen.findByText(/not built yet/i)).toBeInTheDocument();
+      expect(screen.getByText(/Song One · Artist One/)).toBeInTheDocument();
     });
 
-    it("renders the plural summary line for two or more unmatched tracks", async () => {
+    it("lists every unmatched track when there is more than one", async () => {
       mockGetLink.mockResolvedValue({
         playlist_url: null,
         overflow_youtube_url: null,
@@ -138,9 +137,7 @@ describe("SpotifyPlaylist", () => {
 
       render(<SpotifyPlaylist mixId="r1" />);
 
-      expect(
-        await screen.findByText(/2 songs didn't make the spotify playlist:/i),
-      ).toBeInTheDocument();
+      expect(await screen.findByText(/not built yet/i)).toBeInTheDocument();
     });
 
     it("renders a listen-on link with the correct href for a source_only track", async () => {
@@ -162,9 +159,7 @@ describe("SpotifyPlaylist", () => {
 
       render(<SpotifyPlaylist mixId="r1" />);
 
-      expect(
-        await screen.findByText(/Song Two by Artist Two \(not on spotify,/),
-      ).toBeInTheDocument();
+      expect(await screen.findByText(/Song Two · Artist Two/)).toBeInTheDocument();
       const link = screen.getByRole("link", { name: /listen on youtube/i });
       expect(link).toHaveAttribute("href", "https://youtube.com/watch?v=abc123");
     });
@@ -188,9 +183,7 @@ describe("SpotifyPlaylist", () => {
 
       render(<SpotifyPlaylist mixId="r1" />);
 
-      expect(
-        await screen.findByText(/Song One by Artist One \(not found on spotify\)/),
-      ).toBeInTheDocument();
+      expect(await screen.findByText(/Song One · Artist One/)).toBeInTheDocument();
       expect(screen.queryByText(/listen on/i)).not.toBeInTheDocument();
       expect(screen.queryByRole("link")).not.toBeInTheDocument();
     });
@@ -216,15 +209,14 @@ describe("SpotifyPlaylist", () => {
 
       const playlistLink = await screen.findByRole("link", { name: /open playlist in spotify/i });
       expect(playlistLink).toHaveAttribute("href", "https://open.spotify.com/playlist/pl1");
-      expect(
-        await screen.findByText(/1 song didn't make the spotify playlist:/i),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText(/Song One by Artist One \(not found on spotify\)/),
-      ).toBeInTheDocument();
+      // A playlist exists here, so the status reports the gap as a count rather
+      // than "not built yet". With no entry count to divide by it says how many
+      // are missing — still true, and never "all songs".
+      expect(await screen.findByText(/1 missing/i)).toBeInTheDocument();
+      expect(screen.getByText(/Song One · Artist One/)).toBeInTheDocument();
     });
 
-    it("renders the 'hear the rest on youtube' link when overflow_youtube_url is present alongside unmatched tracks", async () => {
+    it("offers a youtube fallback for the missing songs, named so it cannot be confused with the youtube playlist row", async () => {
       mockGetLink.mockResolvedValue({
         playlist_url: "https://open.spotify.com/playlist/pl1",
         overflow_youtube_url: "https://www.youtube.com/watch_videos?video_ids=abc123",
@@ -243,14 +235,14 @@ describe("SpotifyPlaylist", () => {
 
       render(<SpotifyPlaylist mixId="r1" />);
 
-      const overflowLink = await screen.findByRole("link", { name: /hear the rest on youtube/i });
+      const overflowLink = await screen.findByRole("link", { name: /missing from spotify/i });
       expect(overflowLink).toHaveAttribute(
         "href",
         "https://www.youtube.com/watch_videos?video_ids=abc123",
       );
     });
 
-    it("does not render the 'hear the rest on youtube' link when overflow_youtube_url is null", async () => {
+    it("offers no youtube fallback when there is no overflow url", async () => {
       mockGetLink.mockResolvedValue({
         playlist_url: "https://open.spotify.com/playlist/pl1",
         overflow_youtube_url: null,
@@ -269,7 +261,7 @@ describe("SpotifyPlaylist", () => {
 
       render(<SpotifyPlaylist mixId="r1" />);
 
-      await screen.findByText(/1 song didn't make the spotify playlist:/i);
+      await screen.findByText(/1 missing/i);
       expect(
         screen.queryByRole("link", { name: /hear the rest on youtube/i }),
       ).not.toBeInTheDocument();
@@ -299,9 +291,9 @@ describe("SpotifyPlaylist", () => {
 
       render(<SpotifyPlaylist mixId="r1" />);
 
-      expect(await screen.findByText(/generating spotify playlist/i)).toBeInTheDocument();
+      expect(await screen.findByText(/building…/i)).toBeInTheDocument();
       expect(screen.queryByRole("link")).not.toBeInTheDocument();
-      expect(screen.queryByText(/no spotify playlist yet/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/not built yet/i)).not.toBeInTheDocument();
     });
 
     it("polls again and swaps in the link once the job completes", async () => {
@@ -320,7 +312,7 @@ describe("SpotifyPlaylist", () => {
         });
 
       render(<SpotifyPlaylist mixId="r1" />);
-      expect(await screen.findByText(/generating spotify playlist/i)).toBeInTheDocument();
+      expect(await screen.findByText(/building…/i)).toBeInTheDocument();
       expect(mockGetLink).toHaveBeenCalledTimes(1);
 
       await act(async () => {
@@ -348,13 +340,13 @@ describe("SpotifyPlaylist", () => {
         });
 
       render(<SpotifyPlaylist mixId="r1" />);
-      expect(await screen.findByText(/generating spotify playlist/i)).toBeInTheDocument();
+      expect(await screen.findByText(/building…/i)).toBeInTheDocument();
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(7000);
       });
       expect(mockGetLink).toHaveBeenCalledTimes(2);
-      expect(await screen.findByText(/no spotify playlist yet/i)).toBeInTheDocument();
+      expect(await screen.findByText(/not built yet/i)).toBeInTheDocument();
 
       // No further calls scheduled — failed is terminal.
       await act(async () => {
@@ -373,7 +365,7 @@ describe("SpotifyPlaylist", () => {
       });
 
       const { unmount } = render(<SpotifyPlaylist mixId="r1" />);
-      await screen.findByText(/generating spotify playlist/i);
+      await screen.findByText(/building…/i);
 
       unmount();
 

@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { MusicNoteIcon } from "./MusicNoteIcon";
+import { PlaylistRow } from "./playlists/PlaylistRow";
+import { PlaylistLink } from "./playlists/PlaylistAction";
 import {
   getSpotifyPlaylistLink,
   type PlaylistJobStatus,
@@ -37,22 +39,23 @@ import {
  * `#1DB954` here would also be constrained by the placement table in that
  * module, and buys nothing the label doesn't already say.
  *
- * **Where the amber goes.** Two whole-playlist actions carry it — "open
- * playlist in Spotify" and the single overflow "hear the rest on youtube"
- * link. Both are actions, and there is at most one of each. The per-track
- * "listen on …" links do not: that list is one row per unmatched submission
- * and unbounded, so an accent there would repeat down the list and become
- * amber as pattern.
+ * **Shape.** Renders as a `PlaylistRow` inside the shared "listen" card, so it
+ * has the same service/status/action anatomy as YouTube and Apple. Its status
+ * line is a count like theirs; the unmatched tracks and the overflow link are
+ * *nested beneath it*, because both are consequences of this service's gap
+ * rather than peers of it.
+ *
+ * The overflow link is worded to name what is missing ("hear the missing song
+ * on youtube") rather than "hear the rest". The old wording sat at the same
+ * indent and weight as the YouTube row's own playlist link and named the same
+ * service, which is what made the section confusing.
  */
 
-/** A whole-playlist action link — the `link` button variant as an anchor. */
-const LINK_CLASS =
-  "inline-flex items-center gap-1.5 font-mono uppercase tracking-mono text-label text-ink-link underline underline-offset-[3px] transition-colors duration-150 hover:text-ink";
 /** A per-row link inside the unmatched list. Neutral at rest, amber on hover
  *  only — hover applies to one row at a time, so it never repeats. */
 const ROW_LINK_CLASS =
   "font-mono text-sm text-ink underline underline-offset-[3px] transition-colors duration-150 hover:text-ink-link";
-const NOTE_CLASS = "font-mono text-sm text-ink-muted";
+const NOTE_CLASS = "font-mono text-sm text-ink";
 
 // How often to re-check while a job is queued/running. Plain polling (ADR
 // 0006) — not fast enough to feel like a live stream, fast enough that a
@@ -75,7 +78,7 @@ type LinkState = {
   overflowYoutubeUrl: string | null;
 };
 
-export function SpotifyPlaylist({ mixId }: { mixId: string }) {
+export function SpotifyPlaylist({ mixId, entryCount }: { mixId: string; entryCount?: number }) {
   const [state, setState] = useState<LinkState | undefined>(undefined);
 
   useEffect(() => {
@@ -115,42 +118,52 @@ export function SpotifyPlaylist({ mixId }: { mixId: string }) {
   const { playlistUrl, status, unmatched, overflowYoutubeUrl } = state;
   const inProgress = !playlistUrl && !!status && IN_PROGRESS_STATUSES.includes(status);
 
+  const matched = entryCount !== undefined ? entryCount - unmatched.length : undefined;
+
   return (
-    <div className="mb-8">
-      {playlistUrl ? (
-        <a href={playlistUrl} target="_blank" rel="noopener noreferrer" className={LINK_CLASS}>
-          <MusicNoteIcon />
-          open playlist in Spotify
-        </a>
-      ) : inProgress ? (
-        <p className={NOTE_CLASS}>generating spotify playlist&hellip;</p>
-      ) : (
-        <p className={NOTE_CLASS}>no spotify playlist yet</p>
-      )}
+    <PlaylistRow
+      service="spotify"
+      status={
+        playlistUrl
+          ? // The status slot answers "can I play this right now", in the same
+            // shape as every other service — a count, not a complaint. What went
+            // wrong is nested below, where it belongs.
+            unmatched.length > 0
+            ? // A gap, phrased as a count when the total is known. When it is
+              // not, say how many are missing rather than falling back to "all
+              // songs" — which would be an outright lie in exactly the case the
+              // user most needs the truth.
+              matched !== undefined
+              ? `${matched} of ${entryCount} songs`
+              : `${unmatched.length} missing`
+            : entryCount !== undefined
+              ? // Phrased exactly as the YouTube row phrases it, so the three
+                // statuses are directly comparable rather than merely similar.
+                `all ${entryCount} songs`
+              : "all songs"
+          : inProgress
+            ? "building…"
+            : "not built yet"
+      }
+      action={
+        playlistUrl ? (
+          <PlaylistLink href={playlistUrl} label="open playlist in spotify">
+            <MusicNoteIcon />
+            open playlist
+          </PlaylistLink>
+        ) : null
+      }
+    >
       {unmatched.length > 0 ? (
-        <div className="mt-2">
-          <p className={NOTE_CLASS}>
-            {unmatched.length} {unmatched.length === 1 ? "song didn't" : "songs didn't"} make the
-            spotify playlist:
-          </p>
-          {overflowYoutubeUrl ? (
-            <a
-              href={overflowYoutubeUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`${LINK_CLASS} mt-1`}
-            >
-              <MusicNoteIcon />
-              hear the rest on youtube
-            </a>
-          ) : null}
-          <ul className="mt-1 space-y-1">
+        <>
+          <ul className="space-y-1">
             {unmatched.map((track) => (
               <li key={track.submission_id} className={NOTE_CLASS}>
-                {track.title} by {track.artist} ({reasonLabel(track)}
+                {track.title} · {track.artist}
+                <span className="text-ink-muted"> — {reasonLabel(track)}</span>
                 {track.source_url ? (
                   <>
-                    ,{" "}
+                    {" "}
                     <a
                       href={track.source_url}
                       target="_blank"
@@ -161,12 +174,28 @@ export function SpotifyPlaylist({ mixId }: { mixId: string }) {
                     </a>
                   </>
                 ) : null}
-                )
               </li>
             ))}
           </ul>
-        </div>
+          {overflowYoutubeUrl ? (
+            // Worded so it can never be mistaken for the YouTube row's own
+            // playlist link. The old copy — "hear the rest on youtube" — sat at
+            // the same indent and weight as that link a few rows above, and
+            // named the same service, which is what made the section confusing.
+            <div className="mt-2">
+              <PlaylistLink
+                href={overflowYoutubeUrl}
+                label="hear the songs missing from spotify, on youtube"
+              >
+                <MusicNoteIcon />
+                {unmatched.length === 1
+                  ? "hear the missing song on youtube"
+                  : `hear the ${unmatched.length} missing songs on youtube`}
+              </PlaylistLink>
+            </div>
+          ) : null}
+        </>
       ) : null}
-    </div>
+    </PlaylistRow>
   );
 }

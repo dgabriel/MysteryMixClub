@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Button } from "./Button";
 import { MusicNoteIcon } from "./MusicNoteIcon";
+import { PlaylistRow } from "./playlists/PlaylistRow";
+import { PlaylistLink, PlaylistButton } from "./playlists/PlaylistAction";
 import {
   ApiError,
   createApplePlaylist,
@@ -49,14 +51,10 @@ function reasonLabel(track: UnmatchedTrack): string {
  */
 
 /** The whole-playlist action link — the `link` button variant as an anchor. */
-const LINK_CLASS =
-  "inline-flex items-center gap-1.5 font-mono uppercase tracking-mono text-label text-ink-link underline underline-offset-[3px] transition-colors duration-150 hover:text-ink";
 /** Same treatment on a <button>. Disabled drops the box entirely — no
  *  underline, label to `muted-foreground` — rather than fading it, matching
  *  the `Button` primitive. `disabled:` is emitted after `hover:` by Tailwind,
  *  so a disabled control can't pick up the hover color. */
-const BUTTON_CLASS =
-  "inline-flex items-center gap-1.5 font-mono uppercase tracking-mono text-label text-ink-link underline underline-offset-[3px] transition-colors duration-150 hover:text-ink disabled:cursor-not-allowed disabled:text-ink-muted disabled:no-underline";
 /** A per-row link inside the unmatched list. Neutral at rest, amber on hover
  *  only — hover applies to one row at a time, so it never repeats. */
 const ROW_LINK_CLASS =
@@ -81,7 +79,7 @@ function isAppleMobileOS(): boolean {
   return isKnownMobile || isIPadReportingAsMac;
 }
 
-export function AppleMusicPlaylist({ mixId }: { mixId: string }) {
+export function AppleMusicPlaylist({ mixId, entryCount }: { mixId: string; entryCount?: number }) {
   // undefined = still loading, null = not configured / unavailable
   const [developerToken, setDeveloperToken] = useState<string | null | undefined>(undefined);
   const [playlistUrl, setPlaylistUrl] = useState<string | null | undefined>(undefined);
@@ -166,76 +164,92 @@ export function AppleMusicPlaylist({ mixId }: { mixId: string }) {
   const opensExactPlaylist = !isMobile && !!directPlaylistUrl;
   const targetUrl = opensExactPlaylist ? directPlaylistUrl : playlistUrl;
 
+  const matched = entryCount !== undefined ? entryCount - unmatched.length : undefined;
+
   return (
-    <div className="mb-8">
-      {targetUrl ? (
-        <>
-          <a href={targetUrl} target="_blank" rel="noopener noreferrer" className={LINK_CLASS}>
-            <MusicNoteIcon />
-            {opensExactPlaylist ? "open in apple music" : "open apple music library"}
-          </a>
-          {opensExactPlaylist ? (
-            playlistName ? (
-              <p className={NOTE_CLASS}>
-                opens <span className="text-ink">“{playlistName}”</span> directly
-              </p>
-            ) : null
-          ) : (
-            <p className={NOTE_CLASS}>
-              {playlistName ? (
-                <>
-                  go to your Apple Music playlists and look for{" "}
-                  <span className="text-ink">“{playlistName}”</span>
-                </>
-              ) : (
-                "go to your Apple Music playlists to find it"
-              )}
-            </p>
-          )}
-        </>
-      ) : (
-        <>
-          <button
-            type="button"
-            onClick={() => setShowSignInModal(true)}
-            disabled={busy}
-            className={BUTTON_CLASS}
+    <PlaylistRow
+      service="apple music"
+      status={
+        targetUrl
+          ? unmatched.length > 0
+            ? // A gap, phrased as a count when the total is known. When it is
+              // not, say how many are missing rather than falling back to "all
+              // songs" — which would be an outright lie in exactly the case the
+              // user most needs the truth.
+              matched !== undefined
+              ? `${matched} of ${entryCount} songs`
+              : `${unmatched.length} missing`
+            : entryCount !== undefined
+              ? // Phrased exactly as the YouTube row phrases it, so the three
+                // statuses are directly comparable rather than merely similar.
+                `all ${entryCount} songs`
+              : "all songs"
+          : busy
+            ? "building…"
+            : // Apple is the one service with no shareable link — it builds into
+              // your own library — so its status says what it will do rather than
+              // what exists. Keeping the sentence in the same slot is what lets the
+              // difference read as meaning instead of inconsistency.
+              "builds in your library"
+      }
+      action={
+        targetUrl ? (
+          <PlaylistLink
+            href={targetUrl}
+            label={
+              opensExactPlaylist ? "open playlist in apple music" : "open your apple music library"
+            }
           >
             <MusicNoteIcon />
-            {busy ? "building playlist…" : "build this mystery mix in Apple Music"}
-          </button>
-          <p className={NOTE_CLASS}>(requires apple music subscription)</p>
-        </>
-      )}
+            {opensExactPlaylist ? "open playlist" : "open library"}
+          </PlaylistLink>
+        ) : (
+          <PlaylistButton
+            onClick={() => setShowSignInModal(true)}
+            disabled={busy}
+            label="build this playlist in apple music"
+          >
+            <MusicNoteIcon />
+            {busy ? "building…" : "build playlist"}
+          </PlaylistButton>
+        )
+      }
+    >
+      {!targetUrl ? <p className={NOTE_CLASS}>needs an apple music subscription</p> : null}
+      {targetUrl && !opensExactPlaylist ? (
+        <p className={NOTE_CLASS}>
+          {playlistName ? (
+            <>
+              find <span className="text-ink">“{playlistName}”</span> in your playlists
+            </>
+          ) : (
+            "find it in your Apple Music playlists"
+          )}
+        </p>
+      ) : null}
       {error ? <p className={NOTE_CLASS}>{error}</p> : null}
       {unmatched.length > 0 ? (
-        <div className="mt-2">
-          <p className={NOTE_CLASS}>
-            {unmatched.length} {unmatched.length === 1 ? "song didn't" : "songs didn't"} make the
-            apple music playlist:
-          </p>
-          <ul className="mt-1 space-y-1">
-            {unmatched.map((track) => (
-              <li key={track.submission_id} className={NOTE_CLASS}>
-                {track.title} by {track.artist} ({reasonLabel(track)}
-                {track.source_url ? (
-                  <>
-                    ,{" "}
-                    <a
-                      href={track.source_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={ROW_LINK_CLASS}
-                    >
-                      listen on {track.source}
-                    </a>
-                  </>
-                ) : null}
-                )
-              </li>
-            ))}
-          </ul>
-        </div>
+        <ul className="space-y-1">
+          {unmatched.map((track) => (
+            <li key={track.submission_id} className={NOTE_CLASS}>
+              {track.title} · {track.artist}
+              <span className="text-ink-muted"> — {reasonLabel(track)}</span>
+              {track.source_url ? (
+                <>
+                  {" "}
+                  <a
+                    href={track.source_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={ROW_LINK_CLASS}
+                  >
+                    listen on {track.source}
+                  </a>
+                </>
+              ) : null}
+            </li>
+          ))}
+        </ul>
       ) : null}
       {/* The reassurance interstitial is a modal, so it sits at the top of the
           surface ladder: a `sheet` (Z4) panel wearing `shadow-z4`, whose 1px
@@ -261,6 +275,6 @@ export function AppleMusicPlaylist({ mixId }: { mixId: string }) {
           </div>
         </div>
       ) : null}
-    </div>
+    </PlaylistRow>
   );
 }

@@ -40,16 +40,16 @@ describe("AppleMusicPlaylist", () => {
     render(<AppleMusicPlaylist mixId="r1" />);
 
     expect(
-      await screen.findByRole("button", { name: /build this mystery mix in apple music/i }),
+      await screen.findByRole("button", { name: /build this playlist in apple music/i }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/requires apple music subscription/i)).toBeInTheDocument();
+    expect(screen.getByText(/needs an apple music subscription/i)).toBeInTheDocument();
   });
 
   it("shows a reassurance modal before authorizing — Apple's own sign-in, password-free, check the url (MYS-254)", async () => {
     render(<AppleMusicPlaylist mixId="r1" />);
 
     await userEvent.click(
-      await screen.findByRole("button", { name: /build this mystery mix in apple music/i }),
+      await screen.findByRole("button", { name: /build this playlist in apple music/i }),
     );
 
     expect(
@@ -66,7 +66,7 @@ describe("AppleMusicPlaylist", () => {
     render(<AppleMusicPlaylist mixId="r1" />);
 
     await userEvent.click(
-      await screen.findByRole("button", { name: /build this mystery mix in apple music/i }),
+      await screen.findByRole("button", { name: /build this playlist in apple music/i }),
     );
     await userEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
 
@@ -80,7 +80,7 @@ describe("AppleMusicPlaylist", () => {
     render(<AppleMusicPlaylist mixId="r1" />);
 
     await userEvent.click(
-      await screen.findByRole("button", { name: /build this mystery mix in apple music/i }),
+      await screen.findByRole("button", { name: /build this playlist in apple music/i }),
     );
     await userEvent.click(screen.getByRole("button", { name: /continue to apple music/i }));
 
@@ -103,14 +103,14 @@ describe("AppleMusicPlaylist", () => {
 
     // Links the LIBRARY, never the playlist: iOS dead-ends on a library-playlist
     // deep link with "Item Not Available" (MYS-190).
-    const link = await screen.findByRole("link", { name: /open apple music library/i });
+    const link = await screen.findByRole("link", { name: /open your apple music library/i });
     expect(link).toHaveAttribute("href", "https://music.apple.com/library");
     // Apple exposes no deep link to a library playlist, so the member makes the
     // last hop by hand and the title is how they find it (MYS-190).
     expect(
-      screen.getByText(/go to your Apple Music playlists and look for/i),
+      screen.getByText(/find/i),
     ).toBeInTheDocument();
-    expect(screen.getByText(/Mix: Mix 1/)).toBeInTheDocument();
+    expect(screen.getByText(/Mix 1/)).toBeInTheDocument();
   });
 
   it("still shows a usable link when the name was never recorded", async () => {
@@ -124,9 +124,9 @@ describe("AppleMusicPlaylist", () => {
     render(<AppleMusicPlaylist mixId="r1" />);
 
     expect(
-      await screen.findByRole("link", { name: /open apple music library/i }),
+      await screen.findByRole("link", { name: /open your apple music library/i }),
     ).toHaveAttribute("href", "https://music.apple.com/library");
-    expect(screen.getByText(/go to your Apple Music playlists to find it/i)).toBeInTheDocument();
+    expect(screen.getByText(/find it in your Apple Music playlists/i)).toBeInTheDocument();
   });
 
   it("on desktop, links straight to the exact playlist (MYS-214)", async () => {
@@ -140,10 +140,10 @@ describe("AppleMusicPlaylist", () => {
 
     render(<AppleMusicPlaylist mixId="r1" />);
 
-    const link = await screen.findByRole("link", { name: /open in apple music/i });
+    const link = await screen.findByRole("link", { name: /open playlist in apple music/i });
     expect(link).toHaveAttribute("href", "https://music.apple.com/library/playlist/p.ABC");
     // No "find it yourself" prompt needed — the link goes straight there.
-    expect(screen.queryByText(/go to your Apple Music playlists/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/find it in your Apple Music playlists/i)).not.toBeInTheDocument();
   });
 
   it("on mobile, ignores the direct link and prompts to find it by name", async () => {
@@ -158,10 +158,10 @@ describe("AppleMusicPlaylist", () => {
 
     render(<AppleMusicPlaylist mixId="r1" />);
 
-    const link = await screen.findByRole("link", { name: /open apple music library/i });
+    const link = await screen.findByRole("link", { name: /open your apple music library/i });
     expect(link).toHaveAttribute("href", "https://music.apple.com/library");
     expect(
-      screen.getByText(/go to your Apple Music playlists and look for/i),
+      screen.getByText(/find/i),
     ).toBeInTheDocument();
 
     uaSpy.mockRestore();
@@ -188,10 +188,10 @@ describe("AppleMusicPlaylist", () => {
 
     render(<AppleMusicPlaylist mixId="r1" />);
 
-    const link = await screen.findByRole("link", { name: /open apple music library/i });
+    const link = await screen.findByRole("link", { name: /open your apple music library/i });
     expect(link).toHaveAttribute("href", "https://music.apple.com/library");
     expect(
-      screen.getByText(/go to your Apple Music playlists and look for/i),
+      screen.getByText(/find/i),
     ).toBeInTheDocument();
 
     uaSpy.mockRestore();
@@ -213,7 +213,7 @@ describe("AppleMusicPlaylist", () => {
 
     render(<AppleMusicPlaylist mixId="r1" />);
 
-    const link = await screen.findByRole("link", { name: /open in apple music/i });
+    const link = await screen.findByRole("link", { name: /open playlist in apple music/i });
     expect(link).toHaveAttribute("href", "https://music.apple.com/library/playlist/p.ABC");
 
     uaSpy.mockRestore();
@@ -232,7 +232,7 @@ describe("AppleMusicPlaylist", () => {
 
     render(<AppleMusicPlaylist mixId="r1" />);
     await userEvent.click(
-      await screen.findByRole("button", { name: /build this mystery mix in apple music/i }),
+      await screen.findByRole("button", { name: /build this playlist in apple music/i }),
     );
     await userEvent.click(screen.getByRole("button", { name: /continue to apple music/i }));
 
@@ -240,9 +240,14 @@ describe("AppleMusicPlaylist", () => {
     expect(mockCreate).toHaveBeenCalledWith("r1", "mut-123");
     // Desktop (jsdom default) gets the exact-playlist link straight away.
     expect(
-      await screen.findByRole("link", { name: /open in apple music/i }),
+      await screen.findByRole("link", { name: /open playlist in apple music/i }),
     ).toHaveAttribute("href", "https://music.apple.com/library/playlist/p.NEW");
-    expect(screen.getByText(/Mix: Mix 1/)).toBeInTheDocument();
+    // No playlist name here, deliberately. On desktop the link opens the exact
+    // playlist, so naming it was pure confirmation; the row's status already
+    // reports what landed. The name survives only in the MOBILE case, where
+    // Apple exposes no deep link and the title is genuinely how you find it
+    // (MYS-214) — see the mobile test above.
+    expect(screen.queryByText(/Mix 1/)).not.toBeInTheDocument();
   });
 
   it("asks the user to retry when the apple connection expired", async () => {
@@ -250,14 +255,14 @@ describe("AppleMusicPlaylist", () => {
 
     render(<AppleMusicPlaylist mixId="r1" />);
     await userEvent.click(
-      await screen.findByRole("button", { name: /build this mystery mix in apple music/i }),
+      await screen.findByRole("button", { name: /build this playlist in apple music/i }),
     );
     await userEvent.click(screen.getByRole("button", { name: /continue to apple music/i }));
 
     expect(await screen.findByText(/connection expired/i)).toBeInTheDocument();
     // Still offering the retry, not a dead end.
     expect(
-      screen.getByRole("button", { name: /build this mystery mix in apple music/i }),
+      screen.getByRole("button", { name: /build this playlist in apple music/i }),
     ).toBeEnabled();
   });
 
@@ -266,7 +271,7 @@ describe("AppleMusicPlaylist", () => {
 
     render(<AppleMusicPlaylist mixId="r1" />);
     await userEvent.click(
-      await screen.findByRole("button", { name: /build this mystery mix in apple music/i }),
+      await screen.findByRole("button", { name: /build this playlist in apple music/i }),
     );
     await userEvent.click(screen.getByRole("button", { name: /continue to apple music/i }));
 
@@ -277,7 +282,7 @@ describe("AppleMusicPlaylist", () => {
     it("does not show an unmatched list before generation", async () => {
       render(<AppleMusicPlaylist mixId="r1" />);
 
-      await screen.findByRole("button", { name: /build this mystery mix in apple music/i });
+      await screen.findByRole("button", { name: /build this playlist in apple music/i });
       expect(screen.queryByText(/didn't make the apple music playlist/i)).not.toBeInTheDocument();
     });
 
@@ -302,15 +307,15 @@ describe("AppleMusicPlaylist", () => {
 
       render(<AppleMusicPlaylist mixId="r1" />);
       await userEvent.click(
-        await screen.findByRole("button", { name: /build this mystery mix in apple music/i }),
+        await screen.findByRole("button", { name: /build this playlist in apple music/i }),
       );
       await userEvent.click(screen.getByRole("button", { name: /continue to apple music/i }));
 
       expect(
-        await screen.findByText(/1 song didn't make the apple music playlist:/i),
+        await screen.findByText(/1 missing/i),
       ).toBeInTheDocument();
       expect(
-        screen.getByText(/Song One by Artist One \(not found on apple music\)/),
+        screen.getByText(/Song One · Artist One/),
       ).toBeInTheDocument();
     });
 
@@ -335,12 +340,12 @@ describe("AppleMusicPlaylist", () => {
 
       render(<AppleMusicPlaylist mixId="r1" />);
       await userEvent.click(
-        await screen.findByRole("button", { name: /build this mystery mix in apple music/i }),
+        await screen.findByRole("button", { name: /build this playlist in apple music/i }),
       );
       await userEvent.click(screen.getByRole("button", { name: /continue to apple music/i }));
 
       expect(
-        await screen.findByText(/Song Two by Artist Two \(not on apple music,/),
+        await screen.findByText(/Song Two · Artist Two/),
       ).toBeInTheDocument();
       const link = screen.getByRole("link", { name: /listen on youtube/i });
       expect(link).toHaveAttribute("href", "https://youtube.com/watch?v=abc123");
@@ -367,12 +372,12 @@ describe("AppleMusicPlaylist", () => {
 
       render(<AppleMusicPlaylist mixId="r1" />);
       await userEvent.click(
-        await screen.findByRole("button", { name: /build this mystery mix in apple music/i }),
+        await screen.findByRole("button", { name: /build this playlist in apple music/i }),
       );
       await userEvent.click(screen.getByRole("button", { name: /continue to apple music/i }));
 
       expect(
-        await screen.findByText(/Song One by Artist One \(not found on apple music\)/),
+        await screen.findByText(/Song One · Artist One/),
       ).toBeInTheDocument();
       expect(screen.queryByText(/listen on/i)).not.toBeInTheDocument();
     });

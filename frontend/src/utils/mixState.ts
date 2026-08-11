@@ -1,5 +1,23 @@
 import type { MixState } from "../services/api";
 
+/**
+ * User-facing name for each mix state. Shared, because it was duplicated
+ * byte-for-byte between the club page and the mix page — and a state that reads
+ * one way in a list and another on its own page is precisely the drift this map
+ * exists to prevent.
+ *
+ * `closed` reads as **"completed"** (Dawn, 2026-08-11). The API value stays
+ * `closed`; only the word shown to people changed. Note the *action* that
+ * produces it is still "close mix" — closing is the verb, completed is the
+ * resulting state.
+ */
+export const MIX_STATE_LABEL: Record<MixState, string> = {
+  pending: "upcoming",
+  open_submission: "submissions open",
+  open_voting: "voting open",
+  closed: "completed",
+};
+
 /** A mix is "active" when members can act on it right now. */
 export function isActiveMix(state: MixState): boolean {
   return state === "open_submission" || state === "open_voting";

@@ -94,7 +94,7 @@ export function AdminMetricsScreen({
             <Stat label="pending" value={metrics.pending_mixes} />
             <Stat label="open for submissions" value={metrics.open_submission_mixes} />
             <Stat label="open for voting" value={metrics.open_voting_mixes} />
-            <Stat label="closed" value={metrics.closed_mixes} />
+            <Stat label="completed" value={metrics.closed_mixes} />
           </StatGroup>
 
           <StatGroup title="submissions and engagement">

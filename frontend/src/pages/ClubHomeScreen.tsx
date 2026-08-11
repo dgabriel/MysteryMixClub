@@ -5,7 +5,6 @@ import type {
   ClubMember,
   Mix,
   MixResults,
-  MixState,
 } from "../services/api";
 import { Button } from "../components/Button";
 import { Badge } from "../components/Badge";
@@ -22,19 +21,12 @@ import { DeadlineChip } from "../components/DeadlineChip";
 import { DeadlineWindowField } from "../components/DeadlineWindowField";
 import { InviteShare } from "../components/InviteShare";
 import { UserAvatar } from "../components/avatars/UserAvatar";
-import { MIX_BADGE, MIX_ORDER, mixGroup } from "../utils/mixState";
+import { MIX_BADGE, MIX_ORDER, MIX_STATE_LABEL, mixGroup } from "../utils/mixState";
 import {
   daysAndHoursToTotal,
   hoursToDaysAndHours,
   validateWindowHours,
 } from "../utils/deadlineWindow";
-
-const MIX_STATE_LABEL: Record<MixState, string> = {
-  pending: "upcoming",
-  open_submission: "submissions open",
-  open_voting: "voting open",
-  closed: "closed",
-};
 
 type ClubHomeScreenProps = {
   club: Club;

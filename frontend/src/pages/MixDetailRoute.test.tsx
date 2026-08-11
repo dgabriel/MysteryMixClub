@@ -1087,7 +1087,8 @@ describe("MixDetailRoute", () => {
     it("is not rendered once the mix is closed", async () => {
       mockGetMix.mockResolvedValue(mix({ state: "closed" }));
       renderMix();
-      await screen.findByText(/closed/i);
+      // The API state is still `closed`; the label people read is "completed".
+      await screen.findByText(/completed/i);
       expect(screen.queryByRole("button", { name: "extend voting" })).not.toBeInTheDocument();
     });
   });
@@ -2000,10 +2001,7 @@ describe("MixDetailRoute", () => {
       await screen.findByText(/vote tally/i);
 
       const link = screen.getByRole("link", { name: /open playlist in youtube/i });
-      expect(link).toHaveAttribute(
-        "href",
-        "https://www.youtube.com/watch_videos?video_ids=a,b",
-      );
+      expect(link).toHaveAttribute("href", "https://www.youtube.com/watch_videos?video_ids=a,b");
       expect(screen.getByText("2 of 2 on YouTube")).toBeInTheDocument();
     });
   });
@@ -2134,7 +2132,9 @@ describe("MixDetailRoute", () => {
       // composer collapsed: textarea gone. MYS-257: one note per player per
       // song, so "leave a note" is replaced by "edit note".
       expect(within(card).queryByRole("textbox")).not.toBeInTheDocument();
-      expect(within(card).queryByRole("button", { name: /^leave a note$/i })).not.toBeInTheDocument();
+      expect(
+        within(card).queryByRole("button", { name: /^leave a note$/i }),
+      ).not.toBeInTheDocument();
       expect(within(card).getByRole("button", { name: /edit note/i })).toBeInTheDocument();
     });
 
@@ -2427,9 +2427,7 @@ describe("MixDetailRoute", () => {
       await user.click(within(card).getByRole("button", { name: /^leave note$/i }));
 
       expect(mockAddNote).toHaveBeenCalledWith("mine", "glad I finally caught this one");
-      expect(
-        await within(card).findByText("glad I finally caught this one"),
-      ).toBeInTheDocument();
+      expect(await within(card).findByText("glad I finally caught this one")).toBeInTheDocument();
     });
 
     // ----- Most Noted ------------------------------------------------------ //
@@ -2586,7 +2584,9 @@ describe("MixDetailRoute", () => {
 
       await screen.findByRole("heading", { name: /^winners$/i });
       const section = sectionFor(/^winners$/i);
-      expect(within(section).getByText("tied for the most votes this mystery mix")).toBeInTheDocument();
+      expect(
+        within(section).getByText("tied for the most votes this mystery mix"),
+      ).toBeInTheDocument();
       expect(within(section).getByText("Bad Guy")).toBeInTheDocument();
       expect(within(section).getByText("Vienna")).toBeInTheDocument();
       // the lower-voted song is not co-recognized

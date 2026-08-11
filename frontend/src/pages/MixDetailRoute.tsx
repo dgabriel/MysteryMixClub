@@ -46,7 +46,7 @@ import { Button } from "../components/Button";
 import { Badge } from "../components/Badge";
 import { Card } from "../components/Card";
 import { PaperSurface } from "../components/PaperSurface";
-import { MIX_BADGE, mixGroup } from "../utils/mixState";
+import { MIX_BADGE, MIX_STATE_LABEL, mixGroup } from "../utils/mixState";
 import { TextField } from "../components/TextField";
 import { FormError } from "../components/FormError";
 import { ConcentricRings } from "../components/ConcentricRings";
@@ -63,13 +63,6 @@ import { DeadlineChip } from "../components/DeadlineChip";
 import { HelpLink } from "../components/HelpLink";
 import { toDatetimeLocalValue } from "../utils/deadline";
 
-const STATE_LABEL: Record<MixState, string> = {
-  pending: "upcoming",
-  open_submission: "submissions open",
-  open_voting: "voting open",
-  closed: "closed",
-};
-
 /**
  * Announces mix.state transitions to screen readers (MYS-121) — the poll
  * that refreshes this data has no visual "page changed" cue of its own, so
@@ -84,7 +77,7 @@ function MixStateAnnouncer({ state }: { state: MixState }) {
   useEffect(() => {
     if (previous.current !== state) {
       previous.current = state;
-      setMessage(`this mystery mix is now ${STATE_LABEL[state]}`);
+      setMessage(`this mystery mix is now ${MIX_STATE_LABEL[state]}`);
     }
   }, [state]);
 
@@ -658,7 +651,7 @@ export function MixDetailRoute() {
               {/* Same weight ladder as the club page's mix list: a solid green
                 fill while the mix is live, a bright neutral for upcoming, quiet
                 once it is done. */}
-              <Badge variant={MIX_BADGE[mixGroup(mix.state)]}>{STATE_LABEL[mix.state]}</Badge>
+              <Badge variant={MIX_BADGE[mixGroup(mix.state)]}>{MIX_STATE_LABEL[mix.state]}</Badge>
             </div>
           </div>
           <MixStateAnnouncer state={mix.state} />

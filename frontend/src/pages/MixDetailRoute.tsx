@@ -1243,7 +1243,7 @@ function SubmittedSongCard({
   onSaveNote,
 }: {
   submission: SubmissionResult;
-  eyebrow: string;
+  eyebrow: ReactNode;
   busy: boolean;
   removing: boolean;
   onEdit: () => void;
@@ -1484,7 +1484,15 @@ function SubmissionManager({
             <li key={s.id}>
               <SubmittedSongCard
                 submission={s}
-                eyebrow={numbered ? `song ${i + 1}` : "your song"}
+                eyebrow={
+                  numbered ? (
+                    <>
+                      song <span className="text-accent">{i + 1}</span>
+                    </>
+                  ) : (
+                    "your song"
+                  )
+                }
                 busy={busy}
                 removing={removingId === s.id}
                 onEdit={() => setEditingId(s.id)}

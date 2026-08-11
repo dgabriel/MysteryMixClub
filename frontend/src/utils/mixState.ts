@@ -7,9 +7,11 @@ import type { MixState } from "../services/api";
  * exists to prevent.
  *
  * `closed` reads as **"completed"** (Dawn, 2026-08-11). The API value stays
- * `closed`; only the word shown to people changed. Note the *action* that
- * produces it is still "close mix" — closing is the verb, completed is the
- * resulting state.
+ * `closed`; only the word shown to people changed, and only *here* — the admin
+ * metrics breakdown and the help page's lifecycle line deliberately still say
+ * "closed", because this rename is about the state badge people see on a card,
+ * not a rewrite of the app's vocabulary. The *action* is still "close mix" too:
+ * closing is the verb, completed is the resulting state.
  */
 export const MIX_STATE_LABEL: Record<MixState, string> = {
   pending: "upcoming",

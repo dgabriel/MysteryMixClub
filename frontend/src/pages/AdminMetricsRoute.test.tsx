@@ -149,7 +149,7 @@ describe("AdminMetricsRoute", () => {
       expect(statValue("mystery mixes", "pending")).toBe("206");
       expect(statValue("mystery mixes", "open for submissions")).toBe("207");
       expect(statValue("mystery mixes", "open for voting")).toBe("208");
-      expect(statValue("mystery mixes", "completed")).toBe("209");
+      expect(statValue("mystery mixes", "closed")).toBe("209");
     });
 
     it("renders every submissions-and-engagement count, averaging to one decimal", async () => {

@@ -556,8 +556,13 @@ describe("MixDetailRoute", () => {
       renderMix();
 
       await screen.findByText("Song One");
-      // filled slot 1 carries its number; the empty slot 2 prompts "submit song 2"
-      expect(screen.getByText("song 1")).toBeInTheDocument();
+      // filled slot 1 carries its number; the empty slot 2 prompts "submit song 2".
+      // The numeral is accented, so the eyebrow is split across a span and a
+      // plain string — match the element whose OWN text is exactly "song 1"
+      // rather than a bare string, which only sees direct text children.
+      expect(
+        screen.getByText((_content, el) => el?.tagName === "SPAN" && el.textContent === "song 1"),
+      ).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: /^submit song 2$/i })).toBeInTheDocument();
     });
 

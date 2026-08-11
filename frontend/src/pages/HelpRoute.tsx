@@ -58,7 +58,7 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
       },
       {
         q: "what are the stages?",
-        a: "pending (no theme set yet) → open for submission → open for voting → completed. one mystery mix is active at a time, and they move forward only.",
+        a: "pending (no theme set yet) → open for submission → open for voting → closed. one mystery mix is active at a time, and they move forward only.",
       },
       {
         q: "who sets the theme and deadlines?",

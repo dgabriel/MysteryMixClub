@@ -1,4 +1,4 @@
-import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { useBlocker, useNavigate, useParams } from "react-router-dom";
 import {
   ApiError,
@@ -1370,7 +1370,7 @@ function ComposerSlot({
   onSubmit,
   onCancel,
 }: {
-  heading: string;
+  heading: ReactNode;
   idPrefix: string;
   submitting: boolean;
   onSubmit: (song: ResolvedSong, note: string | null) => Promise<boolean> | void;
@@ -1468,7 +1468,15 @@ function SubmissionManager({
           editingId === s.id ? (
             <li key={s.id}>
               <ComposerSlot
-                heading={numbered ? `change song ${i + 1}` : "change your song"}
+                heading={
+                  numbered ? (
+                    <>
+                      change song <span className="text-accent">{i + 1}</span>
+                    </>
+                  ) : (
+                    "change your song"
+                  )
+                }
                 idPrefix={`edit-${s.id}`}
                 submitting={submitting}
                 onSubmit={async (song, note) => {
@@ -1502,7 +1510,18 @@ function SubmissionManager({
           return (
             <li key={`slot-${slot}`}>
               <ComposerSlot
-                heading={numbered ? `submit song ${slot + 1}` : "submit a song"}
+                heading={
+                  numbered ? (
+                    <>
+                      {/* The slot number in the accent, matching the mix number
+                          on the page above. This card is `bg-card`, so `accent`
+                          is 7.42:1 here — not the paper ramp. */}
+                      submit song <span className="text-accent">{slot + 1}</span>
+                    </>
+                  ) : (
+                    "submit a song"
+                  )
+                }
                 idPrefix={`slot-${slot}`}
                 submitting={submitting}
                 onSubmit={onAdd}

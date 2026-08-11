@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import {
   ApiError,
   resolveSong,
@@ -145,7 +145,7 @@ type SongSearchCardProps = {
   onSubmit?: (song: ResolvedSong) => Promise<boolean> | boolean | void;
   submitting?: boolean;
   eyebrow?: string;
-  heading?: string;
+  heading?: ReactNode;
   /** Namespaces this card's input ids so several cards can share a screen
    *  without colliding ids (MYS-142 multi-slot submit). Defaults to "song" for
    *  the single-instance usages. */
@@ -314,7 +314,9 @@ export function SongSearchCard({
         {eyebrow}
       </span>
       <div className="mt-2 flex items-center gap-2">
-        <h2 className="font-display text-sm font-bold uppercase leading-none">{heading}</h2>
+        <h2 className="font-display text-[1.375rem] font-bold uppercase leading-none tracking-display-snug">
+          {heading}
+        </h2>
         {helpAnchor ? <HelpLink anchor={helpAnchor} /> : null}
       </div>
 
@@ -359,14 +361,6 @@ export function SongSearchCard({
           {mode === "link" ? (
             <form onSubmit={handleResolveLink} noValidate className="mt-5">
               <div>
-                <span className="block font-mono text-mini uppercase tracking-mono-caps text-muted-foreground">
-                  service
-                </span>
-                <p className="mt-2 font-mono text-sm text-foreground">
-                  {SERVICES.find((s) => s.key === service)?.label ?? "auto-detected"}
-                </p>
-              </div>
-              <div className="mt-5">
                 <TextField
                   id={`${idPrefix}-link`}
                   label="paste a link"

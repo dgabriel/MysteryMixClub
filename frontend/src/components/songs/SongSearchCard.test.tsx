@@ -73,22 +73,32 @@ describe("SongSearchCard", () => {
     );
   });
 
-  it("shows an auto-detected service label instead of a picker, updating as the link is typed (MYS-255)", async () => {
+  it("names no service before the link resolves, but still detects one (MYS-255, revised)", async () => {
+    // MYS-255 replaced an interactive service picker with an auto-detected
+    // label. The picker staying gone is still the rule; the *label* was removed
+    // on 2026-08-11 (Dawn) because it announced a guess about a link the user
+    // had not finished pasting, and the resolved card already names the source.
     const user = userEvent.setup();
     render(<SongSearchCard />);
 
     await user.click(screen.getByRole("button", { name: /paste a link/i }));
 
-    // No interactive service picker left at all.
+    // No interactive service picker — the surviving half of MYS-255.
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
 
-    // Defaults to Spotify (no preferredService passed) before anything is typed.
-    expect(screen.getByText("Spotify")).toBeInTheDocument();
-
-    await user.type(screen.getByLabelText(/paste a link/i), "https://www.youtube.com/watch?v=z");
-    expect(screen.getByText("YouTube")).toBeInTheDocument();
+    // ...and no service named before there is anything to name.
     expect(screen.queryByText("Spotify")).not.toBeInTheDocument();
+    expect(screen.queryByText("YouTube")).not.toBeInTheDocument();
+
+    // Detection still runs — it drives the placeholder, so the field shows the
+    // shape of link it expects without asserting what the user pasted.
+    const field = screen.getByLabelText(/paste a link/i);
+    expect(field).toHaveAttribute("placeholder", "https://open.spotify.com/track/…");
+
+    await user.type(field, "https://www.youtube.com/watch?v=z");
+    expect(field).toHaveAttribute("placeholder", "https://www.youtube.com/watch?v=…");
+    expect(screen.queryByText("YouTube")).not.toBeInTheDocument();
   });
 
   it("resolves a pasted link and renders the result card with platform links", async () => {
@@ -97,10 +107,7 @@ describe("SongSearchCard", () => {
     render(<SongSearchCard />);
 
     await user.click(screen.getByRole("button", { name: /paste a link/i }));
-    await user.type(
-      screen.getByLabelText(/paste a link/i),
-      "https://open.spotify.com/track/2",
-    );
+    await user.type(screen.getByLabelText(/paste a link/i), "https://open.spotify.com/track/2");
     await user.click(screen.getByRole("button", { name: /^resolve$/i }));
 
     expect(await screen.findByRole("heading", { name: "bad guy" })).toBeInTheDocument();
@@ -171,8 +178,8 @@ describe("SongSearchCard", () => {
     mockResolve.mockRejectedValue(
       new ApiError(
         404,
-        "this bandcamp link redirects to a custom domain, which isn't supported "
-          + "yet. try a link that stays on bandcamp.com",
+        "this bandcamp link redirects to a custom domain, which isn't supported " +
+          "yet. try a link that stays on bandcamp.com",
       ),
     );
     const user = userEvent.setup();

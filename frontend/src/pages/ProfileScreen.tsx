@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from "react";
 import { PASSWORD_MIN_LENGTH, type Club } from "../services/api";
 import { Button } from "../components/Button";
+import { PaperSurface } from "../components/PaperSurface";
 import { TextField } from "../components/TextField";
 import { Badge } from "../components/Badge";
 import { Card } from "../components/Card";
@@ -119,103 +120,108 @@ export function ProfileScreen({
 }: ProfileScreenProps) {
   if (loading) {
     return (
-      <main className="flex flex-1 items-center justify-center px-4 sm:px-8">
-        <ConcentricRings size={88} spinning className="mx-auto" />
-      </main>
+      <PaperSurface nested>
+        <main className="flex flex-1 items-center justify-center px-4 sm:px-8">
+          <ConcentricRings size={88} spinning onPaper className="mx-auto" />
+        </main>
+      </PaperSurface>
     );
   }
 
   return (
-    <main className="mx-auto w-full max-w-lg px-4 pt-8 pb-16 sm:px-8">
-      <div className="flex items-center gap-4">
-        {/* Amber because this is the viewer's own avatar — the roster on
-            ClubHomeScreen deliberately stays neutral. */}
-        {userId ? <UserAvatar userId={userId} size={56} accent /> : null}
-        <h1 className="font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
-          profile
-        </h1>
-      </div>
-
-      {error ? (
-        // A failed *load*, not a form error: the profile never resolved, so
-        // this replaces the screen's content rather than describing a field.
-        // ADR 0004's `destructive-text` category is form validation only, so
-        // this stays ordinary body copy in `foreground`.
-        <p role="alert" className="mt-6 text-sm leading-[1.72] text-foreground">
-          {error}
-        </p>
-      ) : (
-        <div className="mt-8">
-          {email ? (
-            <section className="mb-12">
-              <h2 className="font-mono text-meta uppercase tracking-mono-wide text-accent">
-                email
-              </h2>
-              {/* Mono at normal tracking is the system's signature for a value. */}
-              <p className="mt-2 font-mono text-sm text-foreground">{email}</p>
-            </section>
-          ) : null}
-
-          <NameForm
-            displayName={displayName}
-            onSaveName={onSaveName}
-            saving={saving}
-            saveError={saveError}
-            saved={saved}
-          />
-
-          <PreferredServicePicker
-            current={preferredService}
-            onSave={onSavePreferredService}
-            saving={savingService}
-            saveError={saveServiceError}
-            saved={savedService}
-          />
-
-          <ArchivedClubs clubs={archivedClubs} onOpenClub={onOpenClub} />
-
-          <AccountSettingsSection
-            hasPassword={hasPassword}
-            onSetPassword={onSetPassword}
-            settingPassword={settingPassword}
-            setPasswordError={setPasswordError}
-            googleEnabled={googleEnabled}
-            googleLinked={googleLinked}
-            onLinkGoogle={onLinkGoogle}
-            linkingGoogle={linkingGoogle}
-            linkGoogleError={linkGoogleError}
-            googleLinkNotice={googleLinkNotice}
-          />
-
-          <section className="mt-12 border-t border-hairline pt-10">
-            <h2 className="font-mono text-meta uppercase tracking-mono-wide text-accent">
-              security
-            </h2>
-            <p className="mt-2 text-sm leading-[1.72] text-muted-foreground">
-              signs you out on every device and browser.
-            </p>
-            {/* Recoverable — you sign back in. `ghost`, not `destructive`. */}
-            <div className="mt-4">
-              <Button variant="ghost" onClick={onLogoutAll} disabled={logoutAllBusy}>
-                {logoutAllBusy ? "signing out…" : "log out of all devices"}
-              </Button>
-            </div>
-          </section>
-
-          <ExportDataSection
-            onExportData={onExportData}
-            exportingData={exportingData}
-            exportDataError={exportDataError}
-          />
-
-          <DeleteAccountSection
-            onDeleteAccount={onDeleteAccount}
-            deletingAccount={deletingAccount}
-            deleteAccountError={deleteAccountError}
-          />
+    // Light surface (ADR 0013), `nested` because AuthedLayout owns the shell.
+    <PaperSurface nested>
+      <main className="mx-auto w-full max-w-lg px-4 pt-8 pb-16 sm:px-8">
+        <div className="flex items-center gap-4">
+          {/* Amber because this is the viewer's own avatar — the roster on
+              ClubHomeScreen deliberately stays neutral. */}
+          {userId ? <UserAvatar userId={userId} size={56} accent /> : null}
+          <h1 className="font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
+            profile
+          </h1>
         </div>
-      )}
-    </main>
+
+        {error ? (
+          // A failed *load*, not a form error: the profile never resolved, so
+          // this replaces the screen's content rather than describing a field.
+          // ADR 0004's error category is form validation only, so this stays
+          // ordinary body copy — `ink`, this page's primary text.
+          <p role="alert" className="mt-6 text-sm leading-[1.72] text-ink">
+            {error}
+          </p>
+        ) : (
+          <div className="mt-8">
+            {email ? (
+              <section className="mb-12">
+                <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-accent">
+                  email
+                </h2>
+                {/* Mono at normal tracking is the system's signature for a value. */}
+                <p className="mt-2 font-mono text-sm text-ink">{email}</p>
+              </section>
+            ) : null}
+
+            <NameForm
+              displayName={displayName}
+              onSaveName={onSaveName}
+              saving={saving}
+              saveError={saveError}
+              saved={saved}
+            />
+
+            <PreferredServicePicker
+              current={preferredService}
+              onSave={onSavePreferredService}
+              saving={savingService}
+              saveError={saveServiceError}
+              saved={savedService}
+            />
+
+            <ArchivedClubs clubs={archivedClubs} onOpenClub={onOpenClub} />
+
+            <AccountSettingsSection
+              hasPassword={hasPassword}
+              onSetPassword={onSetPassword}
+              settingPassword={settingPassword}
+              setPasswordError={setPasswordError}
+              googleEnabled={googleEnabled}
+              googleLinked={googleLinked}
+              onLinkGoogle={onLinkGoogle}
+              linkingGoogle={linkingGoogle}
+              linkGoogleError={linkGoogleError}
+              googleLinkNotice={googleLinkNotice}
+            />
+
+            <section className="mt-12 border-t border-ink-hairline pt-10">
+              <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-accent">
+                security
+              </h2>
+              <p className="mt-2 text-sm leading-[1.72] text-ink-muted">
+                signs you out on every device and browser.
+              </p>
+              {/* Recoverable — you sign back in. `ghost`, not `destructive`. */}
+              <div className="mt-4">
+                <Button onPaper variant="ghost" onClick={onLogoutAll} disabled={logoutAllBusy}>
+                  {logoutAllBusy ? "signing out…" : "log out of all devices"}
+                </Button>
+              </div>
+            </section>
+
+            <ExportDataSection
+              onExportData={onExportData}
+              exportingData={exportingData}
+              exportDataError={exportDataError}
+            />
+
+            <DeleteAccountSection
+              onDeleteAccount={onDeleteAccount}
+              deletingAccount={deletingAccount}
+              deleteAccountError={deleteAccountError}
+            />
+          </div>
+        )}
+      </main>
+    </PaperSurface>
   );
 }
 
@@ -243,13 +249,16 @@ function NameForm({
 
   return (
     <section>
-      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-accent">display name</h2>
+      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-accent">
+        display name
+      </h2>
       <form onSubmit={handleSubmit} noValidate className="mt-4 space-y-6">
         {/* `invalid` rather than TextField's own `error` prop: the message is
             rendered by this form (it always was) and keeps its own id, and
             `invalid` emits exactly the `aria-invalid` this field carried
-            before while also turning the underline `destructive-text`. */}
+            before while also turning the underline `ink-destructive`. */}
         <TextField
+          onPaper
           id="profile-display-name"
           label="name"
           name="display-name"
@@ -261,13 +270,17 @@ function NameForm({
           invalid={Boolean(saveError)}
           aria-describedby={saveError ? "profile-display-name-error" : undefined}
         />
-        {saveError ? <FormError id="profile-display-name-error">{saveError}</FormError> : null}
+        {saveError ? (
+          <FormError onPaper id="profile-display-name-error">
+            {saveError}
+          </FormError>
+        ) : null}
         <div className="flex items-center gap-4">
-          <Button type="submit" disabled={saving}>
+          <Button onPaper type="submit" disabled={saving}>
             {saving ? "saving…" : "save"}
           </Button>
           {saved ? (
-            <span className="font-mono text-mini uppercase tracking-mono-caps text-muted-foreground">
+            <span className="font-mono text-mini uppercase tracking-mono-caps text-ink-muted">
               saved
             </span>
           ) : null}
@@ -314,12 +327,12 @@ function PreferredServicePicker({
   return (
     <section className="mt-12">
       <span className="flex items-center gap-2">
-        <h2 className="font-mono text-meta uppercase tracking-mono-wide text-accent">
+        <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-accent">
           preferred service
         </h2>
-        <HelpLink anchor="listening-playlists" />
+        <HelpLink anchor="listening-playlists" onPaper />
       </span>
-      <p className="mt-1 text-sm leading-[1.72] text-muted-foreground">
+      <p className="mt-1 text-sm leading-[1.72] text-ink-muted">
         platform links show this service first.
       </p>
       <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2">
@@ -334,8 +347,8 @@ function PreferredServicePicker({
               className={[
                 "py-1.5 font-mono uppercase tracking-mono text-mini transition-colors duration-150",
                 isActive
-                  ? "text-foreground underline underline-offset-[3px] cursor-default"
-                  : "text-muted-foreground hover:text-accent disabled:cursor-not-allowed disabled:text-muted-foreground",
+                  ? "text-ink underline underline-offset-[3px] cursor-default"
+                  : "text-ink-muted hover:text-ink-accent disabled:cursor-not-allowed disabled:text-ink-muted",
               ].join(" ")}
             >
               {label}
@@ -343,14 +356,14 @@ function PreferredServicePicker({
           );
         })}
         {saved ? (
-          <span className="font-mono text-mini uppercase tracking-mono-caps text-muted-foreground">
+          <span className="font-mono text-mini uppercase tracking-mono-caps text-ink-muted">
             saved
           </span>
         ) : null}
       </div>
       {saveError ? (
         <div className="mt-2">
-          <FormError>{saveError}</FormError>
+          <FormError onPaper>{saveError}</FormError>
         </div>
       ) : null}
     </section>
@@ -373,11 +386,11 @@ function PreferredServicePicker({
 function ArchivedClubs({ clubs, onOpenClub }: { clubs: Club[]; onOpenClub: (id: string) => void }) {
   return (
     <section className="mt-12">
-      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-accent">
+      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-accent">
         archived ({clubs.length})
       </h2>
       {clubs.length === 0 ? (
-        <p className="mt-4 text-sm leading-[1.72] text-muted-foreground">no completed clubs yet</p>
+        <p className="mt-4 text-sm leading-[1.72] text-ink-muted">no completed clubs yet</p>
       ) : (
         <ul className="mt-4 space-y-4">
           {clubs.map((club) => (
@@ -388,6 +401,10 @@ function ArchivedClubs({ clubs, onOpenClub }: { clubs: Club[]; onOpenClub: (id: 
                   onClick={() => onOpenClub(club.id)}
                   className="block w-full text-left"
                 >
+                  {/* Inside a `Card`, so this keeps the DARK ramp — the frame
+                      model: a card is its own surface and never mixes the two
+                      (ADR 0013). `ink-muted` here would be the light page's
+                      grey on near-black. */}
                   <span className="flex items-center gap-1.5 font-mono text-mini uppercase tracking-mono-caps text-muted-foreground">
                     <CrownIcon className="text-muted-foreground" />
                     club
@@ -447,8 +464,8 @@ function AccountSettingsSection({
   googleLinkNotice?: { message: string; isError: boolean } | null;
 }) {
   return (
-    <section className="mt-12 border-t border-hairline pt-10">
-      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-accent">
+    <section className="mt-12 border-t border-ink-hairline pt-10">
+      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-accent">
         account settings
       </h2>
 
@@ -463,7 +480,7 @@ function AccountSettingsSection({
 
       {googleEnabled ? (
         <div className="mt-8">
-          <p className="font-mono text-mini uppercase tracking-mono-caps text-muted-foreground">
+          <p className="font-mono text-mini uppercase tracking-mono-caps text-ink-muted">
             google account
           </p>
 
@@ -472,7 +489,7 @@ function AccountSettingsSection({
               role={googleLinkNotice.isError ? "alert" : "status"}
               className={[
                 "mt-2 text-sm leading-[1.72]",
-                googleLinkNotice.isError ? "text-foreground" : "text-muted-foreground",
+                googleLinkNotice.isError ? "text-ink" : "text-ink-muted",
               ].join(" ")}
             >
               {googleLinkNotice.message}
@@ -480,15 +497,21 @@ function AccountSettingsSection({
           ) : null}
 
           {googleLinked ? (
-            <p className="mt-2 font-mono text-sm text-muted-foreground">linked</p>
+            <p className="mt-2 font-mono text-sm text-ink-muted">linked</p>
           ) : (
             <div className="mt-3">
-              <Button variant="ghost" type="button" onClick={onLinkGoogle} disabled={linkingGoogle}>
+              <Button
+                onPaper
+                variant="ghost"
+                type="button"
+                onClick={onLinkGoogle}
+                disabled={linkingGoogle}
+              >
                 {linkingGoogle ? "connecting…" : "link google account"}
               </Button>
               {linkGoogleError ? (
                 <div className="mt-3">
-                  <FormError>{linkGoogleError}</FormError>
+                  <FormError onPaper>{linkGoogleError}</FormError>
                 </div>
               ) : null}
             </div>
@@ -521,25 +544,22 @@ function SetPasswordForm({
   if (hasPassword) {
     return (
       <>
-        <p className="font-mono text-mini uppercase tracking-mono-caps text-muted-foreground">
-          password
-        </p>
-        <p className="mt-2 font-mono text-sm text-muted-foreground">password set</p>
+        <p className="font-mono text-mini uppercase tracking-mono-caps text-ink-muted">password</p>
+        <p className="mt-2 font-mono text-sm text-ink-muted">password set</p>
       </>
     );
   }
 
   return (
     <>
-      <p className="font-mono text-mini uppercase tracking-mono-caps text-muted-foreground">
-        password
-      </p>
-      <p className="mt-1 text-sm leading-[1.72] text-muted-foreground">
+      <p className="font-mono text-mini uppercase tracking-mono-caps text-ink-muted">password</p>
+      <p className="mt-1 text-sm leading-[1.72] text-ink-muted">
         add a password so you can sign in without a magic link.
       </p>
       <form onSubmit={handleSubmit} noValidate className="mt-4 space-y-3">
         <div>
           <TextField
+            onPaper
             id="profile-set-password"
             label="new password"
             type="password"
@@ -555,19 +575,21 @@ function SetPasswordForm({
           />
           {saveError ? (
             <div className="mt-2">
-              <FormError id="profile-set-password-error">{saveError}</FormError>
+              <FormError onPaper id="profile-set-password-error">
+                {saveError}
+              </FormError>
             </div>
           ) : (
             <p
               id="profile-set-password-hint"
-              className="mt-2 text-meta leading-[1.6] text-muted-foreground"
+              className="mt-2 text-meta leading-[1.6] text-ink-muted"
             >
               {PASSWORD_MIN_LENGTH} characters or more.
             </p>
           )}
         </div>
         <div>
-          <Button type="submit" disabled={saving || !password}>
+          <Button onPaper type="submit" disabled={saving || !password}>
             {saving ? "saving…" : "set password"}
           </Button>
         </div>
@@ -588,23 +610,31 @@ function ExportDataSection({
   exportDataError?: string | null;
 }) {
   return (
-    <section className="mt-12 border-t border-hairline pt-10">
-      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-accent">your data</h2>
-      <p className="mt-2 text-sm leading-[1.72] text-muted-foreground">
+    <section className="mt-12 border-t border-ink-hairline pt-10">
+      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-accent">
+        your data
+      </h2>
+      <p className="mt-2 text-sm leading-[1.72] text-ink-muted">
         download a copy of everything tied to your account: profile, submissions, votes, and notes.
       </p>
-      <p className="mt-2 text-sm leading-[1.72] text-muted-foreground">
+      <p className="mt-2 text-sm leading-[1.72] text-ink-muted">
         we provide this to meet gdpr's right of access (article 15) and data portability (article
         20).
       </p>
       <div className="mt-4">
-        <Button variant="ghost" type="button" onClick={onExportData} disabled={exportingData}>
+        <Button
+          onPaper
+          variant="ghost"
+          type="button"
+          onClick={onExportData}
+          disabled={exportingData}
+        >
           {exportingData ? "preparing…" : "download my data"}
         </Button>
       </div>
       {exportDataError ? (
         <div className="mt-3">
-          <FormError>{exportDataError}</FormError>
+          <FormError onPaper>{exportDataError}</FormError>
         </div>
       ) : null}
     </section>
@@ -635,23 +665,24 @@ function DeleteAccountSection({
   const [confirming, setConfirming] = useState(false);
 
   return (
-    <section className="mt-12 border-t border-hairline pt-10">
-      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-accent">
+    <section className="mt-12 border-t border-ink-hairline pt-10">
+      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-accent">
         delete account
       </h2>
       {!confirming ? (
         <div className="mt-4">
-          <Button variant="ghost" type="button" onClick={() => setConfirming(true)}>
+          <Button onPaper variant="ghost" type="button" onClick={() => setConfirming(true)}>
             delete my account
           </Button>
         </div>
       ) : (
         <div className="mt-4 space-y-4">
-          <p className="text-sm leading-[1.72] text-muted-foreground">
+          <p className="text-sm leading-[1.72] text-ink-muted">
             this permanently deletes your account and all your data. are you sure?
           </p>
           <div className="flex items-center gap-4">
             <Button
+              onPaper
               variant="destructive"
               type="button"
               onClick={onDeleteAccount}
@@ -660,6 +691,7 @@ function DeleteAccountSection({
               {deletingAccount ? "deleting…" : "yes, delete my account"}
             </Button>
             <Button
+              onPaper
               variant="ghost"
               type="button"
               onClick={() => setConfirming(false)}
@@ -672,7 +704,7 @@ function DeleteAccountSection({
       )}
       {deleteAccountError ? (
         <div className="mt-3">
-          <FormError>{deleteAccountError}</FormError>
+          <FormError onPaper>{deleteAccountError}</FormError>
         </div>
       ) : null}
     </section>

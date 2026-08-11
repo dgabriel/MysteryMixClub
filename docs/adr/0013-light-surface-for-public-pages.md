@@ -21,7 +21,8 @@
 > carried the first **modal** (`bg-sheet`, Z4), which stays dark — see
 > "Modals" below.
 >
-> **And again, MysteryMixClub-0fnf.34:** `/clubs/new`. Nine routes. The first
+> **And again, MysteryMixClub-0fnf.34:** `/clubs/new` and `/profile`. Ten
+> routes. The first
 > screen that is *only* a form, so it exercised the field primitives'
 > `onPaper` paths end to end (`TextField`, `DeadlineWindowField`, `FormError`)
 > and the drawn checkbox. The checkbox is the one thing that needed a
@@ -61,8 +62,8 @@ foreground ramp, brand accent included.
 ## Decision
 
 **`/login`, `/about`, `/terms`, `/privacy`, `/help`, `/home`, `/clubs/:id`,
-`/mixes/:id` and `/clubs/new` render on a light surface with their own derived
-`ink` ramp. Everything else stays exactly as ADR 0009 specifies.**
+`/mixes/:id`, `/clubs/new` and `/profile` render on a light surface with their
+own derived `ink` ramp. Everything else stays exactly as ADR 0009 specifies.**
 
 Four parts:
 

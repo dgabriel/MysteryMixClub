@@ -2012,8 +2012,42 @@ function VotingSection({
                         >
                           {entry.title}
                         </h3>
-                        <span className="shrink-0 font-mono uppercase tracking-mono-caps text-mini text-accent">
-                          {isSelected ? "voted" : ""}
+                        {/* The vote control. An UNSELECTED card previously showed
+                            nothing here, so its only interactive cue was a
+                            `hairline` border at ~1.2:1 plus a hover state — and
+                            hover does not exist on touch. That left the one card
+                            you cannot vote for ("your submission") as the most
+                            marked row in the list.
+
+                            The empty ring is what says "this is a control". It
+                            is `muted-foreground` at 6.01:1 on `card`, well clear
+                            of the 3:1 a non-text graphic owes. Selected fills it
+                            amber and adds the word, so state is never colour
+                            alone (WCAG 1.4.11). At the vote limit the ring drops
+                            to `ghost-foreground`, the ramp's disabled-glyph step
+                            — WCAG exempts inactive controls, and it reads as
+                            unavailable rather than merely dim.
+
+                            NOTE (MysteryMixClub-ih3l): this is a binary marker
+                            because a player may currently vote for a song at
+                            most once. When weighted voting lands it becomes a
+                            quantity, so expect to replace this rather than
+                            extend it. */}
+                        <span className="flex shrink-0 items-center gap-2">
+                          <span className="font-mono uppercase tracking-mono-caps text-mini text-accent">
+                            {isSelected ? "voted" : ""}
+                          </span>
+                          <span
+                            aria-hidden="true"
+                            className={[
+                              "block h-4 w-4 rounded-full border transition-colors duration-150",
+                              isSelected
+                                ? "border-accent bg-accent"
+                                : disabled
+                                  ? "border-ghost-foreground"
+                                  : "border-muted-foreground group-hover:border-foreground",
+                            ].join(" ")}
+                          />
                         </span>
                       </div>
                       {entry.artist ? (

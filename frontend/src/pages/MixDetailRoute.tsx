@@ -46,6 +46,7 @@ import { Button } from "../components/Button";
 import { Badge } from "../components/Badge";
 import { Card } from "../components/Card";
 import { PaperSurface } from "../components/PaperSurface";
+import { PaperSectionHeading } from "../components/PaperSectionHeading";
 import { PlaylistRow } from "../components/playlists/PlaylistRow";
 import { ServiceMark } from "../components/playlists/ServiceMark";
 import { PlaylistsSection } from "../components/playlists/PlaylistsSection";
@@ -827,6 +828,11 @@ function OrganizerControls({
   // input.
   const [extendingOpen, setExtendingOpen] = useState(false);
   const [chosenDeadline, setChosenDeadline] = useState("");
+  // Collapsed by default. These are the only controls on the screen a member
+  // never sees, and on a mix the organizer is only reading, they were three
+  // rectangles competing with the mix itself. Tidied away, not removed — one
+  // click brings the whole set back.
+  const [toolsOpen, setToolsOpen] = useState(false);
 
   if (state === "closed") return null;
   const next: MixState =
@@ -876,100 +882,17 @@ function OrganizerControls({
     if (ok) setExtendingOpen(false);
   }
 
-  if (next === "closed" && confirmingClose) {
-    return (
-      <div className="mt-6 space-y-4 border-t border-ink-hairline pt-6">
-        <p className="text-sm leading-[1.72] text-ink-muted">
-          {isFinalMix
-            ? "this closes the mystery mix and completes the club. it can't be undone."
-            : "this closes the mystery mix and opens the next one, starting its submission deadline. it can't be undone."}
-        </p>
-        <div className="flex items-center gap-4">
-          <Button onPaper type="button" onClick={() => onAdvance(next)} disabled={advancing}>
-            {advancing ? busyLabel : "yes, close mix"}
-          </Button>
-          <Button
-            onPaper
-            variant="ghost"
-            type="button"
-            onClick={() => setConfirmingClose(false)}
-            disabled={advancing}
-          >
-            cancel
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  if (state === "open_voting" && confirmingRollback) {
-    return (
-      <div className="mt-6 space-y-4 border-t border-ink-hairline pt-6">
-        <p className="text-sm leading-[1.72] text-ink-muted">
-          {totalVotes > 0
-            ? `this reopens submissions with a fresh window and discards ${totalVotes} vote${totalVotes === 1 ? "" : "s"} already cast. it can't be undone.`
-            : "this reopens submissions with a fresh window. it can't be undone."}
-        </p>
-        <div className="flex items-center gap-4">
-          <Button onPaper type="button" onClick={onRollback} disabled={rollingBack}>
-            {rollingBack ? "reopening…" : "yes, reopen submissions"}
-          </Button>
-          <Button
-            variant="ghost"
-            type="button"
-            onClick={() => setConfirmingRollback(false)}
-            disabled={rollingBack}
-          >
-            cancel
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  if (state === "open_voting" && extendingOpen) {
-    return (
-      <div className="mt-6 space-y-4 border-t border-ink-hairline pt-6">
-        <label htmlFor="extend-voting-deadline" className="block">
-          <span className="block font-mono uppercase tracking-mono-caps text-mini text-ink-muted">
-            new voting deadline (up to 48h later)
-          </span>
-          {/* Underline-only, matching TextField exactly: the resting underline
-              is `muted-foreground` rather than `hairline` because here the
-              underline IS the affordance and a ~1.2:1 edge fails WCAG 1.4.11.
-              `focus:outline-none` is only acceptable because `focus:border-ink-accent`
-              replaces the indicator it removes. Disabled drops the value to
-              `muted-foreground` instead of fading the field (no opacity-50). */}
-          <input
-            id="extend-voting-deadline"
-            type="datetime-local"
-            value={chosenDeadline}
-            min={minDatetime}
-            max={maxDatetime}
-            onChange={(e) => setChosenDeadline(e.target.value)}
-            disabled={extendingVoting}
-            className="mt-2 w-full rounded-none border-0 border-b border-ink-muted bg-transparent px-0 py-1 font-mono text-sm text-ink focus:border-ink-accent focus:outline-none disabled:cursor-not-allowed disabled:text-ink-muted"
-          />
-        </label>
-        <div className="flex items-center gap-4">
-          <Button
-            type="button"
-            onClick={handleSaveExtend}
-            disabled={extendingVoting || !chosenDeadline}
-          >
-            {extendingVoting ? "saving…" : "save"}
-          </Button>
-          <Button
-            variant="ghost"
-            type="button"
-            onClick={() => setExtendingOpen(false)}
-            disabled={extendingVoting}
-          >
-            cancel
-          </Button>
-        </div>
-      </div>
-    );
+  function toggleTools() {
+    const next = !toolsOpen;
+    // Collapsing abandons any half-finished step. Leaving a confirm armed
+    // behind a closed panel would mean re-opening it lands on "yes, close mix"
+    // rather than the row of tools you asked for.
+    if (!next) {
+      setConfirmingClose(false);
+      setConfirmingRollback(false);
+      setExtendingOpen(false);
+    }
+    setToolsOpen(next);
   }
 
   // A mix can't open without a theme (MYS-211) — block the click rather than
@@ -978,50 +901,191 @@ function OrganizerControls({
   // the lifecycle needs this check.
   const blockedByMissingTheme = state === "pending" && !hasTheme;
 
-  return (
-    <div className="mt-6 border-t border-ink-hairline pt-6">
-      {/* Named, because these are the only controls on the screen a member
-          never sees — an unlabelled row of admin actions reads as part of the
-          mix itself. */}
-      <h2 className="font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
-        admin tools
-      </h2>
-      <div className="mt-3 flex flex-wrap items-center gap-4">
-        <Button
-          onPaper
-          type="button"
-          onClick={() => (next === "closed" ? setConfirmingClose(true) : onAdvance(next))}
-          disabled={busy || blockedByMissingTheme}
-        >
-          {advancing ? busyLabel : label}
-        </Button>
-        {/* The two escape hatches are text actions, not buttons. Only the action
-            that moves the mix forward is a button — extending and reopening are
-            rare corrections, and three filled rectangles in a row gave the
-            header no hierarchy at all. `reopen submissions` also discards cast
-            votes, so it keeps its own confirm step rather than relying on
-            weight to slow anyone down. */}
-        {state === "open_voting" ? (
-          <Button onPaper variant="link" type="button" onClick={openExtendPicker} disabled={busy}>
-            extend voting
-          </Button>
-        ) : null}
-        {state === "open_voting" ? (
+  /** What sits inside the disclosure: a confirm step, the extend picker, or
+   *  the tools themselves. Only one is ever showing. */
+  function panel() {
+    if (next === "closed" && confirmingClose) {
+      return (
+        <div className="space-y-4">
+          <p className="text-sm leading-[1.72] text-ink-muted">
+            {isFinalMix
+              ? "this closes the mystery mix and completes the club. it can't be undone."
+              : "this closes the mystery mix and opens the next one, starting its submission deadline. it can't be undone."}
+          </p>
+          <div className="flex items-center gap-4">
+            <Button onPaper type="button" onClick={() => onAdvance(next)} disabled={advancing}>
+              {advancing ? busyLabel : "yes, close mix"}
+            </Button>
+            <Button
+              onPaper
+              variant="ghost"
+              type="button"
+              onClick={() => setConfirmingClose(false)}
+              disabled={advancing}
+            >
+              cancel
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    if (state === "open_voting" && confirmingRollback) {
+      return (
+        <div className="space-y-4">
+          <p className="text-sm leading-[1.72] text-ink-muted">
+            {totalVotes > 0
+              ? `this reopens submissions with a fresh window and discards ${totalVotes} vote${totalVotes === 1 ? "" : "s"} already cast. it can't be undone.`
+              : "this reopens submissions with a fresh window. it can't be undone."}
+          </p>
+          <div className="flex items-center gap-4">
+            <Button onPaper type="button" onClick={onRollback} disabled={rollingBack}>
+              {rollingBack ? "reopening…" : "yes, reopen submissions"}
+            </Button>
+            <Button
+              onPaper
+              variant="ghost"
+              type="button"
+              onClick={() => setConfirmingRollback(false)}
+              disabled={rollingBack}
+            >
+              cancel
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    if (state === "open_voting" && extendingOpen) {
+      return (
+        <div className="space-y-4">
+          <label htmlFor="extend-voting-deadline" className="block">
+            <span className="block font-mono uppercase tracking-mono-caps text-mini text-ink-muted">
+              new voting deadline (up to 48h later)
+            </span>
+            {/* Underline-only, matching TextField exactly: the resting underline
+              is `muted-foreground` rather than `hairline` because here the
+              underline IS the affordance and a ~1.2:1 edge fails WCAG 1.4.11.
+              `focus:outline-none` is only acceptable because `focus:border-ink-accent`
+              replaces the indicator it removes. Disabled drops the value to
+              `muted-foreground` instead of fading the field (no opacity-50). */}
+            <input
+              id="extend-voting-deadline"
+              type="datetime-local"
+              value={chosenDeadline}
+              min={minDatetime}
+              max={maxDatetime}
+              onChange={(e) => setChosenDeadline(e.target.value)}
+              disabled={extendingVoting}
+              className="mt-2 w-full rounded-none border-0 border-b border-ink-muted bg-transparent px-0 py-1 font-mono text-sm text-ink focus:border-ink-accent focus:outline-none disabled:cursor-not-allowed disabled:text-ink-muted"
+            />
+          </label>
+          <div className="flex items-center gap-4">
+            <Button
+              onPaper
+              type="button"
+              onClick={handleSaveExtend}
+              disabled={extendingVoting || !chosenDeadline}
+            >
+              {extendingVoting ? "saving…" : "save"}
+            </Button>
+            <Button
+              onPaper
+              variant="ghost"
+              type="button"
+              onClick={() => setExtendingOpen(false)}
+              disabled={extendingVoting}
+            >
+              cancel
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <>
+        {/* All three are buttons at one weight. They are peers — each moves or
+            corrects the mix's state — and none of them is the thing the
+            organizer came to this screen for, so none gets the amber fill. The
+            disclosure is what keeps the set from shouting at an organizer who
+            is only reading; inside it, an amber row would just move the same
+            noise one click deeper. */}
+        <div className="flex flex-wrap items-center gap-3">
           <Button
             onPaper
-            variant="link"
+            variant="ghost"
             type="button"
-            onClick={() => setConfirmingRollback(true)}
-            disabled={busy}
+            onClick={() => (next === "closed" ? setConfirmingClose(true) : onAdvance(next))}
+            disabled={busy || blockedByMissingTheme}
           >
-            reopen submissions
+            {advancing ? busyLabel : label}
           </Button>
+          {state === "open_voting" ? (
+            <Button
+              onPaper
+              variant="ghost"
+              type="button"
+              onClick={openExtendPicker}
+              disabled={busy}
+            >
+              extend voting
+            </Button>
+          ) : null}
+          {/* `reopen submissions` discards cast votes, so it keeps its own
+              confirm step rather than relying on weight to slow anyone down. */}
+          {state === "open_voting" ? (
+            <Button
+              onPaper
+              variant="ghost"
+              type="button"
+              onClick={() => setConfirmingRollback(true)}
+              disabled={busy}
+            >
+              reopen submissions
+            </Button>
+          ) : null}
+        </div>
+        {blockedByMissingTheme ? (
+          <p className="mt-3 text-sm leading-[1.72] text-ink-muted">
+            set a theme below before opening this mystery mix.
+          </p>
         ) : null}
-      </div>
-      {blockedByMissingTheme ? (
-        <p className="mt-3 text-sm leading-[1.72] text-ink-muted">
-          set a theme below before opening this mystery mix.
-        </p>
+      </>
+    );
+  }
+
+  return (
+    <div className="mt-6 border-t border-ink-hairline pt-6">
+      {/* A heading wrapping a button: the standard disclosure shape, so the
+          label stays in the screen's heading outline while still being the
+          thing you click. `min-h-6` is the WCAG 2.5.8 target floor — this is a
+          standalone control, not a link inside a sentence, so the inline
+          exception doesn't cover it. */}
+      <h2>
+        <button
+          type="button"
+          onClick={toggleTools}
+          aria-expanded={toolsOpen}
+          aria-controls="admin-tools-panel"
+          className="flex min-h-6 items-center gap-2 font-mono uppercase tracking-mono-wide text-meta text-ink-muted transition-colors duration-150 hover:text-ink"
+        >
+          <svg
+            aria-hidden="true"
+            width="8"
+            height="8"
+            viewBox="0 0 8 8"
+            className={`shrink-0 transition-transform duration-150 ${toolsOpen ? "rotate-90" : ""}`}
+          >
+            <path d="M2 0.5 L6.5 4 L2 7.5 Z" fill="currentColor" />
+          </svg>
+          admin tools
+        </button>
+      </h2>
+      {toolsOpen ? (
+        <div id="admin-tools-panel" className="mt-4">
+          {panel()}
+        </div>
       ) : null}
     </div>
   );
@@ -1420,7 +1484,7 @@ function ComposerSlot({
       />
       {onCancel ? (
         <div className="mt-4">
-          <Button variant="ghost" type="button" onClick={onCancel} disabled={submitting}>
+          <Button onPaper variant="ghost" type="button" onClick={onCancel} disabled={submitting}>
             cancel
           </Button>
         </div>
@@ -1896,10 +1960,8 @@ function VotingSection({
       </PlaylistsSection>
       <SongsMaybeMissing mixId={mixId} sourceOnly={toSourceOnly(entries)} />
       <div className="flex items-baseline justify-between gap-4">
-        <span className="flex items-center gap-2">
-          <h2 className="font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
-            cast your votes
-          </h2>
+        <span className="flex items-baseline gap-2">
+          <PaperSectionHeading>cast your votes</PaperSectionHeading>
           <HelpLink anchor="voting-results" onPaper />
         </span>
         <span
@@ -2193,9 +2255,9 @@ function VotingTally({
         <AppleMusicPlaylist mixId={mixId} entryCount={entries.length} />
       </PlaylistsSection>
       <SongsMaybeMissing mixId={mixId} sourceOnly={toSourceOnly(entries)} />
-      <h2 className="mt-8 font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
+      <PaperSectionHeading className="mt-8">
         vote tally ({voteCounts.length} songs)
-      </h2>
+      </PaperSectionHeading>
       <p role="status" aria-live="polite" className="sr-only">
         {totalVotes} votes counted so far
       </p>
@@ -2594,9 +2656,7 @@ function ResultsSection({
 
       {submissions.length > 0 ? (
         <section>
-          <h2 className="font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
-            the picks ({submissions.length})
-          </h2>
+          <PaperSectionHeading>the picks ({submissions.length})</PaperSectionHeading>
           <ul className="mt-4 space-y-4">
             {rankSongs(submissions).map((s) => (
               <li key={s.submission_id}>
@@ -2741,10 +2801,10 @@ function VibeWinnersSection({ winners }: { winners: WinnerReveal[] }) {
     <section>
       {/* The crown is amber: winning a mix is an achievement, and there is
           exactly one winner section per reveal. */}
-      <h2 className="inline-flex items-center gap-1.5 font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
+      <PaperSectionHeading className="inline-flex items-center gap-2">
         <CrownIcon className="text-ink-accent" />
         {tie ? "winners" : "winner"}
-      </h2>
+      </PaperSectionHeading>
       <p className="mt-2 text-sm leading-[1.72] text-ink-muted">
         {tie ? "the most-loved picks this mystery mix" : "the most-loved pick this mystery mix"}
       </p>
@@ -2784,9 +2844,7 @@ function VibePicksSection({
 }) {
   return (
     <section>
-      <h2 className="font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
-        the picks ({picks.length})
-      </h2>
+      <PaperSectionHeading>the picks ({picks.length})</PaperSectionHeading>
       <ul className="mt-4 space-y-4">
         {picks.map((p) => (
           // `RevealPick` carries no `album_art_url` (the vibe-safe shape is
@@ -2835,10 +2893,10 @@ function MostNotedSection({ winners }: { winners: MostNotedWinner[] }) {
   const tie = winners.length > 1;
   return (
     <section>
-      <h2 className="inline-flex items-center gap-1.5 font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
+      <PaperSectionHeading className="inline-flex items-center gap-2">
         <CrownIcon className="text-ink-accent" />
         most noted
-      </h2>
+      </PaperSectionHeading>
       <p className="mt-2 text-sm leading-[1.72] text-ink-muted">
         {tie ? "the picks that got everyone talking" : "the pick that got everyone talking"}
       </p>
@@ -2888,10 +2946,10 @@ function WinnersSection({
   const tie = winners.length > 1;
   return (
     <section>
-      <h2 className="inline-flex items-center gap-1.5 font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
+      <PaperSectionHeading className="inline-flex items-center gap-2">
         <CrownIcon className="text-ink-accent" />
         {tie ? "winners" : "winner"}
-      </h2>
+      </PaperSectionHeading>
       <p className="mt-2 text-sm leading-[1.72] text-ink-muted">
         {tie ? "tied for the most votes this mystery mix" : "the most votes this mystery mix"}
       </p>
@@ -2972,9 +3030,7 @@ function rankSongs(
 function LeaderboardSection({ entries }: { entries: LeaderboardEntry[] }) {
   return (
     <section>
-      <h2 className="font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
-        leaderboard
-      </h2>
+      <PaperSectionHeading>leaderboard</PaperSectionHeading>
       <ul className="mt-4 divide-y divide-ink-hairline border-y border-ink-hairline">
         {entries.map((e) => (
           <li key={e.user_id} className="flex items-baseline justify-between gap-4 py-3">

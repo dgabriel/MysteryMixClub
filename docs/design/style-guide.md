@@ -359,6 +359,7 @@ system repo ships exactly that import; it is not carried over.
 | Display / Hero             | Big Shoulders Display | `clamp(2.5rem, 8vw, 5.5rem)`| 800    | uppercase | `display-hero`| 0.88        |
 | Display / Section head     | Big Shoulders Display | `clamp(2rem, 5vw, 3.25rem)` | 700    | uppercase | `display-snug`| 0.90        |
 | Display / Screen title     | Big Shoulders Display | `1.75rem`                   | 800    | uppercase | `display-snug`| 0.90        |
+| Display / Major section    | Big Shoulders Display | `1.375rem`                  | 700    | uppercase | `display-snug`| 1.0         |
 | Display / Card title       | Big Shoulders Display | `0.875rem`                  | 700    | uppercase | inherit       | 1.0         |
 | Display / Item title       | Big Shoulders Display | `0.875rem`                  | 600    | uppercase | inherit       | normal      |
 | Body / Lead                | Libre Franklin        | `0.9375rem`                 | 400    | none      | normal        | 1.72        |
@@ -403,6 +404,18 @@ the sweep ticket. Do not use it in new work.)
 6. **Figures are tabular for free** — JetBrains Mono is monospaced, so no
    `font-variant-numeric` rule is needed. Score columns are still
    right-aligned.
+7. **Section headings come in two ranks, and they must not look alike.**
+   - *Major* — a section a reader navigates **to**: the mix screen's
+     `playlists`, `cast your votes`, `the picks`, `leaderboard`, `winners`.
+     Display / Major section, `text-ink` on paper (`foreground` on dark).
+     `PaperSectionHeading` is the light-surface implementation.
+   - *Minor* — a label **about** a section: `admin tools`, `songs that may not
+     be on all playlists`, note counts. Mono / Eyebrow (wide) in
+     `ink-muted` / `muted-foreground`.
+
+   Rendering both ranks as mono eyebrows is what made the mix screen read as
+   one flat run of grey type with no landmarks. **If a new section can't
+   decide which rank it is, it is minor.**
 
 ### Sub-`text-xs` scale
 

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { PaperSectionHeading } from "../PaperSectionHeading";
 
 /**
  * The "playlists" block: a heading and the ruled stack of service rows.
@@ -10,10 +11,10 @@ import type { ReactNode } from "react";
 export function PlaylistsSection({ children }: { children: ReactNode }) {
   return (
     <section className="mt-8">
-      <h2 className="font-mono uppercase tracking-mono-wide text-meta text-ink-muted">playlists</h2>
+      <PaperSectionHeading>playlists</PaperSectionHeading>
       {/* Ruled top and bottom so the block reads as one object on the page
           without needing a surface behind it. */}
-      <div className="mt-3 divide-y divide-ink-hairline border-y border-ink-hairline">
+      <div className="mt-4 divide-y divide-ink-hairline border-y border-ink-hairline">
         {children}
       </div>
     </section>

@@ -1270,7 +1270,14 @@ function SubmittedSongCard({
   }
 
   return (
-    <Card>
+    // A hover highlight, deliberately NOT the lift that club rows and mix rows
+    // use. Those cards are buttons; this one is not — its actions are the
+    // controls inside it — so `hover:shadow-z3` would advertise an affordance
+    // that does not exist (see `Card`). One surface step to `popover` plus the
+    // stronger hairline says "you are on this row" without claiming it is
+    // clickable. Every text token still clears AA on `popover`: `foreground`
+    // 16.64:1, `muted-foreground` 5.61:1, `subtle-foreground` 4.59:1.
+    <Card className="transition-colors duration-150 hover:border-hairline-strong hover:bg-popover">
       <div className="flex items-start gap-4">
         <AlbumArt url={submission.album_art_url} alt={`${submission.title} album art`} size={56} />
         <div className="min-w-0 flex-1">

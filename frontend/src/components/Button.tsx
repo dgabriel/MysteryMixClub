@@ -18,6 +18,11 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
  * `tracking-mono`, `rounded-hair`. Buttons are inner elements — they sit on a
  * surface rather than being one, so none of them carries a shadow.
  *
+ * Padding is `px-4 py-2`, down from `px-6 py-3` (Dawn, 2026-08-11 — filled
+ * buttons were dominating the screens they sat on). That lands a button at
+ * ~29px tall, which still clears the 24x24 CSS-px floor WCAG 2.5.8 sets for a
+ * target; do not shrink the vertical padding further without re-checking it.
+ *
  * Disabled removes the box entirely — no fill, no edge — and drops the label
  * to `muted-foreground`. Two things ruled out the alternatives:
  *
@@ -51,16 +56,16 @@ const disabledLabel = {
 const variants: Record<Variant, string> = {
   // The primary CTA — an `accent` fill. Amber's category is action, and this is
   // the action.
-  primary: "rounded-hair px-6 py-3 bg-accent text-accent-foreground hover:bg-accent-hover",
+  primary: "rounded-hair px-4 py-2 bg-accent text-accent-foreground hover:bg-accent-hover",
   // Secondary. A `tile` fill, not a transparent box: a `hairline` edge alone is
   // ~1.1:1 and cannot be the sole thing identifying a control (WCAG 1.4.11).
   // Hover lifts one surface step to `panel` rather than adding a shadow, since
   // a flush button that grew a shadow would read as floating.
-  ghost: "rounded-hair px-6 py-3 bg-tile text-foreground border border-hairline hover:bg-panel",
+  ghost: "rounded-hair px-4 py-2 bg-tile text-foreground border border-hairline hover:bg-panel",
   // Danger. Separate from `link` so a delete affordance reads as danger rather
   // than as an ordinary action — `destructive` is a fill color and never text.
   destructive:
-    "rounded-hair px-6 py-3 bg-destructive text-destructive-foreground hover:bg-destructive-hover",
+    "rounded-hair px-4 py-2 bg-destructive text-destructive-foreground hover:bg-destructive-hover",
   // Text button. Blue because it is navigation-shaped; always underlined, so
   // the affordance never rests on hue alone.
   link: "text-link underline underline-offset-[3px] hover:text-foreground",
@@ -78,7 +83,7 @@ const variants: Record<Variant, string> = {
 const paperVariants: Partial<Record<Variant, string>> = {
   link: "text-ink-link underline underline-offset-[3px] hover:text-ink",
   ghost:
-    "rounded-hair px-6 py-3 bg-transparent text-ink border border-ink-muted hover:bg-ink-hairline",
+    "rounded-hair px-4 py-2 bg-transparent text-ink border border-ink-muted hover:bg-ink-hairline",
 };
 
 export function Button({

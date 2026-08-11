@@ -980,7 +980,13 @@ function OrganizerControls({
 
   return (
     <div className="mt-6 border-t border-ink-hairline pt-6">
-      <div className="flex items-center gap-4">
+      {/* Named, because these are the only controls on the screen a member
+          never sees — an unlabelled row of admin actions reads as part of the
+          mix itself. */}
+      <h2 className="font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
+        admin tools
+      </h2>
+      <div className="mt-3 flex flex-wrap items-center gap-4">
         <Button
           onPaper
           type="button"

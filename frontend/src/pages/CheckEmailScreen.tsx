@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Button } from "../components/Button";
 import { ContactEmail } from "../components/ContactEmail";
 import { ConcentricRings } from "../components/ConcentricRings";
-import { PublicSurface } from "../components/PublicSurface";
+import { PaperSurface } from "../components/PaperSurface";
 import { WaitlistForm } from "../components/WaitlistForm";
 import { getWaitlistEnabled } from "../services/api";
 
@@ -34,7 +34,7 @@ export function CheckEmailScreen({ email, onBack }: CheckEmailScreenProps) {
   }, []);
 
   return (
-    <PublicSurface>
+    <PaperSurface>
       <main className="flex flex-1 flex-col items-center justify-center px-4 sm:px-8">
         <div className="w-full max-w-sm text-center">
           {/* The disc, unaccented. Amber-as-identity is bounded to the shared
@@ -80,6 +80,6 @@ export function CheckEmailScreen({ email, onBack }: CheckEmailScreenProps) {
           )}
         </div>
       </main>
-    </PublicSurface>
+    </PaperSurface>
   );
 }

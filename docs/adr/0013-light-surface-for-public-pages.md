@@ -2,8 +2,16 @@
 
 **Status:** Accepted
 **Date:** 2026-08-10
-**Amends:** ADR 0009 (for the five public routes only)
-**Issue:** MysteryMixClub-0fnf.29
+**Amends:** ADR 0009 (for the routes listed below only)
+**Issue:** MysteryMixClub-0fnf.29, extended by MysteryMixClub-0fnf.30
+
+> **Amended 2026-08-10 (same day), MysteryMixClub-0fnf.30.** Dawn extended the
+> light surface to the authed `/home` screen: *"I also want the light background
+> / dark cards."* Two things changed and are folded into the text below —
+> `PublicSurface` was renamed **`PaperSurface`** (it now wraps an authed screen,
+> so a name describing the audience had become a lie), and the **frame model**
+> below is now a first-class part of this decision rather than a hypothetical.
+> The scope is `/login`, `/about`, `/terms`, `/privacy`, `/help`, **and `/home`**.
 
 ## Context
 
@@ -37,22 +45,41 @@ foreground ramp, brand accent included.
 
 ## Decision
 
-**The five public routes — `/login`, `/about`, `/terms`, `/privacy`, `/help` —
-render on a light surface with their own derived `ink` ramp. Everything else
-stays exactly as ADR 0009 specifies.**
+**`/login`, `/about`, `/terms`, `/privacy`, `/help` and `/home` render on a
+light surface with their own derived `ink` ramp. Everything else stays exactly
+as ADR 0009 specifies.**
 
 Four parts:
 
 ### 1. The light surface is opt-in per route, never global
 
 `body` stays `bg-floor`. The light surface is applied by wrapping a page in
-`<PublicSurface>`. This is deliberate and is the single most important
+`<PaperSurface>`. This is deliberate and is the single most important
 implementation detail: the experiment that led here set the background on
 `body`, which silently applied it to every authed screen too. A global light
 background would have required re-deriving the whole app.
 
 `TopNav` is excluded. It carries its own dark fill and reads as app chrome above
 a light page.
+
+### 1a. The frame model: light page, dark cards
+
+A `bg-card` island inside a paper page **is its own dark surface**, so everything
+within it correctly keeps the dark ramp. Only chrome sitting directly on the page
+moves to `ink`. This is what makes the light surface affordable on authed screens:
+`/home` needed no card-interior changes at all, because every club row already
+renders through the `Card` primitive.
+
+**The trap, and it is a sharp one.** Most text inside a card carries no color
+class of its own — it *inherits*. That used to mean `body`'s `text-foreground`,
+which was correct by accident. Wrapped in a `PaperSurface`, the same text
+inherited `text-ink` and rendered at **1.65:1 on `card`** — every club name on
+`/home` was very nearly invisible, and it passed a visual skim. The contrast
+audit is what caught it.
+
+`Card` therefore sets `text-foreground` **explicitly**, anchoring its contents to
+the dark ramp regardless of the page around it. Any future dark island on a light
+page owes the same self-anchoring.
 
 ### 2. The `ink` ramp keeps the dark ramp's hues
 
@@ -117,9 +144,14 @@ swaps the ring to black.
 **Verified, not asserted.** An in-browser contrast audit resolves every rendered
 text node's real painted color through a canvas (`getComputedStyle` returns
 `oklch()` strings, which naive parsing reads as RGB triplets — the first version
-of the audit did exactly that and produced fabricated failures). All five routes
-plus the check-email and error states report zero violations. Frontend suite:
-581 passing.
+of the audit did exactly that and produced fabricated failures). All six routes
+plus the check-email and error states report zero violations, and `/profile` and
+`/clubs/:id` were re-audited to confirm the still-dark screens did not regress.
+Frontend suite: 581 passing.
+
+The audit also skips `aria-hidden` / `role="presentation"` subtrees. The disc
+motif sets its own label in near-black on amber, which is decorative and exempt;
+counting it produced a false failure.
 
 ## What this does not do
 

@@ -1,5 +1,5 @@
 import { BrandLockup } from "../components/BrandLockup";
-import { PublicSurface } from "../components/PublicSurface";
+import { PaperSurface } from "../components/PaperSurface";
 import { TopNav } from "../components/TopNav";
 
 const LINK_CLASS =
@@ -12,7 +12,7 @@ const LINK_CLASS =
  */
 export function AboutRoute() {
   return (
-    <PublicSurface>
+    <PaperSurface>
       <TopNav />
       <main className="flex-1 flex flex-col items-center justify-center px-4 py-16 sm:px-8">
         <div className="w-full max-w-md">
@@ -143,6 +143,6 @@ export function AboutRoute() {
           </div>
         </div>
       </main>
-    </PublicSurface>
+    </PaperSurface>
   );
 }

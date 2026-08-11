@@ -42,6 +42,7 @@ function clubWith(overrides: Partial<Club> = {}): Club {
     submission_window_hours: 72,
     voting_window_hours: 72,
     completed_at: null,
+    viewer_is_admin: false,
     ...overrides,
   };
 }
@@ -98,7 +99,7 @@ describe("HomeRoute (My Clubs)", () => {
   it("happy path: calls getClubs on mount and renders the club name", async () => {
     renderHome();
 
-    expect(await screen.findByText("Friday Mixtape")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Friday Mixtape" })).toBeInTheDocument();
     expect(mockGetClubs).toHaveBeenCalledTimes(1);
   });
 
@@ -110,8 +111,8 @@ describe("HomeRoute (My Clubs)", () => {
     renderHome();
 
     const completedHeading = await screen.findByText("completed");
-    const active = screen.getByText("Active One");
-    const done = screen.getByText("Finished One");
+    const active = screen.getByRole("heading", { name: "Active One" });
+    const done = screen.getByRole("heading", { name: "Finished One" });
 
     // Active club precedes the "completed" heading, which precedes the completed club.
     expect(
@@ -128,55 +129,42 @@ describe("HomeRoute (My Clubs)", () => {
     expect(active.closest("li")?.querySelector("svg")).toBeNull();
   });
 
-  it("admin: the chip marks only the clubs this user organises", async () => {
+  it("admin: the chip follows the server's viewer_is_admin, not organizer_id", async () => {
     mockGetClubs.mockResolvedValue([
+      // A co-organizer: NOT the organizer_id, but an admin all the same
+      // (MYS-99). Deriving the chip from organizer_id would miss this club,
+      // which is why the server computes the flag.
       clubWith({
-        id: "mine",
-        name: "My Club",
-        // Matches the mocked useAuth().userId below.
-        organizer_id: "11111111-1111-1111-1111-111111111111",
+        id: "co",
+        name: "Co Organized",
+        organizer_id: "22222222-2222-2222-2222-222222222222",
+        viewer_is_admin: true,
       }),
       clubWith({
         id: "theirs",
         name: "Their Club",
         organizer_id: "22222222-2222-2222-2222-222222222222",
+        viewer_is_admin: false,
       }),
     ]);
     renderHome();
 
-    const mine = (await screen.findByText("My Club")).closest("li")!;
-    const theirs = screen.getByText("Their Club").closest("li")!;
+    const co = (await screen.findByRole("heading", { name: "Co Organized" })).closest("li")!;
+    const theirs = screen.getByRole("heading", { name: "Their Club" }).closest("li")!;
 
-    expect(within(mine).getByText("admin")).toBeInTheDocument();
+    expect(within(co).getByText("admin")).toBeInTheDocument();
     expect(within(theirs).queryByText("admin")).toBeNull();
   });
 
-  it("admin: no chip is claimed before the profile has loaded a userId", async () => {
-    // userId is null on first paint. Rendering no chip is correct; rendering one
-    // on every club would be worse than rendering none, since `organizer_id ===
-    // null` must never accidentally match.
-    mockUseAuth.mockReturnValue({
-      status: "authenticated",
-      isAuthenticated: true,
-      setAccessToken: vi.fn(),
-      clear: vi.fn(),
-      logout,
-      logoutAll: vi.fn(),
-      displayName: "ada",
-      email: "ada@example.com",
-      userId: null,
-      profileStatus: "loading",
-      needsOnboarding: false,
-      isPlatformAdmin: false,
-      applyDisplayName: vi.fn(),
-      preferredService: null,
-      tosAccepted: true,
-      applyTosAccepted: vi.fn(),
-    });
-    mockGetClubs.mockResolvedValue([clubWith({ id: "x", name: "Some Club", organizer_id: "" })]);
+  it("admin: a null viewer_is_admin claims nothing", async () => {
+    // null means "this endpoint didn't answer", which must not be read as true.
+    // Being wrong in that direction would brand someone else's club as yours.
+    mockGetClubs.mockResolvedValue([
+      clubWith({ id: "x", name: "Some Club", viewer_is_admin: null }),
+    ]);
     renderHome();
 
-    const row = (await screen.findByText("Some Club")).closest("li")!;
+    const row = (await screen.findByRole("heading", { name: "Some Club" })).closest("li")!;
     expect(within(row).queryByText("admin")).toBeNull();
   });
 
@@ -187,8 +175,8 @@ describe("HomeRoute (My Clubs)", () => {
     ]);
     renderHome();
 
-    const active = (await screen.findByText("Active One")).closest("li")!;
-    const done = screen.getByText("Finished One").closest("li")!;
+    const active = (await screen.findByRole("heading", { name: "Active One" })).closest("li")!;
+    const done = screen.getByRole("heading", { name: "Finished One" }).closest("li")!;
 
     // Green, not amber: active is the default state and would otherwise paint
     // nearly every row in the accent. See ClubCard for the full argument.
@@ -207,8 +195,8 @@ describe("HomeRoute (My Clubs)", () => {
     ]);
     renderHome();
 
-    const active = (await screen.findByText("Active One")).closest("li")!;
-    const done = screen.getByText("Finished One").closest("li")!;
+    const active = (await screen.findByRole("heading", { name: "Active One" })).closest("li")!;
+    const done = screen.getByRole("heading", { name: "Finished One" }).closest("li")!;
 
     expect(within(active).getByText("active")).toBeInTheDocument();
     expect(within(done).getByText("complete")).toBeInTheDocument();
@@ -243,7 +231,7 @@ describe("HomeRoute (My Clubs)", () => {
     const user = userEvent.setup();
     renderHome();
 
-    await user.click(await screen.findByText("Friday Mixtape"));
+    await user.click(await screen.findByRole("heading", { name: "Friday Mixtape" }));
 
     expect(await screen.findByText("CLUB DETAIL CONTENT")).toBeInTheDocument();
   });
@@ -252,7 +240,7 @@ describe("HomeRoute (My Clubs)", () => {
     const user = userEvent.setup();
     renderHome();
 
-    await screen.findByText("Friday Mixtape");
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
     await user.click(screen.getByRole("button", { name: /^logout$/i }));
 
     expect(logout).toHaveBeenCalledTimes(1);
@@ -270,7 +258,7 @@ describe("HomeRoute (My Clubs)", () => {
   it("admin nav: hidden for a non-admin", async () => {
     renderHome();
 
-    await screen.findByText("Friday Mixtape");
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
     expect(screen.queryByRole("button", { name: /^admin$/i })).not.toBeInTheDocument();
   });
 

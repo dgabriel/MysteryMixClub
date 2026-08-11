@@ -2,6 +2,7 @@ import type { Club } from "../services/api";
 import { Button } from "../components/Button";
 import { Badge } from "../components/Badge";
 import { Card } from "../components/Card";
+import { ClubName } from "../components/ClubName";
 import { ConcentricRings } from "../components/ConcentricRings";
 import { CrownIcon } from "../components/CrownIcon";
 import { HelpLink } from "../components/HelpLink";
@@ -10,10 +11,6 @@ import { SongSearchCard } from "../components/songs/SongSearchCard";
 
 type MyClubsScreenProps = {
   displayName: string | null;
-  /** The signed-in user's id, used only to mark the clubs they organise. Null
-   *  while the profile is still loading, which simply means no admin chip
-   *  renders yet — never a wrong one. */
-  currentUserId?: string | null;
   clubs: Club[];
   loading: boolean;
   error?: string | null;
@@ -24,7 +21,6 @@ type MyClubsScreenProps = {
 
 export function MyClubsScreen({
   displayName,
-  currentUserId,
   clubs,
   loading,
   error,
@@ -124,7 +120,7 @@ export function MyClubsScreen({
                       <ClubCard
                         club={club}
                         complete={false}
-                        isAdmin={club.organizer_id === currentUserId}
+                        isAdmin={club.viewer_is_admin === true}
                         onOpen={onOpenClub}
                       />
                     </li>
@@ -142,7 +138,7 @@ export function MyClubsScreen({
                           <ClubCard
                             club={club}
                             complete
-                            isAdmin={club.organizer_id === currentUserId}
+                            isAdmin={club.viewer_is_admin === true}
                             onOpen={onOpenClub}
                           />
                         </li>
@@ -227,7 +223,7 @@ function ClubCard({
           {isAdmin ? <Badge variant="accent">admin</Badge> : null}
         </div>
         <h2 className="mt-2 font-display text-[1.375rem] font-bold uppercase leading-none tracking-display-snug">
-          {club.name}
+          <ClubName name={club.name} />
         </h2>
         <div className="mt-4 flex items-center justify-between">
           <span className="font-mono text-meta text-subtle-foreground">

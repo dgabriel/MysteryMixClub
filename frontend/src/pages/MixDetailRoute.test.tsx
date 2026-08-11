@@ -128,6 +128,7 @@ function club(): Club {
     submission_window_hours: 72,
     voting_window_hours: 72,
     completed_at: null,
+    viewer_is_admin: null,
   };
 }
 

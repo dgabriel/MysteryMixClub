@@ -14,7 +14,7 @@ import { useAuth } from "../hooks/useAuth";
  */
 export function HomeRoute() {
   const navigate = useNavigate();
-  const { displayName, preferredService, userId } = useAuth();
+  const { displayName, preferredService } = useAuth();
   const [clubs, setClubs] = useState<Club[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -42,9 +42,6 @@ export function HomeRoute() {
   return (
     <MyClubsScreen
       displayName={displayName}
-      // Marks the clubs this user organises. `organizer_id` already rides along
-      // on every club in GET /clubs, so no extra request and no API change.
-      currentUserId={userId}
       clubs={clubs}
       loading={loading}
       error={error}

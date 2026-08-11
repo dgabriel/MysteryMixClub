@@ -462,6 +462,13 @@ export type Club = {
   voting_window_hours: number;
   created_at: string;
   completed_at: string | null;
+  /** Whether *you* administer this club — the organizer or a promoted
+   *  co-organizer (MYS-99). Only `GET /clubs` computes it; `null` elsewhere
+   *  means "not answered here", which is deliberately not the same as `false`.
+   *
+   *  Do not re-derive this from `organizer_id`: that misses co-organizers, who
+   *  hold full operational parity. */
+  viewer_is_admin: boolean | null;
 };
 
 /** The caller's own per-club participation setting (GET/PATCH

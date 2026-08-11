@@ -10,6 +10,7 @@ import type {
 import { Button } from "../components/Button";
 import { Badge } from "../components/Badge";
 import { Card } from "../components/Card";
+import { ClubName } from "../components/ClubName";
 import { FormError } from "../components/FormError";
 import { TextField } from "../components/TextField";
 import { ConcentricRings } from "../components/ConcentricRings";
@@ -178,47 +179,47 @@ export function ClubHomeScreen({
       {isComplete ? <Confetti /> : null}
       <div className="flex items-start justify-between gap-4">
         <h1 className="font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
-          {club.name}
+          <ClubName name={club.name} />
         </h1>
         <div className="shrink-0 pt-2">
           <Badge>{club.state}</Badge>
         </div>
       </div>
-        {club.description ? (
-          <p className="mt-2 text-sm leading-[1.72] text-muted-foreground">{club.description}</p>
-        ) : null}
-        {/* Mono at normal tracking is the system's signature for a value, which
+      {club.description ? (
+        <p className="mt-2 text-sm leading-[1.72] text-muted-foreground">{club.description}</p>
+      ) : null}
+      {/* Mono at normal tracking is the system's signature for a value, which
             is what a mix counter is. */}
-        <p className="mt-3 font-mono text-meta text-muted-foreground">
-          mix {club.current_mix} of {club.total_mixes}
+      <p className="mt-3 font-mono text-meta text-muted-foreground">
+        mix {club.current_mix} of {club.total_mixes}
+      </p>
+      {isComplete ? (
+        <p className="mt-4 text-base leading-[1.72] text-muted-foreground">
+          this club has wrapped.
         </p>
-        {isComplete ? (
-          <p className="mt-4 text-base leading-[1.72] text-muted-foreground">
-            this club has wrapped.
-          </p>
-        ) : null}
+      ) : null}
 
-        {isAdmin ? (
-          <OrganizerEdit
-            club={club}
-            onUpdateClub={onUpdateClub}
-            updating={updating}
-            updateError={updateError}
-          />
-        ) : null}
-
-        {/* Mixes */}
-        <MixesSection
-          mixes={mixes}
-          mixResults={mixResults}
-          isAdmin={isAdmin}
-          onOpenMix={onOpenMix}
-          onUpdateMix={onUpdateMix}
-          savingMixId={savingMixId}
-          updateMixError={updateMixError}
+      {isAdmin ? (
+        <OrganizerEdit
+          club={club}
+          onUpdateClub={onUpdateClub}
+          updating={updating}
+          updateError={updateError}
         />
+      ) : null}
 
-        {/* Members / all-time leaderboard (MYS-157) — the style tile's ScoreRow:
+      {/* Mixes */}
+      <MixesSection
+        mixes={mixes}
+        mixResults={mixResults}
+        isAdmin={isAdmin}
+        onOpenMix={onOpenMix}
+        onUpdateMix={onUpdateMix}
+        savingMixId={savingMixId}
+        updateMixError={updateMixError}
+      />
+
+      {/* Members / all-time leaderboard (MYS-157) — the style tile's ScoreRow:
             rank numeral, avatar, name, a thin progress track, and a
             right-aligned mono score. This is the screen's ONLY standings table,
             so its rank-1 amber is bounded to one row and stays achievement
@@ -227,151 +228,151 @@ export function ClubHomeScreen({
             The bar and the rank column only appear once somebody actually has a
             vote — with a scoreless roster there is no achievement to mark, so
             no amber and no empty rails. */}
-        <section className="mt-12">
-          <h2 className="font-mono text-meta uppercase tracking-mono-wide text-muted-foreground">
-            members ({members.length})
-          </h2>
-          <ul className="mt-4 space-y-2">
-            {leaderboard.map((entry) => {
-              const member = members.find((m) => m.user_id === entry.user_id);
-              const isMe = entry.user_id === userId;
-              // The fixed organizer's role can't be toggled or removed by anyone
-              // (MYS-99) — every other member, including other co-organizers, is
-              // fair game for any current admin.
-              const showRoleAndRemove = isAdmin && member && !member.is_organizer;
-              const anyVotes = leaderboard.some((e) => e.vote_count > 0);
-              // Ranks are sequential, so rank 1 always holds the top vote count
-              // and its bar always reads 100%.
-              const topVotes = leaderboard[0]?.vote_count ?? 0;
-              const leading = anyVotes && entry.rank === 1;
-              return (
-                <li
-                  key={entry.user_id}
-                  className={[
-                    "rounded-hair border px-4 py-3",
-                    leading
-                      ? "border-accent-hairline bg-accent-surface"
-                      : "border-hairline-soft bg-card",
-                  ].join(" ")}
-                >
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="flex items-center gap-3">
-                      <span className="w-6 shrink-0 text-right font-mono text-mini text-muted-foreground">
-                        {anyVotes
-                          ? entry.rank === 1
-                            ? <CrownIcon className="h-3.5 w-3.5 text-accent" />
-                            : `#${entry.rank}`
-                          : null}
-                      </span>
-                      <UserAvatar userId={entry.user_id} size={28} />
-                      <span
-                        className={`font-mono text-sm text-foreground ${isMe ? "font-medium" : ""}`}
-                      >
-                        {entry.display_name}
-                      </span>
-                      {member?.is_organizer ? <Badge>organizer</Badge> : null}
-                      {member?.is_admin && !member?.is_organizer ? (
-                        <Badge>co-organizer</Badge>
+      <section className="mt-12">
+        <h2 className="font-mono text-meta uppercase tracking-mono-wide text-muted-foreground">
+          members ({members.length})
+        </h2>
+        <ul className="mt-4 space-y-2">
+          {leaderboard.map((entry) => {
+            const member = members.find((m) => m.user_id === entry.user_id);
+            const isMe = entry.user_id === userId;
+            // The fixed organizer's role can't be toggled or removed by anyone
+            // (MYS-99) — every other member, including other co-organizers, is
+            // fair game for any current admin.
+            const showRoleAndRemove = isAdmin && member && !member.is_organizer;
+            const anyVotes = leaderboard.some((e) => e.vote_count > 0);
+            // Ranks are sequential, so rank 1 always holds the top vote count
+            // and its bar always reads 100%.
+            const topVotes = leaderboard[0]?.vote_count ?? 0;
+            const leading = anyVotes && entry.rank === 1;
+            return (
+              <li
+                key={entry.user_id}
+                className={[
+                  "rounded-hair border px-4 py-3",
+                  leading
+                    ? "border-accent-hairline bg-accent-surface"
+                    : "border-hairline-soft bg-card",
+                ].join(" ")}
+              >
+                <div className="flex items-center justify-between gap-4">
+                  <span className="flex items-center gap-3">
+                    <span className="w-6 shrink-0 text-right font-mono text-mini text-muted-foreground">
+                      {anyVotes ? (
+                        entry.rank === 1 ? (
+                          <CrownIcon className="h-3.5 w-3.5 text-accent" />
+                        ) : (
+                          `#${entry.rank}`
+                        )
                       ) : null}
                     </span>
-                    <span className="flex items-center gap-4">
-                      <span
-                        className={`text-right font-mono text-xs ${leading ? "text-accent" : "text-muted-foreground"}`}
-                      >
-                        {entry.vote_count} {entry.vote_count === 1 ? "vote" : "votes"}
-                      </span>
-                      {showRoleAndRemove ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            onChangeMemberRole(entry.user_id, member.is_admin ? "member" : "admin")
-                          }
-                          disabled={changingRoleUserId === entry.user_id}
-                          className="py-1.5 font-mono uppercase tracking-mono text-mini text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-link disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline"
-                        >
-                          {changingRoleUserId === entry.user_id
-                            ? "saving…"
-                            : member.is_admin
-                              ? "remove admin"
-                              : "make admin"}
-                        </button>
-                      ) : null}
-                      {showRoleAndRemove ? (
-                        <button
-                          type="button"
-                          onClick={() => onRemoveMember(entry.user_id)}
-                          disabled={removingUserId === entry.user_id}
-                          className="py-1.5 font-mono uppercase tracking-mono text-mini text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-link disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline"
-                        >
-                          {removingUserId === entry.user_id ? "removing…" : "remove"}
-                        </button>
-                      ) : null}
+                    <UserAvatar userId={entry.user_id} size={28} />
+                    <span
+                      className={`font-mono text-sm text-foreground ${isMe ? "font-medium" : ""}`}
+                    >
+                      {entry.display_name}
                     </span>
-                  </div>
-                  {/* The tile runs the bar inline between name and score; it
+                    {member?.is_organizer ? <Badge>organizer</Badge> : null}
+                    {member?.is_admin && !member?.is_organizer ? <Badge>co-organizer</Badge> : null}
+                  </span>
+                  <span className="flex items-center gap-4">
+                    <span
+                      className={`text-right font-mono text-xs ${leading ? "text-accent" : "text-muted-foreground"}`}
+                    >
+                      {entry.vote_count} {entry.vote_count === 1 ? "vote" : "votes"}
+                    </span>
+                    {showRoleAndRemove ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onChangeMemberRole(entry.user_id, member.is_admin ? "member" : "admin")
+                        }
+                        disabled={changingRoleUserId === entry.user_id}
+                        className="py-1.5 font-mono uppercase tracking-mono text-mini text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-link disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline"
+                      >
+                        {changingRoleUserId === entry.user_id
+                          ? "saving…"
+                          : member.is_admin
+                            ? "remove admin"
+                            : "make admin"}
+                      </button>
+                    ) : null}
+                    {showRoleAndRemove ? (
+                      <button
+                        type="button"
+                        onClick={() => onRemoveMember(entry.user_id)}
+                        disabled={removingUserId === entry.user_id}
+                        className="py-1.5 font-mono uppercase tracking-mono text-mini text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-link disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline"
+                      >
+                        {removingUserId === entry.user_id ? "removing…" : "remove"}
+                      </button>
+                    ) : null}
+                  </span>
+                </div>
+                {/* The tile runs the bar inline between name and score; it
                       moves to its own line here because these rows also carry
                       role badges and two admin controls, which leave no room
                       for a legible track at this column width. */}
-                  {anyVotes ? (
+                {anyVotes ? (
+                  <div
+                    aria-hidden="true"
+                    className="mt-2 h-0.5 w-full overflow-hidden rounded-hair bg-track"
+                  >
                     <div
-                      aria-hidden="true"
-                      className="mt-2 h-0.5 w-full overflow-hidden rounded-hair bg-track"
-                    >
-                      <div
-                        className={`h-full rounded-hair ${leading ? "bg-accent" : "bg-muted-foreground"}`}
-                        style={{
-                          width: `${topVotes > 0 ? (entry.vote_count / topVotes) * 100 : 0}%`,
-                        }}
-                      />
-                    </div>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-          {roleChangeError ? (
+                      className={`h-full rounded-hair ${leading ? "bg-accent" : "bg-muted-foreground"}`}
+                      style={{
+                        width: `${topVotes > 0 ? (entry.vote_count / topVotes) * 100 : 0}%`,
+                      }}
+                    />
+                  </div>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+        {roleChangeError ? (
+          <div className="mt-3">
+            <FormError>{roleChangeError}</FormError>
+          </div>
+        ) : null}
+        {removeError ? (
+          <div className="mt-3">
+            <FormError>{removeError}</FormError>
+          </div>
+        ) : null}
+      </section>
+
+      {/* Invite share — a single shareable link. Admin-only (MYS-246): the
+            backend now rejects a non-admin's create-invite call, so a plain
+            member must not even see the option. */}
+      {isAdmin ? (
+        <section className="mt-12">
+          <h2 className="font-mono text-meta uppercase tracking-mono-wide text-muted-foreground">
+            invite
+          </h2>
+          <div className="mt-4">
+            {inviteUrl ? (
+              <InviteShare inviteUrl={inviteUrl} />
+            ) : (
+              <>
+                <Button type="button" onClick={onGenerateInvite} disabled={generatingInvite}>
+                  {generatingInvite ? "generating…" : "invite"}
+                </Button>
+                <p className="mt-3 text-meta leading-[1.6] text-muted-foreground">
+                  a shareable link, good for 48 hours.
+                </p>
+              </>
+            )}
+          </div>
+          {inviteError ? (
             <div className="mt-3">
-              <FormError>{roleChangeError}</FormError>
-            </div>
-          ) : null}
-          {removeError ? (
-            <div className="mt-3">
-              <FormError>{removeError}</FormError>
+              <FormError>{inviteError}</FormError>
             </div>
           ) : null}
         </section>
+      ) : null}
 
-        {/* Invite share — a single shareable link. Admin-only (MYS-246): the
-            backend now rejects a non-admin's create-invite call, so a plain
-            member must not even see the option. */}
-        {isAdmin ? (
-          <section className="mt-12">
-            <h2 className="font-mono text-meta uppercase tracking-mono-wide text-muted-foreground">
-              invite
-            </h2>
-            <div className="mt-4">
-              {inviteUrl ? (
-                <InviteShare inviteUrl={inviteUrl} />
-              ) : (
-                <>
-                  <Button type="button" onClick={onGenerateInvite} disabled={generatingInvite}>
-                    {generatingInvite ? "generating…" : "invite"}
-                  </Button>
-                  <p className="mt-3 text-meta leading-[1.6] text-muted-foreground">
-                    a shareable link, good for 48 hours.
-                  </p>
-                </>
-              )}
-            </div>
-            {inviteError ? (
-              <div className="mt-3">
-                <FormError>{inviteError}</FormError>
-              </div>
-            ) : null}
-          </section>
-        ) : null}
-
-        {/* Destructive actions (MYS-99): any admin (fixed organizer or
+      {/* Destructive actions (MYS-99): any admin (fixed organizer or
             co-organizer) can delete the club outright. The fixed organizer
             can never leave (the backend guard blocks it) so they only see
             delete; a co-organizer is the one case that sees both — they can
@@ -381,20 +382,20 @@ export function ClubHomeScreen({
             by re-invite, so LeaveClubSection stays `ghost`. Neither is amber,
             and the two now read as different weights of severity rather than
             competing for one accent budget. */}
-        {isAdmin ? (
-          <DeleteClubSection
-            onDeleteClub={onDeleteClub}
-            deletingClub={deletingClub}
-            deleteClubError={deleteClubError}
-          />
-        ) : null}
-        {!isOrganizer ? (
-          <LeaveClubSection
-            onLeaveClub={onLeaveClub}
-            leavingClub={leavingClub}
-            leaveClubError={leaveClubError}
-          />
-        ) : null}
+      {isAdmin ? (
+        <DeleteClubSection
+          onDeleteClub={onDeleteClub}
+          deletingClub={deletingClub}
+          deleteClubError={deleteClubError}
+        />
+      ) : null}
+      {!isOrganizer ? (
+        <LeaveClubSection
+          onLeaveClub={onLeaveClub}
+          leavingClub={leavingClub}
+          leaveClubError={leaveClubError}
+        />
+      ) : null}
     </main>
   );
 }
@@ -500,12 +501,7 @@ function LeaveClubSection({
             you'll lose access to this club's mystery mixes and results.
           </p>
           <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              type="button"
-              onClick={onLeaveClub}
-              disabled={leavingClub}
-            >
+            <Button variant="ghost" type="button" onClick={onLeaveClub} disabled={leavingClub}>
               {leavingClub ? "leaving…" : "leave this club"}
             </Button>
             <Button
@@ -1080,9 +1076,9 @@ function OrganizerEdit({
         error={windowErrorField === "voting_window" ? windowError : null}
       />
       <p className="text-meta leading-[1.6] text-muted-foreground">
-        this only applies going forward — a mystery mix already collecting submissions or
-        votes keeps its current deadline. it takes effect the next time a mystery mix (or
-        its next phase) opens.
+        this only applies going forward — a mystery mix already collecting submissions or votes
+        keeps its current deadline. it takes effect the next time a mystery mix (or its next phase)
+        opens.
       </p>
       {/* A failed save is a screen-level form error (ADR 0004) — its own color
           category, so it consumes nothing from this screen's amber and may show
@@ -1099,4 +1095,3 @@ function OrganizerEdit({
     </form>
   );
 }
-

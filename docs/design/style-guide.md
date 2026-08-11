@@ -546,6 +546,37 @@ established system-wide, and binding on all of them:
 
 ---
 
+## Club names
+
+**A club name with more than one word sets its second word in `accent`.**
+Single-word names render plain. This echoes the brand lockup's own
+`MYSTERY MIX` + `CLUB` two-tone treatment, and it is rendered by one component,
+`ClubName`, so the rule cannot drift between screens.
+
+It applies wherever a club name is a **title**: the home card, the club page
+heading, and the profile archive. It does **not** apply to the mix screen's back
+button — that is navigation chrome, which this guide excludes from the accent by
+name.
+
+Two things to know before reusing it:
+
+- **This is decoration, and it is the one sanctioned exception to "amber marks
+  something."** It says nothing about the club and is safe to ignore. It was a
+  deliberate call by Dawn on 2026-08-11, made with the pattern tradeoff on the
+  table. **Do not re-flag it as a violation** — the same standing as `AboutRoute`'s
+  `<3`.
+- **It splits the name into more than one text node.** `getByText("Some Club")`
+  stops matching; query club names with
+  `getByRole("heading", { name: "Some Club" })`, which reads the accessible name
+  and is unaffected. The accessible name itself is deliberately unchanged, so
+  screen readers still announce one club name.
+
+`accent` is 7.42:1 on `card`, which covers every club title today because all of
+them sit inside a dark card. It is 2.62:1 on `paper` — if a club title ever moves
+onto the light surface, it needs `ink-accent` (ADR 0013) instead.
+
+---
+
 ## Motif
 
 The record is the visual signature. `ConcentricRings` **is** the vinyl disc: a

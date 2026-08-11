@@ -166,8 +166,8 @@ until the sweep ticket.
 
 ### Light surface — public pages only (ADR 0013)
 
-Six routes — `/login`, `/about`, `/terms`, `/privacy`, `/help` and `/home` —
-render on a **light** surface. Everything else in the app is dark, exactly as the
+Seven routes — `/login`, `/about`, `/terms`, `/privacy`, `/help`, `/home` and
+`/clubs/:id` — render on a **light** surface. Everything else in the app is dark, exactly as the
 rest of this guide describes.
 
 On those pages the model is **light page, dark cards**: a `bg-card` island is its
@@ -202,7 +202,9 @@ Rules:
 - **A dark island on a light page must anchor its own text colour.** `Card` sets
   `text-foreground` explicitly for exactly this reason: card text mostly
   *inherits*, and under a `PaperSurface` it would otherwise inherit `ink` and
-  vanish. Any new dark surface placed on paper owes the same.
+  vanish. Any new dark surface placed on paper owes the same — the club page's
+  member rows are hand-rolled `bg-card` `<li>`s rather than `Card`s, so they
+  carry the anchor themselves.
 - **`ink-accent-display` is hero-size only.** It clears 3:1, which is the WCAG
   floor for large text and nothing else. At body size it is a failure.
 - **`TopNav` is excluded** — it keeps its dark fill and reads as chrome above the
@@ -535,6 +537,16 @@ established system-wide, and binding on all of them:
   these ratios is an obligation — holding a disabled label to 4.5:1 exceeds the
   requirement rather than scraping past it. It is held anyway because a user
   still has to read what the unavailable control would have done.
+- **Badges are a weight ladder, not a palette.** Four variants, picked by how
+  much attention the state deserves rather than by colour preference:
+  `positive` (a solid green fill, near-black label, 6.72:1) is the loudest and
+  is for a state that is live *and* scarce; `strong` (`tile` fill,
+  `foreground` label, 15.84:1) is the middle rung; `default` (`tile` fill,
+  `muted-foreground`, 5.34:1) is the quiet one for a finished or incidental
+  state; `accent` is the amber achievement chip. A list that shows several
+  states at once should use several rungs — the club page's mix list uses three.
+  The label always spells the state out, so the ladder is emphasis, never the
+  signal itself.
 - **Charts** follow ADR 0008 unchanged: **d3 for math only** — scales, extents,
   and shape generators; d3 never touches the DOM, the SVG is JSX, React owns
   every node. Tick text stays an HTML overlay at fixed size rather than SVG

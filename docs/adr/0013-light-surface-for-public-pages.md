@@ -12,6 +12,10 @@
 > so a name describing the audience had become a lie), and the **frame model**
 > below is now a first-class part of this decision rather than a hypothetical.
 > The scope is `/login`, `/about`, `/terms`, `/privacy`, `/help`, **and `/home`**.
+>
+> **Amended again 2026-08-11, MysteryMixClub-0fnf.32:** `/clubs/:id` joins them,
+> so the scope is now those six plus the club detail page. Nothing else changed —
+> the frame model held, and the screen needed no new tokens.
 
 ## Context
 
@@ -45,8 +49,8 @@ foreground ramp, brand accent included.
 
 ## Decision
 
-**`/login`, `/about`, `/terms`, `/privacy`, `/help` and `/home` render on a
-light surface with their own derived `ink` ramp. Everything else stays exactly
+**`/login`, `/about`, `/terms`, `/privacy`, `/help`, `/home` and `/clubs/:id`
+render on a light surface with their own derived `ink` ramp. Everything else stays exactly
 as ADR 0009 specifies.**
 
 Four parts:

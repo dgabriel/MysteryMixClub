@@ -249,6 +249,48 @@ describe("ClubHomeRoute", () => {
     expect(mockGetClubMembers).toHaveBeenCalledWith("club-1");
   });
 
+  it("mix order: active first, then upcoming by number, then closed by number", async () => {
+    // Deliberately handed to the screen in the API's own plain mix-number
+    // order, which is what buries the only actionable row in the middle.
+    mockGetMixes.mockResolvedValue([
+      closedMix({ id: "m1", mix_number: 1, theme: "One", state: "closed" }),
+      closedMix({ id: "m2", mix_number: 2, theme: "Two", state: "closed" }),
+      closedMix({ id: "m3", mix_number: 3, theme: "Three", state: "open_voting" }),
+      closedMix({ id: "m4", mix_number: 4, theme: "Four", state: "pending" }),
+      closedMix({ id: "m5", mix_number: 5, theme: "Five", state: "pending" }),
+    ]);
+    renderClub();
+
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+    // The mix-number eyebrow is the stable per-row anchor; themes render as
+    // spans rather than headings.
+    const order = screen.getAllByText(/^mystery mix \d+$/i).map((el) => el.textContent);
+
+    expect(order).toEqual([
+      "mystery mix 3", // active — open_voting
+      "mystery mix 4", // upcoming, by number
+      "mystery mix 5",
+      "mystery mix 1", // closed, by number
+      "mystery mix 2",
+    ]);
+  });
+
+  it("mix order: sorting does not mutate the array it was handed", async () => {
+    // `Array.prototype.sort` sorts in place, and the array here is the route's
+    // own state. Sorting it directly would reorder React's state behind its back.
+    const mixes = [
+      closedMix({ id: "m1", mix_number: 1, theme: "One", state: "closed" }),
+      closedMix({ id: "m2", mix_number: 2, theme: "Two", state: "open_voting" }),
+    ];
+    mockGetMixes.mockResolvedValue(mixes);
+    renderClub();
+
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+    expect(mixes.map((m) => m.id)).toEqual(["m1", "m2"]);
+  });
+
   it("isOrganizer: organizer controls present when userId === organizer_id", async () => {
     setAuth(ORGANIZER_ID);
     renderClub();
@@ -345,9 +387,9 @@ describe("ClubHomeRoute", () => {
 
     await user.click(screen.getByRole("button", { name: /^edit$/i }));
 
-    expect((container.querySelector("#edit-submission-window-days") as HTMLInputElement).value).toBe(
-      "4",
-    );
+    expect(
+      (container.querySelector("#edit-submission-window-days") as HTMLInputElement).value,
+    ).toBe("4");
     expect(
       (container.querySelector("#edit-submission-window-hours") as HTMLInputElement).value,
     ).toBe("6");
@@ -404,7 +446,9 @@ describe("ClubHomeRoute", () => {
     });
     await user.click(screen.getByRole("button", { name: /^save$/i }));
 
-    expect(await screen.findByText(/submission windows need at least 4 hours\./i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/submission windows need at least 4 hours\./i),
+    ).toBeInTheDocument();
     expect(mockUpdateClub).not.toHaveBeenCalled();
   });
 
@@ -449,9 +493,7 @@ describe("ClubHomeRoute", () => {
     await user.click(makeAdminBtn);
 
     expect(mockUpdateMemberRole).toHaveBeenCalledWith("club-1", MEMBER_ID, "admin");
-    expect(
-      await screen.findByText(/couldn't update that member's role/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/couldn't update that member's role/i)).toBeInTheDocument();
   });
 
   it("make admin: shows a busy 'saving…' state while the request is in flight", async () => {
@@ -618,6 +660,27 @@ describe("ClubHomeRoute", () => {
     expect(screen.getByText("most noted")).toBeInTheDocument();
     expect(screen.getByText("Strange Currencies")).toBeInTheDocument();
     expect(mockGetResults).toHaveBeenCalledWith("mix-1");
+  });
+
+  it("closed mix: the reveal is an amber callout, and its values stay bright", async () => {
+    mockGetMixes.mockResolvedValue([closedMix()]);
+    mockGetResults.mockResolvedValue(resultsWith());
+
+    renderClub();
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+    const block = (await screen.findByText("winner")).closest("dl")!;
+
+    // A tinted surface with its own edge, not just amber text — the mix number
+    // above is already `accent`, so text alone would blend into it.
+    expect(block.className).toContain("bg-accent-surface");
+    // The tint is only 1.07:1 against `card`, so the hairline is what actually
+    // draws the edge. Losing it would leave the block invisible as an object.
+    expect(block.className).toContain("border-accent-hairline");
+
+    // The names and titles stay `foreground` (16.63:1) rather than going amber
+    // too, so the result itself remains the most legible thing in the block.
+    expect(screen.getByText("Wren").className).toContain("text-foreground");
   });
 
   it("closed mix tie: shows every co-winner and every most-noted pick", async () => {

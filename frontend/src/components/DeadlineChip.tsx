@@ -28,10 +28,19 @@ import { ClockIcon } from "./ClockIcon";
 export function DeadlineChip({
   mix,
   className,
+  onPaper = false,
   showCountdown = false,
 }: {
   mix: Mix;
   className?: string;
+  /** The chip is on the light page surface (ADR 0013).
+   *
+   *  Same bug as `Button`'s ghost: the neutral chip fills with `tile`, which is
+   *  a subtle lift on a dark page and a black slab on paper — a *time signal*
+   *  ending up the heaviest object on the screen. On paper it becomes an
+   *  outlined chip, and the closing-soon state keeps its amber by going to the
+   *  `ink` accent rather than an amber fill. */
+  onPaper?: boolean;
   showCountdown?: boolean;
 }) {
   const [now, setNow] = useState(() => new Date());
@@ -65,9 +74,13 @@ export function DeadlineChip({
           // Neutral text is `foreground`, not `muted-foreground`, so a time
           // signal still outranks a `Badge` status word — that hierarchy is
           // what survives from the old Ink fill's prominence.
-          closingSoon
-            ? "bg-accent-surface border-accent-hairline text-accent"
-            : "bg-tile border-hairline text-foreground",
+          onPaper
+            ? closingSoon
+              ? "border-ink-accent text-ink-accent"
+              : "border-ink-muted text-ink"
+            : closingSoon
+              ? "bg-accent-surface border-accent-hairline text-accent"
+              : "bg-tile border-hairline text-foreground",
         ].join(" ")}
       >
         <ClockIcon />

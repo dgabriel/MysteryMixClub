@@ -1,11 +1,5 @@
 import { type FormEvent, useState } from "react";
-import type {
-  LeaderboardEntry,
-  Club,
-  ClubMember,
-  Mix,
-  MixResults,
-} from "../services/api";
+import type { LeaderboardEntry, Club, ClubMember, Mix, MixResults } from "../services/api";
 import { Button } from "../components/Button";
 import { Badge } from "../components/Badge";
 import { Card } from "../components/Card";
@@ -454,6 +448,7 @@ function DeleteClubSection({
               {deletingClub ? "deleting…" : "delete this club"}
             </Button>
             <Button
+              onPaper
               variant="ghost"
               type="button"
               onClick={() => setConfirming(false)}
@@ -522,6 +517,7 @@ function LeaveClubSection({
               {leavingClub ? "leaving…" : "leave this club"}
             </Button>
             <Button
+              onPaper
               variant="ghost"
               type="button"
               onClick={() => setConfirming(false)}

@@ -66,10 +66,19 @@ const variants: Record<Variant, string> = {
   link: "text-link underline underline-offset-[3px] hover:text-foreground",
 };
 
-// Only `link` differs on paper — the other three are fills that carry their own
-// foreground and are already correct on any surface.
+// `link` and `ghost` differ on paper.
+//
+// `ghost` is the important one, and it was a real bug: its `tile` fill is a
+// *subtle lift* on a dark page (1.20:1 against `floor`) but a **black slab** on
+// paper (17.25:1). That inverted the hierarchy wherever both appeared — a
+// secondary control outweighing the amber primary beside it by roughly six
+// times. On paper it becomes an outlined button instead: no fill, an
+// `ink-muted` edge at 4.67:1 so it still reads as a control, and a faint wash
+// on hover.
 const paperVariants: Partial<Record<Variant, string>> = {
   link: "text-ink-link underline underline-offset-[3px] hover:text-ink",
+  ghost:
+    "rounded-hair px-6 py-3 bg-transparent text-ink border border-ink-muted hover:bg-ink-hairline",
 };
 
 export function Button({

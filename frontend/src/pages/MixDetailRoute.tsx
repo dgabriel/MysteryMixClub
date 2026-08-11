@@ -669,7 +669,7 @@ export function MixDetailRoute() {
           {/* Prominent, phase-appropriate deadline chip (MYS-161) — viewer-local
             time plus a live countdown. Renders nothing for legacy mixes with
             no deadline set. */}
-          <DeadlineChip mix={mix} className="mt-4" showCountdown />
+          <DeadlineChip mix={mix} onPaper className="mt-4" showCountdown />
 
           {isAdmin ? (
             <>
@@ -889,6 +889,7 @@ function OrganizerControls({
             {advancing ? busyLabel : "yes, close mix"}
           </Button>
           <Button
+            onPaper
             variant="ghost"
             type="button"
             onClick={() => setConfirmingClose(false)}
@@ -981,20 +982,28 @@ function OrganizerControls({
     <div className="mt-6 border-t border-ink-hairline pt-6">
       <div className="flex items-center gap-4">
         <Button
+          onPaper
           type="button"
           onClick={() => (next === "closed" ? setConfirmingClose(true) : onAdvance(next))}
           disabled={busy || blockedByMissingTheme}
         >
           {advancing ? busyLabel : label}
         </Button>
+        {/* The two escape hatches are text actions, not buttons. Only the action
+            that moves the mix forward is a button — extending and reopening are
+            rare corrections, and three filled rectangles in a row gave the
+            header no hierarchy at all. `reopen submissions` also discards cast
+            votes, so it keeps its own confirm step rather than relying on
+            weight to slow anyone down. */}
         {state === "open_voting" ? (
-          <Button onPaper variant="ghost" type="button" onClick={openExtendPicker} disabled={busy}>
+          <Button onPaper variant="link" type="button" onClick={openExtendPicker} disabled={busy}>
             extend voting
           </Button>
         ) : null}
         {state === "open_voting" ? (
           <Button
-            variant="ghost"
+            onPaper
+            variant="link"
             type="button"
             onClick={() => setConfirmingRollback(true)}
             disabled={busy}

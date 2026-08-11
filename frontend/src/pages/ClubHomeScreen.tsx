@@ -856,15 +856,27 @@ function topVoteWinners(leaderboard: LeaderboardEntry[]): LeaderboardEntry[] {
  * leaderboard) and the most-noted pick. Both can tie — every co-winner is named.
  * Label-left / value-right.
  *
- * **The crowns stay neutral.** Amber's category does cover achievement, so a
- * single winner line would be in category — but this block renders once per
- * closed mix, and a finished club shows one for every mix it ran (up to the
- * 50-mix cap the create form enforces). A column of amber crowns is amber as
- * pattern, which the category rule forbids however in-category each individual
- * line is. Same conclusion R8 reached about completed club cards, and the same
- * treatment: a `muted-foreground` crown glyph carries the meaning without
- * degrading with count. The screen's one achievement accent belongs to rank 1
- * of the standings, which is bounded to a single row.
+ * **The reveal is an amber callout** (Dawn, 2026-08-11 — this reverses the
+ * earlier "the crowns stay neutral" rule, so read this rather than older copies
+ * of that reasoning). It takes `accent-surface` + `accent-hairline` + `accent`,
+ * which the style guide defines for exactly this: an achievement or callout row.
+ *
+ * A *surface* rather than amber text, and that choice is load-bearing here. The
+ * mix number in the row above is already `accent`, so amber text would read as
+ * more of the same; a tinted block with its own edge reads as a different kind
+ * of object, which is what makes the result pop instead of blend.
+ *
+ * The cost, recorded: this block renders once per closed mix, and a finished
+ * club shows one for every mix it ran (up to the 50-mix cap). That is the
+ * repetition the previous rule existed to avoid. It is accepted because the
+ * reveal is the *point* of a closed mix — the state is finished and quiet, but
+ * its result is the content people come back for — and because the callout is
+ * bounded to one block per card rather than spreading across a row.
+ *
+ * `accent` is 6.92:1 on `accent-surface`; the values stay `foreground` at
+ * 16.63:1 so the names and titles remain the most legible thing in the block.
+ * The tint is only 1.07:1 against `card`, so `accent-hairline` is what actually
+ * draws the edge — do not drop it.
  */
 function ClosedMixSummary({ results }: { results: MixResults }) {
   const winners = topVoteWinners(results.leaderboard);
@@ -872,11 +884,11 @@ function ClosedMixSummary({ results }: { results: MixResults }) {
   if (winners.length === 0 && mostNoted.length === 0) return null;
 
   return (
-    <dl className="mt-3 space-y-2 border-t border-hairline-soft pt-3">
+    <dl className="mt-3 space-y-2 rounded-hair border border-accent-hairline bg-accent-surface px-3 py-2.5">
       {winners.length > 0 ? (
         <div className="flex items-baseline justify-between gap-4">
-          <dt className="flex shrink-0 items-center gap-1 font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
-            <CrownIcon className="text-muted-foreground" />
+          <dt className="flex shrink-0 items-center gap-1 font-mono uppercase tracking-mono-caps text-mini text-accent">
+            <CrownIcon className="text-accent" />
             {winners.length > 1 ? "winners" : "winner"}
           </dt>
           <dd className="min-w-0 text-right font-mono text-sm text-foreground">
@@ -886,8 +898,8 @@ function ClosedMixSummary({ results }: { results: MixResults }) {
       ) : null}
       {mostNoted.length > 0 ? (
         <div className="flex items-baseline justify-between gap-4">
-          <dt className="flex shrink-0 items-center gap-1 font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
-            <CrownIcon className="text-muted-foreground" />
+          <dt className="flex shrink-0 items-center gap-1 font-mono uppercase tracking-mono-caps text-mini text-accent">
+            <CrownIcon className="text-accent" />
             most noted
           </dt>
           <dd className="min-w-0 text-right font-mono text-sm text-foreground">

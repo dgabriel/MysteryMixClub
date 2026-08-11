@@ -662,6 +662,27 @@ describe("ClubHomeRoute", () => {
     expect(mockGetResults).toHaveBeenCalledWith("mix-1");
   });
 
+  it("closed mix: the reveal is an amber callout, and its values stay bright", async () => {
+    mockGetMixes.mockResolvedValue([closedMix()]);
+    mockGetResults.mockResolvedValue(resultsWith());
+
+    renderClub();
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+    const block = (await screen.findByText("winner")).closest("dl")!;
+
+    // A tinted surface with its own edge, not just amber text — the mix number
+    // above is already `accent`, so text alone would blend into it.
+    expect(block.className).toContain("bg-accent-surface");
+    // The tint is only 1.07:1 against `card`, so the hairline is what actually
+    // draws the edge. Losing it would leave the block invisible as an object.
+    expect(block.className).toContain("border-accent-hairline");
+
+    // The names and titles stay `foreground` (16.63:1) rather than going amber
+    // too, so the result itself remains the most legible thing in the block.
+    expect(screen.getByText("Wren").className).toContain("text-foreground");
+  });
+
   it("closed mix tie: shows every co-winner and every most-noted pick", async () => {
     mockGetMixes.mockResolvedValue([closedMix()]);
     mockGetResults.mockResolvedValue(

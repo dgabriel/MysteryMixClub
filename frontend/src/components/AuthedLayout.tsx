@@ -31,8 +31,16 @@ export function AuthedLayout() {
   // Move focus to the new page's content on every client-side navigation, so
   // keyboard/AT users get a cue that the "page" changed instead of focus
   // silently staying on whatever nav link was just activated.
+  //
+  // `preventScroll` is load-bearing. This container starts just below the nav
+  // and is as tall as the page, so a plain focus() makes the browser scroll it
+  // fully into view — which on any screen taller than the viewport means
+  // scrolling the toolbar off the top on arrival (61px, measured on
+  // /clubs/new). Screens that show a loading state first were hiding the bug:
+  // they were short when the focus landed. The focus cue is what matters here,
+  // not the scroll position.
   useEffect(() => {
-    contentRef.current?.focus();
+    contentRef.current?.focus({ preventScroll: true });
   }, [pathname]);
 
   return (

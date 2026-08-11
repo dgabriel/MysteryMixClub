@@ -80,8 +80,9 @@ const ProfileRoute = lazy(() =>
  *     /admin/metrics → platform-admin only; read-only platform snapshot,
  *                    self-guarded the same way as /admin
  *
- *   /clubs/new     → protected but OUTSIDE the nav shell — a focused create form
- *                    with its own cancel affordance (not in the nav's screen set).
+ *   /clubs/new     → protected, inside the nav shell like every other authed
+ *                    screen. Not in the nav's own screen set, but it keeps the
+ *                    toolbar, plus its own cancel affordance back to /home.
  *
  *   /leagues/:id, /rounds/:id, /leagues/new → PERMANENT redirects to the club/mix
  *                    equivalents (MYS-192). Notification emails sent before the
@@ -139,14 +140,14 @@ const router = createBrowserRouter([
       { path: "/profile", element: withSuspense(<ProfileRoute />) },
       { path: "/admin", element: withSuspense(<AdminRoute />) },
       { path: "/admin/metrics", element: withSuspense(<AdminMetricsRoute />) },
+      // /clubs/new used to sit outside this layout as a "focused" form with no
+      // nav. In practice that read as a broken page — you land on it from the
+      // nav shell and the toolbar vanishes — so it joins the shell like every
+      // other authed screen. Its own `cancel` still goes back to /home.
+      { path: "/clubs/new", element: withSuspense(<CreateClubRoute />) },
     ],
   },
 
-  // Authed but outside the nav shell — a focused create form.
-  {
-    path: "/clubs/new",
-    element: <ProtectedRoute>{withSuspense(<CreateClubRoute />)}</ProtectedRoute>,
-  },
   { path: "/leagues/new", element: <Navigate to="/clubs/new" replace /> },
 
   { path: "/invite/:token", element: withSuspense(<JoinClubRoute />) },

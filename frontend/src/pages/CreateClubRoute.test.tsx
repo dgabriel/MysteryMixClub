@@ -114,19 +114,22 @@ describe("CreateClubRoute", () => {
     expect(mockCreateClub).not.toHaveBeenCalled();
   });
 
-  it("just-vibing-by-default checkbox sends default_vibe_mode true (MYS-60)", async () => {
+  // The casual-mode checkbox was pulled from this form on 2026-08-11 pending a
+  // design (it used to send default_vibe_mode true — MYS-60). Until it returns,
+  // the create call still has to carry the field, at the API's own default.
+  it("sends default_vibe_mode false while the casual-mode control is pulled", async () => {
     mockCreateClub.mockResolvedValue(clubWith({ id: "new-club-99" }));
     const user = userEvent.setup();
 
     renderCreate();
 
+    expect(screen.queryByLabelText(/casual mode by default/i)).not.toBeInTheDocument();
     await user.type(screen.getByLabelText(/^name$/i), "Casual Club");
-    await user.click(screen.getByLabelText(/casual mode by default/i));
     await user.click(screen.getByRole("button", { name: /^create$/i }));
 
     expect(await screen.findByText("CLUB DETAIL CONTENT")).toBeInTheDocument();
     expect(mockCreateClub).toHaveBeenCalledWith(
-      expect.objectContaining({ default_vibe_mode: true }),
+      expect.objectContaining({ default_vibe_mode: false }),
     );
   });
 

@@ -1,12 +1,9 @@
 import { type FormEvent, useState } from "react";
 import { Button } from "../components/Button";
 import { PaperSurface } from "../components/PaperSurface";
-import { CheckmarkIcon } from "../components/CheckmarkIcon";
 import { FormError } from "../components/FormError";
 import { TextField } from "../components/TextField";
-import { ConcentricRings } from "../components/ConcentricRings";
 import { DeadlineWindowField } from "../components/DeadlineWindowField";
-import { HelpLink } from "../components/HelpLink";
 import { daysAndHoursToTotal, validateWindowHours } from "../utils/deadlineWindow";
 
 type CreateClubInput = {
@@ -118,7 +115,6 @@ export function CreateClubScreen({ onSubmit, submitting, error, onCancel }: Crea
   const [totalMixes, setTotalMixes] = useState("6");
   const [votesPerPlayer, setVotesPerPlayer] = useState("3");
   const [songsPerSubmission, setSongsPerSubmission] = useState("1");
-  const [defaultVibeMode, setDefaultVibeMode] = useState(false);
   const [submissionWindowDays, setSubmissionWindowDays] = useState(DEFAULT_WINDOW_DAYS);
   const [submissionWindowHours, setSubmissionWindowHours] = useState(DEFAULT_WINDOW_HOURS);
   const [votingWindowDays, setVotingWindowDays] = useState(DEFAULT_WINDOW_DAYS);
@@ -173,7 +169,11 @@ export function CreateClubScreen({ onSubmit, submitting, error, onCancel }: Crea
       total_mixes: Number(totalMixes),
       votes_per_player: Number(votesPerPlayer),
       songs_per_submission: Number(songsPerSubmission),
-      default_vibe_mode: defaultVibeMode,
+      // The casual-mode toggle was pulled from this form on 2026-08-11 pending
+      // a design Dawn is still working out; new clubs take the API's own
+      // default until it returns. Members can still be switched
+      // individually, and an organizer can change the club default later.
+      default_vibe_mode: false,
       submission_window_hours: daysAndHoursToTotal(
         Number(submissionWindowDays),
         Number(submissionWindowHours),
@@ -183,24 +183,17 @@ export function CreateClubScreen({ onSubmit, submitting, error, onCancel }: Crea
   }
 
   return (
-    // Light surface (ADR 0013). Not `nested`: /clubs/new is a top-level route
-    // outside AuthedLayout, so this owns the whole viewport.
-    <PaperSurface>
-      <main className="flex flex-1 flex-col items-center justify-center px-4 py-8 sm:px-8">
+    // Light surface (ADR 0013), `nested` because this screen renders inside
+    // AuthedLayout — an unnested `min-h-screen` here would push the toolbar off
+    // the top of the viewport on load.
+    <PaperSurface nested>
+      {/* Top-aligned, not vertically centred. Centring is right for a short
+          standalone screen; this form is taller than the viewport, and inside
+          the nav shell `justify-center` pushed its top edge above the fold —
+          the toolbar was scrolled off on load (61px, measured). */}
+      <main className="flex flex-col items-center px-4 pt-8 pb-16 sm:px-8">
         <div className="w-full max-w-sm">
-          {/* The disc, unaccented. /clubs/new is a top-level route in App.tsx,
-            outside the AuthedLayout children that mount TopNav, so this screen
-            carries no nav mark and an amber hero mark here would sit inside
-            ADR 0010's two-placement bound. It stays neutral anyway: the ADR
-            enumerates the screens that carry the hero mark and this is not one
-            of them, so accenting it would widen the identity category rather
-            than apply it — the same call EmailEntryScreen made. The retired
-            reason for having no accent (ADR 0004's decorative-Rust-yields-to-
-            errors trade) no longer applies: form errors are `ink-destructive`,
-            a separate color category from amber entirely. */}
-          <ConcentricRings size={72} onPaper className="mx-auto" />
-
-          <h1 className="mt-8 text-center font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
+          <h1 className="text-center font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
             new club
           </h1>
           <p className="mt-2 text-center text-sm leading-[1.72] text-ink-muted">
@@ -366,55 +359,6 @@ export function CreateClubScreen({ onSubmit, submitting, error, onCancel }: Crea
               />
               <p className="text-meta leading-[1.6] text-ink-muted">
                 mystery mixes also close early if everyone finishes.
-              </p>
-            </div>
-
-            <div>
-              <label className="flex cursor-pointer items-center gap-3">
-                {/* Same drawn box as OnboardingScreen's consent checkbox: the
-                    native box is removed (`appearance-none`) rather than tinted
-                    with `accent-color`, so the checkmark can be a colour we
-                    control. Grid stacking (both children in cell 1/1) puts the
-                    mark over the box without absolute positioning. */}
-                <span className="grid h-4 w-4 shrink-0 place-items-center">
-                  <input
-                    type="checkbox"
-                    name="default_vibe_mode"
-                    checked={defaultVibeMode}
-                    onChange={(e) => setDefaultVibeMode(e.target.checked)}
-                    disabled={submitting}
-                    // Checked is amber because "accent for selected" is the
-                    // interactive-state half of amber's action category, not
-                    // decoration — but `ink-accent` (#B65D00), not `accent`.
-                    // A checkbox is a non-text graphic, so its fill and its
-                    // resting edge each owe 3:1 against the surface behind
-                    // them, and `accent` is only 2.62:1 on paper. `ink-accent`
-                    // clears it at 4.61:1, and the `paper` checkmark drawn on
-                    // that fill inherits the same 4.61:1. The focus ring offsets
-                    // against `paper` for the same reason it offset against
-                    // `floor` before: an amber ring laid directly on the amber
-                    // fill would be invisible. No disabled recolor — the box is
-                    // only disabled while a create is in flight, `ink-muted`
-                    // still reads at 4.67:1 there, and Tailwind orders
-                    // `disabled:` after `checked:`, so one would silently drop
-                    // the amber mid-submit.
-                    className="peer col-start-1 row-start-1 h-4 w-4 cursor-pointer appearance-none rounded-hair border border-ink-muted bg-transparent transition-colors duration-150 checked:border-ink-accent checked:bg-ink-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-accent focus-visible:ring-offset-2 focus-visible:ring-offset-paper disabled:cursor-not-allowed"
-                  />
-                  <CheckmarkIcon className="pointer-events-none col-start-1 row-start-1 hidden text-paper peer-checked:block" />
-                </span>
-                {/* The control's own caption, so it takes the same mono label
-                    metrics as every field label on this form but sits at
-                    `ink` rather than `ink-muted` — it is the thing being
-                    toggled, not supporting copy about it. */}
-                <span className="font-mono uppercase tracking-mono-caps text-mini text-ink">
-                  casual mode by default
-                </span>
-                <HelpLink anchor="casual-mode" onPaper />
-              </label>
-              <p className="mt-2 text-meta leading-[1.6] text-ink-muted">
-                casual mode means no voting or ranking, just songs and response notes. competitive
-                mode means voting and a spot on the leaderboard. every member who joins starts out
-                in the mode you pick here.
               </p>
             </div>
 

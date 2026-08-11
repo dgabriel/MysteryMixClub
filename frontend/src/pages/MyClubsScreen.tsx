@@ -37,7 +37,7 @@ export function MyClubsScreen({
     // touching a single card interior — every ClubCard goes through the dark
     // `Card` primitive and SongSearchCard renders its own — so only the chrome
     // sitting directly on the page moves to the `ink` ramp.
-    <PaperSurface>
+    <PaperSurface nested>
       <main className="flex flex-1 flex-col px-4 py-8 sm:px-8">
         {loading ? (
           <div className="flex flex-1 items-center justify-center">

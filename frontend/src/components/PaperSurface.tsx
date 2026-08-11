@@ -2,6 +2,20 @@ import type { ReactNode } from "react";
 
 type PaperSurfaceProps = {
   children: ReactNode;
+  /** The surface is nested inside a layout that already fills the viewport —
+   *  i.e. an authed screen under `AuthedLayout`, rather than a public route
+   *  where this component is the outermost element.
+   *
+   *  It changes how the box claims height, and getting it wrong is not cosmetic.
+   *  `AuthedLayout` is already `min-h-screen` and puts its content *below* a
+   *  61px `TopNav`; a nested `min-h-screen` therefore demands a full viewport
+   *  starting 61px down, overflowing by exactly the nav's height. `AuthedLayout`
+   *  also focuses `#main-content` on every navigation (a keyboard/AT cue), and
+   *  focusing scrolls into view — so that 61px of overflow became a real scroll
+   *  that pushed the nav off the top of the screen on arrival at `/home`.
+   *
+   *  Nested, it takes `flex-1` and fills the space the layout already gave it. */
+  nested?: boolean;
   className?: string;
 };
 
@@ -35,8 +49,12 @@ type PaperSurfaceProps = {
  * reads as the app's chrome sitting above a light page rather than as part of
  * it, and it needs no light variant.
  */
-export function PaperSurface({ children, className = "" }: PaperSurfaceProps) {
+export function PaperSurface({ children, nested = false, className = "" }: PaperSurfaceProps) {
   return (
-    <div className={`flex min-h-screen flex-col bg-paper text-ink ${className}`}>{children}</div>
+    <div
+      className={`flex flex-col bg-paper text-ink ${nested ? "flex-1" : "min-h-screen"} ${className}`}
+    >
+      {children}
+    </div>
   );
 }

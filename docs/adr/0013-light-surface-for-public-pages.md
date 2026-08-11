@@ -20,6 +20,13 @@
 > **And again, MysteryMixClub-0fnf.33:** `/mixes/:id`. Eight routes. This one
 > carried the first **modal** (`bg-sheet`, Z4), which stays dark — see
 > "Modals" below.
+>
+> **And again, MysteryMixClub-0fnf.34:** `/clubs/new`. Nine routes. The first
+> screen that is *only* a form, so it exercised the field primitives'
+> `onPaper` paths end to end (`TextField`, `DeadlineWindowField`, `FormError`)
+> and the drawn checkbox. The checkbox is the one thing that needed a
+> different token rather than a mechanical swap — see "Non-text graphics"
+> below.
 
 ## Context
 
@@ -53,9 +60,9 @@ foreground ramp, brand accent included.
 
 ## Decision
 
-**`/login`, `/about`, `/terms`, `/privacy`, `/help`, `/home`, `/clubs/:id` and
-`/mixes/:id` render on a light surface with their own derived `ink` ramp. Everything else stays exactly
-as ADR 0009 specifies.**
+**`/login`, `/about`, `/terms`, `/privacy`, `/help`, `/home`, `/clubs/:id`,
+`/mixes/:id` and `/clubs/new` render on a light surface with their own derived
+`ink` ramp. Everything else stays exactly as ADR 0009 specifies.**
 
 Four parts:
 
@@ -119,6 +126,28 @@ than a vivid one.
 800 — unambiguously WCAG "large text", where the floor is 3:1 rather than 4.5:1.
 `ink-accent-display` spends that headroom on chroma and keeps the wordmark's
 punch. **It is valid at hero size and nowhere else.**
+
+### 3a. Non-text graphics take `ink-accent` even where a button takes `accent`
+
+An amber **button fill** and an amber **checkbox fill** are not the same
+problem, and `/clubs/new` is where that first bit.
+
+A filled button carries its own high-contrast label, so the label is what makes
+the control perceivable and the fill's ratio against the page is not what WCAG
+1.4.11 is measuring. `accent` (`#F3821D`, 2.62:1 on paper) is fine there, and
+that is what `Button`'s paper primary uses.
+
+A checkbox has no label inside it. **The box is the only thing conveying its
+state**, which makes it a non-text graphic owing 3:1 against the surface behind
+it — both its resting edge and its checked fill. `accent` fails that on paper;
+`ink-accent` clears it at 4.61:1, and a `paper` checkmark drawn on that fill
+inherits the same 4.61:1.
+
+**The rule:** on paper, if the amber shape *is* the information, it takes
+`ink-accent`. If it merely carries text that is the information, `accent` is
+allowed. This is why `/clubs/new`'s casual-mode checkbox is visibly a darker
+orange than the `create` button directly beneath it. That difference is
+correct, not drift.
 
 ### 4. Contrast is computed from the rounded 8-bit value
 

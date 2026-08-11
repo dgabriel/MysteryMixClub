@@ -1,5 +1,6 @@
 import { type FormEvent, useState } from "react";
 import { Button } from "../components/Button";
+import { PaperSurface } from "../components/PaperSurface";
 import { CheckmarkIcon } from "../components/CheckmarkIcon";
 import { FormError } from "../components/FormError";
 import { TextField } from "../components/TextField";
@@ -182,9 +183,12 @@ export function CreateClubScreen({ onSubmit, submitting, error, onCancel }: Crea
   }
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center px-4 py-8 sm:px-8">
-      <div className="w-full max-w-sm">
-        {/* The disc, unaccented. /clubs/new is a top-level route in App.tsx,
+    // Light surface (ADR 0013). Not `nested`: /clubs/new is a top-level route
+    // outside AuthedLayout, so this owns the whole viewport.
+    <PaperSurface>
+      <main className="flex flex-1 flex-col items-center justify-center px-4 py-8 sm:px-8">
+        <div className="w-full max-w-sm">
+          {/* The disc, unaccented. /clubs/new is a top-level route in App.tsx,
             outside the AuthedLayout children that mount TopNav, so this screen
             carries no nav mark and an amber hero mark here would sit inside
             ADR 0010's two-placement bound. It stays neutral anyway: the ADR
@@ -192,236 +196,254 @@ export function CreateClubScreen({ onSubmit, submitting, error, onCancel }: Crea
             of them, so accenting it would widen the identity category rather
             than apply it — the same call EmailEntryScreen made. The retired
             reason for having no accent (ADR 0004's decorative-Rust-yields-to-
-            errors trade) no longer applies: form errors are `destructive-text`,
+            errors trade) no longer applies: form errors are `ink-destructive`,
             a separate color category from amber entirely. */}
-        <ConcentricRings size={72} className="mx-auto" />
+          <ConcentricRings size={72} onPaper className="mx-auto" />
 
-        <h1 className="mt-8 text-center font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
-          new club
-        </h1>
-        <p className="mt-2 text-center text-sm leading-[1.72] text-muted-foreground">
-          anyone you invite skips the waitlist and joins straight in.
-        </p>
+          <h1 className="mt-8 text-center font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
+            new club
+          </h1>
+          <p className="mt-2 text-center text-sm leading-[1.72] text-ink-muted">
+            anyone you invite skips the waitlist and joins straight in.
+          </p>
 
-        <form onSubmit={handleSubmit} noValidate className="mt-10 space-y-8">
-          <TextField
-            id="club-name"
-            label="name"
-            name="name"
-            placeholder="what's this club called?"
-            value={name}
-            onChange={(e) => {
-              setName(e.target.value);
-              revalidateIfTouched("name", validateName(e.target.value));
-            }}
-            onBlur={(e) => markTouchedAndValidate("name", validateName(e.target.value))}
-            disabled={submitting}
-            error={fieldErrors.name}
-          />
-
-          <TextField
-            id="club-description"
-            label="description (optional)"
-            name="description"
-            placeholder="a line about the vibe"
-            value={description}
-            onChange={(e) => {
-              setDescription(e.target.value);
-              revalidateIfTouched("description", validateDescription(e.target.value));
-            }}
-            onBlur={(e) =>
-              markTouchedAndValidate("description", validateDescription(e.target.value))
-            }
-            disabled={submitting}
-            error={fieldErrors.description}
-          />
-
-          <div>
+          <form onSubmit={handleSubmit} noValidate className="mt-10 space-y-8">
             <TextField
-              id="club-total-mixes"
-              label="number of mystery mixes"
-              name="total_mixes"
-              type="number"
-              min={1}
-              max={MAX_MIXES}
-              value={totalMixes}
+              onPaper
+              id="club-name"
+              label="name"
+              name="name"
+              placeholder="what's this club called?"
+              value={name}
               onChange={(e) => {
-                setTotalMixes(e.target.value);
-                revalidateIfTouched("mixes", validateMixes(e.target.value));
+                setName(e.target.value);
+                revalidateIfTouched("name", validateName(e.target.value));
               }}
-              onBlur={(e) => markTouchedAndValidate("mixes", validateMixes(e.target.value))}
+              onBlur={(e) => markTouchedAndValidate("name", validateName(e.target.value))}
               disabled={submitting}
-              error={fieldErrors.mixes}
+              error={fieldErrors.name}
             />
-            <p className="mt-2 text-meta leading-[1.6] text-muted-foreground">
-              we&apos;ll create this many mystery mixes for you — name each one later.
-            </p>
-          </div>
 
-          <TextField
-            id="club-votes-per-player"
-            label="votes per player"
-            name="votes_per_player"
-            type="number"
-            min={1}
-            value={votesPerPlayer}
-            onChange={(e) => {
-              setVotesPerPlayer(e.target.value);
-              revalidateIfTouched("votes", validateVotes(e.target.value));
-            }}
-            onBlur={(e) => markTouchedAndValidate("votes", validateVotes(e.target.value))}
-            disabled={submitting}
-            error={fieldErrors.votes}
-          />
-
-          <div>
             <TextField
-              id="club-songs-per-submission"
-              label="songs per submission"
-              name="songs_per_submission"
-              type="number"
-              min={1}
-              max={5}
-              value={songsPerSubmission}
+              onPaper
+              id="club-description"
+              label="description (optional)"
+              name="description"
+              placeholder="a line about the vibe"
+              value={description}
               onChange={(e) => {
-                setSongsPerSubmission(e.target.value);
-                revalidateIfTouched("songs", validateSongs(e.target.value));
+                setDescription(e.target.value);
+                revalidateIfTouched("description", validateDescription(e.target.value));
               }}
-              onBlur={(e) => markTouchedAndValidate("songs", validateSongs(e.target.value))}
-              disabled={submitting}
-              error={fieldErrors.songs}
-            />
-            <p className="mt-2 text-meta leading-[1.6] text-muted-foreground">
-              how many songs each player can submit per mystery mix — 1 to 5.
-            </p>
-          </div>
-
-          <div className="space-y-6">
-            <DeadlineWindowField
-              idPrefix="submission-window"
-              label="submission window"
-              days={submissionWindowDays}
-              hours={submissionWindowHours}
-              onDaysChange={(value) => {
-                setSubmissionWindowDays(value);
-                revalidateIfTouched(
-                  "submission_window",
-                  validateWindow(value, submissionWindowHours, "submission"),
-                );
-              }}
-              onHoursChange={(value) => {
-                setSubmissionWindowHours(value);
-                revalidateIfTouched(
-                  "submission_window",
-                  validateWindow(submissionWindowDays, value, "submission"),
-                );
-              }}
-              onBlur={() =>
-                markTouchedAndValidate(
-                  "submission_window",
-                  validateWindow(submissionWindowDays, submissionWindowHours, "submission"),
-                )
+              onBlur={(e) =>
+                markTouchedAndValidate("description", validateDescription(e.target.value))
               }
               disabled={submitting}
-              error={fieldErrors.submission_window}
+              error={fieldErrors.description}
             />
-            <DeadlineWindowField
-              idPrefix="voting-window"
-              label="voting window"
-              days={votingWindowDays}
-              hours={votingWindowHours}
-              onDaysChange={(value) => {
-                setVotingWindowDays(value);
-                revalidateIfTouched(
-                  "voting_window",
-                  validateWindow(value, votingWindowHours, "voting"),
-                );
-              }}
-              onHoursChange={(value) => {
-                setVotingWindowHours(value);
-                revalidateIfTouched(
-                  "voting_window",
-                  validateWindow(votingWindowDays, value, "voting"),
-                );
-              }}
-              onBlur={() =>
-                markTouchedAndValidate(
-                  "voting_window",
-                  validateWindow(votingWindowDays, votingWindowHours, "voting"),
-                )
-              }
-              disabled={submitting}
-              error={fieldErrors.voting_window}
-            />
-            <p className="text-meta leading-[1.6] text-muted-foreground">
-              mystery mixes also close early if everyone finishes.
-            </p>
-          </div>
 
-          <div>
-            <label className="flex cursor-pointer items-center gap-3">
-              {/* Same drawn box as OnboardingScreen's consent checkbox: the
-                  native box is removed (`appearance-none`) rather than tinted
-                  with `accent-color`, because the UA paints its own checkmark
-                  white and white on the amber fill is ~2.2:1, under the 3:1
-                  floor for a non-text graphic. Drawing it lets the mark be
-                  `accent-foreground`. Grid stacking (both children in cell 1/1)
-                  puts the mark over the box without absolute positioning. */}
-              <span className="grid h-4 w-4 shrink-0 place-items-center">
-                <input
-                  type="checkbox"
-                  name="default_vibe_mode"
-                  checked={defaultVibeMode}
-                  onChange={(e) => setDefaultVibeMode(e.target.checked)}
-                  disabled={submitting}
-                  // Checked is amber because "accent for selected" is the
-                  // interactive-state half of amber's action category, not
-                  // decoration. The focus ring takes a `floor` offset — this
-                  // screen sits on the page background — since an amber ring
-                  // directly on the amber fill would be invisible. No disabled
-                  // recolor: the box is only disabled while a create is in
-                  // flight, the resting `muted-foreground` edge still reads at
-                  // 6.38:1 there, and Tailwind orders `disabled:` after
-                  // `checked:`, so one would silently drop the amber mid-submit.
-                  className="peer col-start-1 row-start-1 h-4 w-4 cursor-pointer appearance-none rounded-hair border border-muted-foreground bg-transparent transition-colors duration-150 checked:border-accent checked:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-floor disabled:cursor-not-allowed"
-                />
-                <CheckmarkIcon className="pointer-events-none col-start-1 row-start-1 hidden text-accent-foreground peer-checked:block" />
-              </span>
-              {/* The control's own caption, so it takes the same mono label
-                  metrics as every field label on this form but sits at
-                  `foreground` rather than `muted-foreground` — it is the thing
-                  being toggled, not supporting copy about it. */}
-              <span className="font-mono uppercase tracking-mono-caps text-mini text-foreground">
-                casual mode by default
-              </span>
-              <HelpLink anchor="casual-mode" />
-            </label>
-            <p className="mt-2 text-meta leading-[1.6] text-muted-foreground">
-              casual mode means no voting or ranking, just songs and response notes. competitive
-              mode means voting and a spot on the leaderboard. every member who joins starts out in
-              the mode you pick here.
-            </p>
-          </div>
-
-          {/* A failed create is a screen-level form error, not a field's — the
-              shared `FormError` treatment (ADR 0004). Form errors are their own
-              color category and consume nothing from this screen's amber, which
-              is why every invalid field above may show `destructive-text` at the
-              same time as this does. */}
-          {error ? <FormError>{error}</FormError> : null}
-
-          <div className="space-y-4">
-            <Button type="submit" disabled={submitting} className="w-full">
-              {submitting ? "creating…" : "create"}
-            </Button>
-            <div className="text-center">
-              <Button variant="ghost" type="button" onClick={onCancel} disabled={submitting}>
-                cancel
-              </Button>
+            <div>
+              <TextField
+                onPaper
+                id="club-total-mixes"
+                label="number of mystery mixes"
+                name="total_mixes"
+                type="number"
+                min={1}
+                max={MAX_MIXES}
+                value={totalMixes}
+                onChange={(e) => {
+                  setTotalMixes(e.target.value);
+                  revalidateIfTouched("mixes", validateMixes(e.target.value));
+                }}
+                onBlur={(e) => markTouchedAndValidate("mixes", validateMixes(e.target.value))}
+                disabled={submitting}
+                error={fieldErrors.mixes}
+              />
+              <p className="mt-2 text-meta leading-[1.6] text-ink-muted">
+                we&apos;ll create this many mystery mixes for you — name each one later.
+              </p>
             </div>
-          </div>
-        </form>
-      </div>
-    </main>
+
+            <TextField
+              onPaper
+              id="club-votes-per-player"
+              label="votes per player"
+              name="votes_per_player"
+              type="number"
+              min={1}
+              value={votesPerPlayer}
+              onChange={(e) => {
+                setVotesPerPlayer(e.target.value);
+                revalidateIfTouched("votes", validateVotes(e.target.value));
+              }}
+              onBlur={(e) => markTouchedAndValidate("votes", validateVotes(e.target.value))}
+              disabled={submitting}
+              error={fieldErrors.votes}
+            />
+
+            <div>
+              <TextField
+                onPaper
+                id="club-songs-per-submission"
+                label="songs per submission"
+                name="songs_per_submission"
+                type="number"
+                min={1}
+                max={5}
+                value={songsPerSubmission}
+                onChange={(e) => {
+                  setSongsPerSubmission(e.target.value);
+                  revalidateIfTouched("songs", validateSongs(e.target.value));
+                }}
+                onBlur={(e) => markTouchedAndValidate("songs", validateSongs(e.target.value))}
+                disabled={submitting}
+                error={fieldErrors.songs}
+              />
+              <p className="mt-2 text-meta leading-[1.6] text-ink-muted">
+                how many songs each player can submit per mystery mix — 1 to 5.
+              </p>
+            </div>
+
+            <div className="space-y-6">
+              <DeadlineWindowField
+                onPaper
+                idPrefix="submission-window"
+                label="submission window"
+                days={submissionWindowDays}
+                hours={submissionWindowHours}
+                onDaysChange={(value) => {
+                  setSubmissionWindowDays(value);
+                  revalidateIfTouched(
+                    "submission_window",
+                    validateWindow(value, submissionWindowHours, "submission"),
+                  );
+                }}
+                onHoursChange={(value) => {
+                  setSubmissionWindowHours(value);
+                  revalidateIfTouched(
+                    "submission_window",
+                    validateWindow(submissionWindowDays, value, "submission"),
+                  );
+                }}
+                onBlur={() =>
+                  markTouchedAndValidate(
+                    "submission_window",
+                    validateWindow(submissionWindowDays, submissionWindowHours, "submission"),
+                  )
+                }
+                disabled={submitting}
+                error={fieldErrors.submission_window}
+              />
+              <DeadlineWindowField
+                onPaper
+                idPrefix="voting-window"
+                label="voting window"
+                days={votingWindowDays}
+                hours={votingWindowHours}
+                onDaysChange={(value) => {
+                  setVotingWindowDays(value);
+                  revalidateIfTouched(
+                    "voting_window",
+                    validateWindow(value, votingWindowHours, "voting"),
+                  );
+                }}
+                onHoursChange={(value) => {
+                  setVotingWindowHours(value);
+                  revalidateIfTouched(
+                    "voting_window",
+                    validateWindow(votingWindowDays, value, "voting"),
+                  );
+                }}
+                onBlur={() =>
+                  markTouchedAndValidate(
+                    "voting_window",
+                    validateWindow(votingWindowDays, votingWindowHours, "voting"),
+                  )
+                }
+                disabled={submitting}
+                error={fieldErrors.voting_window}
+              />
+              <p className="text-meta leading-[1.6] text-ink-muted">
+                mystery mixes also close early if everyone finishes.
+              </p>
+            </div>
+
+            <div>
+              <label className="flex cursor-pointer items-center gap-3">
+                {/* Same drawn box as OnboardingScreen's consent checkbox: the
+                    native box is removed (`appearance-none`) rather than tinted
+                    with `accent-color`, so the checkmark can be a colour we
+                    control. Grid stacking (both children in cell 1/1) puts the
+                    mark over the box without absolute positioning. */}
+                <span className="grid h-4 w-4 shrink-0 place-items-center">
+                  <input
+                    type="checkbox"
+                    name="default_vibe_mode"
+                    checked={defaultVibeMode}
+                    onChange={(e) => setDefaultVibeMode(e.target.checked)}
+                    disabled={submitting}
+                    // Checked is amber because "accent for selected" is the
+                    // interactive-state half of amber's action category, not
+                    // decoration — but `ink-accent` (#B65D00), not `accent`.
+                    // A checkbox is a non-text graphic, so its fill and its
+                    // resting edge each owe 3:1 against the surface behind
+                    // them, and `accent` is only 2.62:1 on paper. `ink-accent`
+                    // clears it at 4.61:1, and the `paper` checkmark drawn on
+                    // that fill inherits the same 4.61:1. The focus ring offsets
+                    // against `paper` for the same reason it offset against
+                    // `floor` before: an amber ring laid directly on the amber
+                    // fill would be invisible. No disabled recolor — the box is
+                    // only disabled while a create is in flight, `ink-muted`
+                    // still reads at 4.67:1 there, and Tailwind orders
+                    // `disabled:` after `checked:`, so one would silently drop
+                    // the amber mid-submit.
+                    className="peer col-start-1 row-start-1 h-4 w-4 cursor-pointer appearance-none rounded-hair border border-ink-muted bg-transparent transition-colors duration-150 checked:border-ink-accent checked:bg-ink-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-accent focus-visible:ring-offset-2 focus-visible:ring-offset-paper disabled:cursor-not-allowed"
+                  />
+                  <CheckmarkIcon className="pointer-events-none col-start-1 row-start-1 hidden text-paper peer-checked:block" />
+                </span>
+                {/* The control's own caption, so it takes the same mono label
+                    metrics as every field label on this form but sits at
+                    `ink` rather than `ink-muted` — it is the thing being
+                    toggled, not supporting copy about it. */}
+                <span className="font-mono uppercase tracking-mono-caps text-mini text-ink">
+                  casual mode by default
+                </span>
+                <HelpLink anchor="casual-mode" onPaper />
+              </label>
+              <p className="mt-2 text-meta leading-[1.6] text-ink-muted">
+                casual mode means no voting or ranking, just songs and response notes. competitive
+                mode means voting and a spot on the leaderboard. every member who joins starts out
+                in the mode you pick here.
+              </p>
+            </div>
+
+            {/* A failed create is a screen-level form error, not a field's — the
+                shared `FormError` treatment (ADR 0004). Form errors are their own
+                color category and consume nothing from this screen's amber, which
+                is why every invalid field above may show `ink-destructive` at
+                the same time as this does. */}
+            {error ? <FormError onPaper>{error}</FormError> : null}
+
+            <div className="space-y-4">
+              <Button onPaper type="submit" disabled={submitting} className="w-full">
+                {submitting ? "creating…" : "create"}
+              </Button>
+              <div className="text-center">
+                <Button
+                  onPaper
+                  variant="ghost"
+                  type="button"
+                  onClick={onCancel}
+                  disabled={submitting}
+                >
+                  cancel
+                </Button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </main>
+    </PaperSurface>
   );
 }

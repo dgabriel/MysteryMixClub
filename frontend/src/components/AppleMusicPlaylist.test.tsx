@@ -31,7 +31,11 @@ const mockAuthorize = vi.mocked(authorizeAppleMusic);
 beforeEach(() => {
   vi.clearAllMocks();
   mockToken.mockResolvedValue({ token: "dev-token" });
-  mockLink.mockResolvedValue({ playlist_url: null, direct_playlist_url: null, playlist_name: null });
+  mockLink.mockResolvedValue({
+    playlist_url: null,
+    direct_playlist_url: null,
+    playlist_name: null,
+  });
   mockAuthorize.mockResolvedValue("mut-123");
 });
 
@@ -53,11 +57,11 @@ describe("AppleMusicPlaylist", () => {
     );
 
     expect(
-      screen.getByText(/opens apple's own sign-in\. we never see or store your apple id password\./i),
+      screen.getByText(
+        /opens apple's own sign-in\. we never see or store your apple id password\./i,
+      ),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/check that the page's address reads apple\.com/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/check that the page's address reads apple\.com/i)).toBeInTheDocument();
     // Not yet authorized — the modal is an interstitial, not an auto-trigger.
     expect(mockAuthorize).not.toHaveBeenCalled();
   });
@@ -70,9 +74,7 @@ describe("AppleMusicPlaylist", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
 
-    expect(
-      screen.queryByText(/opens apple's own sign-in/i),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/opens apple's own sign-in/i)).not.toBeInTheDocument();
     expect(mockAuthorize).not.toHaveBeenCalled();
   });
 
@@ -85,9 +87,7 @@ describe("AppleMusicPlaylist", () => {
     await userEvent.click(screen.getByRole("button", { name: /continue to apple music/i }));
 
     await waitFor(() => expect(mockAuthorize).toHaveBeenCalledWith("dev-token"));
-    expect(
-      screen.queryByText(/opens apple's own sign-in/i),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/opens apple's own sign-in/i)).not.toBeInTheDocument();
   });
 
   it("shows the personal link when one was already generated (no direct url)", async () => {
@@ -107,9 +107,7 @@ describe("AppleMusicPlaylist", () => {
     expect(link).toHaveAttribute("href", "https://music.apple.com/library");
     // Apple exposes no deep link to a library playlist, so the member makes the
     // last hop by hand and the title is how they find it (MYS-190).
-    expect(
-      screen.getByText(/find/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/find/i)).toBeInTheDocument();
     expect(screen.getByText(/Mix 1/)).toBeInTheDocument();
   });
 
@@ -147,9 +145,11 @@ describe("AppleMusicPlaylist", () => {
   });
 
   it("on mobile, ignores the direct link and prompts to find it by name", async () => {
-    const uaSpy = vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
-      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15",
-    );
+    const uaSpy = vi
+      .spyOn(window.navigator, "userAgent", "get")
+      .mockReturnValue(
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15",
+      );
     mockLink.mockResolvedValue({
       playlist_url: "https://music.apple.com/library",
       direct_playlist_url: "https://music.apple.com/library/playlist/p.ABC",
@@ -160,14 +160,12 @@ describe("AppleMusicPlaylist", () => {
 
     const link = await screen.findByRole("link", { name: /open your apple music library/i });
     expect(link).toHaveAttribute("href", "https://music.apple.com/library");
-    expect(
-      screen.getByText(/find/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/find/i)).toBeInTheDocument();
 
     uaSpy.mockRestore();
   });
 
-  it("treats a multi-touch \"Macintosh\" as an iPad, not a real desktop", async () => {
+  it('treats a multi-touch "Macintosh" as an iPad, not a real desktop', async () => {
     // iPadOS Safari reports as "Macintosh" (Apple dropped the iPad UA marker
     // around iOS 13 to unify with desktop Safari), so a touch-capable "Mac" is
     // the standard tell for a real iPad rather than a desktop machine.
@@ -176,9 +174,7 @@ describe("AppleMusicPlaylist", () => {
     // used here — define it directly and remove it again after.
     const uaSpy = vi
       .spyOn(window.navigator, "userAgent", "get")
-      .mockReturnValue(
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/605.1.15",
-      );
+      .mockReturnValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/605.1.15");
     Object.defineProperty(window.navigator, "maxTouchPoints", { value: 5, configurable: true });
     mockLink.mockResolvedValue({
       playlist_url: "https://music.apple.com/library",
@@ -190,9 +186,7 @@ describe("AppleMusicPlaylist", () => {
 
     const link = await screen.findByRole("link", { name: /open your apple music library/i });
     expect(link).toHaveAttribute("href", "https://music.apple.com/library");
-    expect(
-      screen.getByText(/find/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/find/i)).toBeInTheDocument();
 
     uaSpy.mockRestore();
     delete (window.navigator as { maxTouchPoints?: number }).maxTouchPoints;
@@ -201,9 +195,7 @@ describe("AppleMusicPlaylist", () => {
   it("does not treat a non-touch Mac as an iPad", async () => {
     const uaSpy = vi
       .spyOn(window.navigator, "userAgent", "get")
-      .mockReturnValue(
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/605.1.15",
-      );
+      .mockReturnValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/605.1.15");
     Object.defineProperty(window.navigator, "maxTouchPoints", { value: 0, configurable: true });
     mockLink.mockResolvedValue({
       playlist_url: "https://music.apple.com/library",
@@ -276,111 +268,6 @@ describe("AppleMusicPlaylist", () => {
     await userEvent.click(screen.getByRole("button", { name: /continue to apple music/i }));
 
     expect(await screen.findByText(/couldn't build the playlist/i)).toBeInTheDocument();
-  });
-
-  describe("unmatched tracks (MYS-201/GH-232)", () => {
-    it("does not show an unmatched list before generation", async () => {
-      render(<AppleMusicPlaylist mixId="r1" />);
-
-      await screen.findByRole("button", { name: /build this playlist in apple music/i });
-      expect(screen.queryByText(/didn't make the apple music playlist/i)).not.toBeInTheDocument();
-    });
-
-    it("shows the unmatched list with reason text after a successful generation", async () => {
-      mockCreate.mockResolvedValue({
-        playlist_url: "https://music.apple.com/library",
-        direct_playlist_url: "https://music.apple.com/library/playlist/p.NEW",
-        playlist_name: "Mix: Mix 1",
-        track_count: 4,
-        total_count: 5,
-        unmatched: [
-          {
-            submission_id: "s1",
-            title: "Song One",
-            artist: "Artist One",
-            reason: "no_catalog_match",
-            source: null,
-            source_url: null,
-          },
-        ],
-      });
-
-      render(<AppleMusicPlaylist mixId="r1" />);
-      await userEvent.click(
-        await screen.findByRole("button", { name: /build this playlist in apple music/i }),
-      );
-      await userEvent.click(screen.getByRole("button", { name: /continue to apple music/i }));
-
-      expect(
-        await screen.findByText(/1 missing/i),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText(/Song One · Artist One/),
-      ).toBeInTheDocument();
-    });
-
-    it("renders a listen-on link with the correct href for a source_only track", async () => {
-      mockCreate.mockResolvedValue({
-        playlist_url: "https://music.apple.com/library",
-        direct_playlist_url: "https://music.apple.com/library/playlist/p.NEW",
-        playlist_name: "Mix: Mix 1",
-        track_count: 4,
-        total_count: 5,
-        unmatched: [
-          {
-            submission_id: "s2",
-            title: "Song Two",
-            artist: "Artist Two",
-            reason: "source_only",
-            source: "youtube",
-            source_url: "https://youtube.com/watch?v=abc123",
-          },
-        ],
-      });
-
-      render(<AppleMusicPlaylist mixId="r1" />);
-      await userEvent.click(
-        await screen.findByRole("button", { name: /build this playlist in apple music/i }),
-      );
-      await userEvent.click(screen.getByRole("button", { name: /continue to apple music/i }));
-
-      expect(
-        await screen.findByText(/Song Two · Artist Two/),
-      ).toBeInTheDocument();
-      const link = screen.getByRole("link", { name: /listen on youtube/i });
-      expect(link).toHaveAttribute("href", "https://youtube.com/watch?v=abc123");
-    });
-
-    it("does not render a listen-on link for a no_catalog_match track with no source_url", async () => {
-      mockCreate.mockResolvedValue({
-        playlist_url: "https://music.apple.com/library",
-        direct_playlist_url: "https://music.apple.com/library/playlist/p.NEW",
-        playlist_name: "Mix: Mix 1",
-        track_count: 4,
-        total_count: 5,
-        unmatched: [
-          {
-            submission_id: "s1",
-            title: "Song One",
-            artist: "Artist One",
-            reason: "no_catalog_match",
-            source: null,
-            source_url: null,
-          },
-        ],
-      });
-
-      render(<AppleMusicPlaylist mixId="r1" />);
-      await userEvent.click(
-        await screen.findByRole("button", { name: /build this playlist in apple music/i }),
-      );
-      await userEvent.click(screen.getByRole("button", { name: /continue to apple music/i }));
-
-      expect(
-        await screen.findByText(/Song One · Artist One/),
-      ).toBeInTheDocument();
-      expect(screen.queryByText(/listen on/i)).not.toBeInTheDocument();
-    });
   });
 
   it("renders nothing when apple music is not configured", async () => {

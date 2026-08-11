@@ -58,7 +58,10 @@ import { SongSearchCard } from "../components/songs/SongSearchCard";
 import { SourceBadge } from "../components/SourceBadge";
 import { AppleMusicPlaylist } from "../components/AppleMusicPlaylist";
 import { SpotifyPlaylist } from "../components/SpotifyPlaylist";
-import { SourceOnlyTracks, type SourceOnlyTrack } from "../components/SourceOnlyTracks";
+import {
+  SongsMaybeMissing,
+  type MaybeMissingTrack,
+} from "../components/playlists/SongsMaybeMissing";
 import { CheckmarkIcon } from "../components/CheckmarkIcon";
 import { CrownIcon } from "../components/CrownIcon";
 import { MedalIcon } from "../components/MedalIcon";
@@ -1677,7 +1680,7 @@ function toSourceOnly(
     source: "youtube" | "bandcamp" | null;
     source_url: string | null;
   }[],
-): SourceOnlyTrack[] {
+): MaybeMissingTrack[] {
   return items
     .filter((i) => i.source != null && i.source_url != null)
     .map((i) => ({
@@ -1707,7 +1710,7 @@ function ClosedListen({
   youtubePlaylistUrl: string | null;
   youtubeTrackCount: number;
   entryCount: number;
-  sourceOnly: SourceOnlyTrack[];
+  sourceOnly: MaybeMissingTrack[];
 }) {
   if (entryCount === 0) return null;
   return (
@@ -1721,7 +1724,7 @@ function ClosedListen({
         <SpotifyPlaylist mixId={mixId} entryCount={entryCount} />
         <AppleMusicPlaylist mixId={mixId} entryCount={entryCount} />
       </PlaylistsSection>
-      <SourceOnlyTracks tracks={sourceOnly} />
+      <SongsMaybeMissing mixId={mixId} sourceOnly={sourceOnly} />
     </div>
   );
 }
@@ -1817,7 +1820,7 @@ function VotingSection({
           <SpotifyPlaylist mixId={mixId} entryCount={entries.length} />
           <AppleMusicPlaylist mixId={mixId} entryCount={entries.length} />
         </PlaylistsSection>
-        <SourceOnlyTracks tracks={toSourceOnly(entries)} />
+        <SongsMaybeMissing mixId={mixId} sourceOnly={toSourceOnly(entries)} />
         <ul className="mt-4 space-y-4">
           {entries.map((entry) => (
             <li key={entry.submission_id}>
@@ -1876,7 +1879,7 @@ function VotingSection({
         <SpotifyPlaylist mixId={mixId} entryCount={entries.length} />
         <AppleMusicPlaylist mixId={mixId} entryCount={entries.length} />
       </PlaylistsSection>
-      <SourceOnlyTracks tracks={toSourceOnly(entries)} />
+      <SongsMaybeMissing mixId={mixId} sourceOnly={toSourceOnly(entries)} />
       <div className="flex items-baseline justify-between gap-4">
         <span className="flex items-center gap-2">
           <h2 className="font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
@@ -2174,7 +2177,7 @@ function VotingTally({
         <SpotifyPlaylist mixId={mixId} entryCount={entries.length} />
         <AppleMusicPlaylist mixId={mixId} entryCount={entries.length} />
       </PlaylistsSection>
-      <SourceOnlyTracks tracks={toSourceOnly(entries)} />
+      <SongsMaybeMissing mixId={mixId} sourceOnly={toSourceOnly(entries)} />
       <h2 className="mt-8 font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
         vote tally ({voteCounts.length} songs)
       </h2>

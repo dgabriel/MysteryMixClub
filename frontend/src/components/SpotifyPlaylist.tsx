@@ -52,11 +52,6 @@ import {
  * service, which is what made the section confusing.
  */
 
-/** A per-row link inside the unmatched list. Neutral at rest, amber on hover
- *  only — hover applies to one row at a time, so it never repeats. */
-const ROW_LINK_CLASS =
-  "font-mono text-sm text-ink underline underline-offset-[3px] transition-colors duration-150 hover:text-ink-link";
-const NOTE_CLASS = "font-mono text-sm text-ink";
 
 // How often to re-check while a job is queued/running. Plain polling (ADR
 // 0006) — not fast enough to feel like a live stream, fast enough that a
@@ -64,13 +59,6 @@ const NOTE_CLASS = "font-mono text-sm text-ink";
 const POLL_INTERVAL_MS = 7000;
 
 const IN_PROGRESS_STATUSES: PlaylistJobStatus[] = ["queued", "running"];
-
-// Human-readable reason text (MYS-201): `source_only` tracks were never in
-// any streaming catalog to begin with, `no_catalog_match` tracks are catalog
-// tracks Spotify's search just couldn't resolve.
-function reasonLabel(track: UnmatchedTrack): string {
-  return track.reason === "source_only" ? "not on spotify" : "not found on spotify";
-}
 
 type LinkState = {
   playlistUrl: string | null;
@@ -116,7 +104,7 @@ export function SpotifyPlaylist({ mixId, entryCount }: { mixId: string; entryCou
   // undefined = still loading; render nothing rather than a flash of the note.
   if (state === undefined) return null;
 
-  const { playlistUrl, status, unmatched, overflowYoutubeUrl } = state;
+  const { playlistUrl, status, unmatched } = state;
   const inProgress = !playlistUrl && !!status && IN_PROGRESS_STATUSES.includes(status);
 
   const matched = entryCount !== undefined ? entryCount - unmatched.length : undefined;
@@ -155,49 +143,6 @@ export function SpotifyPlaylist({ mixId, entryCount }: { mixId: string; entryCou
           </PlaylistLink>
         ) : null
       }
-    >
-      {unmatched.length > 0 ? (
-        <>
-          <ul className="space-y-1">
-            {unmatched.map((track) => (
-              <li key={track.submission_id} className={NOTE_CLASS}>
-                {track.title} · {track.artist}
-                <span className="text-ink-muted"> — {reasonLabel(track)}</span>
-                {track.source_url ? (
-                  <>
-                    {" "}
-                    <a
-                      href={track.source_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={ROW_LINK_CLASS}
-                    >
-                      listen on {track.source}
-                    </a>
-                  </>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-          {overflowYoutubeUrl ? (
-            // Worded so it can never be mistaken for the YouTube row's own
-            // playlist link. The old copy — "hear the rest on youtube" — sat at
-            // the same indent and weight as that link a few rows above, and
-            // named the same service, which is what made the section confusing.
-            <div className="mt-2">
-              <PlaylistLink
-                href={overflowYoutubeUrl}
-                label="hear the songs missing from spotify, on youtube"
-              >
-                <MusicNoteIcon />
-                {unmatched.length === 1
-                  ? "hear the missing song on youtube"
-                  : `hear the ${unmatched.length} missing songs on youtube`}
-              </PlaylistLink>
-            </div>
-          ) : null}
-        </>
-      ) : null}
-    </PlaylistRow>
+    />
   );
 }

@@ -13,13 +13,6 @@ import {
 } from "../services/api";
 import { authorizeAppleMusic } from "../services/musickit";
 
-// Human-readable reason text (MYS-201): `source_only` tracks were never in
-// any streaming catalog to begin with, `no_catalog_match` tracks are catalog
-// tracks Apple Music's search just couldn't resolve.
-function reasonLabel(track: UnmatchedTrack): string {
-  return track.reason === "source_only" ? "not on apple music" : "not found on apple music";
-}
-
 /**
  * Per-player Apple Music playlist for a mix (MYS-108).
  *
@@ -56,10 +49,6 @@ function reasonLabel(track: UnmatchedTrack): string {
  *  underline, label to `muted-foreground` — rather than fading it, matching
  *  the `Button` primitive. `disabled:` is emitted after `hover:` by Tailwind,
  *  so a disabled control can't pick up the hover color. */
-/** A per-row link inside the unmatched list. Neutral at rest, amber on hover
- *  only — hover applies to one row at a time, so it never repeats. */
-const ROW_LINK_CLASS =
-  "font-mono text-sm text-ink underline underline-offset-[3px] transition-colors duration-150 hover:text-ink-link";
 const NOTE_CLASS = "font-mono text-sm text-ink-muted";
 
 /**
@@ -230,29 +219,6 @@ export function AppleMusicPlaylist({ mixId, entryCount }: { mixId: string; entry
         </p>
       ) : null}
       {error ? <p className={NOTE_CLASS}>{error}</p> : null}
-      {unmatched.length > 0 ? (
-        <ul className="space-y-1">
-          {unmatched.map((track) => (
-            <li key={track.submission_id} className={NOTE_CLASS}>
-              {track.title} · {track.artist}
-              <span className="text-ink-muted"> — {reasonLabel(track)}</span>
-              {track.source_url ? (
-                <>
-                  {" "}
-                  <a
-                    href={track.source_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={ROW_LINK_CLASS}
-                  >
-                    listen on {track.source}
-                  </a>
-                </>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      ) : null}
       {/* The reassurance interstitial is a modal, so it sits at the top of the
           surface ladder: a `sheet` (Z4) panel wearing `shadow-z4`, whose 1px
           white ring IS the token — no border alongside it. `muted-foreground`

@@ -7,7 +7,7 @@ import { FormError } from "../components/FormError";
 import { GoogleSignInButton } from "../components/GoogleSignInButton";
 import { TextField } from "../components/TextField";
 import { BrandLockup } from "../components/BrandLockup";
-import { PublicSurface } from "../components/PublicSurface";
+import { PaperSurface } from "../components/PaperSurface";
 import { WaitlistForm } from "../components/WaitlistForm";
 import { PASSWORD_MIN_LENGTH, getGoogleEnabled, getWaitlistEnabled } from "../services/api";
 
@@ -238,7 +238,7 @@ export function EmailEntryScreen({
     "py-1 font-mono uppercase tracking-mono text-label text-ink-muted transition-colors duration-150 hover:text-ink";
 
   return (
-    <PublicSurface>
+    <PaperSurface>
       <main className="flex flex-1 flex-col items-center justify-center px-4 sm:px-8">
         <div className="w-full max-w-sm">
           {/* `as="h1"` here and nowhere else: this screen has no title of its own,
@@ -465,6 +465,6 @@ export function EmailEntryScreen({
           </div>
         </div>
       </main>
-    </PublicSurface>
+    </PaperSurface>
   );
 }

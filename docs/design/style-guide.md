@@ -157,9 +157,13 @@ until the sweep ticket.
 
 ### Light surface — public pages only (ADR 0013)
 
-The five public routes (`/login`, `/about`, `/terms`, `/privacy`, `/help`) render
-on a **light** surface. Everything else in the app is dark, exactly as the rest
-of this guide describes.
+Six routes — `/login`, `/about`, `/terms`, `/privacy`, `/help` and `/home` —
+render on a **light** surface. Everything else in the app is dark, exactly as the
+rest of this guide describes.
+
+On those pages the model is **light page, dark cards**: a `bg-card` island is its
+own dark surface, so everything *inside* it keeps the dark ramp and only chrome
+sitting directly on the page moves to `ink`.
 
 **This is not a background swap.** The whole foreground ramp above was derived
 against near-black and every token in it fails AA on white — `foreground` at
@@ -180,11 +184,16 @@ needs its own ramp.
 
 Rules:
 
-- **Opt in per page with `<PublicSurface>`. Never set a light background on
+- **Opt in per page with `<PaperSurface>`. Never set a light background on
   `body`** — it is global and silently repaints every authed screen. That
   mistake is what produced this ADR.
 - **Never mix the two ramps on one surface.** `text-foreground` inside a
-  `PublicSurface` is invisible, and `text-ink` on a card is nearly so.
+  `PaperSurface` is invisible (1.09:1), and `text-ink` on a card is nearly so
+  (1.65:1).
+- **A dark island on a light page must anchor its own text colour.** `Card` sets
+  `text-foreground` explicitly for exactly this reason: card text mostly
+  *inherits*, and under a `PaperSurface` it would otherwise inherit `ink` and
+  vanish. Any new dark surface placed on paper owes the same.
 - **`ink-accent-display` is hero-size only.** It clears 3:1, which is the WCAG
   floor for large text and nothing else. At body size it is a failure.
 - **`TopNav` is excluded** — it keeps its dark fill and reads as chrome above the

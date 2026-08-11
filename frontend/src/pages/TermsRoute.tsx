@@ -1,6 +1,6 @@
 import { BrandLockup } from "../components/BrandLockup";
 import { ContactEmail } from "../components/ContactEmail";
-import { PublicSurface } from "../components/PublicSurface";
+import { PaperSurface } from "../components/PaperSurface";
 import { TopNav } from "../components/TopNav";
 
 /**
@@ -11,7 +11,7 @@ import { TopNav } from "../components/TopNav";
  */
 export function TermsRoute() {
   return (
-    <PublicSurface>
+    <PaperSurface>
       <TopNav />
       <main className="flex-1 flex flex-col items-center px-4 py-16 sm:px-8">
         <div className="w-full max-w-md">
@@ -126,6 +126,6 @@ export function TermsRoute() {
           </div>
         </div>
       </main>
-    </PublicSurface>
+    </PaperSurface>
   );
 }

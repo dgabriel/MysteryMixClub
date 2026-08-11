@@ -19,12 +19,21 @@ type CardProps = {
  * clickable card surface opts into `hover:shadow-z3` at its own call site.
  *
  * An optional accent left bar marks a card that requires special attention.
+ *
+ * **It sets `text-foreground` explicitly, and that is load-bearing** (ADR 0013).
+ * A card is a dark island that may now sit on a light page, so its contents must
+ * be anchored to the dark ramp rather than inheriting the page's. Most text in
+ * here carries no color class of its own and simply inherits — that used to mean
+ * `body`'s `text-foreground`, which was right by accident. Under a
+ * `PaperSurface` the same text inherited `text-ink` and rendered at 1.65:1 on
+ * `card`: every club name on `/home` was very nearly invisible, and it was a
+ * contrast audit rather than the eye that caught it.
  */
 export function Card({ accent = false, children, className = "" }: CardProps) {
   return (
     <div
       className={[
-        "relative bg-card border border-hairline rounded-tile px-6 py-5 shadow-z2",
+        "relative bg-card text-foreground border border-hairline rounded-tile px-6 py-5 shadow-z2",
         className,
       ]
         .filter(Boolean)

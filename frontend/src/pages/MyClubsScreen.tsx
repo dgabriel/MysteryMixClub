@@ -5,6 +5,7 @@ import { Card } from "../components/Card";
 import { ConcentricRings } from "../components/ConcentricRings";
 import { CrownIcon } from "../components/CrownIcon";
 import { HelpLink } from "../components/HelpLink";
+import { PaperSurface } from "../components/PaperSurface";
 import { SongSearchCard } from "../components/songs/SongSearchCard";
 
 type MyClubsScreenProps = {
@@ -30,13 +31,20 @@ export function MyClubsScreen({
   const completedClubs = clubs.filter((l) => l.state === "complete");
   return (
     // The shared TopNav is rendered by AuthedLayout; this screen is just content.
-    <main className="flex flex-1 flex-col px-4 py-8 sm:px-8">
+    //
+    // The first authed screen on the light surface (ADR 0013). The frame model:
+    // the page is `paper`, the cards stay dark. That composes here without
+    // touching a single card interior — every ClubCard goes through the dark
+    // `Card` primitive and SongSearchCard renders its own — so only the chrome
+    // sitting directly on the page moves to the `ink` ramp.
+    <PaperSurface>
+      <main className="flex flex-1 flex-col px-4 py-8 sm:px-8">
         {loading ? (
           <div className="flex flex-1 items-center justify-center">
             {/* Loading motif — the disc spins, neutral. The amber centre label
                 is the brand mark and belongs to the empty state's hero below;
                 a spinner is not an identity placement. */}
-            <ConcentricRings size={88} spinning className="mx-auto" />
+            <ConcentricRings size={88} spinning onPaper className="mx-auto" />
           </div>
         ) : (
           <div className="mx-auto w-full max-w-lg">
@@ -50,12 +58,12 @@ export function MyClubsScreen({
                     with no clubs it is the only object on the screen, at the
                     88px page-hero size, and the loading disc it replaces can
                     never render at the same time. */}
-                <ConcentricRings size={88} accent className="mx-auto" />
+                <ConcentricRings size={88} accent onPaper className="mx-auto" />
                 <span className="mt-8 flex items-center gap-2">
-                  <p className="font-mono text-meta uppercase tracking-mono-wide text-muted-foreground">
+                  <p className="font-mono text-meta uppercase tracking-mono-wide text-ink-muted">
                     no clubs yet
                   </p>
-                  <HelpLink anchor="clubs" />
+                  <HelpLink anchor="clubs" onPaper />
                 </span>
                 <div className="mt-6">
                   <Button type="button" onClick={onCreateClub}>
@@ -63,7 +71,7 @@ export function MyClubsScreen({
                   </Button>
                 </div>
                 {error ? (
-                  <p role="alert" className="mt-6 text-sm leading-[1.72] text-foreground">
+                  <p role="alert" className="mt-6 text-sm leading-[1.72] text-ink">
                     {error}
                   </p>
                 ) : null}
@@ -72,13 +80,15 @@ export function MyClubsScreen({
               <>
                 {/* The signed-in user's own name, in amber: the eyebrow answers
                     "whose clubs are these", so it is marking something rather
-                    than decorating. `accent` on `floor` is 7.87:1. Note this is
-                    the *viewer's own* name — other people's names (submitters,
-                    voters, members) stay `muted-foreground`, so amber here reads
-                    as "you". That's a content judgement, not a rule: amber
-                    placement is a design decision (ADR 0012). */}
+                    than decorating. Note this is the *viewer's own* name — other
+                    people's names (submitters, voters, members) stay muted, so
+                    amber here reads as "you". That's a content judgement, not a
+                    rule: amber placement is a design decision (ADR 0012).
+                    `ink-accent` rather than `accent` now the page is paper —
+                    at 9.6px this is body-size text, so it owes the full 4.5:1
+                    and `accent` would be 2.62:1. */}
                 {displayName ? (
-                  <p className="font-mono text-mini uppercase tracking-mono-caps text-accent">
+                  <p className="font-mono text-mini uppercase tracking-mono-caps text-ink-accent">
                     {displayName}
                   </p>
                 ) : null}
@@ -86,7 +96,7 @@ export function MyClubsScreen({
                   <h1 className="font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
                     my clubs
                   </h1>
-                  <HelpLink anchor="clubs" />
+                  <HelpLink anchor="clubs" onPaper />
                 </span>
 
                 <div className="mt-4">
@@ -96,7 +106,7 @@ export function MyClubsScreen({
                 </div>
 
                 {error ? (
-                  <p role="alert" className="mt-6 text-sm leading-[1.72] text-foreground">
+                  <p role="alert" className="mt-6 text-sm leading-[1.72] text-ink">
                     {error}
                   </p>
                 ) : null}
@@ -113,7 +123,7 @@ export function MyClubsScreen({
 
                 {completedClubs.length > 0 ? (
                   <section className="mt-10">
-                    <h2 className="font-mono text-meta uppercase tracking-mono-wide text-muted-foreground">
+                    <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-muted">
                       completed
                     </h2>
                     <ul className="mt-4 space-y-4">
@@ -129,15 +139,16 @@ export function MyClubsScreen({
             )}
 
             {/* Permanent home-screen fixture, below the club list (MYS-45). */}
-            <section className="mt-12 border-t border-hairline pt-10">
-                <p className="mt-1 text-base leading-[1.72] text-foreground">
-                  practice your song search skills here — no club required
-                </p>
+            <section className="mt-12 border-t border-ink-hairline pt-10">
+              <p className="mt-1 text-base leading-[1.72] text-ink">
+                practice your song search skills here — no club required
+              </p>
               <SongSearchCard preferredService={preferredService} />
             </section>
           </div>
         )}
-    </main>
+      </main>
+    </PaperSurface>
   );
 }
 

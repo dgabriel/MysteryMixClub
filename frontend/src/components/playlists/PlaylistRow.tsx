@@ -3,6 +3,9 @@ import type { ReactNode } from "react";
 type PlaylistRowProps = {
   /** The service's own name — the thing you scan the list by. */
   service: string;
+  /** A small monochrome mark for the service, shown before its name. Decorative
+   *  and `aria-hidden`: the name is right there in text. */
+  mark?: ReactNode;
   /** One short line about readiness: "all 4 songs", "3 of 4 songs",
    *  "builds in your library". Kept in ONE register across services on purpose;
    *  see the component note. */
@@ -40,18 +43,26 @@ type PlaylistRowProps = {
  *    A gap, a fallback, a caveat is subordinate; rendering it at top level is
  *    what made the old layout read as one flat list of unrelated links.
  */
-export function PlaylistRow({ service, status, action, children }: PlaylistRowProps) {
+export function PlaylistRow({ service, mark, status, action, children }: PlaylistRowProps) {
   return (
-    <div className="py-4 first:pt-0 last:pb-0">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <span className="font-mono uppercase tracking-mono-caps text-mini text-ink">{service}</span>
+    <div className="py-5">
+      {/* One line — name, status, action — rather than a two-line stack. A
+          service is one fact, and reading it on one line is what lets the eye
+          run down the column comparing them. It wraps rather than truncating on
+          narrow widths, which is why the status is its own flexible cell. */}
+      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+        <span className="flex items-center gap-2 font-mono uppercase tracking-mono-caps text-label text-ink">
+          {mark}
+          {service}
+        </span>
+        <span className="min-w-0 flex-1 font-mono text-mini text-ink-muted">{status}</span>
         {action}
       </div>
-      <p className="mt-1 font-mono text-mini text-ink-muted">{status}</p>
       {children ? (
-        // Indented and ruled: this is *about* the service above it. The rule is
-        // the light-surface hairline.
-        <div className="mt-3 border-l border-ink-hairline pl-3">{children}</div>
+        // Indented AND ruled: everything here is caused by the service above it
+        // — its missing songs, its fallback link, its caveat. The indent is what
+        // stops any of it reading as a service in its own right.
+        <div className="mt-3 border-l border-ink-hairline pl-4">{children}</div>
       ) : null}
     </div>
   );

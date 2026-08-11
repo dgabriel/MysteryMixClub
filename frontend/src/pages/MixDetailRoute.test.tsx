@@ -2925,7 +2925,7 @@ describe("MixDetailRoute", () => {
 
     // ----- Data loading ---------------------------------------------------- //
 
-    it("closed mix shows a 'listen back' affordance when there are tracks (MYS-133)", async () => {
+    it("closed mix shows the playlists section when there are tracks (MYS-133)", async () => {
       mockGetPlaylist.mockResolvedValue({
         mix_id: "r1",
         mix_number: 1,
@@ -2941,7 +2941,9 @@ describe("MixDetailRoute", () => {
       setupClosed({ submissions: [sub({ title: "Debaser" })] });
       renderMix();
 
-      expect(await screen.findByRole("heading", { name: /listen back/i })).toBeInTheDocument();
+      // One heading for this block in every state now — it used to be "listen
+      // back" when closed and "playlist (N)" elsewhere, for identical content.
+      expect(await screen.findByRole("heading", { name: /^playlists$/i })).toBeInTheDocument();
       expect(screen.getByRole("link", { name: /open playlist in youtube/i })).toBeInTheDocument();
     });
 

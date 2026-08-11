@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Button } from "./Button";
 import { MusicNoteIcon } from "./MusicNoteIcon";
 import { PlaylistRow } from "./playlists/PlaylistRow";
+import { ServiceMark } from "./playlists/ServiceMark";
 import { PlaylistLink, PlaylistButton } from "./playlists/PlaylistAction";
 import {
   ApiError,
@@ -169,6 +170,7 @@ export function AppleMusicPlaylist({ mixId, entryCount }: { mixId: string; entry
   return (
     <PlaylistRow
       service="apple music"
+      mark={<ServiceMark service="appleMusic" />}
       status={
         targetUrl
           ? unmatched.length > 0

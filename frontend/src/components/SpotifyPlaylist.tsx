@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { MusicNoteIcon } from "./MusicNoteIcon";
 import { PlaylistRow } from "./playlists/PlaylistRow";
+import { ServiceMark } from "./playlists/ServiceMark";
 import { PlaylistLink } from "./playlists/PlaylistAction";
 import {
   getSpotifyPlaylistLink,
@@ -123,6 +124,7 @@ export function SpotifyPlaylist({ mixId, entryCount }: { mixId: string; entryCou
   return (
     <PlaylistRow
       service="spotify"
+      mark={<ServiceMark service="spotify" />}
       status={
         playlistUrl
           ? // The status slot answers "can I play this right now", in the same

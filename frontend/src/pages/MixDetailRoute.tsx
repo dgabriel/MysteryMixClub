@@ -47,6 +47,8 @@ import { Badge } from "../components/Badge";
 import { Card } from "../components/Card";
 import { PaperSurface } from "../components/PaperSurface";
 import { PlaylistRow } from "../components/playlists/PlaylistRow";
+import { ServiceMark } from "../components/playlists/ServiceMark";
+import { PlaylistsSection } from "../components/playlists/PlaylistsSection";
 import { PlaylistLink } from "../components/playlists/PlaylistAction";
 import { MIX_BADGE, MIX_STATE_LABEL, mixGroup } from "../utils/mixState";
 import { TextField } from "../components/TextField";
@@ -1625,6 +1627,7 @@ function YouTubePlaylistRow({
   return (
     <PlaylistRow
       service="youtube"
+      mark={<ServiceMark service="youtube" />}
       // Same phrasing as every other row, so completeness is comparable at a
       // glance rather than needing the numbers read.
       status={complete ? `all ${entryCount} songs` : `${youtubeTrackCount} of ${entryCount} songs`}
@@ -1709,10 +1712,7 @@ function ClosedListen({
   if (entryCount === 0) return null;
   return (
     <div className="mb-10">
-      <h2 className="mb-4 font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
-        listen back
-      </h2>
-      <div className="divide-y divide-ink-hairline border-y border-ink-hairline">
+      <PlaylistsSection>
         <YouTubePlaylistRow
           youtubePlaylistUrl={youtubePlaylistUrl}
           youtubeTrackCount={youtubeTrackCount}
@@ -1720,7 +1720,7 @@ function ClosedListen({
         />
         <SpotifyPlaylist mixId={mixId} entryCount={entryCount} />
         <AppleMusicPlaylist mixId={mixId} entryCount={entryCount} />
-      </div>
+      </PlaylistsSection>
       <SourceOnlyTracks tracks={sourceOnly} />
     </div>
   );
@@ -1808,21 +1808,16 @@ function VotingSection({
           you&apos;re in casual mode for this one, so you sit voting out. settle in and enjoy the
           mix.
         </p>
-        <h2 className="mt-8 font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
-          playlist ({entries.length})
-        </h2>
-        <div className="mt-4">
-          <div className="divide-y divide-ink-hairline border-y border-ink-hairline">
-            <YouTubePlaylistRow
-              youtubePlaylistUrl={youtubePlaylistUrl}
-              youtubeTrackCount={youtubeTrackCount}
-              entryCount={entries.length}
-            />
-            <SpotifyPlaylist mixId={mixId} entryCount={entries.length} />
-            <AppleMusicPlaylist mixId={mixId} entryCount={entries.length} />
-          </div>
-          <SourceOnlyTracks tracks={toSourceOnly(entries)} />
-        </div>
+        <PlaylistsSection>
+          <YouTubePlaylistRow
+            youtubePlaylistUrl={youtubePlaylistUrl}
+            youtubeTrackCount={youtubeTrackCount}
+            entryCount={entries.length}
+          />
+          <SpotifyPlaylist mixId={mixId} entryCount={entries.length} />
+          <AppleMusicPlaylist mixId={mixId} entryCount={entries.length} />
+        </PlaylistsSection>
+        <SourceOnlyTracks tracks={toSourceOnly(entries)} />
         <ul className="mt-4 space-y-4">
           {entries.map((entry) => (
             <li key={entry.submission_id}>
@@ -1872,7 +1867,7 @@ function VotingSection({
   return (
     <>
       <VotingProgress acted={votingActed} eligible={votingEligible} vibing={vibingCount} />
-      <div className="divide-y divide-ink-hairline border-y border-ink-hairline">
+      <PlaylistsSection>
         <YouTubePlaylistRow
           youtubePlaylistUrl={youtubePlaylistUrl}
           youtubeTrackCount={youtubeTrackCount}
@@ -1880,7 +1875,7 @@ function VotingSection({
         />
         <SpotifyPlaylist mixId={mixId} entryCount={entries.length} />
         <AppleMusicPlaylist mixId={mixId} entryCount={entries.length} />
-      </div>
+      </PlaylistsSection>
       <SourceOnlyTracks tracks={toSourceOnly(entries)} />
       <div className="flex items-baseline justify-between gap-4">
         <span className="flex items-center gap-2">
@@ -2170,21 +2165,16 @@ function VotingTally({
       <p className="text-sm leading-[1.72] text-muted-foreground">
         you&apos;ve locked in your votes — check back to see how the voting goes.
       </p>
-      <h2 className="mt-8 font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
-        playlist ({entries.length})
-      </h2>
-      <div className="mt-4">
-        <div className="divide-y divide-ink-hairline border-y border-ink-hairline">
-          <YouTubePlaylistRow
-            youtubePlaylistUrl={youtubePlaylistUrl}
-            youtubeTrackCount={youtubeTrackCount}
-            entryCount={entries.length}
-          />
-          <SpotifyPlaylist mixId={mixId} entryCount={entries.length} />
-          <AppleMusicPlaylist mixId={mixId} entryCount={entries.length} />
-        </div>
-        <SourceOnlyTracks tracks={toSourceOnly(entries)} />
-      </div>
+      <PlaylistsSection>
+        <YouTubePlaylistRow
+          youtubePlaylistUrl={youtubePlaylistUrl}
+          youtubeTrackCount={youtubeTrackCount}
+          entryCount={entries.length}
+        />
+        <SpotifyPlaylist mixId={mixId} entryCount={entries.length} />
+        <AppleMusicPlaylist mixId={mixId} entryCount={entries.length} />
+      </PlaylistsSection>
+      <SourceOnlyTracks tracks={toSourceOnly(entries)} />
       <h2 className="mt-8 font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
         vote tally ({voteCounts.length} songs)
       </h2>

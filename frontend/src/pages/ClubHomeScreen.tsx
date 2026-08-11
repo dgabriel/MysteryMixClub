@@ -40,6 +40,29 @@ function isActiveMix(state: MixState): boolean {
   return state === "open_submission" || state === "open_voting";
 }
 
+/** The three buckets a mix row is grouped and styled by. Narrower than
+ *  `MixState`, which splits "active" into submissions vs voting — a distinction
+ *  the *order* and the badge weight do not care about, though the badge's own
+ *  label still spells it out. */
+type MixGroup = "active" | "upcoming" | "done";
+
+function mixGroup(state: MixState): MixGroup {
+  if (isActiveMix(state)) return "active";
+  return state === "closed" ? "done" : "upcoming";
+}
+
+/** Sort weight per group: act on it, then what is coming, then what is done. */
+const MIX_ORDER: Record<MixGroup, number> = { active: 0, upcoming: 1, done: 2 };
+
+/** Badge weight per group — the ladder that makes state legible at a glance.
+ *  `positive` is a solid green fill and is reachable by at most one row, since
+ *  the API allows only one active mix per club. */
+const MIX_BADGE: Record<MixGroup, "positive" | "strong" | "default"> = {
+  active: "positive",
+  upcoming: "strong",
+  done: "default",
+};
+
 type ClubHomeScreenProps = {
   club: Club;
   members: ClubMember[];
@@ -163,19 +186,18 @@ export function ClubHomeScreen({
     );
   }
 
-  // Amber budget (category rule, not a count). This screen spends amber in
-  // exactly three in-category ways, and nowhere decorative:
-  //  - ACTION: the delete-club confirm now takes `Button variant="destructive"`
-  //    instead of the amber `link` variant — a delete is not amber's category —
-  //    so the only amber actions left are hover/focus states, which are
-  //    transient and one-at-a-time.
-  //  - ACHIEVEMENT: rank 1 of the all-time standings, which is bounded to a
-  //    single row because there is exactly one standings table here.
-  //  - ACTION: `DeadlineChip`, which grades its own urgency and goes amber only
-  //    while a deadline is actually closing — and the API allows at most one
-  //    active mix per club, so at most one chip on the screen can be amber.
-  // Nothing per-mix-row and nothing per-member-row carries amber, because both
-  // lists are unbounded enough that a per-row accent would read as pattern.
+  // Where colour goes on this screen (updated 2026-08-11 — the older "nothing
+  // per-mix-row carries amber" note is superseded, don't trust copies of it):
+  //  - AMBER, per mix row: the mix number, a listed accent use. Also the club
+  //    title's second word (`ClubName`), rank 1 of the all-time standings, and
+  //    `DeadlineChip` while a deadline is closing.
+  //  - GREEN (`positive`): the one mix that can be acted on — its card bar and
+  //    its state badge. The API allows at most one active mix per club, so this
+  //    is scarce by construction rather than by convention.
+  //  - The delete-club confirm takes `Button variant="destructive"` rather than
+  //    an amber `link`: a delete is not amber's category.
+  // Member rows stay neutral: that list is unbounded, so a per-row accent there
+  // would read as pattern.
   // The shared TopNav is rendered by AuthedLayout, so this is content-only.
   const isComplete = club.state === "complete";
 
@@ -583,17 +605,31 @@ function MixesSection({
 }) {
   // Mixes are auto-created with the club, so the slate always exists. The
   // empty state is a fallback only (e.g. a stale/odd club with zero mixes).
+  //
+  // Order: the mix you can act on, then what is coming, then what is done —
+  // each group by mix number. The API returns them in plain mix-number order,
+  // which buries the only actionable row somewhere in the middle of a finished
+  // list. Sorted here rather than server-side because it is a presentation
+  // concern and the list is small and already fully loaded.
+  //
+  // Sorting a COPY: `mixes` is the prop as handed down from the route's state,
+  // and Array.prototype.sort mutates in place.
+  const orderedMixes = [...mixes].sort(
+    (a, b) =>
+      MIX_ORDER[mixGroup(a.state)] - MIX_ORDER[mixGroup(b.state)] || a.mix_number - b.mix_number,
+  );
+
   return (
     <section className="mt-12">
       <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-muted">
         mystery mixes ({mixes.length})
       </h2>
 
-      {mixes.length === 0 ? (
+      {orderedMixes.length === 0 ? (
         <p className="mt-4 text-sm leading-[1.72] text-ink-muted">no mystery mixes yet</p>
       ) : (
         <ul className="mt-4 space-y-4">
-          {mixes.map((mix) => (
+          {orderedMixes.map((mix) => (
             <li key={mix.id}>
               <MixRow
                 mix={mix}
@@ -668,7 +704,8 @@ function MixRow({
 }) {
   const [editing, setEditing] = useState(false);
 
-  const active = isActiveMix(mix.state);
+  const group = mixGroup(mix.state);
+  const active = group === "active";
   const pending = mix.state === "pending";
   const named = !!mix.theme;
 
@@ -731,7 +768,12 @@ function MixRow({
             ) : null}
           </span>
           <span className="shrink-0">
-            <Badge>{MIX_STATE_LABEL[mix.state]}</Badge>
+            {/* The state, at a weight that matches how much it matters: a solid
+                green fill while the mix is live, a bright neutral for what is
+                coming, and a quiet one for what is done. The label itself is
+                unchanged and still carries the state in words, so the ladder is
+                emphasis rather than the signal. */}
+            <Badge variant={MIX_BADGE[group]}>{MIX_STATE_LABEL[mix.state]}</Badge>
           </span>
         </div>
         {mix.description ? (

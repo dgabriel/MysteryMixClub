@@ -537,6 +537,16 @@ established system-wide, and binding on all of them:
   these ratios is an obligation — holding a disabled label to 4.5:1 exceeds the
   requirement rather than scraping past it. It is held anyway because a user
   still has to read what the unavailable control would have done.
+- **Badges are a weight ladder, not a palette.** Four variants, picked by how
+  much attention the state deserves rather than by colour preference:
+  `positive` (a solid green fill, near-black label, 6.72:1) is the loudest and
+  is for a state that is live *and* scarce; `strong` (`tile` fill,
+  `foreground` label, 15.84:1) is the middle rung; `default` (`tile` fill,
+  `muted-foreground`, 5.34:1) is the quiet one for a finished or incidental
+  state; `accent` is the amber achievement chip. A list that shows several
+  states at once should use several rungs — the club page's mix list uses three.
+  The label always spells the state out, so the ladder is emphasis, never the
+  signal itself.
 - **Charts** follow ADR 0008 unchanged: **d3 for math only** — scales, extents,
   and shape generators; d3 never touches the DOM, the SVG is JSX, React owns
   every node. Tick text stays an HTML overlay at fixed size rather than SVG

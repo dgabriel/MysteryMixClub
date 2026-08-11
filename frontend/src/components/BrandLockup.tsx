@@ -43,21 +43,28 @@ type BrandLockupProps = {
  * ~5px, which reads as a mistake. Left-aligning puts the whole difference on the
  * right as deliberate rag, which is what the DS does.
  */
-export function BrandLockup({
-  as: Wordmark = "p",
-  children,
-  className = "",
-}: BrandLockupProps) {
+export function BrandLockup({ as: Wordmark = "p", children, className = "" }: BrandLockupProps) {
   return (
     <div
       className={`flex flex-col items-center gap-6 sm:flex-row sm:items-start sm:justify-center sm:gap-7 ${className}`}
     >
-      <ConcentricRings size={96} spinning accent wordmark className="shrink-0" />
+      <ConcentricRings size={96} spinning accent wordmark onPaper className="shrink-0" />
       <div>
-        <Wordmark className="text-left font-display text-[clamp(2.5rem,7vw,3.5rem)] font-extrabold uppercase leading-[0.88] tracking-display-hero text-foreground">
+        {/* Every call site of this component is a public page, and those are the
+            light surface (ADR 0013) — hence the `ink` ramp unconditionally, with
+            no variant prop. If the lockup ever lands on a dark screen, that is
+            the moment to add one, not before.
+
+            `club` takes `ink-accent-display` rather than the AA-safe
+            `ink-accent`: at clamp(2.5rem, 7vw, 3.5rem) — 40px to 56px, extra
+            bold — this is unambiguously WCAG "large text", where the floor is
+            3:1 rather than 4.5:1. That buys back the chroma the body-size amber
+            has to spend, so the wordmark keeps its punch instead of going
+            burnt. Nothing at body size may use that token. */}
+        <Wordmark className="text-left font-display text-[clamp(2.5rem,7vw,3.5rem)] font-extrabold uppercase leading-[0.88] tracking-display-hero text-ink">
           mystery
           <br />
-          mix<span className="text-accent">club</span>
+          mix<span className="text-ink-accent-display">club</span>
         </Wordmark>
         {children}
       </div>

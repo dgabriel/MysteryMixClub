@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { BrandLockup } from "../components/BrandLockup";
 import { ContactEmail } from "../components/ContactEmail";
+import { PublicSurface } from "../components/PublicSurface";
 import { TopNav } from "../components/TopNav";
 
 type QA = { q: string; a: string };
@@ -224,7 +225,7 @@ export function HelpRoute() {
   }, [hash]);
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <PublicSurface>
       <TopNav />
       <main className="flex-1 flex flex-col items-center px-4 py-16 sm:px-8">
         <div className="w-full max-w-md">
@@ -235,40 +236,40 @@ export function HelpRoute() {
               loudest thing here without being a heading. */}
           <BrandLockup />
 
-          <h1 className="mt-10 border-t border-hairline pt-8 text-center font-display text-[2rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
+          <h1 className="mt-10 border-t border-ink-hairline pt-8 text-center font-display text-[2rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
             help
           </h1>
-          <p className="mt-2 text-center text-sm leading-[1.72] text-muted-foreground">
+          <p className="mt-2 text-center text-sm leading-[1.72] text-ink-muted">
             everything from signing in to your first reveal
           </p>
 
           <div className="mt-10 space-y-10">
             {SECTIONS.map((section) => (
               <section key={section.slug} id={section.slug} className="scroll-mt-8">
-                <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
+                <h2 className="font-mono text-mini uppercase tracking-mono-wide text-ink-accent">
                   {section.label}
                 </h2>
                 <div className="mt-4 space-y-5">
                   {section.items.map((item) => (
                     <div key={item.q}>
-                      <p className="text-sm leading-[1.72] text-foreground">{item.q}</p>
-                      <p className="mt-1 text-sm leading-[1.72] text-muted-foreground">{item.a}</p>
+                      <p className="text-sm leading-[1.72] text-ink">{item.q}</p>
+                      <p className="mt-1 text-sm leading-[1.72] text-ink-muted">{item.a}</p>
                     </div>
                   ))}
                 </div>
               </section>
             ))}
 
-            <section className="border-t border-hairline pt-6">
-              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
+            <section className="border-t border-ink-hairline pt-6">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-ink-accent">
                 still have questions
               </h2>
-              <p className="mt-3 text-sm leading-[1.72] text-foreground">
+              <p className="mt-3 text-sm leading-[1.72] text-ink">
                 <ContactEmail
                   user="info"
                   domain="mysterymixclub.com"
                   label="email us"
-                  className="text-link underline underline-offset-[3px] hover:text-foreground"
+                  className="text-ink-link underline underline-offset-[3px] hover:text-ink"
                 />{" "}
                 and we'll help you out.
               </p>
@@ -276,6 +277,6 @@ export function HelpRoute() {
           </div>
         </div>
       </main>
-    </div>
+    </PublicSurface>
   );
 }

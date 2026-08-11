@@ -1,5 +1,6 @@
 import { BrandLockup } from "../components/BrandLockup";
 import { ContactEmail } from "../components/ContactEmail";
+import { PublicSurface } from "../components/PublicSurface";
 import { TopNav } from "../components/TopNav";
 
 /**
@@ -10,7 +11,7 @@ import { TopNav } from "../components/TopNav";
  */
 export function PrivacyRoute() {
   return (
-    <div className="min-h-screen flex flex-col">
+    <PublicSurface>
       <TopNav />
       <main className="flex-1 flex flex-col items-center px-4 py-16 sm:px-8">
         <div className="w-full max-w-md">
@@ -21,19 +22,19 @@ export function PrivacyRoute() {
               is the loudest thing here without being a heading. */}
           <BrandLockup />
 
-          <h1 className="mt-10 border-t border-hairline pt-8 text-center font-display text-[2rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
+          <h1 className="mt-10 border-t border-ink-hairline pt-8 text-center font-display text-[2rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
             privacy policy
           </h1>
-          <p className="mt-2 text-center font-mono text-meta text-muted-foreground">
+          <p className="mt-2 text-center font-mono text-meta text-ink-muted">
             last updated july 2026
           </p>
 
-          <p className="mt-8 text-sm font-medium leading-[1.72] text-foreground">
+          <p className="mt-8 text-sm font-medium leading-[1.72] text-ink">
             while ai was used to help write the code, there are no ai features in this app and no ai
             will ingest your data.
           </p>
 
-          <div className="mt-8 space-y-8 text-sm leading-[1.72] text-foreground">
+          <div className="mt-8 space-y-8 text-sm leading-[1.72] text-ink">
             <section>
               <p>
                 this page explains what mysterymixclub collects, why, and what control you have over
@@ -42,7 +43,7 @@ export function PrivacyRoute() {
             </section>
 
             <section>
-              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-ink-accent">
                 what we collect
               </h2>
               <p className="mt-3">
@@ -53,7 +54,7 @@ export function PrivacyRoute() {
             </section>
 
             <section>
-              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-ink-accent">
                 what we don't do
               </h2>
               <p className="mt-3">
@@ -64,7 +65,7 @@ export function PrivacyRoute() {
             </section>
 
             <section>
-              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-ink-accent">
                 cookies
               </h2>
               <p className="mt-3">
@@ -75,7 +76,7 @@ export function PrivacyRoute() {
             </section>
 
             <section>
-              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-ink-accent">
                 subprocessors
               </h2>
               <p className="mt-3">
@@ -94,7 +95,7 @@ export function PrivacyRoute() {
             </section>
 
             <section>
-              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-ink-accent">
                 your data, your control
               </h2>
               <p className="mt-3">
@@ -107,7 +108,7 @@ export function PrivacyRoute() {
             </section>
 
             <section>
-              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-ink-accent">
                 changes to this policy
               </h2>
               <p className="mt-3">
@@ -116,8 +117,8 @@ export function PrivacyRoute() {
               </p>
             </section>
 
-            <section className="border-t border-hairline pt-6">
-              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
+            <section className="border-t border-ink-hairline pt-6">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-ink-accent">
                 questions
               </h2>
               <p className="mt-3">
@@ -125,7 +126,7 @@ export function PrivacyRoute() {
                   user="privacy"
                   domain="mysterymixclub.com"
                   label="email us"
-                  className="text-link underline underline-offset-[3px] hover:text-foreground"
+                  className="text-ink-link underline underline-offset-[3px] hover:text-ink"
                 />{" "}
                 with any privacy questions or requests.
               </p>
@@ -133,6 +134,6 @@ export function PrivacyRoute() {
           </div>
         </div>
       </main>
-    </div>
+    </PublicSurface>
   );
 }

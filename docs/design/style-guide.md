@@ -155,6 +155,50 @@ silently ignored. Pick the right step instead.
 Named `hairline`, not `border`, because the legacy `border` token stays defined
 until the sweep ticket.
 
+### Light surface — public pages only (ADR 0013)
+
+The five public routes (`/login`, `/about`, `/terms`, `/privacy`, `/help`) render
+on a **light** surface. Everything else in the app is dark, exactly as the rest
+of this guide describes.
+
+**This is not a background swap.** The whole foreground ramp above was derived
+against near-black and every token in it fails AA on white — `foreground` at
+1.09:1, `accent` at 2.62:1, `link` at 2.42:1. The two that fail most quietly are
+`accent` and `link`: saturated enough to look fine, far below 4.5:1. A light page
+needs its own ramp.
+
+| Token                | Hex       | On `paper` | Role                                        |
+|----------------------|-----------|-----------|----------------------------------------------|
+| `paper`              | `#FFFFFF` | —         | The light page background.                   |
+| `ink`                | `#3D372C` | 11.79:1   | Primary text. Warm near-black.               |
+| `ink-muted`          | `#737478` | 4.67:1    | Supporting text, labels, input underlines.   |
+| `ink-accent`         | `#B65D00` | 4.61:1    | Amber on paper. Burnt, not vivid.            |
+| `ink-accent-display` | `#E27501` | 3.10:1    | **Hero wordmark only** — large-text 3:1.     |
+| `ink-link`           | `#007EB0` | 4.55:1    | Navigation. Still always underlined.         |
+| `ink-destructive`    | `#EC0128` | 4.56:1    | Form-error text (ADR 0004) on paper.         |
+| `ink-hairline`       | `rgba(0,0,0,0.12)` | — | Rules and dividers on paper.               |
+
+Rules:
+
+- **Opt in per page with `<PublicSurface>`. Never set a light background on
+  `body`** — it is global and silently repaints every authed screen. That
+  mistake is what produced this ADR.
+- **Never mix the two ramps on one surface.** `text-foreground` inside a
+  `PublicSurface` is invisible, and `text-ink` on a card is nearly so.
+- **`ink-accent-display` is hero-size only.** It clears 3:1, which is the WCAG
+  floor for large text and nothing else. At body size it is a failure.
+- **`TopNav` is excluded** — it keeps its dark fill and reads as chrome above the
+  page.
+- **The disc keeps its dark platter**; only its shadow changes (`shadow-art-ink`,
+  which drops the alpha and swaps the white ring to black — on paper the white
+  ring is invisible exactly where the edge needs defining).
+- Shared components that render on both surfaces take an `onPaper` prop:
+  `TextField`, `Button`, `FormError`, `ConcentricRings`. Anything newly placed on
+  a public page must be checked, not assumed.
+- **Compute contrast from the rounded 8-bit value, not the float.** `ink-muted`
+  first shipped at a theoretical 4.50:1 and painted as 4.47:1 — an AA failure
+  that only a live-page measurement caught. Quantization can cost ~0.05.
+
 ### Chart series (ADR 0008)
 
 | Token     | Hex       | Role                                              |

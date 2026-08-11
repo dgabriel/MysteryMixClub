@@ -7,6 +7,7 @@ import { FormError } from "../components/FormError";
 import { GoogleSignInButton } from "../components/GoogleSignInButton";
 import { TextField } from "../components/TextField";
 import { BrandLockup } from "../components/BrandLockup";
+import { PublicSurface } from "../components/PublicSurface";
 import { WaitlistForm } from "../components/WaitlistForm";
 import { PASSWORD_MIN_LENGTH, getGoogleEnabled, getWaitlistEnabled } from "../services/api";
 
@@ -60,13 +61,13 @@ type EmailEntryScreenProps = {
  *  at normal tracking, which is the treatment for a value rather than a label. */
 function DevLink({ href, label }: { href: string; label: string }) {
   return (
-    <div className="mt-8 border-t border-hairline pt-6">
-      <p className="font-mono uppercase tracking-mono-wide text-mini text-muted-foreground">
+    <div className="mt-8 border-t border-ink-hairline pt-6">
+      <p className="font-mono uppercase tracking-mono-wide text-mini text-ink-muted">
         dev · staging only
       </p>
       <a
         href={href}
-        className="mt-3 inline-block font-mono text-xs text-link underline underline-offset-[3px] break-all"
+        className="mt-3 inline-block font-mono text-xs text-ink-link underline underline-offset-[3px] break-all"
       >
         {label}
       </a>
@@ -81,7 +82,7 @@ function DevLink({ href, label }: { href: string; label: string }) {
  *  touch target does not shrink to the cap height of `text-label`. */
 function InlineAction({ onClick, children }: { onClick: () => void; children: string }) {
   return (
-    <Button variant="link" type="button" onClick={onClick} className="py-2">
+    <Button variant="link" onPaper type="button" onClick={onClick} className="py-2">
       {children}
     </Button>
   );
@@ -158,8 +159,7 @@ export function EmailEntryScreen({
       // Only skip ahead to the password field once the email above it is
       // already filled — otherwise land there first, so tabbing forward
       // reaches password without needing to shift-tab back for email.
-      const target =
-        showsPassword && email.trim() ? passwordRef.current : emailRef.current;
+      const target = showsPassword && email.trim() ? passwordRef.current : emailRef.current;
       target?.focus();
     }
     prevMode.current = mode;
@@ -218,26 +218,30 @@ export function EmailEntryScreen({
     forgot: submitting ? "sending…" : "email a reset link",
   }[mode];
 
-  // Mono button type. The selected method carries an `accent` underline — the
+  // Mono button type. The selected method carries an amber underline — the
   // iconography rule's "accent for selected" — while both labels stay on the
   // foreground ramp, so the amber marks the choice rather than the words.
+  //
+  // `ink-accent`, not `accent`: this underline is a non-text graphic, so WCAG
+  // 1.4.11 asks 3:1 of it, and `accent` is 2.62:1 on paper. The label color
+  // also differs between states, so the rule is not the sole indicator — but it
+  // is the one meant to be *read* as the indicator, so it has to clear.
   const tabClass = (active: boolean) =>
     [
       "-mb-px flex-1 border-b-2 py-3 font-mono uppercase tracking-mono-caps text-label transition-colors duration-150",
-      active
-        ? "border-accent text-foreground"
-        : "border-transparent text-muted-foreground hover:text-foreground",
+      active ? "border-ink-accent text-ink" : "border-transparent text-ink-muted hover:text-ink",
     ].join(" ");
 
   // Footer chrome, matching TopNav's link treatment: mono label at
   // `muted-foreground`, resolving to `foreground` on hover.
   const footerLinkClass =
-    "py-1 font-mono uppercase tracking-mono text-label text-muted-foreground transition-colors duration-150 hover:text-foreground";
+    "py-1 font-mono uppercase tracking-mono text-label text-ink-muted transition-colors duration-150 hover:text-ink";
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center px-4 sm:px-8">
-      <div className="w-full max-w-sm">
-        {/* `as="h1"` here and nowhere else: this screen has no title of its own,
+    <PublicSurface>
+      <main className="flex flex-1 flex-col items-center justify-center px-4 sm:px-8">
+        <div className="w-full max-w-sm">
+          {/* `as="h1"` here and nowhere else: this screen has no title of its own,
             so the wordmark genuinely is its heading. Every other page passes the
             default `p` and keeps its own `h1`.
 
@@ -246,207 +250,221 @@ export function EmailEntryScreen({
             against a two-line mark. Centred under the mark rather than flush
             left, where a lone badge would look stranded. This screen renders no
             `TopNav`, so it is the only place the badge has to come from here. */}
-        <BrandLockup as="h1">
-          <div className="mt-3 flex justify-center sm:justify-start">
-            <Badge>beta</Badge>
-          </div>
-        </BrandLockup>
-        <p className="mt-2 text-center text-sm leading-[1.72] text-muted-foreground">
-          invite-only. sign in with your email.
-        </p>
+          <BrandLockup as="h1">
+            <div className="mt-3 flex justify-center sm:justify-start">
+              <Badge>beta</Badge>
+            </div>
+          </BrandLockup>
+          <p className="mt-2 text-center text-sm leading-[1.72] text-ink-muted">
+            invite-only. sign in with your email.
+          </p>
 
-        {/* What happened on the way back from Google, as plain `foreground` body
+          {/* What happened on the way back from Google, as plain `foreground` body
             copy — it reports an external system's outcome rather than judging
             anything the user typed, so it is not a form error (ADR 0004). */}
-        {googleError ? (
-          <p role="alert" className="mt-6 text-center text-sm leading-[1.72] text-foreground">
-            {googleError}
-          </p>
-        ) : null}
+          {googleError ? (
+            <p role="alert" className="mt-6 text-center text-sm leading-[1.72] text-ink">
+              {googleError}
+            </p>
+          ) : null}
 
-        {/* Deliberately not role="tablist"/"tab": that sets a WAI-ARIA APG
+          {/* Deliberately not role="tablist"/"tab": that sets a WAI-ARIA APG
             expectation of arrow-key navigation with a roving tabIndex, which
             this doesn't implement. A labelled group of pressed-state buttons
             promises only what it delivers. */}
-        <div
-          role="group"
-          aria-label="sign-in method"
-          className="mt-10 flex border-b border-hairline"
-        >
-          <button
-            type="button"
-            aria-pressed={!onPasswordTab}
-            onClick={() => switchMode("magic")}
-            className={tabClass(!onPasswordTab)}
+          <div
+            role="group"
+            aria-label="sign-in method"
+            className="mt-10 flex border-b border-ink-hairline"
           >
-            sign-in link
-          </button>
-          <button
-            type="button"
-            aria-pressed={onPasswordTab}
-            // The register/signin default applies only when entering password
-            // mode from magic. Already inside a password sub-mode, the target is
-            // the current mode, so switchMode's same-mode guard fires and a
-            // half-typed password survives a stray click on the active button.
-            onClick={() => switchMode(mode === "magic" ? (canRegister ? "register" : "signin") : mode)}
-            className={tabClass(onPasswordTab)}
-          >
-            password
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} noValidate className="mt-6 space-y-8">
-          {eyebrow ? (
-            <p className="font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
-              {eyebrow}
-            </p>
-          ) : null}
-
-          <TextField
-            id="email"
-            label="email"
-            type="email"
-            name="email"
-            inputRef={emailRef}
-            // In a password mode this is half of a credential pair, so password
-            // managers need "username" to store and fill them together.
-            autoComplete={showsPassword ? "username" : "email"}
-            inputMode="email"
-            placeholder="you@example.com"
-            value={email}
-            onChange={(e) => {
-              setEmail(e.target.value);
-              setEmailRequired(null);
-            }}
-            disabled={submitting}
-            error={emailRequired}
-            // Only magic link's own error is about the address; every other
-            // screen-level message belongs to the form, not this field.
-            invalid={mode === "magic" && Boolean(error)}
-            aria-describedby={mode === "magic" && error ? SCREEN_ERROR_ID : undefined}
-          />
-
-          {showsPassword ? (
-            <div>
-              <TextField
-                id="password"
-                label="password"
-                type="password"
-                name="password"
-                inputRef={passwordRef}
-                revealToggle
-                autoComplete={mode === "register" ? "new-password" : "current-password"}
-                value={password}
-                onChange={(e) => {
-                  setPassword(e.target.value);
-                  setPasswordRequired(null);
-                }}
-                disabled={submitting}
-                error={passwordRequired ?? passwordError}
-              />
-              {mode === "register" && !(passwordRequired ?? passwordError) ? (
-                <p className="mt-2 text-meta leading-[1.6] text-muted-foreground">
-                  {PASSWORD_MIN_LENGTH} characters or more.
-                </p>
-              ) : null}
-            </div>
-          ) : null}
-
-          {error ? <FormError id={SCREEN_ERROR_ID}>{error}</FormError> : null}
-
-          {resetNotice ? (
-            <p role="status" className="text-sm leading-[1.72] text-foreground">
-              {resetNotice}
-            </p>
-          ) : null}
-
-          <Button type="submit" disabled={submitting || resetAlreadySent} className="w-full">
-            {submitLabel}
-          </Button>
-        </form>
-
-        {onPasswordTab ? (
-          <div className="mt-4 flex flex-wrap justify-center gap-4">
-            {mode === "signin" ? (
-              <>
-                <InlineAction onClick={() => switchMode("forgot")}>
-                  forgot your password?
-                </InlineAction>
-                {/* Hidden without an invite: registration would be a guaranteed
-                    dead end, and the waitlist below is the real path. */}
-                {canRegister ? (
-                  <InlineAction onClick={() => switchMode("register")}>
-                    create an account
-                  </InlineAction>
-                ) : null}
-              </>
-            ) : (
-              <InlineAction onClick={() => switchMode("signin")}>back to sign in</InlineAction>
-            )}
+            <button
+              type="button"
+              aria-pressed={!onPasswordTab}
+              onClick={() => switchMode("magic")}
+              className={tabClass(!onPasswordTab)}
+            >
+              sign-in link
+            </button>
+            <button
+              type="button"
+              aria-pressed={onPasswordTab}
+              // The register/signin default applies only when entering password
+              // mode from magic. Already inside a password sub-mode, the target is
+              // the current mode, so switchMode's same-mode guard fires and a
+              // half-typed password survives a stray click on the active button.
+              onClick={() =>
+                switchMode(mode === "magic" ? (canRegister ? "register" : "signin") : mode)
+              }
+              className={tabClass(onPasswordTab)}
+            >
+              password
+            </button>
           </div>
-        ) : null}
 
-        {devLink && mode === "magic" ? (
-          <DevLink href={devLink} label="sign in with this link" />
-        ) : null}
-        {resetDevLink && mode === "forgot" ? (
-          <DevLink href={resetDevLink} label="set a new password with this link" />
-        ) : null}
+          <form onSubmit={handleSubmit} noValidate className="mt-6 space-y-8">
+            {eyebrow ? (
+              <p className="font-mono uppercase tracking-mono-caps text-mini text-ink-muted">
+                {eyebrow}
+              </p>
+            ) : null}
 
-        {googleEnabled ? (
-          <>
-            <div className="mt-12 flex items-center gap-4">
-              <span className="h-px flex-1 bg-hairline" />
-              <span className="font-mono uppercase tracking-mono-wide text-mini text-muted-foreground">
-                or
-              </span>
-              <span className="h-px flex-1 bg-hairline" />
+            <TextField
+              onPaper
+              id="email"
+              label="email"
+              type="email"
+              name="email"
+              inputRef={emailRef}
+              // In a password mode this is half of a credential pair, so password
+              // managers need "username" to store and fill them together.
+              autoComplete={showsPassword ? "username" : "email"}
+              inputMode="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setEmailRequired(null);
+              }}
+              disabled={submitting}
+              error={emailRequired}
+              // Only magic link's own error is about the address; every other
+              // screen-level message belongs to the form, not this field.
+              invalid={mode === "magic" && Boolean(error)}
+              aria-describedby={mode === "magic" && error ? SCREEN_ERROR_ID : undefined}
+            />
+
+            {showsPassword ? (
+              <div>
+                <TextField
+                  onPaper
+                  id="password"
+                  label="password"
+                  type="password"
+                  name="password"
+                  inputRef={passwordRef}
+                  revealToggle
+                  autoComplete={mode === "register" ? "new-password" : "current-password"}
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setPasswordRequired(null);
+                  }}
+                  disabled={submitting}
+                  error={passwordRequired ?? passwordError}
+                />
+                {mode === "register" && !(passwordRequired ?? passwordError) ? (
+                  <p className="mt-2 text-meta leading-[1.6] text-ink-muted">
+                    {PASSWORD_MIN_LENGTH} characters or more.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
+            {error ? (
+              <FormError id={SCREEN_ERROR_ID} onPaper>
+                {error}
+              </FormError>
+            ) : null}
+
+            {resetNotice ? (
+              <p role="status" className="text-sm leading-[1.72] text-ink">
+                {resetNotice}
+              </p>
+            ) : null}
+
+            <Button
+              type="submit"
+              onPaper
+              disabled={submitting || resetAlreadySent}
+              className="w-full"
+            >
+              {submitLabel}
+            </Button>
+          </form>
+
+          {onPasswordTab ? (
+            <div className="mt-4 flex flex-wrap justify-center gap-4">
+              {mode === "signin" ? (
+                <>
+                  <InlineAction onClick={() => switchMode("forgot")}>
+                    forgot your password?
+                  </InlineAction>
+                  {/* Hidden without an invite: registration would be a guaranteed
+                    dead end, and the waitlist below is the real path. */}
+                  {canRegister ? (
+                    <InlineAction onClick={() => switchMode("register")}>
+                      create an account
+                    </InlineAction>
+                  ) : null}
+                </>
+              ) : (
+                <InlineAction onClick={() => switchMode("signin")}>back to sign in</InlineAction>
+              )}
             </div>
-            <div className="mt-6">
-              <GoogleSignInButton href={googleUrl} />
-            </div>
-          </>
-        ) : null}
+          ) : null}
 
-        {/* Below the sign-in form, not above it (MYS-215) — this is the
+          {devLink && mode === "magic" ? (
+            <DevLink href={devLink} label="sign in with this link" />
+          ) : null}
+          {resetDevLink && mode === "forgot" ? (
+            <DevLink href={resetDevLink} label="set a new password with this link" />
+          ) : null}
+
+          {googleEnabled ? (
+            <>
+              <div className="mt-12 flex items-center gap-4">
+                <span className="h-px flex-1 bg-ink-hairline" />
+                <span className="font-mono uppercase tracking-mono-wide text-mini text-ink-muted">
+                  or
+                </span>
+                <span className="h-px flex-1 bg-ink-hairline" />
+              </div>
+              <div className="mt-6">
+                <GoogleSignInButton href={googleUrl} />
+              </div>
+            </>
+          ) : null}
+
+          {/* Below the sign-in form, not above it (MYS-215) — this is the
             secondary path for someone without an account yet, not the
             primary action on the page. A visitor who already has a working
             invite (canRegister) has no use for it — unless something they
             just tried actually failed (a screen-level error, or a wrong
             password), in which case it's a reasonable fallback regardless of
             invite status. */}
-        {!canRegister || Boolean(error) || Boolean(passwordError) ? (
-          waitlistEnabled ? (
-            <WaitlistForm />
-          ) : waitlistEnabled === undefined ? null : (
-            <p className="mt-12 text-center text-sm leading-[1.72] text-muted-foreground">
-              no invite yet?{" "}
-              <ContactEmail
-                user="info"
-                domain="mysterymixclub.com"
-                label="email us"
-                className="text-link underline underline-offset-[3px] hover:text-foreground"
-              />{" "}
-              to request one.
-            </p>
-          )
-        ) : null}
+          {!canRegister || Boolean(error) || Boolean(passwordError) ? (
+            waitlistEnabled ? (
+              <WaitlistForm />
+            ) : waitlistEnabled === undefined ? null : (
+              <p className="mt-12 text-center text-sm leading-[1.72] text-ink-muted">
+                no invite yet?{" "}
+                <ContactEmail
+                  user="info"
+                  domain="mysterymixclub.com"
+                  label="email us"
+                  className="text-ink-link underline underline-offset-[3px] hover:text-ink"
+                />{" "}
+                to request one.
+              </p>
+            )
+          ) : null}
 
-        <div className="mt-10 flex flex-wrap justify-center gap-4 text-center">
-          <Link to="/about" className={footerLinkClass}>
-            about mysterymixclub
-          </Link>
-          <Link to="/help" className={footerLinkClass}>
-            help
-          </Link>
-          <Link to="/terms" className={footerLinkClass}>
-            terms
-          </Link>
-          <Link to="/privacy" className={footerLinkClass}>
-            privacy
-          </Link>
+          <div className="mt-10 flex flex-wrap justify-center gap-4 text-center">
+            <Link to="/about" className={footerLinkClass}>
+              about mysterymixclub
+            </Link>
+            <Link to="/help" className={footerLinkClass}>
+              help
+            </Link>
+            <Link to="/terms" className={footerLinkClass}>
+              terms
+            </Link>
+            <Link to="/privacy" className={footerLinkClass}>
+              privacy
+            </Link>
+          </div>
         </div>
-      </div>
-    </main>
+      </main>
+    </PublicSurface>
   );
 }

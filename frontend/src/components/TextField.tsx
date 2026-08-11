@@ -19,6 +19,13 @@ type TextFieldProps = InputHTMLAttributes<HTMLInputElement> & {
    *  An explicit prop rather than forwardRef so the component stays a plain
    *  function and every existing call site is untouched. */
   inputRef?: Ref<HTMLInputElement>;
+  /** The field is on the light public surface (`paper`, ADR 0013), so it takes
+   *  the `ink` ramp instead of the dark one.
+   *
+   *  Not cosmetic: the dark ramp's `muted-foreground` label measures 3.23:1 on
+   *  paper, an AA failure, and it is also the *underline* color — which is the
+   *  input's only affordance, so WCAG 1.4.11 applies to it too. */
+  onPaper?: boolean;
 };
 
 function EyeIcon({ revealed }: { revealed: boolean }) {
@@ -63,17 +70,39 @@ export function TextField({
   invalid = false,
   revealToggle = false,
   inputRef,
+  onPaper = false,
   className = "",
   type,
   ...rest
 }: TextFieldProps) {
   const [revealed, setRevealed] = useState(false);
+  // One place to pick the ramp, so no call site can half-convert a field.
+  const c = onPaper
+    ? {
+        label: "text-ink-muted",
+        text: "text-ink",
+        rule: "border-ink-muted",
+        ruleInvalid: "border-ink-destructive",
+        placeholder: "placeholder:text-ink-muted",
+        focusRule: "focus:border-ink-accent",
+        error: "text-ink-destructive",
+        toggle: "text-ink-muted hover:text-ink",
+      }
+    : {
+        label: "text-muted-foreground",
+        text: "text-foreground",
+        rule: "border-muted-foreground",
+        ruleInvalid: "border-destructive-text",
+        placeholder: "placeholder:text-muted-foreground",
+        focusRule: "focus:border-accent",
+        error: "text-destructive-text",
+        toggle: "text-muted-foreground hover:text-foreground",
+      };
   const isInvalid = invalid || Boolean(error);
   const errorId = error ? `${id}-error` : undefined;
   // Merged, not overridden: a caller-supplied description (a format hint, say)
   // must survive the field going invalid rather than be silently dropped.
-  const describedBy =
-    [rest["aria-describedby"], errorId].filter(Boolean).join(" ") || undefined;
+  const describedBy = [rest["aria-describedby"], errorId].filter(Boolean).join(" ") || undefined;
   // Swapping the type is what actually reveals the value, so the control only
   // means anything on a masked field.
   const canReveal = revealToggle && type === "password";
@@ -81,7 +110,7 @@ export function TextField({
     <div className="block">
       <label
         htmlFor={id}
-        className="block font-mono uppercase tracking-mono-caps text-mini text-muted-foreground"
+        className={`block font-mono uppercase tracking-mono-caps text-mini ${c.label}`}
       >
         {label}
       </label>
@@ -94,12 +123,12 @@ export function TextField({
           aria-invalid={isInvalid ? true : rest["aria-invalid"]}
           aria-describedby={describedBy}
           className={[
-            "mt-2 w-full bg-transparent font-mono text-sm text-foreground",
+            `mt-2 w-full bg-transparent font-mono text-sm ${c.text}`,
             "border-0 border-b rounded-none px-0 py-1",
             canReveal ? "pr-9" : "",
-            isInvalid ? "border-destructive-text" : "border-muted-foreground",
-            "placeholder:text-muted-foreground",
-            "focus:outline-none focus:border-accent",
+            isInvalid ? c.ruleInvalid : c.rule,
+            c.placeholder,
+            `focus:outline-none ${c.focusRule}`,
             className,
           ]
             .filter(Boolean)
@@ -110,7 +139,7 @@ export function TextField({
             type="button"
             onClick={() => setRevealed((v) => !v)}
             aria-label={revealed ? "hide password" : "show password"}
-            className="absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center text-muted-foreground hover:text-foreground"
+            className={`absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center ${c.toggle}`}
           >
             <EyeIcon revealed={revealed} />
           </button>
@@ -120,7 +149,7 @@ export function TextField({
         <p
           id={errorId}
           role="alert"
-          className="mt-2 flex items-center gap-1.5 font-mono text-sm text-destructive-text"
+          className={`mt-2 flex items-center gap-1.5 font-mono text-sm ${c.error}`}
         >
           <WarningIcon className="shrink-0" />
           {error}

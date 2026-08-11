@@ -87,13 +87,49 @@ export default {
         hairline: "rgba(255, 255, 255, 0.09)", // default card / section edge
         "hairline-strong": "rgba(255, 255, 255, 0.12)", // floating element over artwork
 
+        // --- Light surface: public pages only (ADR 0013) --------------------
+        // Design System v1.0 derives its entire foreground ramp against
+        // near-black, so on a light page every one of those tokens fails AA:
+        // `foreground` measures 1.09:1 on white, `muted-foreground` 3.23:1,
+        // `accent` 2.62:1, `link` 2.42:1, `destructive-text` 2.86:1. A light
+        // surface therefore needs its own ramp — this is not a surface swap.
+        //
+        // Every value below KEEPS ITS DARK-SURFACE HUE and is the maximum
+        // chroma that still clears its WCAG floor on `paper` while staying
+        // inside the sRGB gamut, so the two ramps read as one system seen at
+        // two lightnesses rather than two palettes. Solved numerically, not by
+        // eye; re-run that solve if `paper` ever stops being pure white.
+        //
+        // RATIOS ARE COMPUTED FROM THE ROUNDED 8-BIT sRGB VALUE, not from the
+        // pre-rounding float. That is not pedantry: the first cut of this ramp
+        // was solved on floats and shipped `ink-muted` at a theoretical 4.50:1
+        // which the browser actually painted as #76777B — 4.47:1, an AA
+        // failure caught only by measuring the live page. Quantization can cost
+        // ~0.05, so each value here carries margin over its floor.
+        //
+        // These are for the five public routes (/login, /about, /terms,
+        // /privacy, /help). Cards, TopNav and every authed screen stay dark
+        // and keep the tokens above. Do not mix the two ramps on one surface.
+        paper: "oklch(1 0 0 / <alpha-value>)", // #FFFFFF light page background
+        ink: "oklch(0.34 0.02 80 / <alpha-value>)", // #3D372C 11.79:1 primary text
+        "ink-muted": "oklch(0.56 0.006 270 / <alpha-value>)", // #737478 4.67:1 supporting
+        "ink-accent": "oklch(0.574 0.142 55 / <alpha-value>)", // #B65D00 4.61:1 amber on paper
+        // The hero wordmark only. WCAG's floor for large text (>=18.66px bold /
+        // >=24px) is 3:1, not 4.5:1, which buys back most of the chroma the
+        // AA-safe `ink-accent` has to spend. NEVER use this at body size.
+        "ink-accent-display": "oklch(0.675 0.167 55 / <alpha-value>)", // #E27501 3.10:1
+        "ink-link": "oklch(0.56 0.119 235 / <alpha-value>)", // #007EB0 4.55:1 navigation
+        "ink-destructive": "oklch(0.595 0.241 25 / <alpha-value>)", // #EC0128 4.56:1 error text
+        // Light-surface counterpart to `hairline`. Same fixed-alpha rule: the
+        // alpha is the token's whole meaning, so no opacity modifier.
+        "ink-hairline": "rgba(0, 0, 0, 0.12)", // rule / divider on paper
+
         // --- Chart series (ADR 0008) ----------------------------------------
         "chart-1": "oklch(0.72 0.17 55 / <alpha-value>)", // #F3821D (identical to accent)
         "chart-2": "oklch(0.65 0.12 180 / <alpha-value>)", // #00A692 teal
         "chart-3": "oklch(0.60 0.14 240 / <alpha-value>)", // #0089CA blue
         "chart-4": "oklch(0.62 0.18 25 / <alpha-value>)", // #DE4E4B red
         "chart-5": "oklch(0.78 0.08 80 / <alpha-value>)", // #D2B27C sand
-
       },
       // Elevation. The shadow index does NOT track the surface index — a Z1
       // card wears shadow-z2 at rest. See docs/design/style-guide.md.
@@ -104,6 +140,14 @@ export default {
         z3: "0 8px 26px rgba(0,0,0,0.80), 0 2px 0 rgba(255,255,255,0.05)",
         z4: "0 18px 52px rgba(0,0,0,0.88), 0 4px 8px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.08)",
         art: "0 24px 72px rgba(0,0,0,0.95), 0 8px 24px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.10)",
+        // Light-surface counterparts (ADR 0013). The dark ladder's shadows are
+        // black at 0.65-0.95 alpha with a white inner ring — on paper they read
+        // as bruises rather than depth, and the white ring disappears entirely.
+        // These drop to 0.08-0.18 alpha and swap the ring to black, because on a
+        // light surface it is the ring, not the blur, that defines the edge.
+        "z2-ink": "0 4px 14px rgba(0,0,0,0.10), 0 1px 0 rgba(0,0,0,0.04)",
+        "art-ink":
+          "0 18px 44px rgba(0,0,0,0.18), 0 4px 10px rgba(0,0,0,0.10), 0 0 0 1px rgba(0,0,0,0.08)",
       },
       fontFamily: {
         display: ['"Big Shoulders Display"', "sans-serif"],

@@ -15,6 +15,11 @@ type DeadlineWindowFieldProps = {
    *  renders once below the pair (ADR 0004) rather than duplicating the
    *  message under each input. */
   error?: string | null;
+  /** The field is on the light public/paper surface (ADR 0013). Forwarded to
+   *  both `TextField`s, and applied to this component's own group eyebrow and
+   *  error message — the dark ramp's `muted-foreground` is 3.23:1 on paper and
+   *  `destructive-text` 2.86:1, so neither survives the move. */
+  onPaper?: boolean;
 };
 
 /**
@@ -33,6 +38,7 @@ export function DeadlineWindowField({
   onBlur,
   disabled,
   error,
+  onPaper = false,
 }: DeadlineWindowFieldProps) {
   const invalid = Boolean(error);
   const errorId = error ? `${idPrefix}-error` : undefined;
@@ -44,7 +50,11 @@ export function DeadlineWindowField({
           field without the group label competing with its own parts. It stays
           `muted-foreground` when the pair is invalid — the message below is
           what carries `destructive-text`, matching TextField's own label. */}
-      <span className="block font-mono uppercase tracking-mono-wide text-meta text-muted-foreground">
+      <span
+        className={`block font-mono uppercase tracking-mono-wide text-meta ${
+          onPaper ? "text-ink-muted" : "text-muted-foreground"
+        }`}
+      >
         {label}
       </span>
       <div className="mt-2 flex items-start gap-6">
@@ -61,6 +71,7 @@ export function DeadlineWindowField({
           onBlur={onBlur}
           disabled={disabled}
           invalid={invalid}
+          onPaper={onPaper}
           aria-describedby={errorId}
         />
         <TextField
@@ -76,6 +87,7 @@ export function DeadlineWindowField({
           onBlur={onBlur}
           disabled={disabled}
           invalid={invalid}
+          onPaper={onPaper}
           aria-describedby={errorId}
         />
       </div>
@@ -88,7 +100,9 @@ export function DeadlineWindowField({
         <p
           id={errorId}
           role="alert"
-          className="mt-2 flex items-center gap-1.5 font-mono text-sm text-destructive-text"
+          className={`mt-2 flex items-center gap-1.5 font-mono text-sm ${
+            onPaper ? "text-ink-destructive" : "text-destructive-text"
+          }`}
         >
           <WarningIcon className="shrink-0" />
           {error}

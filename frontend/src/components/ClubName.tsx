@@ -1,5 +1,12 @@
 type ClubNameProps = {
   name: string;
+  /** The name is on the light page surface (`paper`, ADR 0013) rather than
+   *  inside a dark card.
+   *
+   *  `accent` is 7.42:1 on `card` but **2.62:1 on `paper`** — an AA failure. The
+   *  accented word is ordinary title text, not large-display type, so it owes
+   *  the full 4.5:1 and takes `ink-accent`. */
+  onPaper?: boolean;
 };
 
 /**
@@ -11,10 +18,9 @@ type ClubNameProps = {
  * and is safe to ignore. It is therefore purely decorative, and everything that
  * matters about a club — state, your role in it — is carried elsewhere in text.
  *
- * **Surface constraint.** `accent` is 7.42:1 on `card` and fine wherever a club
- * title renders today, since every one of them is inside a dark card. It is
- * 2.62:1 on `paper` and would fail there, so if a club title ever moves onto the
- * light surface this needs the `ink-accent` ramp (ADR 0013) rather than `accent`.
+ * **Surface constraint.** `accent` is 7.42:1 on `card` but 2.62:1 on `paper`, so
+ * a club title on the light surface must pass `onPaper` to take `ink-accent`
+ * instead (ADR 0013). The club detail page's `h1` is exactly that case.
  *
  * Deliberately not applied to the mix screen's back button: that is navigation
  * chrome, which the style guide excludes from the accent by name.
@@ -23,7 +29,7 @@ type ClubNameProps = {
  * separators — so an odd double space in a user-entered name survives a round
  * trip through this component instead of being silently rewritten.
  */
-export function ClubName({ name }: ClubNameProps) {
+export function ClubName({ name, onPaper = false }: ClubNameProps) {
   // Capturing split: words land on even indices, the whitespace that separated
   // them on odd ones, so re-joining any slice reproduces the original exactly.
   const parts = name.split(/(\s+)/);
@@ -38,7 +44,7 @@ export function ClubName({ name }: ClubNameProps) {
   return (
     <>
       {parts.slice(0, second).join("")}
-      <span className="text-accent">{parts[second]}</span>
+      <span className={onPaper ? "text-ink-accent" : "text-accent"}>{parts[second]}</span>
       {parts.slice(second + 1).join("")}
     </>
   );

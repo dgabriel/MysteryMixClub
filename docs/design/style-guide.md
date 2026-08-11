@@ -166,8 +166,8 @@ until the sweep ticket.
 
 ### Light surface — public pages only (ADR 0013)
 
-Six routes — `/login`, `/about`, `/terms`, `/privacy`, `/help` and `/home` —
-render on a **light** surface. Everything else in the app is dark, exactly as the
+Seven routes — `/login`, `/about`, `/terms`, `/privacy`, `/help`, `/home` and
+`/clubs/:id` — render on a **light** surface. Everything else in the app is dark, exactly as the
 rest of this guide describes.
 
 On those pages the model is **light page, dark cards**: a `bg-card` island is its
@@ -202,7 +202,9 @@ Rules:
 - **A dark island on a light page must anchor its own text colour.** `Card` sets
   `text-foreground` explicitly for exactly this reason: card text mostly
   *inherits*, and under a `PaperSurface` it would otherwise inherit `ink` and
-  vanish. Any new dark surface placed on paper owes the same.
+  vanish. Any new dark surface placed on paper owes the same — the club page's
+  member rows are hand-rolled `bg-card` `<li>`s rather than `Card`s, so they
+  carry the anchor themselves.
 - **`ink-accent-display` is hero-size only.** It clears 3:1, which is the WCAG
   floor for large text and nothing else. At body size it is a failure.
 - **`TopNav` is excluded** — it keeps its dark fill and reads as chrome above the

@@ -495,7 +495,9 @@ export function MixDetailRoute() {
       setMix(updated);
       return true;
     } catch (err) {
-      setEditError(err instanceof ApiError ? err.message : "couldn't save the mystery mix. try again.");
+      setEditError(
+        err instanceof ApiError ? err.message : "couldn't save the mystery mix. try again.",
+      );
       return false;
     } finally {
       setSavingEdit(false);
@@ -830,7 +832,11 @@ function OrganizerControls({
           : "open mystery mix voting"
         : "close mix";
   const busyLabel =
-    next === "closed" ? "closing…" : casualClub && next === "open_voting" ? "revealing…" : "opening…";
+    next === "closed"
+      ? "closing…"
+      : casualClub && next === "open_voting"
+        ? "revealing…"
+        : "opening…";
   const busy = advancing || rollingBack || extendingVoting;
 
   // Bounds for the extend picker: must be after the current deadline, and no
@@ -1250,11 +1256,7 @@ function SubmittedSongCard({
   return (
     <Card>
       <div className="flex items-start gap-4">
-        <AlbumArt
-          url={submission.album_art_url}
-          alt={`${submission.title} album art`}
-          size={56}
-        />
+        <AlbumArt url={submission.album_art_url} alt={`${submission.title} album art`} size={56} />
         <div className="min-w-0 flex-1">
           <span className="font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
             {eyebrow}
@@ -1750,8 +1752,8 @@ function VotingSection({
       <>
         <VotingProgress acted={votingActed} eligible={votingEligible} vibing={vibingCount} />
         <p className="text-sm leading-[1.72] text-muted-foreground">
-          you&apos;re in casual mode for this one, so you sit voting out. settle in and enjoy
-          the mix.
+          you&apos;re in casual mode for this one, so you sit voting out. settle in and enjoy the
+          mix.
         </p>
         <h2 className="mt-8 font-mono uppercase tracking-mono-wide text-meta text-muted-foreground">
           playlist ({entries.length})
@@ -1774,11 +1776,7 @@ function VotingSection({
                   it — see the placement table in lib/platformBrand.ts. */}
               <Card>
                 <div className="flex items-start gap-4">
-                  <AlbumArt
-                    url={entry.album_art_url}
-                    alt={`${entry.title} album art`}
-                    size={56}
-                  />
+                  <AlbumArt url={entry.album_art_url} alt={`${entry.title} album art`} size={56} />
                   <div className="min-w-0 flex-1">
                     <h3 className="font-display text-sm font-bold uppercase leading-none">
                       {entry.title}
@@ -1895,10 +1893,10 @@ function VotingSection({
                     you can&apos;t vote for your own song
                   </p>
                   <PlatformLinks
-                  platforms={entry.platforms}
-                  title={entry.title}
-                  source={entry.source}
-                />
+                    platforms={entry.platforms}
+                    title={entry.title}
+                    source={entry.source}
+                  />
                 </Card>
               </li>
             );
@@ -1989,10 +1987,10 @@ function VotingSection({
                 {/* Platform links + notes live inside the card, below the vote area. */}
                 <div className="px-6 pb-5">
                   <PlatformLinks
-                  platforms={entry.platforms}
-                  title={entry.title}
-                  source={entry.source}
-                />
+                    platforms={entry.platforms}
+                    title={entry.title}
+                    source={entry.source}
+                  />
                   <SongNotes submissionId={entry.submission_id} onActionError={onActionError} />
                 </div>
               </div>
@@ -2282,11 +2280,7 @@ function SongNotes({
           notes{loaded ? ` (${notes.length})` : ""}
         </button>
         {!composing ? (
-          <button
-            type="button"
-            onClick={() => void startComposing()}
-            className={ROW_ACTION_CLASS}
-          >
+          <button type="button" onClick={() => void startComposing()} className={ROW_ACTION_CLASS}>
             {ownNote ? "edit note" : "leave a note"}
           </button>
         ) : null}
@@ -2633,9 +2627,7 @@ function VibingReveal({
 
       {winners.length > 0 ? <VibeWinnersSection winners={winners} /> : null}
 
-      {picks.length > 0 ? (
-        <VibePicksSection picks={picks} onActionError={onActionError} />
-      ) : null}
+      {picks.length > 0 ? <VibePicksSection picks={picks} onActionError={onActionError} /> : null}
     </div>
   );
 }
@@ -2715,9 +2707,7 @@ function VibePicksSection({
                 </div>
               ) : null}
               {p.submitter_note ? (
-                <p className="mt-2 text-meta leading-[1.6] text-foreground">
-                  “{p.submitter_note}”
-                </p>
+                <p className="mt-2 text-meta leading-[1.6] text-foreground">“{p.submitter_note}”</p>
               ) : null}
               <PlatformLinks platforms={p.platforms} title={p.title} source={p.source} />
               <SongNotes submissionId={p.submission_id} onActionError={onActionError} />
@@ -2754,7 +2744,7 @@ function MostNotedSection({ winners }: { winners: MostNotedWinner[] }) {
         {winners.map((w) => (
           <li key={w.submission_id}>
             {/* `MostNotedWinner` carries no `album_art_url`, so no artwork. */}
-            <Card accent>
+            <Card bar="accent">
               <div className="flex items-start justify-between gap-3">
                 <h3 className="font-display text-sm font-bold uppercase leading-none">{w.title}</h3>
                 <span className="shrink-0 font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
@@ -2828,11 +2818,7 @@ function WinnersSection({
                       key={s.submission_id}
                       className={["flex items-start gap-4", i === 0 ? "mt-2" : "mt-4"].join(" ")}
                     >
-                      <AlbumArt
-                        url={s.album_art_url}
-                        alt={`${s.title} album art`}
-                        size={56}
-                      />
+                      <AlbumArt url={s.album_art_url} alt={`${s.title} album art`} size={56} />
                       <div className="min-w-0 flex-1">
                         <h3 className="font-display text-sm font-bold uppercase leading-none">
                           {s.title}

@@ -76,6 +76,7 @@ function clubWith(overrides: Partial<Club> = {}): Club {
     submission_window_hours: 72,
     voting_window_hours: 72,
     completed_at: null,
+    viewer_is_admin: null,
     ...overrides,
   };
 }
@@ -241,7 +242,7 @@ describe("ClubHomeRoute", () => {
   it("happy path: reads the id param, fetches club + members, renders name and members", async () => {
     renderClub("club-1");
 
-    expect(await screen.findByText("Friday Mixtape")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Friday Mixtape" })).toBeInTheDocument();
     expect(screen.getByText("Ada")).toBeInTheDocument();
     expect(screen.getByText("Bo")).toBeInTheDocument();
     expect(mockGetClub).toHaveBeenCalledWith("club-1");
@@ -252,7 +253,7 @@ describe("ClubHomeRoute", () => {
     setAuth(ORGANIZER_ID);
     renderClub();
 
-    await screen.findByText("Friday Mixtape");
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
     // The edit toggle is organizer-only.
     expect(screen.getByRole("button", { name: /^edit$/i })).toBeInTheDocument();
     // Remove is shown on the non-organizer member row.
@@ -263,7 +264,7 @@ describe("ClubHomeRoute", () => {
     setAuth(MEMBER_ID);
     renderClub();
 
-    await screen.findByText("Friday Mixtape");
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
     expect(screen.queryByRole("button", { name: /^edit$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^remove$/i })).not.toBeInTheDocument();
   });
@@ -272,7 +273,7 @@ describe("ClubHomeRoute", () => {
     setAuth(MEMBER_ID);
     renderClub();
 
-    await screen.findByText("Friday Mixtape");
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
     expect(screen.queryByRole("heading", { name: /^invite$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^invite$/i })).not.toBeInTheDocument();
   });
@@ -283,7 +284,7 @@ describe("ClubHomeRoute", () => {
 
     // The error state renders a back affordance; the screen does not throw.
     expect(await screen.findByRole("button", { name: /^back$/i })).toBeInTheDocument();
-    expect(screen.queryByText("Friday Mixtape")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Friday Mixtape" })).not.toBeInTheDocument();
   });
 
   it("error: getClub rejecting with 404 shows a calm error and does not crash", async () => {
@@ -298,7 +299,7 @@ describe("ClubHomeRoute", () => {
     const user = userEvent.setup();
 
     renderClub();
-    await screen.findByText("Friday Mixtape");
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
 
     await user.click(screen.getByRole("button", { name: /^invite$/i }));
 
@@ -313,7 +314,7 @@ describe("ClubHomeRoute", () => {
     const user = userEvent.setup();
 
     renderClub();
-    await screen.findByText("Friday Mixtape");
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
 
     await user.click(screen.getByRole("button", { name: /^edit$/i }));
     const nameInput = screen.getByLabelText(/^name$/i);
@@ -340,7 +341,7 @@ describe("ClubHomeRoute", () => {
     const user = userEvent.setup();
 
     const { container } = renderClub();
-    await screen.findByText("Friday Mixtape");
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
 
     await user.click(screen.getByRole("button", { name: /^edit$/i }));
 
@@ -368,7 +369,7 @@ describe("ClubHomeRoute", () => {
     const user = userEvent.setup();
 
     const { container } = renderClub();
-    await screen.findByText("Friday Mixtape");
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
 
     await user.click(screen.getByRole("button", { name: /^edit$/i }));
     fireEvent.change(container.querySelector("#edit-submission-window-days") as HTMLInputElement, {
@@ -389,7 +390,7 @@ describe("ClubHomeRoute", () => {
     const user = userEvent.setup();
 
     const { container } = renderClub();
-    await screen.findByText("Friday Mixtape");
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
 
     await user.click(screen.getByRole("button", { name: /^edit$/i }));
     const nameInput = screen.getByLabelText(/^name$/i);
@@ -412,7 +413,7 @@ describe("ClubHomeRoute", () => {
     const user = userEvent.setup();
 
     renderClub();
-    await screen.findByText("Friday Mixtape");
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
 
     await user.click(screen.getByRole("button", { name: /^remove$/i }));
 
@@ -428,7 +429,7 @@ describe("ClubHomeRoute", () => {
     mockGetClubLeaderboard.mockResolvedValue(leaderboardFor(roster));
 
     renderClub();
-    await screen.findByText("Friday Mixtape");
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
 
     expect(await screen.findByText("co-organizer")).toBeInTheDocument();
     // Exactly one co-organizer badge — the fixed organizer gets "organizer"
@@ -442,7 +443,7 @@ describe("ClubHomeRoute", () => {
     const user = userEvent.setup();
 
     renderClub();
-    await screen.findByText("Friday Mixtape");
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
 
     const makeAdminBtn = screen.getByRole("button", { name: /^make admin$/i });
     await user.click(makeAdminBtn);
@@ -464,7 +465,7 @@ describe("ClubHomeRoute", () => {
     const user = userEvent.setup();
 
     renderClub();
-    await screen.findByText("Friday Mixtape");
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
 
     await user.click(screen.getByRole("button", { name: /^make admin$/i }));
 
@@ -497,7 +498,7 @@ describe("ClubHomeRoute", () => {
     const user = userEvent.setup();
 
     renderClub();
-    await screen.findByText("Friday Mixtape");
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
 
     // The fixed organizer's row never shows a role toggle; only the
     // co-organizer's row does, alongside the plain member's "make admin".
@@ -517,7 +518,7 @@ describe("ClubHomeRoute", () => {
 
     it("a co-organizer viewer (isAdmin, not isOrganizer) sees club-edit and member-removal controls a plain member does not", async () => {
       renderClub();
-      await screen.findByText("Friday Mixtape");
+      await screen.findByRole("heading", { name: "Friday Mixtape" });
 
       expect(screen.getByRole("button", { name: /^edit$/i })).toBeInTheDocument();
       // Remove is available on both the plain member's row and the other
@@ -527,7 +528,7 @@ describe("ClubHomeRoute", () => {
 
     it("a co-organizer viewer sees BOTH the delete-club and leave-club sections", async () => {
       renderClub();
-      await screen.findByText("Friday Mixtape");
+      await screen.findByRole("heading", { name: "Friday Mixtape" });
 
       expect(screen.getByRole("button", { name: /^delete club$/i })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /^leave club$/i })).toBeInTheDocument();
@@ -535,7 +536,7 @@ describe("ClubHomeRoute", () => {
 
     it("MYS-246: a co-organizer viewer sees the invite section", async () => {
       renderClub();
-      await screen.findByText("Friday Mixtape");
+      await screen.findByRole("heading", { name: "Friday Mixtape" });
 
       expect(screen.getByRole("heading", { name: /^invite$/i })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /^invite$/i })).toBeInTheDocument();
@@ -544,7 +545,7 @@ describe("ClubHomeRoute", () => {
 
   it("the fixed organizer sees only the delete-club section, not leave-club", async () => {
     renderClub();
-    await screen.findByText("Friday Mixtape");
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
 
     expect(screen.getByRole("button", { name: /^delete club$/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^leave club$/i })).not.toBeInTheDocument();
@@ -553,7 +554,7 @@ describe("ClubHomeRoute", () => {
   it("a plain member sees only the leave-club section, not delete-club", async () => {
     setAuth(MEMBER_ID);
     renderClub();
-    await screen.findByText("Friday Mixtape");
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
 
     expect(screen.queryByRole("button", { name: /^delete club$/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^leave club$/i })).toBeInTheDocument();
@@ -563,7 +564,7 @@ describe("ClubHomeRoute", () => {
     const user = userEvent.setup();
 
     renderClub();
-    await screen.findByText("Friday Mixtape");
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
 
     // Two "home" controls in the TopNav (ring mark + text link); either routes home.
     await user.click(screen.getAllByRole("button", { name: /^home$/i })[1]);
@@ -583,7 +584,7 @@ describe("ClubHomeRoute", () => {
     ]);
 
     renderClub();
-    await screen.findByText("Friday Mixtape");
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
     expect(await screen.findByText("3 of 6 submitted")).toBeInTheDocument();
   });
 
@@ -601,7 +602,7 @@ describe("ClubHomeRoute", () => {
     ]);
 
     renderClub();
-    await screen.findByText("Friday Mixtape");
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
     expect(await screen.findByText(/^closes /i)).toBeInTheDocument();
   });
 
@@ -610,7 +611,7 @@ describe("ClubHomeRoute", () => {
     mockGetResults.mockResolvedValue(resultsWith());
 
     renderClub();
-    await screen.findByText("Friday Mixtape");
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
 
     expect(await screen.findByText("winner")).toBeInTheDocument();
     expect(screen.getByText("Wren")).toBeInTheDocument();
@@ -651,7 +652,7 @@ describe("ClubHomeRoute", () => {
     );
 
     renderClub();
-    await screen.findByText("Friday Mixtape");
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
 
     expect(await screen.findByText("winners")).toBeInTheDocument();
     expect(screen.getByText("Ada & Bo")).toBeInTheDocument();
@@ -685,7 +686,7 @@ describe("ClubHomeRoute", () => {
     const user = userEvent.setup();
 
     renderClub();
-    await screen.findByText("Friday Mixtape");
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
 
     // First click arms the confirm; the destructive action only fires on the second.
     await user.click(screen.getByRole("button", { name: /^delete club$/i }));
@@ -702,7 +703,7 @@ describe("ClubHomeRoute", () => {
     const user = userEvent.setup();
 
     renderClub();
-    await screen.findByText("Friday Mixtape");
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
 
     await user.click(screen.getByRole("button", { name: /^delete club$/i }));
     await user.click(screen.getByRole("button", { name: /^delete this club$/i }));
@@ -723,7 +724,7 @@ describe("ClubHomeRoute", () => {
     ]);
 
     renderClub();
-    await screen.findByText("Friday Mixtape");
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
     expect(await screen.findByText("2 of 5 voted")).toBeInTheDocument();
   });
 
@@ -739,7 +740,7 @@ describe("ClubHomeRoute", () => {
     ]);
 
     renderClub();
-    await screen.findByText("Friday Mixtape");
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
     expect(screen.queryByText(/of 0 voted/i)).not.toBeInTheDocument();
   });
 });

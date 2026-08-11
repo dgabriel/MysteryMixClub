@@ -4,6 +4,7 @@ import { Button } from "../components/Button";
 import { TextField } from "../components/TextField";
 import { Badge } from "../components/Badge";
 import { Card } from "../components/Card";
+import { ClubName } from "../components/ClubName";
 import { FormError } from "../components/FormError";
 import { ConcentricRings } from "../components/ConcentricRings";
 import { CrownIcon } from "../components/CrownIcon";
@@ -242,9 +243,7 @@ function NameForm({
 
   return (
     <section>
-      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-accent">
-        display name
-      </h2>
+      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-accent">display name</h2>
       <form onSubmit={handleSubmit} noValidate className="mt-4 space-y-6">
         {/* `invalid` rather than TextField's own `error` prop: the message is
             rendered by this form (it always was) and keeps its own id, and
@@ -371,13 +370,7 @@ function PreferredServicePicker({
  * category covers achievement, but not as a per-row pattern. The crown glyph
  * is `muted-foreground` and the state Badge stays `default`.
  */
-function ArchivedClubs({
-  clubs,
-  onOpenClub,
-}: {
-  clubs: Club[];
-  onOpenClub: (id: string) => void;
-}) {
+function ArchivedClubs({ clubs, onOpenClub }: { clubs: Club[]; onOpenClub: (id: string) => void }) {
   return (
     <section className="mt-12">
       <h2 className="font-mono text-meta uppercase tracking-mono-wide text-accent">
@@ -400,7 +393,7 @@ function ArchivedClubs({
                     club
                   </span>
                   <h3 className="mt-2 font-display text-sm font-bold uppercase leading-none">
-                    {club.name}
+                    <ClubName name={club.name} />
                   </h3>
                   <div className="mt-4 flex items-center justify-between">
                     <span className="font-mono text-meta text-muted-foreground">
@@ -556,7 +549,9 @@ function SetPasswordForm({
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             disabled={saving}
-            aria-describedby={saveError ? "profile-set-password-error" : "profile-set-password-hint"}
+            aria-describedby={
+              saveError ? "profile-set-password-error" : "profile-set-password-hint"
+            }
           />
           {saveError ? (
             <div className="mt-2">
@@ -594,12 +589,9 @@ function ExportDataSection({
 }) {
   return (
     <section className="mt-12 border-t border-hairline pt-10">
-      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-accent">
-        your data
-      </h2>
+      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-accent">your data</h2>
       <p className="mt-2 text-sm leading-[1.72] text-muted-foreground">
-        download a copy of everything tied to your account: profile, submissions, votes, and
-        notes.
+        download a copy of everything tied to your account: profile, submissions, votes, and notes.
       </p>
       <p className="mt-2 text-sm leading-[1.72] text-muted-foreground">
         we provide this to meet gdpr's right of access (article 15) and data portability (article

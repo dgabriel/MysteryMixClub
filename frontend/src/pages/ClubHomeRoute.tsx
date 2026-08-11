@@ -308,6 +308,7 @@ export function ClubHomeRoute() {
     voting_window_hours: 72,
     created_at: "",
     completed_at: null,
+    viewer_is_admin: null,
   };
 
   return (

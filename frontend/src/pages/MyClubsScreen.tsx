@@ -2,6 +2,7 @@ import type { Club } from "../services/api";
 import { Button } from "../components/Button";
 import { Badge } from "../components/Badge";
 import { Card } from "../components/Card";
+import { ClubName } from "../components/ClubName";
 import { ConcentricRings } from "../components/ConcentricRings";
 import { CrownIcon } from "../components/CrownIcon";
 import { HelpLink } from "../components/HelpLink";
@@ -116,7 +117,12 @@ export function MyClubsScreen({
                 <ul className="mt-8 space-y-4">
                   {activeClubs.map((club) => (
                     <li key={club.id}>
-                      <ClubCard club={club} complete={false} onOpen={onOpenClub} />
+                      <ClubCard
+                        club={club}
+                        complete={false}
+                        isAdmin={club.viewer_is_admin === true}
+                        onOpen={onOpenClub}
+                      />
                     </li>
                   ))}
                 </ul>
@@ -129,7 +135,12 @@ export function MyClubsScreen({
                     <ul className="mt-4 space-y-4">
                       {completedClubs.map((club) => (
                         <li key={club.id}>
-                          <ClubCard club={club} complete onOpen={onOpenClub} />
+                          <ClubCard
+                            club={club}
+                            complete
+                            isAdmin={club.viewer_is_admin === true}
+                            onOpen={onOpenClub}
+                          />
                         </li>
                       ))}
                     </ul>
@@ -160,29 +171,39 @@ export function MyClubsScreen({
  *  card wrapper, no JS hover state — which is what lets the row stay a plain
  *  button rather than a stateful component.
  *
- *  **Completed clubs carry no amber.** The retired system gave them a Gold crown
- *  plus a gold left accent bar; amber's category does cover achievement, so an
- *  amber bar would be in category for a *single* completed club. It isn't, here:
- *  `GET /clubs` returns every club the user is an active member of with no
- *  pagination and no cap, a club that reaches `complete` stays in that list
- *  forever, and nothing lets a user archive or hide one. The completed set is
- *  therefore unbounded and only ever grows, so a long-lived account renders a
- *  column of amber-barred cards — amber as pattern, which the category rule
- *  forbids however in-category each individual card would be. Completion is
- *  carried instead by three neutral signals that don't degrade with count: the
- *  "completed" section heading, the crown glyph in the eyebrow, and the state
- *  Badge already reading "complete". */
+ *  **Neither state carries amber, and that is the whole colour argument here.**
+ *  `GET /clubs` returns every club the user is an active member of, with no
+ *  pagination, no cap, and no way to archive one — so both sets are unbounded
+ *  and only grow. Amber on the *completed* set would paint a column of amber on
+ *  a long-lived account; amber on the *active* set is worse, because active is
+ *  the default state and would be true of nearly every row. Either way the
+ *  colour would stop marking anything, which is the one rule ADR 0012 still
+ *  enforces.
+ *
+ *  So: **active takes `positive` (green), and amber is reserved for the admin
+ *  chip**, which genuinely varies — you organise some of your clubs, not all.
+ *  Completion stays carried by three neutral signals that don't degrade with
+ *  count: the "completed" section heading, the crown glyph, and the state Badge
+ *  reading "complete".
+ *
+ *  **Colour is never the sole signal.** The bar is `aria-hidden` decoration; the
+ *  state is in the Badge's text and the admin role is the word "admin". */
 function ClubCard({
   club,
   complete,
+  isAdmin,
   onOpen,
 }: {
   club: Club;
   complete: boolean;
+  isAdmin: boolean;
   onOpen: (id: string) => void;
 }) {
   return (
-    <Card className="transition-[box-shadow,transform] duration-150 hover:-translate-y-0.5 hover:shadow-z3">
+    <Card
+      bar={complete ? undefined : "positive"}
+      className="transition-[box-shadow,transform] duration-150 hover:-translate-y-0.5 hover:shadow-z3"
+    >
       <button type="button" onClick={() => onOpen(club.id)} className="block w-full text-left">
         {/* The card's chrome recedes to `subtle-foreground` so the club name has
             somewhere to be prominent from. Everything here used to sit at
@@ -190,12 +211,19 @@ function ClubCard({
             and badge all one rank, which is what made the list read as uniform.
             The name is the thing you scan for, so it takes the display face at a
             size the rest of the card doesn't reach. */}
-        <span className="flex items-center gap-1.5 font-mono text-mini uppercase tracking-mono-caps text-subtle-foreground">
-          {complete ? <CrownIcon className="text-subtle-foreground" /> : null}
-          club
-        </span>
+        <div className="flex items-center justify-between gap-3">
+          <span className="flex items-center gap-1.5 font-mono text-mini uppercase tracking-mono-caps text-subtle-foreground">
+            {complete ? <CrownIcon className="text-subtle-foreground" /> : null}
+            club
+          </span>
+          {/* Amber, and selective: this is the one marker on the card that is
+              true of some rows and not others, which is exactly what the accent
+              is for. It sits opposite the eyebrow rather than beside the state
+              Badge so role and state stay two separate readings. */}
+          {isAdmin ? <Badge variant="accent">admin</Badge> : null}
+        </div>
         <h2 className="mt-2 font-display text-[1.375rem] font-bold uppercase leading-none tracking-display-snug">
-          {club.name}
+          <ClubName name={club.name} />
         </h2>
         <div className="mt-4 flex items-center justify-between">
           <span className="font-mono text-meta text-subtle-foreground">

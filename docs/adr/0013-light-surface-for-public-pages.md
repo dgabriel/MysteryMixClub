@@ -16,6 +16,10 @@
 > **Amended again 2026-08-11, MysteryMixClub-0fnf.32:** `/clubs/:id` joins them,
 > so the scope is now those six plus the club detail page. Nothing else changed —
 > the frame model held, and the screen needed no new tokens.
+>
+> **And again, MysteryMixClub-0fnf.33:** `/mixes/:id`. Eight routes. This one
+> carried the first **modal** (`bg-sheet`, Z4), which stays dark — see
+> "Modals" below.
 
 ## Context
 
@@ -49,8 +53,8 @@ foreground ramp, brand accent included.
 
 ## Decision
 
-**`/login`, `/about`, `/terms`, `/privacy`, `/help`, `/home` and `/clubs/:id`
-render on a light surface with their own derived `ink` ramp. Everything else stays exactly
+**`/login`, `/about`, `/terms`, `/privacy`, `/help`, `/home`, `/clubs/:id` and
+`/mixes/:id` render on a light surface with their own derived `ink` ramp. Everything else stays exactly
 as ADR 0009 specifies.**
 
 Four parts:
@@ -126,6 +130,18 @@ value solved *to* the threshold has.
 
 Every value in the table above is verified against the rounded 8-bit color, and
 carries margin over its floor.
+
+### 1b. Modals stay dark, on any page
+
+A modal is not *on* the page, it is *above* it, so the light surface stops at
+the scrim. `bg-sheet` (Z4) with a `bg-floor/80` scrim is correct over a light
+page as much as a dark one — dimming the page behind a dialog is what a scrim is
+for.
+
+This also means the `sheet` contrast rules still bite: `muted-foreground` is
+3.49:1 there and `accent` as text is 4.34:1, so **modal copy stays
+`foreground`**. `AppleMusicPlaylist`'s modal was deliberately excluded when the
+rest of that component moved to the ink ramp, for exactly this reason.
 
 ## Consequences
 

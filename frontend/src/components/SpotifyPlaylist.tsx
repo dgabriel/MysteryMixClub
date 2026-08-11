@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import { MusicNoteIcon } from "./MusicNoteIcon";
-import { getSpotifyPlaylistLink, type PlaylistJobStatus, type UnmatchedTrack } from "../services/api";
+import {
+  getSpotifyPlaylistLink,
+  type PlaylistJobStatus,
+  type UnmatchedTrack,
+} from "../services/api";
 
 /**
  * Read-only Spotify playlist link for a mix (MYS-83, MYS-169).
@@ -43,12 +47,12 @@ import { getSpotifyPlaylistLink, type PlaylistJobStatus, type UnmatchedTrack } f
 
 /** A whole-playlist action link — the `link` button variant as an anchor. */
 const LINK_CLASS =
-  "inline-flex items-center gap-1.5 font-mono uppercase tracking-mono text-label text-link underline underline-offset-[3px] transition-colors duration-150 hover:text-foreground";
+  "inline-flex items-center gap-1.5 font-mono uppercase tracking-mono text-label text-ink-link underline underline-offset-[3px] transition-colors duration-150 hover:text-ink";
 /** A per-row link inside the unmatched list. Neutral at rest, amber on hover
  *  only — hover applies to one row at a time, so it never repeats. */
 const ROW_LINK_CLASS =
-  "font-mono text-sm text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-link";
-const NOTE_CLASS = "font-mono text-sm text-muted-foreground";
+  "font-mono text-sm text-ink underline underline-offset-[3px] transition-colors duration-150 hover:text-ink-link";
+const NOTE_CLASS = "font-mono text-sm text-ink-muted";
 
 // How often to re-check while a job is queued/running. Plain polling (ADR
 // 0006) — not fast enough to feel like a live stream, fast enough that a

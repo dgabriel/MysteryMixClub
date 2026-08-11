@@ -166,8 +166,8 @@ until the sweep ticket.
 
 ### Light surface — public pages only (ADR 0013)
 
-Seven routes — `/login`, `/about`, `/terms`, `/privacy`, `/help`, `/home` and
-`/clubs/:id` — render on a **light** surface. Everything else in the app is dark, exactly as the
+Eight routes — `/login`, `/about`, `/terms`, `/privacy`, `/help`, `/home`,
+`/clubs/:id` and `/mixes/:id` — render on a **light** surface. Everything else in the app is dark, exactly as the
 rest of this guide describes.
 
 On those pages the model is **light page, dark cards**: a `bg-card` island is its
@@ -683,6 +683,10 @@ MYS-121 and MYS-186 darkened the old palette twice specifically to clear
   amber ring on an amber-filled button is invisible — those need
   `ring-foreground` or a ring offset.
 - **`text-micro` is chrome only** — see Typography.
+- **Modals stay dark on a light page.** A dialog sits *above* the page, so the
+  light surface stops at the scrim, and `sheet`'s own limits still apply:
+  `muted-foreground` is 3.49:1 there and `accent` as text 4.34:1, so modal copy
+  is `foreground`.
 
 ---
 

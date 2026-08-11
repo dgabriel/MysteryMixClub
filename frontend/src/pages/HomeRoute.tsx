@@ -14,7 +14,7 @@ import { useAuth } from "../hooks/useAuth";
  */
 export function HomeRoute() {
   const navigate = useNavigate();
-  const { displayName, preferredService } = useAuth();
+  const { displayName, preferredService, userId } = useAuth();
   const [clubs, setClubs] = useState<Club[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -32,9 +32,7 @@ export function HomeRoute() {
         const result = await getClubs();
         setClubs(result);
       } catch (err) {
-        setError(
-          err instanceof ApiError ? err.message : "couldn't load your clubs. try again.",
-        );
+        setError(err instanceof ApiError ? err.message : "couldn't load your clubs. try again.");
       } finally {
         setLoading(false);
       }
@@ -44,6 +42,9 @@ export function HomeRoute() {
   return (
     <MyClubsScreen
       displayName={displayName}
+      // Marks the clubs this user organises. `organizer_id` already rides along
+      // on every club in GET /clubs, so no extra request and no API change.
+      currentUserId={userId}
       clubs={clubs}
       loading={loading}
       error={error}

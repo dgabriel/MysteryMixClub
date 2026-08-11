@@ -116,11 +116,20 @@ Three things deliberately did **not** become blue:
 | `destructive-hover`       | `#BE222A` | Hover step for a `destructive` fill. **Deepens** where `accent-hover` brightens. |
 | `destructive-foreground`  | `#F5F5F5` | Text on a `destructive` fill. 4.99:1.                             |
 | `destructive-text`        | `#F2716A` | Form-error text and error underlines (ADR 0004). 6.77:1 on `card`. |
-| `positive`                | `#5DA260` | Upward score delta, success.                                      |
+| `positive`                | `#5DA260` | Upward score delta, success, **and a running/live status marker**. |
 | `negative`                | `#DE4E4B` | Downward score delta.                                             |
 
 `destructive` as text is 3.57:1 on `card` — an outright AA failure. Error copy
 always uses `destructive-text`; `destructive` is a fill color and nothing else.
+
+**`positive` also carries "running/live" as a status marker** (6.29:1 on `card`)
+— the green left bar on an active club row. It is deliberately not `accent`, and
+the reason generalises: **a status that is true of most rows in a list must not
+be the accent.** Clubs are only ever `active` or `complete`, active is the
+default, and the list is unbounded and unarchivable, so an amber bar would paint
+nearly every card and stop marking anything. Amber is reserved for the marker
+that actually varies — on that screen, the `admin` chip. Reach for `positive`
+when a status is common and expected, and keep `accent` for what is selective.
 
 The two hover steps move in opposite directions on purpose.
 `destructive-foreground` on `destructive` has only 0.49 of headroom over

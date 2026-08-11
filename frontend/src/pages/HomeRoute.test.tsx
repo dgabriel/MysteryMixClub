@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { HomeRoute } from "./HomeRoute";
@@ -10,9 +10,7 @@ import { useAuth } from "../hooks/useAuth";
 
 // Mock the API module (no network). Keep ApiError real so instanceof / status work.
 vi.mock("../services/api", async () => {
-  const actual = await vi.importActual<typeof import("../services/api")>(
-    "../services/api",
-  );
+  const actual = await vi.importActual<typeof import("../services/api")>("../services/api");
   return {
     ...actual,
     getClubs: vi.fn(),
@@ -87,9 +85,9 @@ describe("HomeRoute (My Clubs)", () => {
       needsOnboarding: false,
       isPlatformAdmin: false,
       applyDisplayName: vi.fn(),
-    preferredService: null,
-    tosAccepted: true,
-    applyTosAccepted: vi.fn(),
+      preferredService: null,
+      tosAccepted: true,
+      applyTosAccepted: vi.fn(),
     });
   });
 
@@ -128,6 +126,93 @@ describe("HomeRoute (My Clubs)", () => {
     // gold left bar — see ClubCard for why completion carries no accent color.
     expect(done.closest("li")?.querySelector("svg")).not.toBeNull();
     expect(active.closest("li")?.querySelector("svg")).toBeNull();
+  });
+
+  it("admin: the chip marks only the clubs this user organises", async () => {
+    mockGetClubs.mockResolvedValue([
+      clubWith({
+        id: "mine",
+        name: "My Club",
+        // Matches the mocked useAuth().userId below.
+        organizer_id: "11111111-1111-1111-1111-111111111111",
+      }),
+      clubWith({
+        id: "theirs",
+        name: "Their Club",
+        organizer_id: "22222222-2222-2222-2222-222222222222",
+      }),
+    ]);
+    renderHome();
+
+    const mine = (await screen.findByText("My Club")).closest("li")!;
+    const theirs = screen.getByText("Their Club").closest("li")!;
+
+    expect(within(mine).getByText("admin")).toBeInTheDocument();
+    expect(within(theirs).queryByText("admin")).toBeNull();
+  });
+
+  it("admin: no chip is claimed before the profile has loaded a userId", async () => {
+    // userId is null on first paint. Rendering no chip is correct; rendering one
+    // on every club would be worse than rendering none, since `organizer_id ===
+    // null` must never accidentally match.
+    mockUseAuth.mockReturnValue({
+      status: "authenticated",
+      isAuthenticated: true,
+      setAccessToken: vi.fn(),
+      clear: vi.fn(),
+      logout,
+      logoutAll: vi.fn(),
+      displayName: "ada",
+      email: "ada@example.com",
+      userId: null,
+      profileStatus: "loading",
+      needsOnboarding: false,
+      isPlatformAdmin: false,
+      applyDisplayName: vi.fn(),
+      preferredService: null,
+      tosAccepted: true,
+      applyTosAccepted: vi.fn(),
+    });
+    mockGetClubs.mockResolvedValue([clubWith({ id: "x", name: "Some Club", organizer_id: "" })]);
+    renderHome();
+
+    const row = (await screen.findByText("Some Club")).closest("li")!;
+    expect(within(row).queryByText("admin")).toBeNull();
+  });
+
+  it("active clubs carry the status bar, completed ones do not", async () => {
+    mockGetClubs.mockResolvedValue([
+      clubWith({ id: "a1", name: "Active One", state: "active" }),
+      clubWith({ id: "c1", name: "Finished One", state: "complete" }),
+    ]);
+    renderHome();
+
+    const active = (await screen.findByText("Active One")).closest("li")!;
+    const done = screen.getByText("Finished One").closest("li")!;
+
+    // Green, not amber: active is the default state and would otherwise paint
+    // nearly every row in the accent. See ClubCard for the full argument.
+    expect(active.querySelector(".bg-positive")).not.toBeNull();
+    expect(active.querySelector(".bg-accent")).toBeNull();
+    expect(done.querySelector(".bg-positive")).toBeNull();
+  });
+
+  it("state is never carried by colour alone", async () => {
+    // The bar is aria-hidden decoration, so WCAG 1.4.1 requires the state to be
+    // readable as text. That is the Badge, and it is why the bar may be a colour
+    // at all.
+    mockGetClubs.mockResolvedValue([
+      clubWith({ id: "a1", name: "Active One", state: "active" }),
+      clubWith({ id: "c1", name: "Finished One", state: "complete" }),
+    ]);
+    renderHome();
+
+    const active = (await screen.findByText("Active One")).closest("li")!;
+    const done = screen.getByText("Finished One").closest("li")!;
+
+    expect(within(active).getByText("active")).toBeInTheDocument();
+    expect(within(done).getByText("complete")).toBeInTheDocument();
+    expect(active.querySelector(".bg-positive")).toHaveAttribute("aria-hidden", "true");
   });
 
   it("empty list: renders the empty-state copy", async () => {
@@ -204,9 +289,9 @@ describe("HomeRoute (My Clubs)", () => {
       needsOnboarding: false,
       isPlatformAdmin: true,
       applyDisplayName: vi.fn(),
-    preferredService: null,
-    tosAccepted: true,
-    applyTosAccepted: vi.fn(),
+      preferredService: null,
+      tosAccepted: true,
+      applyTosAccepted: vi.fn(),
     });
     const user = userEvent.setup();
     renderHome();

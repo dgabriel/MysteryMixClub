@@ -617,21 +617,27 @@ function MixesSection({
  * the pure-CSS hover lift, a mono eyebrow, a `font-display` uppercase title,
  * and a mono meta row.
  *
- * **No amber on a mix row, in any state.** State drives weight through
- * elevation and foreground brightness instead:
- *  - active mix (open submission/voting) → `shadow-z3` at rest and a
- *    `foreground` eyebrow, so the row the member can act on is literally the
- *    highest and brightest thing in the list
- *  - upcoming (pending) → resting card, muted eyebrow
- *  - closed → resting card, muted eyebrow
+ * **Colour on a mix row** (Dawn, 2026-08-11 — this reverses the row's earlier
+ * "no amber in any state" rule, so read this rather than trusting older
+ * comments elsewhere):
+ *  - the mix number is `accent`, on every row. "Mix/season numbers" is a listed
+ *    accent use in the style guide.
+ *  - the row that can be acted on carries a `positive` green bar, exactly like
+ *    an active club card on `/home`. This one is genuinely scarce rather than
+ *    merely selective: the API allows at most one active mix per club, so only
+ *    one row in the list can ever have it.
+ *  - `shadow-z3` at rest still lifts the active row, so state survives for
+ *    anyone who cannot distinguish the bar's colour.
  *
- * The style guide does list "mix/season numbers" among amber's uses, and the
- * API allows only one active mix per club, so an amber eyebrow on the active
- * row would be bounded. It is still not taken: `DeadlineChip` already owns the
- * amber on exactly that row (it goes amber while the deadline is closing), and
- * a second amber source in the same row would make the accent read as the
- * row's styling rather than as its urgency. Elevation is the system's own
- * answer for hierarchy in the dark, and it costs no accent.
+ * What that cost, recorded honestly: `DeadlineChip` used to be the row's only
+ * amber, and going amber was how it signalled a *closing* deadline. It is no
+ * longer alone, so that urgency reads a little less sharply. It remains
+ * distinguishable because the chip is an amber *fill* (`accent-surface` +
+ * `accent-hairline`) rather than amber text, which is a different shape of
+ * signal — but the dilution is real and was accepted deliberately.
+ *
+ * The eyebrow no longer varies by state, because the bar now carries "live" and
+ * the eyebrow is free to be one consistent thing across the list.
  *
  * The heading is always "mix N". When the organizer has named the mix the
  * theme shows beneath it; an unnamed mix shows a quiet muted prompt to the
@@ -685,6 +691,11 @@ function MixRow({
 
   return (
     <Card
+      // Green bar on the mix that can be acted on, matching the club cards on
+      // /home. Unlike those, this one is genuinely scarce rather than merely
+      // selective: the API allows at most ONE active mix per club, so exactly
+      // one row in this list can ever carry it.
+      bar={active ? "positive" : undefined}
       className={[
         "transition-[box-shadow,transform] duration-150 hover:-translate-y-0.5 hover:shadow-z3",
         // One step of extra rest elevation for the single row that can be acted
@@ -698,12 +709,12 @@ function MixRow({
       <button type="button" onClick={onOpen} className="block w-full text-left">
         <div className="flex items-start justify-between gap-4">
           <span className="min-w-0">
-            <span
-              className={[
-                "block font-mono uppercase tracking-mono-caps text-mini",
-                active ? "text-foreground" : "text-muted-foreground",
-              ].join(" ")}
-            >
+            {/* The mix number in the accent — "mix/season numbers" is a listed
+                accent use in the style guide. It no longer varies by state: the
+                green bar now says which row is live, so this is free to be one
+                consistent thing across the list rather than doing double duty.
+                7.42:1 on `card`. */}
+            <span className="block font-mono uppercase tracking-mono-caps text-mini text-accent">
               mystery mix {mix.mix_number}
             </span>
             {named ? (

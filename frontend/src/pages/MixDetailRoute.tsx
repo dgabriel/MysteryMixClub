@@ -1,4 +1,4 @@
-import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { useBlocker, useNavigate, useParams } from "react-router-dom";
 import {
   ApiError,
@@ -45,6 +45,8 @@ import { usePolling } from "../hooks/usePolling";
 import { Button } from "../components/Button";
 import { Badge } from "../components/Badge";
 import { Card } from "../components/Card";
+import { PaperSurface } from "../components/PaperSurface";
+import { MIX_BADGE, MIX_STATE_LABEL, mixGroup } from "../utils/mixState";
 import { TextField } from "../components/TextField";
 import { FormError } from "../components/FormError";
 import { ConcentricRings } from "../components/ConcentricRings";
@@ -61,13 +63,6 @@ import { DeadlineChip } from "../components/DeadlineChip";
 import { HelpLink } from "../components/HelpLink";
 import { toDatetimeLocalValue } from "../utils/deadline";
 
-const STATE_LABEL: Record<MixState, string> = {
-  pending: "upcoming",
-  open_submission: "submissions open",
-  open_voting: "voting open",
-  closed: "closed",
-};
-
 /**
  * Announces mix.state transitions to screen readers (MYS-121) — the poll
  * that refreshes this data has no visual "page changed" cue of its own, so
@@ -82,7 +77,7 @@ function MixStateAnnouncer({ state }: { state: MixState }) {
   useEffect(() => {
     if (previous.current !== state) {
       previous.current = state;
-      setMessage(`this mystery mix is now ${STATE_LABEL[state]}`);
+      setMessage(`this mystery mix is now ${MIX_STATE_LABEL[state]}`);
     }
   }, [state]);
 
@@ -560,9 +555,11 @@ export function MixDetailRoute() {
 
   if (loading) {
     return (
-      <main className="flex flex-1 items-center justify-center px-4 sm:px-8">
-        <ConcentricRings size={88} spinning className="mx-auto" />
-      </main>
+      <PaperSurface nested>
+        <main className="flex flex-1 items-center justify-center px-4 sm:px-8">
+          <ConcentricRings size={88} spinning onPaper className="mx-auto" />
+        </main>
+      </PaperSurface>
     );
   }
 
@@ -572,16 +569,16 @@ export function MixDetailRoute() {
       // the whole content of the screen rather than a message about a field.
       // ADR 0004's `destructive-text` category is for form validation, so this
       // stays plain `foreground` — matching ClubHomeScreen's error state.
-      <main className="flex flex-1 flex-col items-center justify-center px-4 text-center sm:px-8">
-        <p className="text-sm leading-[1.72] text-foreground">
-          {error ?? "mystery mix not found."}
-        </p>
-        <div className="mt-6">
-          <Button variant="ghost" type="button" onClick={() => navigate("/home")}>
-            home
-          </Button>
-        </div>
-      </main>
+      <PaperSurface nested>
+        <main className="flex flex-1 flex-col items-center justify-center px-4 text-center sm:px-8">
+          <p className="text-sm leading-[1.72] text-ink">{error ?? "mystery mix not found."}</p>
+          <div className="mt-6">
+            <Button variant="ghost" onPaper type="button" onClick={() => navigate("/home")}>
+              home
+            </Button>
+          </div>
+        </main>
+      </PaperSurface>
     );
   }
 
@@ -628,144 +625,152 @@ export function MixDetailRoute() {
       {/* Content-only: the shared TopNav is rendered once by AuthedLayout. The
         mix's club is reached via a named link above the title (not a generic
         "← club" in the nav), so members always see which club they're in. */}
-      <main className="mx-auto w-full max-w-lg px-4 pt-8 pb-16 sm:px-8">
-        {club ? (
-          <button
-            type="button"
-            onClick={() => navigate(`/clubs/${mix.club_id}`)}
-            className="inline-flex items-center gap-1.5 font-mono uppercase tracking-mono text-label text-foreground transition-colors duration-150 hover:text-accent"
-          >
-            <span aria-hidden="true">←</span>
-            {club.name}
-          </button>
-        ) : null}
-        <span className="mt-3 block font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
-          mystery mix {mix.mix_number}
-        </span>
-        <div className="mt-1 flex items-start justify-between gap-4">
-          <h1 className="font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
-            {mix.theme ?? `Mystery Mix ${mix.mix_number}`}
-          </h1>
-          <div className="shrink-0 pt-2">
-            <Badge>{STATE_LABEL[mix.state]}</Badge>
+      <PaperSurface nested>
+        <main className="mx-auto w-full max-w-lg px-4 pt-8 pb-16 sm:px-8">
+          {club ? (
+            <button
+              type="button"
+              onClick={() => navigate(`/clubs/${mix.club_id}`)}
+              className="inline-flex items-center gap-1.5 font-mono uppercase tracking-mono text-label text-ink transition-colors duration-150 hover:text-ink-accent"
+            >
+              <span aria-hidden="true">←</span>
+              {club.name}
+            </button>
+          ) : null}
+          {/* The mix number in the accent, matching the club page's mix rows.
+            `ink-accent` because this sits on paper — plain `accent` is 2.62:1
+            there. */}
+          <span className="mt-3 block font-mono uppercase tracking-mono-caps text-mini text-ink-accent">
+            mystery mix {mix.mix_number}
+          </span>
+          <div className="mt-1 flex items-start justify-between gap-4">
+            <h1 className="font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
+              {mix.theme ?? `Mystery Mix ${mix.mix_number}`}
+            </h1>
+            <div className="shrink-0 pt-2">
+              {/* Same weight ladder as the club page's mix list: a solid green
+                fill while the mix is live, a bright neutral for upcoming, quiet
+                once it is done. */}
+              <Badge variant={MIX_BADGE[mixGroup(mix.state)]}>{MIX_STATE_LABEL[mix.state]}</Badge>
+            </div>
           </div>
-        </div>
-        <MixStateAnnouncer state={mix.state} />
-        {mix.description ? (
-          <p className="mt-3 text-sm leading-[1.72] text-muted-foreground">{mix.description}</p>
-        ) : null}
+          <MixStateAnnouncer state={mix.state} />
+          {mix.description ? (
+            <p className="mt-3 text-sm leading-[1.72] text-ink-muted">{mix.description}</p>
+          ) : null}
 
-        {/* Prominent, phase-appropriate deadline chip (MYS-161) — viewer-local
+          {/* Prominent, phase-appropriate deadline chip (MYS-161) — viewer-local
             time plus a live countdown. Renders nothing for legacy mixes with
             no deadline set. */}
-        <DeadlineChip mix={mix} className="mt-4" showCountdown />
+          <DeadlineChip mix={mix} className="mt-4" showCountdown />
 
-        {isAdmin ? (
-          <>
-            <OrganizerControls
-              state={mix.state}
-              hasTheme={!!mix.theme}
-              advancing={advancing}
-              onAdvance={handleAdvance}
-              isFinalMix={!!club && mix.mix_number >= club.total_mixes}
-              onRollback={handleRollback}
-              rollingBack={rollingBack}
-              votingDeadline={mix.voting_deadline}
-              onExtendVoting={handleExtendVoting}
-              extendingVoting={extendingVoting}
-              totalVotes={voteCounts.reduce((sum, entry) => sum + entry.vote_count, 0)}
-              casualClub={!!club?.default_vibe_mode}
-            />
-            <EditMixForm
-              mix={mix}
-              saving={savingEdit}
-              error={editError}
-              onSave={handleEditMix}
-              onDismissError={() => setEditError(null)}
-            />
-          </>
-        ) : null}
-
-        {/* A failed mutation is a screen-level form error (ADR 0004) — its own
-            color category, so it consumes nothing from this screen's amber. */}
-        {actionError ? (
-          <div className="mt-6">
-            <FormError>{actionError}</FormError>
-          </div>
-        ) : null}
-        {clubRepeatWarning && !actionError ? (
-          <p className="mt-6 text-sm leading-[1.72] text-muted-foreground">
-            this song was submitted in a previous mystery mix — submitted anyway.
-          </p>
-        ) : null}
-
-        <section className="mt-10">
-          {mix.state === "pending" ? (
-            <p className="text-sm leading-[1.72] text-muted-foreground">
-              this mystery mix hasn&apos;t opened yet.
-            </p>
-          ) : mix.state === "open_submission" ? (
+          {isAdmin ? (
             <>
-              <SubmissionProgress submitted={mix.submission_count} total={mix.member_count} />
-              <SubmissionManager
-                submissions={mySubmissions}
-                cap={club?.songs_per_submission ?? 1}
-                submitting={submitting}
-                removingId={removingId}
-                onAdd={handleAddSong}
-                onEdit={handleEditSong}
-                onRemove={handleRemoveSong}
-                onSaveNote={handleSaveNote}
-                onConfirm={() => navigate(`/clubs/${mix.club_id}`)}
+              <OrganizerControls
+                state={mix.state}
+                hasTheme={!!mix.theme}
+                advancing={advancing}
+                onAdvance={handleAdvance}
+                isFinalMix={!!club && mix.mix_number >= club.total_mixes}
+                onRollback={handleRollback}
+                rollingBack={rollingBack}
+                votingDeadline={mix.voting_deadline}
+                onExtendVoting={handleExtendVoting}
+                extendingVoting={extendingVoting}
+                totalVotes={voteCounts.reduce((sum, entry) => sum + entry.vote_count, 0)}
+                casualClub={!!club?.default_vibe_mode}
+              />
+              <EditMixForm
+                mix={mix}
+                saving={savingEdit}
+                error={editError}
+                onSave={handleEditMix}
+                onDismissError={() => setEditError(null)}
               />
             </>
-          ) : mix.state === "open_voting" ? (
-            <VotingSection
-              // Remount to re-seed the selection whenever the saved votes change.
-              key={myVotes.join(",")}
-              mixId={id}
-              entries={playlist}
-              voteCounts={voteCounts}
-              isVotesLocked={isVotesLocked}
-              youtubePlaylistUrl={youtubePlaylistUrl}
-              youtubeTrackCount={youtubeTrackCount}
-              votingEligible={votingEligible}
-              votingActed={votingActed}
-              vibingCount={vibingCount}
-              votesPerPlayer={mix.votes_per_player}
-              myVotes={myVotes}
-              // A submitter's stance is their song's mode; a non-submitter falls
-              // back to their club vibe flag so vibe-mode members sit out (MYS-167).
-              isVibingParticipant={
-                mySubmissions.length > 0
-                  ? mySubmissions[0].participation_mode === "vibing"
-                  : mixVibe
-              }
-              casting={casting}
-              votesSaved={votesSaved}
-              onCast={handleCastVotes}
-              onSelectionChange={() => setVotesSaved(false)}
-              onActionError={setActionError}
-            />
-          ) : (
-            <>
-              {/* Closed mixes keep a way to listen to the mix (MYS-133). */}
-              <ClosedListen
+          ) : null}
+
+          {/* A failed mutation is a screen-level form error (ADR 0004) — its own
+            color category, so it consumes nothing from this screen's amber. */}
+          {actionError ? (
+            <div className="mt-6">
+              <FormError onPaper>{actionError}</FormError>
+            </div>
+          ) : null}
+          {clubRepeatWarning && !actionError ? (
+            <p className="mt-6 text-sm leading-[1.72] text-ink-muted">
+              this song was submitted in a previous mystery mix — submitted anyway.
+            </p>
+          ) : null}
+
+          <section className="mt-10">
+            {mix.state === "pending" ? (
+              <p className="text-sm leading-[1.72] text-ink-muted">
+                this mystery mix hasn&apos;t opened yet.
+              </p>
+            ) : mix.state === "open_submission" ? (
+              <>
+                <SubmissionProgress submitted={mix.submission_count} total={mix.member_count} />
+                <SubmissionManager
+                  submissions={mySubmissions}
+                  cap={club?.songs_per_submission ?? 1}
+                  submitting={submitting}
+                  removingId={removingId}
+                  onAdd={handleAddSong}
+                  onEdit={handleEditSong}
+                  onRemove={handleRemoveSong}
+                  onSaveNote={handleSaveNote}
+                  onConfirm={() => navigate(`/clubs/${mix.club_id}`)}
+                />
+              </>
+            ) : mix.state === "open_voting" ? (
+              <VotingSection
+                // Remount to re-seed the selection whenever the saved votes change.
+                key={myVotes.join(",")}
                 mixId={id}
+                entries={playlist}
+                voteCounts={voteCounts}
+                isVotesLocked={isVotesLocked}
                 youtubePlaylistUrl={youtubePlaylistUrl}
                 youtubeTrackCount={youtubeTrackCount}
-                entryCount={playlist.length}
-                sourceOnly={
-                  results
-                    ? toSourceOnly(results.viewer_is_vibing ? results.picks : results.submissions)
-                    : []
+                votingEligible={votingEligible}
+                votingActed={votingActed}
+                vibingCount={vibingCount}
+                votesPerPlayer={mix.votes_per_player}
+                myVotes={myVotes}
+                // A submitter's stance is their song's mode; a non-submitter falls
+                // back to their club vibe flag so vibe-mode members sit out (MYS-167).
+                isVibingParticipant={
+                  mySubmissions.length > 0
+                    ? mySubmissions[0].participation_mode === "vibing"
+                    : mixVibe
                 }
+                casting={casting}
+                votesSaved={votesSaved}
+                onCast={handleCastVotes}
+                onSelectionChange={() => setVotesSaved(false)}
+                onActionError={setActionError}
               />
-              <ResultsSection results={results} userId={userId} onActionError={setActionError} />
-            </>
-          )}
-        </section>
-      </main>
+            ) : (
+              <>
+                {/* Closed mixes keep a way to listen to the mix (MYS-133). */}
+                <ClosedListen
+                  mixId={id}
+                  youtubePlaylistUrl={youtubePlaylistUrl}
+                  youtubeTrackCount={youtubeTrackCount}
+                  entryCount={playlist.length}
+                  sourceOnly={
+                    results
+                      ? toSourceOnly(results.viewer_is_vibing ? results.picks : results.submissions)
+                      : []
+                  }
+                />
+                <ResultsSection results={results} userId={userId} onActionError={setActionError} />
+              </>
+            )}
+          </section>
+        </main>
+      </PaperSurface>
     </>
   );
 }
@@ -866,14 +871,14 @@ function OrganizerControls({
 
   if (next === "closed" && confirmingClose) {
     return (
-      <div className="mt-6 space-y-4 border-t border-hairline pt-6">
-        <p className="text-sm leading-[1.72] text-muted-foreground">
+      <div className="mt-6 space-y-4 border-t border-ink-hairline pt-6">
+        <p className="text-sm leading-[1.72] text-ink-muted">
           {isFinalMix
             ? "this closes the mystery mix and completes the club. it can't be undone."
             : "this closes the mystery mix and opens the next one, starting its submission deadline. it can't be undone."}
         </p>
         <div className="flex items-center gap-4">
-          <Button type="button" onClick={() => onAdvance(next)} disabled={advancing}>
+          <Button onPaper type="button" onClick={() => onAdvance(next)} disabled={advancing}>
             {advancing ? busyLabel : "yes, close mix"}
           </Button>
           <Button
@@ -891,14 +896,14 @@ function OrganizerControls({
 
   if (state === "open_voting" && confirmingRollback) {
     return (
-      <div className="mt-6 space-y-4 border-t border-hairline pt-6">
-        <p className="text-sm leading-[1.72] text-muted-foreground">
+      <div className="mt-6 space-y-4 border-t border-ink-hairline pt-6">
+        <p className="text-sm leading-[1.72] text-ink-muted">
           {totalVotes > 0
             ? `this reopens submissions with a fresh window and discards ${totalVotes} vote${totalVotes === 1 ? "" : "s"} already cast. it can't be undone.`
             : "this reopens submissions with a fresh window. it can't be undone."}
         </p>
         <div className="flex items-center gap-4">
-          <Button type="button" onClick={onRollback} disabled={rollingBack}>
+          <Button onPaper type="button" onClick={onRollback} disabled={rollingBack}>
             {rollingBack ? "reopening…" : "yes, reopen submissions"}
           </Button>
           <Button
@@ -916,15 +921,15 @@ function OrganizerControls({
 
   if (state === "open_voting" && extendingOpen) {
     return (
-      <div className="mt-6 space-y-4 border-t border-hairline pt-6">
+      <div className="mt-6 space-y-4 border-t border-ink-hairline pt-6">
         <label htmlFor="extend-voting-deadline" className="block">
-          <span className="block font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
+          <span className="block font-mono uppercase tracking-mono-caps text-mini text-ink-muted">
             new voting deadline (up to 48h later)
           </span>
           {/* Underline-only, matching TextField exactly: the resting underline
               is `muted-foreground` rather than `hairline` because here the
               underline IS the affordance and a ~1.2:1 edge fails WCAG 1.4.11.
-              `focus:outline-none` is only acceptable because `focus:border-accent`
+              `focus:outline-none` is only acceptable because `focus:border-ink-accent`
               replaces the indicator it removes. Disabled drops the value to
               `muted-foreground` instead of fading the field (no opacity-50). */}
           <input
@@ -935,7 +940,7 @@ function OrganizerControls({
             max={maxDatetime}
             onChange={(e) => setChosenDeadline(e.target.value)}
             disabled={extendingVoting}
-            className="mt-2 w-full rounded-none border-0 border-b border-muted-foreground bg-transparent px-0 py-1 font-mono text-sm text-foreground focus:border-accent focus:outline-none disabled:cursor-not-allowed disabled:text-muted-foreground"
+            className="mt-2 w-full rounded-none border-0 border-b border-ink-muted bg-transparent px-0 py-1 font-mono text-sm text-ink focus:border-ink-accent focus:outline-none disabled:cursor-not-allowed disabled:text-ink-muted"
           />
         </label>
         <div className="flex items-center gap-4">
@@ -966,7 +971,7 @@ function OrganizerControls({
   const blockedByMissingTheme = state === "pending" && !hasTheme;
 
   return (
-    <div className="mt-6 border-t border-hairline pt-6">
+    <div className="mt-6 border-t border-ink-hairline pt-6">
       <div className="flex items-center gap-4">
         <Button
           type="button"
@@ -976,7 +981,7 @@ function OrganizerControls({
           {advancing ? busyLabel : label}
         </Button>
         {state === "open_voting" ? (
-          <Button variant="ghost" type="button" onClick={openExtendPicker} disabled={busy}>
+          <Button onPaper variant="ghost" type="button" onClick={openExtendPicker} disabled={busy}>
             extend voting
           </Button>
         ) : null}
@@ -992,7 +997,7 @@ function OrganizerControls({
         ) : null}
       </div>
       {blockedByMissingTheme ? (
-        <p className="mt-3 text-sm leading-[1.72] text-muted-foreground">
+        <p className="mt-3 text-sm leading-[1.72] text-ink-muted">
           set a theme below before opening this mystery mix.
         </p>
       ) : null}
@@ -1076,7 +1081,7 @@ function EditMixForm({
   if (!open) {
     return (
       <div className="mt-4">
-        <Button variant="ghost" type="button" onClick={openForm}>
+        <Button onPaper variant="ghost" type="button" onClick={openForm}>
           edit mix
         </Button>
       </div>
@@ -1087,10 +1092,11 @@ function EditMixForm({
     <form
       onSubmit={handleSubmit}
       noValidate
-      className="mt-6 space-y-6 border-t border-hairline pt-6"
+      className="mt-6 space-y-6 border-t border-ink-hairline pt-6"
     >
       <div>
         <TextField
+          onPaper
           id="edit-mix-theme"
           label="theme"
           name="theme"
@@ -1104,7 +1110,7 @@ function EditMixForm({
       </div>
 
       <label htmlFor="edit-mix-description" className="block">
-        <span className="block font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
+        <span className="block font-mono uppercase tracking-mono-caps text-mini text-ink-muted">
           description
         </span>
         {/* Same underline treatment as TextField, including its resting
@@ -1115,17 +1121,27 @@ function EditMixForm({
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           disabled={saving}
-          className="mt-2 w-full resize-none rounded-none border-0 border-b border-muted-foreground bg-transparent px-0 py-1 font-mono text-sm text-foreground placeholder:text-muted-foreground focus:border-accent focus:outline-none disabled:cursor-not-allowed disabled:text-muted-foreground"
+          className="mt-2 w-full resize-none rounded-none border-0 border-b border-ink-muted bg-transparent px-0 py-1 font-mono text-sm text-ink placeholder:text-ink-muted focus:border-ink-accent focus:outline-none disabled:cursor-not-allowed disabled:text-ink-muted"
         />
       </label>
 
-      {error ? <FormError id="edit-mix-error">{error}</FormError> : null}
+      {error ? (
+        <FormError onPaper id="edit-mix-error">
+          {error}
+        </FormError>
+      ) : null}
 
       <div className="flex items-center gap-4">
-        <Button type="submit" disabled={saving}>
+        <Button onPaper type="submit" disabled={saving}>
           {saving ? "saving…" : "save"}
         </Button>
-        <Button variant="ghost" type="button" onClick={() => setOpen(false)} disabled={saving}>
+        <Button
+          onPaper
+          variant="ghost"
+          type="button"
+          onClick={() => setOpen(false)}
+          disabled={saving}
+        >
           cancel
         </Button>
       </div>
@@ -1145,7 +1161,7 @@ function SubmissionProgress({ submitted, total }: { submitted: number; total: nu
     <p
       role="status"
       aria-live="polite"
-      className="mb-6 font-mono uppercase tracking-mono-caps text-mini text-muted-foreground"
+      className="mb-6 font-mono uppercase tracking-mono-caps text-mini text-ink-muted"
     >
       {submitted} of {total} submitted
     </p>
@@ -1227,7 +1243,7 @@ function SubmittedSongCard({
   onSaveNote,
 }: {
   submission: SubmissionResult;
-  eyebrow: string;
+  eyebrow: ReactNode;
   busy: boolean;
   removing: boolean;
   onEdit: () => void;
@@ -1254,7 +1270,14 @@ function SubmittedSongCard({
   }
 
   return (
-    <Card>
+    // A hover highlight, deliberately NOT the lift that club rows and mix rows
+    // use. Those cards are buttons; this one is not — its actions are the
+    // controls inside it — so `hover:shadow-z3` would advertise an affordance
+    // that does not exist (see `Card`). One surface step to `popover` plus the
+    // stronger hairline says "you are on this row" without claiming it is
+    // clickable. Every text token still clears AA on `popover`: `foreground`
+    // 16.64:1, `muted-foreground` 5.61:1, `subtle-foreground` 4.59:1.
+    <Card className="transition-colors duration-150 hover:border-hairline-strong hover:bg-popover">
       <div className="flex items-start gap-4">
         <AlbumArt url={submission.album_art_url} alt={`${submission.title} album art`} size={56} />
         <div className="min-w-0 flex-1">
@@ -1347,7 +1370,7 @@ function ComposerSlot({
   onSubmit,
   onCancel,
 }: {
-  heading: string;
+  heading: ReactNode;
   idPrefix: string;
   submitting: boolean;
   onSubmit: (song: ResolvedSong, note: string | null) => Promise<boolean> | void;
@@ -1435,7 +1458,7 @@ function SubmissionManager({
   return (
     <>
       {numbered && submissions.length > 0 ? (
-        <h2 className="mb-4 font-mono uppercase tracking-mono-wide text-meta text-muted-foreground">
+        <h2 className="mb-4 font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
           your songs · {submissions.length} of {cap}
         </h2>
       ) : null}
@@ -1445,7 +1468,15 @@ function SubmissionManager({
           editingId === s.id ? (
             <li key={s.id}>
               <ComposerSlot
-                heading={numbered ? `change song ${i + 1}` : "change your song"}
+                heading={
+                  numbered ? (
+                    <>
+                      change song <span className="text-accent">{i + 1}</span>
+                    </>
+                  ) : (
+                    "change your song"
+                  )
+                }
                 idPrefix={`edit-${s.id}`}
                 submitting={submitting}
                 onSubmit={async (song, note) => {
@@ -1460,7 +1491,15 @@ function SubmissionManager({
             <li key={s.id}>
               <SubmittedSongCard
                 submission={s}
-                eyebrow={numbered ? `song ${i + 1}` : "your song"}
+                eyebrow={
+                  numbered ? (
+                    <>
+                      song <span className="text-accent">{i + 1}</span>
+                    </>
+                  ) : (
+                    "your song"
+                  )
+                }
                 busy={busy}
                 removing={removingId === s.id}
                 onEdit={() => setEditingId(s.id)}
@@ -1479,7 +1518,18 @@ function SubmissionManager({
           return (
             <li key={`slot-${slot}`}>
               <ComposerSlot
-                heading={numbered ? `submit song ${slot + 1}` : "submit a song"}
+                heading={
+                  numbered ? (
+                    <>
+                      {/* The slot number in the accent, matching the mix number
+                          on the page above. This card is `bg-card`, so `accent`
+                          is 7.42:1 here — not the paper ramp. */}
+                      submit song <span className="text-accent">{slot + 1}</span>
+                    </>
+                  ) : (
+                    "submit a song"
+                  )
+                }
                 idPrefix={`slot-${slot}`}
                 submitting={submitting}
                 onSubmit={onAdd}
@@ -1575,12 +1625,12 @@ function YouTubePlaylistLink({
         href={youtubePlaylistUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex items-center gap-1.5 font-mono uppercase tracking-mono text-label text-link underline underline-offset-[3px] transition-colors duration-150 hover:text-foreground"
+        className="inline-flex items-center gap-1.5 font-mono uppercase tracking-mono text-label text-ink-link underline underline-offset-[3px] transition-colors duration-150 hover:text-ink"
       >
         <MusicNoteIcon />
         open playlist in YouTube
       </a>
-      <span className="mt-1 block font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
+      <span className="mt-1 block font-mono uppercase tracking-mono-caps text-mini text-ink-muted">
         {youtubeTrackCount} of {entryCount} on YouTube
       </span>
     </div>
@@ -1605,7 +1655,7 @@ function VotingProgress({
 }) {
   if (eligible <= 0) return null;
   return (
-    <p className="mb-6 font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
+    <p className="mb-6 font-mono uppercase tracking-mono-caps text-mini text-ink-muted">
       {acted} of {eligible} competitive mode voted or noted
       {vibing > 0 ? ` · ${vibing} casual mode` : ""}
     </p>
@@ -1658,7 +1708,7 @@ function ClosedListen({
   if (entryCount === 0) return null;
   return (
     <div className="mb-10">
-      <h2 className="mb-4 font-mono uppercase tracking-mono-wide text-meta text-muted-foreground">
+      <h2 className="mb-4 font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
         listen back
       </h2>
       <YouTubePlaylistLink
@@ -1751,11 +1801,11 @@ function VotingSection({
     return (
       <>
         <VotingProgress acted={votingActed} eligible={votingEligible} vibing={vibingCount} />
-        <p className="text-sm leading-[1.72] text-muted-foreground">
+        <p className="text-sm leading-[1.72] text-ink-muted">
           you&apos;re in casual mode for this one, so you sit voting out. settle in and enjoy the
           mix.
         </p>
-        <h2 className="mt-8 font-mono uppercase tracking-mono-wide text-meta text-muted-foreground">
+        <h2 className="mt-8 font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
           playlist ({entries.length})
         </h2>
         <div className="mt-4">
@@ -1827,14 +1877,14 @@ function VotingSection({
       <AppleMusicPlaylist mixId={mixId} />
       <div className="flex items-baseline justify-between gap-4">
         <span className="flex items-center gap-2">
-          <h2 className="font-mono uppercase tracking-mono-wide text-meta text-muted-foreground">
+          <h2 className="font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
             cast your votes
           </h2>
-          <HelpLink anchor="voting-results" />
+          <HelpLink anchor="voting-results" onPaper />
         </span>
         <span
           aria-live="polite"
-          className="font-mono uppercase tracking-mono-caps text-mini text-muted-foreground"
+          className="font-mono uppercase tracking-mono-caps text-mini text-ink-muted"
         >
           {selected.length} / {votesPerPlayer} selected
         </span>
@@ -1999,9 +2049,10 @@ function VotingSection({
         })}
       </ul>
 
-      <div className="mt-6 border-t border-hairline pt-6">
+      <div className="mt-6 border-t border-ink-hairline pt-6">
         <Button
           type="button"
+          onPaper
           onClick={() => onCast(selected)}
           disabled={casting || selected.length === 0}
         >
@@ -2078,7 +2129,7 @@ function VotingTally({
       <p className="text-sm leading-[1.72] text-muted-foreground">
         you&apos;ve locked in your votes — check back to see how the voting goes.
       </p>
-      <h2 className="mt-8 font-mono uppercase tracking-mono-wide text-meta text-muted-foreground">
+      <h2 className="mt-8 font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
         playlist ({entries.length})
       </h2>
       <div className="mt-4">
@@ -2091,7 +2142,7 @@ function VotingTally({
         <SpotifyPlaylist mixId={mixId} />
         <AppleMusicPlaylist mixId={mixId} />
       </div>
-      <h2 className="mt-8 font-mono uppercase tracking-mono-wide text-meta text-muted-foreground">
+      <h2 className="mt-8 font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
         vote tally ({voteCounts.length} songs)
       </h2>
       <p role="status" aria-live="polite" className="sr-only">
@@ -2492,7 +2543,7 @@ function ResultsSection({
 
       {submissions.length > 0 ? (
         <section>
-          <h2 className="font-mono uppercase tracking-mono-wide text-meta text-muted-foreground">
+          <h2 className="font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
             the picks ({submissions.length})
           </h2>
           <ul className="mt-4 space-y-4">
@@ -2639,11 +2690,11 @@ function VibeWinnersSection({ winners }: { winners: WinnerReveal[] }) {
     <section>
       {/* The crown is amber: winning a mix is an achievement, and there is
           exactly one winner section per reveal. */}
-      <h2 className="inline-flex items-center gap-1.5 font-mono uppercase tracking-mono-wide text-meta text-muted-foreground">
-        <CrownIcon className="text-accent" />
+      <h2 className="inline-flex items-center gap-1.5 font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
+        <CrownIcon className="text-ink-accent" />
         {tie ? "winners" : "winner"}
       </h2>
-      <p className="mt-2 text-sm leading-[1.72] text-muted-foreground">
+      <p className="mt-2 text-sm leading-[1.72] text-ink-muted">
         {tie ? "the most-loved picks this mystery mix" : "the most-loved pick this mystery mix"}
       </p>
       <ul className="mt-4 space-y-4">
@@ -2682,7 +2733,7 @@ function VibePicksSection({
 }) {
   return (
     <section>
-      <h2 className="font-mono uppercase tracking-mono-wide text-meta text-muted-foreground">
+      <h2 className="font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
         the picks ({picks.length})
       </h2>
       <ul className="mt-4 space-y-4">
@@ -2733,11 +2784,11 @@ function MostNotedSection({ winners }: { winners: MostNotedWinner[] }) {
   const tie = winners.length > 1;
   return (
     <section>
-      <h2 className="inline-flex items-center gap-1.5 font-mono uppercase tracking-mono-wide text-meta text-muted-foreground">
-        <CrownIcon className="text-accent" />
+      <h2 className="inline-flex items-center gap-1.5 font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
+        <CrownIcon className="text-ink-accent" />
         most noted
       </h2>
-      <p className="mt-2 text-sm leading-[1.72] text-muted-foreground">
+      <p className="mt-2 text-sm leading-[1.72] text-ink-muted">
         {tie ? "the picks that got everyone talking" : "the pick that got everyone talking"}
       </p>
       <ul className="mt-4 space-y-4">
@@ -2786,11 +2837,11 @@ function WinnersSection({
   const tie = winners.length > 1;
   return (
     <section>
-      <h2 className="inline-flex items-center gap-1.5 font-mono uppercase tracking-mono-wide text-meta text-muted-foreground">
-        <CrownIcon className="text-accent" />
+      <h2 className="inline-flex items-center gap-1.5 font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
+        <CrownIcon className="text-ink-accent" />
         {tie ? "winners" : "winner"}
       </h2>
-      <p className="mt-2 text-sm leading-[1.72] text-muted-foreground">
+      <p className="mt-2 text-sm leading-[1.72] text-ink-muted">
         {tie ? "tied for the most votes this mystery mix" : "the most votes this mystery mix"}
       </p>
       <ul className="mt-4 space-y-4">
@@ -2870,19 +2921,17 @@ function rankSongs(
 function LeaderboardSection({ entries }: { entries: LeaderboardEntry[] }) {
   return (
     <section>
-      <h2 className="font-mono uppercase tracking-mono-wide text-meta text-muted-foreground">
+      <h2 className="font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
         leaderboard
       </h2>
-      <ul className="mt-4 divide-y divide-hairline-soft border-y border-hairline">
+      <ul className="mt-4 divide-y divide-ink-hairline border-y border-ink-hairline">
         {entries.map((e) => (
           <li key={e.user_id} className="flex items-baseline justify-between gap-4 py-3">
             <div className="flex items-baseline gap-4">
-              <span className="w-6 shrink-0 font-mono text-mini text-muted-foreground">
-                {e.rank}
-              </span>
-              <span className="font-mono text-sm text-foreground">{e.display_name}</span>
+              <span className="w-6 shrink-0 font-mono text-mini text-ink-muted">{e.rank}</span>
+              <span className="font-mono text-sm text-ink">{e.display_name}</span>
             </div>
-            <span className="shrink-0 font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
+            <span className="shrink-0 font-mono uppercase tracking-mono-caps text-mini text-ink-muted">
               {e.vote_count} {e.vote_count === 1 ? "vote" : "votes"}
             </span>
           </li>

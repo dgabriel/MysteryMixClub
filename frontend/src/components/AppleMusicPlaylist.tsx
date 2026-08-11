@@ -50,18 +50,18 @@ function reasonLabel(track: UnmatchedTrack): string {
 
 /** The whole-playlist action link — the `link` button variant as an anchor. */
 const LINK_CLASS =
-  "inline-flex items-center gap-1.5 font-mono uppercase tracking-mono text-label text-link underline underline-offset-[3px] transition-colors duration-150 hover:text-foreground";
+  "inline-flex items-center gap-1.5 font-mono uppercase tracking-mono text-label text-ink-link underline underline-offset-[3px] transition-colors duration-150 hover:text-ink";
 /** Same treatment on a <button>. Disabled drops the box entirely — no
  *  underline, label to `muted-foreground` — rather than fading it, matching
  *  the `Button` primitive. `disabled:` is emitted after `hover:` by Tailwind,
  *  so a disabled control can't pick up the hover color. */
 const BUTTON_CLASS =
-  "inline-flex items-center gap-1.5 font-mono uppercase tracking-mono text-label text-link underline underline-offset-[3px] transition-colors duration-150 hover:text-foreground disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline";
+  "inline-flex items-center gap-1.5 font-mono uppercase tracking-mono text-label text-ink-link underline underline-offset-[3px] transition-colors duration-150 hover:text-ink disabled:cursor-not-allowed disabled:text-ink-muted disabled:no-underline";
 /** A per-row link inside the unmatched list. Neutral at rest, amber on hover
  *  only — hover applies to one row at a time, so it never repeats. */
 const ROW_LINK_CLASS =
-  "font-mono text-sm text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-link";
-const NOTE_CLASS = "font-mono text-sm text-muted-foreground";
+  "font-mono text-sm text-ink underline underline-offset-[3px] transition-colors duration-150 hover:text-ink-link";
+const NOTE_CLASS = "font-mono text-sm text-ink-muted";
 
 /**
  * True on a mobile OS with a native Apple Music app — where a direct
@@ -177,7 +177,7 @@ export function AppleMusicPlaylist({ mixId }: { mixId: string }) {
           {opensExactPlaylist ? (
             playlistName ? (
               <p className={NOTE_CLASS}>
-                opens <span className="text-foreground">“{playlistName}”</span> directly
+                opens <span className="text-ink">“{playlistName}”</span> directly
               </p>
             ) : null
           ) : (
@@ -185,7 +185,7 @@ export function AppleMusicPlaylist({ mixId }: { mixId: string }) {
               {playlistName ? (
                 <>
                   go to your Apple Music playlists and look for{" "}
-                  <span className="text-foreground">“{playlistName}”</span>
+                  <span className="text-ink">“{playlistName}”</span>
                 </>
               ) : (
                 "go to your Apple Music playlists to find it"

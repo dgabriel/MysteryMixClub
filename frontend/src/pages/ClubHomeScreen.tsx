@@ -5,7 +5,6 @@ import type {
   ClubMember,
   Mix,
   MixResults,
-  MixState,
 } from "../services/api";
 import { Button } from "../components/Button";
 import { Badge } from "../components/Badge";
@@ -22,46 +21,12 @@ import { DeadlineChip } from "../components/DeadlineChip";
 import { DeadlineWindowField } from "../components/DeadlineWindowField";
 import { InviteShare } from "../components/InviteShare";
 import { UserAvatar } from "../components/avatars/UserAvatar";
+import { MIX_BADGE, MIX_ORDER, MIX_STATE_LABEL, mixGroup } from "../utils/mixState";
 import {
   daysAndHoursToTotal,
   hoursToDaysAndHours,
   validateWindowHours,
 } from "../utils/deadlineWindow";
-
-const MIX_STATE_LABEL: Record<MixState, string> = {
-  pending: "upcoming",
-  open_submission: "submissions open",
-  open_voting: "voting open",
-  closed: "closed",
-};
-
-/** A mix is "active" when members can act on it right now. */
-function isActiveMix(state: MixState): boolean {
-  return state === "open_submission" || state === "open_voting";
-}
-
-/** The three buckets a mix row is grouped and styled by. Narrower than
- *  `MixState`, which splits "active" into submissions vs voting — a distinction
- *  the *order* and the badge weight do not care about, though the badge's own
- *  label still spells it out. */
-type MixGroup = "active" | "upcoming" | "done";
-
-function mixGroup(state: MixState): MixGroup {
-  if (isActiveMix(state)) return "active";
-  return state === "closed" ? "done" : "upcoming";
-}
-
-/** Sort weight per group: act on it, then what is coming, then what is done. */
-const MIX_ORDER: Record<MixGroup, number> = { active: 0, upcoming: 1, done: 2 };
-
-/** Badge weight per group — the ladder that makes state legible at a glance.
- *  `positive` is a solid green fill and is reachable by at most one row, since
- *  the API allows only one active mix per club. */
-const MIX_BADGE: Record<MixGroup, "positive" | "strong" | "default"> = {
-  active: "positive",
-  upcoming: "strong",
-  done: "default",
-};
 
 type ClubHomeScreenProps = {
   club: Club;

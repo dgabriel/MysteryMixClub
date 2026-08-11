@@ -1,5 +1,6 @@
 import { BrandLockup } from "../components/BrandLockup";
 import { ContactEmail } from "../components/ContactEmail";
+import { PublicSurface } from "../components/PublicSurface";
 import { TopNav } from "../components/TopNav";
 
 /**
@@ -10,7 +11,7 @@ import { TopNav } from "../components/TopNav";
  */
 export function TermsRoute() {
   return (
-    <div className="min-h-screen flex flex-col">
+    <PublicSurface>
       <TopNav />
       <main className="flex-1 flex flex-col items-center px-4 py-16 sm:px-8">
         <div className="w-full max-w-md">
@@ -21,14 +22,14 @@ export function TermsRoute() {
               wordmark is the loudest thing here without being a heading. */}
           <BrandLockup />
 
-          <h1 className="mt-10 border-t border-hairline pt-8 text-center font-display text-[2rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
+          <h1 className="mt-10 border-t border-ink-hairline pt-8 text-center font-display text-[2rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
             terms of service
           </h1>
-          <p className="mt-2 text-center text-sm leading-[1.72] text-muted-foreground">
+          <p className="mt-2 text-center text-sm leading-[1.72] text-ink-muted">
             last updated july 2026
           </p>
 
-          <div className="mt-10 space-y-8 text-sm leading-[1.72] text-foreground">
+          <div className="mt-10 space-y-8 text-sm leading-[1.72] text-ink">
             <section>
               <p>
                 mysterymixclub ("we," "us," "the app") is an invite-only music club for close-knit
@@ -37,7 +38,7 @@ export function TermsRoute() {
             </section>
 
             <section>
-              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-ink-accent">
                 the basics
               </h2>
               <p className="mt-3">
@@ -48,7 +49,7 @@ export function TermsRoute() {
             </section>
 
             <section>
-              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-ink-accent">
                 your account
               </h2>
               <p className="mt-3">
@@ -60,7 +61,7 @@ export function TermsRoute() {
             </section>
 
             <section>
-              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-ink-accent">
                 third-party services
               </h2>
               <p className="mt-3">
@@ -71,7 +72,7 @@ export function TermsRoute() {
             </section>
 
             <section>
-              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-ink-accent">
                 account deletion
               </h2>
               <p className="mt-3">
@@ -79,7 +80,7 @@ export function TermsRoute() {
                 personal data — see the{" "}
                 <a
                   href="/privacy"
-                  className="text-link underline underline-offset-[3px] hover:text-foreground"
+                  className="text-ink-link underline underline-offset-[3px] hover:text-ink"
                 >
                   privacy policy
                 </a>{" "}
@@ -88,7 +89,7 @@ export function TermsRoute() {
             </section>
 
             <section>
-              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-ink-accent">
                 as-is, beta software
               </h2>
               <p className="mt-3">
@@ -99,7 +100,7 @@ export function TermsRoute() {
             </section>
 
             <section>
-              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-ink-accent">
                 governing law
               </h2>
               <p className="mt-3">
@@ -108,8 +109,8 @@ export function TermsRoute() {
               </p>
             </section>
 
-            <section className="border-t border-hairline pt-6">
-              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-accent">
+            <section className="border-t border-ink-hairline pt-6">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-ink-accent">
                 questions
               </h2>
               <p className="mt-3">
@@ -117,7 +118,7 @@ export function TermsRoute() {
                   user="privacy"
                   domain="mysterymixclub.com"
                   label="email us"
-                  className="text-link underline underline-offset-[3px] hover:text-foreground"
+                  className="text-ink-link underline underline-offset-[3px] hover:text-ink"
                 />{" "}
                 with any questions about these terms.
               </p>
@@ -125,6 +126,6 @@ export function TermsRoute() {
           </div>
         </div>
       </main>
-    </div>
+    </PublicSurface>
   );
 }

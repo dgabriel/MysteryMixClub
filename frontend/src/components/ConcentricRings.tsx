@@ -18,6 +18,18 @@ type ConcentricRingsProps = {
    *  therefore rotationally symmetric, so a disc with no wordmark rotates
    *  invisibly. */
   wordmark?: boolean;
+  /** the disc is sitting on the light public surface (`paper`, ADR 0013).
+   *
+   *  Only the shadow changes. `shadow-art` is black at 0.7-0.95 alpha carrying a
+   *  1px *white* ring — tuned to make a `card`-dark platter read as an object on
+   *  a near-black page. On paper that inverts twice over: the blur reads as a
+   *  bruise rather than depth, and the white ring vanishes into the background
+   *  exactly where the disc's edge needs defining. `shadow-art-ink` drops the
+   *  alpha and swaps the ring to black.
+   *
+   *  The platter itself is unchanged. It stays dark on purpose — a record is
+   *  dark, and the motif would stop being the motif if it inverted. */
+  onPaper?: boolean;
   className?: string;
 };
 
@@ -88,6 +100,7 @@ export function ConcentricRings({
   spinning = false,
   accent = false,
   wordmark = false,
+  onPaper = false,
   className = "",
 }: ConcentricRingsProps) {
   const detailed = size >= DETAIL_MIN;
@@ -108,7 +121,8 @@ export function ConcentricRings({
       role="presentation"
       aria-hidden="true"
       className={[
-        "flex shrink-0 items-center justify-center rounded-full shadow-art",
+        "flex shrink-0 items-center justify-center rounded-full",
+        onPaper ? "shadow-art-ink" : "shadow-art",
         spinning ? "animate-rotate-rings" : "",
         className,
       ]

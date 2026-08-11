@@ -633,10 +633,11 @@ describe("LoginRoute", () => {
   // sentence gets error styling when it is a claim about the user's own
   // submission, and plain styling when it is an external system's outcome.
   // The boundary is unchanged by the redesign; only the color names moved
-  // (rust -> destructive-text, ink -> foreground). Both halves are on Design
-  // System v1.0 now, so this asserts the intended direction and not merely
-  // that the two differ: a third-party outcome is ordinary `foreground` body
-  // copy, and the same sentence from the user's own submit is an error.
+  // (rust -> destructive-text -> ink-destructive, ink -> foreground -> ink).
+  // The login screen is now the light public surface (ADR 0013), so both halves
+  // assert the `ink` ramp — and they assert the intended *direction*, not merely
+  // that the two differ: a third-party outcome is ordinary `ink` body copy, and
+  // the same sentence from the user's own submit is an error.
   it("google: outcome messages are plain, while the same words from a form submit get the error color", async () => {
     localStorage.setItem("pendingInvitePath", "/invite/inv-789");
     mockRegister.mockRejectedValue(
@@ -648,8 +649,8 @@ describe("LoginRoute", () => {
       // Same sentence, arriving from Google's redirect: an external system's
       // outcome, so it stays plain body text.
       const { unmount } = renderLogin("/login?google=invite_required");
-      expect(screen.getByRole("alert")).toHaveClass("text-foreground");
-      expect(screen.getByRole("alert")).not.toHaveClass("text-destructive-text");
+      expect(screen.getByRole("alert")).toHaveClass("text-ink");
+      expect(screen.getByRole("alert")).not.toHaveClass("text-ink-destructive");
       unmount();
 
       // Same sentence, from the user's own register submission: a claim about
@@ -660,7 +661,7 @@ describe("LoginRoute", () => {
       await user.type(passwordInput(), "long-enough-pw");
       await user.click(screen.getByRole("button", { name: /^create account$/i }));
 
-      expect(await screen.findByRole("alert")).toHaveClass("text-destructive-text");
+      expect(await screen.findByRole("alert")).toHaveClass("text-ink-destructive");
     } finally {
       localStorage.clear();
     }

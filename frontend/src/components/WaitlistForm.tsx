@@ -45,7 +45,7 @@ export function WaitlistForm() {
 
   if (joined) {
     return (
-      <p className="mt-10 text-center text-sm leading-[1.72] text-muted-foreground">
+      <p className="mt-10 text-center text-sm leading-[1.72] text-ink-muted">
         you&apos;re on the waitlist. we&apos;ll email you when a spot opens up.
       </p>
     );
@@ -53,12 +53,11 @@ export function WaitlistForm() {
 
   return (
     <div className="mt-10 text-center">
-      <p className="text-sm leading-[1.72] text-muted-foreground">
-        no invite yet? join the waitlist.
-      </p>
+      <p className="text-sm leading-[1.72] text-ink-muted">no invite yet? join the waitlist.</p>
       <form onSubmit={handleSubmit} noValidate className="mt-3 flex items-end justify-center gap-3">
         <div className="w-full max-w-[220px] text-left">
           <TextField
+            onPaper
             id="waitlist-email"
             // Not just "email": this sits on the same page as the sign-in form's
             // own email field, and two identically-labelled fields read as one.
@@ -82,7 +81,7 @@ export function WaitlistForm() {
             aria-describedby={error ? "waitlist-email-error" : undefined}
           />
         </div>
-        <Button type="submit" variant="ghost" disabled={submitting}>
+        <Button type="submit" variant="ghost" onPaper disabled={submitting}>
           {submitting ? "joining…" : "join"}
         </Button>
       </form>
@@ -91,7 +90,9 @@ export function WaitlistForm() {
         // wrapper only re-centres it inside this centred block, since the
         // primitive takes no className.
         <div className="mt-2 flex justify-center">
-          <FormError id="waitlist-email-error">{error}</FormError>
+          <FormError id="waitlist-email-error" onPaper>
+            {error}
+          </FormError>
         </div>
       ) : null}
     </div>

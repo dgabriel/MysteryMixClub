@@ -4,6 +4,13 @@ type Variant = "primary" | "ghost" | "link" | "destructive";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: Variant;
+  /** The button is on the light public surface (`paper`, ADR 0013).
+   *
+   *  Only the two variants whose color IS text change: `link` (2.42:1 on paper
+   *  as `text-link` — an AA failure) and the shared disabled label. `primary`,
+   *  `ghost` and `destructive` are fills carrying their own foreground, so they
+   *  are already correct on any surface and are deliberately left alone. */
+  onPaper?: boolean;
 };
 
 /**
@@ -33,32 +40,51 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
  * up a hover fill.
  */
 const base =
-  "font-mono uppercase tracking-mono text-label transition-colors duration-150 disabled:cursor-not-allowed disabled:bg-transparent disabled:border-transparent disabled:text-muted-foreground";
+  "font-mono uppercase tracking-mono text-label transition-colors duration-150 disabled:cursor-not-allowed disabled:bg-transparent disabled:border-transparent";
+// The disabled label is the one part of `base` that is a bare foreground color,
+// so it needs the ramp too — `muted-foreground` is 3.23:1 on paper.
+const disabledLabel = {
+  dark: "disabled:text-muted-foreground",
+  paper: "disabled:text-ink-muted",
+};
 
 const variants: Record<Variant, string> = {
   // The primary CTA — an `accent` fill. Amber's category is action, and this is
   // the action.
-  primary:
-    "rounded-hair px-6 py-3 bg-accent text-accent-foreground hover:bg-accent-hover",
+  primary: "rounded-hair px-6 py-3 bg-accent text-accent-foreground hover:bg-accent-hover",
   // Secondary. A `tile` fill, not a transparent box: a `hairline` edge alone is
   // ~1.1:1 and cannot be the sole thing identifying a control (WCAG 1.4.11).
   // Hover lifts one surface step to `panel` rather than adding a shadow, since
   // a flush button that grew a shadow would read as floating.
-  ghost:
-    "rounded-hair px-6 py-3 bg-tile text-foreground border border-hairline hover:bg-panel",
+  ghost: "rounded-hair px-6 py-3 bg-tile text-foreground border border-hairline hover:bg-panel",
   // Danger. Separate from `link` so a delete affordance reads as danger rather
   // than as an ordinary action — `destructive` is a fill color and never text.
   destructive:
     "rounded-hair px-6 py-3 bg-destructive text-destructive-foreground hover:bg-destructive-hover",
-  // Text button. Amber because a text button is still an action.
+  // Text button. Blue because it is navigation-shaped; always underlined, so
+  // the affordance never rests on hue alone.
   link: "text-link underline underline-offset-[3px] hover:text-foreground",
 };
 
-export function Button({ variant = "primary", className = "", ...rest }: ButtonProps) {
+// Only `link` differs on paper — the other three are fills that carry their own
+// foreground and are already correct on any surface.
+const paperVariants: Partial<Record<Variant, string>> = {
+  link: "text-ink-link underline underline-offset-[3px] hover:text-ink",
+};
+
+export function Button({
+  variant = "primary",
+  onPaper = false,
+  className = "",
+  ...rest
+}: ButtonProps) {
+  const variantClass = (onPaper ? paperVariants[variant] : undefined) ?? variants[variant];
   return (
     <button
       {...rest}
-      className={[base, variants[variant], className].filter(Boolean).join(" ")}
+      className={[base, onPaper ? disabledLabel.paper : disabledLabel.dark, variantClass, className]
+        .filter(Boolean)
+        .join(" ")}
     />
   );
 }

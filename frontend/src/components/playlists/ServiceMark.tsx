@@ -1,33 +1,43 @@
-type Service = "youtube" | "spotify" | "appleMusic";
+import { SERVICE_MARK_BRAND, type ServiceMarkKey } from "../../lib/platformBrand";
 
 /**
- * A small monochrome mark for a streaming service, sized to sit beside the
+ * A small brand-coloured mark for a streaming service, sized to sit beside the
  * service name in a playlist row.
  *
- * **Monochrome, and that is a constraint rather than a preference.** These sit
- * on `paper`, and a non-text graphic owes 3:1 there. Measured against white:
- * YouTube red is 4.00:1 and Apple's red 3.58:1, but **Spotify green is 2.59:1
- * and fails**. Brand-coloured marks would therefore be legible for two services
- * and not the third, and the fix — darkening Spotify's green — means altering a
- * trademarked colour, which their brand guidelines do not permit. Drawing them
- * in `ink` keeps the set consistent and legible and sidesteps that entirely.
+ * **Colour is legitimate here specifically because these are decorative.** Each
+ * mark sits immediately beside its service's name in text and is `aria-hidden`,
+ * so nothing depends on recognising it — and WCAG 1.4.11's 3:1 floor covers
+ * graphics *required to understand the content*, which these are not. The
+ * numbers would otherwise forbid it: on `paper`, YouTube red is 4.00:1 and
+ * Apple red 3.58:1, but Spotify green is only 2.59:1.
  *
- * `platformBrand.ts` is not involved: it holds `youtube`/`bandcamp` values for
- * `SourceBadge`, and its own placement table is explicit that brand tints are
- * valid on `card` or darker only. This surface is lighter than any of them.
+ * **Keep the text label.** It is what makes the marks decorative; without it
+ * Spotify's green becomes a real contrast failure rather than an exempt one.
  *
- * Deliberately simplified silhouettes rather than the official logotypes — they
- * read at 14px, carry no brand colour, and are decorative here: the service is
- * named in text right beside the mark, so nothing depends on recognising them.
- * They are `aria-hidden` for the same reason.
+ * Values come from `lib/platformBrand.ts` and are applied inline, never as
+ * Tailwind classes — they are another company's constants, not design tokens
+ * (ADR 0007).
+ *
+ * Deliberately simplified silhouettes rather than the official logotypes: they
+ * have to read at 14px, and reproducing real logotypes brings each service's
+ * brand guidelines (clear space, minimum size, permitted lockups) into scope.
  */
-export function ServiceMark({ service, className = "" }: { service: Service; className?: string }) {
+export function ServiceMark({
+  service,
+  className = "",
+}: {
+  service: ServiceMarkKey;
+  className?: string;
+}) {
   const common = {
     width: 14,
     height: 14,
     viewBox: "0 0 24 24",
     "aria-hidden": true as const,
     className: `shrink-0 ${className}`,
+    // Inline, because a brand value is not a token and Tailwind's JIT cannot
+    // see a runtime class string anyway.
+    style: { color: SERVICE_MARK_BRAND[service] },
   };
 
   if (service === "youtube") {

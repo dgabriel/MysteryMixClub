@@ -83,11 +83,17 @@ export function SongsMaybeMissing({
   if (tracks.length === 0) return null;
 
   return (
-    <section className="mt-6">
-      <h3 className="font-mono uppercase tracking-mono-caps text-mini text-ink-muted">
+    // `mb-10` matters as much as the heading: this butted straight into the
+    // next section's heading, so the two read as one run of small grey type.
+    <section className="mt-8 mb-10">
+      {/* An h2 at `text-meta`/`tracking-mono-wide` — the same weight as every
+          other section heading on this screen. It was an h3 at `text-mini`,
+          which made the section quieter than the list it introduces and let it
+          read as a footnote to the Apple row above rather than its own thing. */}
+      <h2 className="font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
         songs that may not be on all playlists
-      </h3>
-      <ul className="mt-2 space-y-1">
+      </h2>
+      <ul className="mt-3 space-y-1">
         {tracks.map((t) => (
           <li key={t.submission_id} className="font-mono text-meta text-ink-muted">
             {t.source_url ? (
@@ -107,7 +113,7 @@ export function SongsMaybeMissing({
         ))}
       </ul>
       {overflowUrl ? (
-        <div className="mt-3">
+        <div className="mt-4">
           <PlaylistLink href={overflowUrl} label="hear the songs missing from spotify, on youtube">
             <MusicNoteIcon />
             hear these on youtube

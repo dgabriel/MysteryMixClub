@@ -164,13 +164,17 @@ silently ignored. Pick the right step instead.
 Named `hairline`, not `border`, because the legacy `border` token stays defined
 until the sweep ticket.
 
-### Light surface — public pages only (ADR 0013)
+### Light surface — the `paper` routes (ADR 0013)
 
 Twelve routes — `/login`, `/about`, `/terms`, `/privacy`, `/help`, `/home`,
 `/clubs/:id`, `/mixes/:id`, `/clubs/new`, `/profile`, `/admin` and
-`/admin/metrics` — render on a **light** surface. Every authed route is paper;
-what is left on the dark ramp is all pre-auth. Everything else in the app is dark, exactly as the
-rest of this guide describes.
+`/admin/metrics` — render on a **light** surface. **Every authed route is
+paper.** What is left on the dark ramp is all pre-auth: `/auth/verify`,
+`/auth/reset-password`, `/onboarding`, `/invite/:token`.
+
+(This section was once titled "public pages only". It started that way and grew
+one route at a time; the name outlived the fact. Treat paper as the default for
+anything new that a signed-in user sees.)
 
 On those pages the model is **light page, dark cards**: a `bg-card` island is its
 own dark surface, so everything *inside* it keeps the dark ramp and only chrome
@@ -214,9 +218,36 @@ Rules:
 - **The disc keeps its dark platter**; only its shadow changes (`shadow-art-ink`,
   which drops the alpha and swaps the white ring to black — on paper the white
   ring is invisible exactly where the edge needs defining).
+- **A non-text graphic on paper takes `ink-accent`, even where a button beside
+  it keeps `accent`.** The two are not the same problem. A filled button carries
+  its own high-contrast label, so the label is what makes the control
+  perceivable and the fill's ratio against the page is not what WCAG 1.4.11
+  measures — `accent` (2.62:1 on paper) is fine there, and `Button`'s paper
+  primary uses it. A **drawn checkbox, a stroke, a mark** has no label inside it:
+  the shape *is* the information, so its fill and its resting edge each owe 3:1
+  against the surface behind them. `accent` fails that; `ink-accent` clears it at
+  4.61:1.
+
+  In one line: **if the amber shape is the information, `ink-accent`; if it
+  merely carries text that is the information, `accent` is allowed.** This is why
+  `/clubs/new`'s casual-mode checkbox is visibly a darker orange than the
+  `create` button beneath it. That difference is correct, not drift.
+- **A dark chip on paper inverts rather than being left alone.** `UserAvatar`'s
+  `onPaper` variant is a white fill with a near-black `ink` ring and an
+  `ink-accent` cassette. Its dark-surface `hairline` edge — white at 9% — is
+  invisible on a white chip, so the ring has to become a real stroke.
 - Shared components that render on both surfaces take an `onPaper` prop:
-  `TextField`, `Button`, `FormError`, `ConcentricRings`. Anything newly placed on
-  a public page must be checked, not assumed.
+  `TextField`, `Button`, `FormError`, `ConcentricRings`, `DeadlineChip`,
+  `HelpLink`, `DeadlineWindowField`, `InviteShare`, `UserAvatar`. **Anything
+  newly placed on a paper page must be checked, not assumed** — `InviteShare`
+  shipped a dark-ramp field, caption and share button onto the white club page
+  from the day that page went paper, because nobody asked whether it had the
+  prop.
+- **`PaperSurface` takes `nested` when something else owns the shell.** Every
+  authed screen renders inside `AuthedLayout`, so it must pass `nested` — an
+  unnested `min-h-screen` inside a layout that already fills the viewport makes
+  the page taller than the screen, and the toolbar scrolls off on arrival. Only
+  a top-level route (`/login`) leaves it off.
 - **Compute contrast from the rounded 8-bit value, not the float.** `ink-muted`
   first shipped at a theoretical 4.50:1 and painted as 4.47:1 — an AA failure
   that only a live-page measurement caught. Quantization can cost ~0.05.
@@ -301,9 +332,11 @@ Rules:
   avatar.** The old guide claimed five music-hardware illustrations; only
   `CassetteAvatar` was ever built, and `UserAvatar` is its only caller. R3 moved
   `UserAvatar` off `border`/`cream`/`vinyl` onto a `hairline` edge, a `tile`
-  fill, and a `muted-foreground` stroke (5.37:1 on `tile`, well clear of the
-  3:1 floor for non-text graphics). The legacy `vinyl` mid-blue now has no call
-  sites and the name no longer collides with the disc motif.
+  fill, and a `muted-foreground` stroke (5.37:1 on `tile`) — or `accent`
+  (6.59:1) for the viewer's **own** avatar and nowhere else, so a club of twenty
+  is twenty neutral cassettes. On paper the chip inverts; see the light-surface
+  rules. The legacy `vinyl` mid-blue now has no call sites and the name no
+  longer collides with the disc motif.
 - **The Ink time-signal badge is replaced by an urgency-graded chip.** The old
   guide's one sanctioned dark-filled chip (for deadlines and countdowns) worked
   by contrast inversion — the densest object on a light page — and has no
@@ -515,21 +548,30 @@ established system-wide, and binding on all of them:
   icon inline before the message. Multiple fields may show it at once.
 - **Buttons** use mono type: `text-label`, uppercase, `tracking-mono`,
   `rounded-hair`, and never a shadow — a button sits *on* a surface rather than
-  being one. Four variants:
+  being one. Padding is `px-4 py-2`, which lands a button at **~29px tall**.
+  That is deliberately close to WCAG 2.5.8's 24×24 CSS-px target floor: **do not
+  shrink the vertical padding further without re-measuring.** (It was
+  `px-6 py-3` until 2026-08-11; filled buttons were dominating the screens they
+  sat on.) Four variants:
   - `primary` — an `accent` fill with `accent-foreground` text, hovering to
-    `accent-hover`.
+    `accent-hover`. Unchanged on paper: the fill carries its own label.
   - `ghost` — a `tile` fill with `foreground` text and a `hairline` edge,
     hovering one surface step to `panel`. It is a *fill*, not a transparent
     box: a hairline alone is ~1.1:1 and cannot be the sole thing identifying a
     control.
+
+    **On paper it becomes an outlined button** — no fill, an `ink-muted` edge at
+    4.67:1, a faint `ink-hairline` wash on hover. This is the most important
+    `onPaper` difference in the system, and it was a real bug: a `tile` fill is a
+    *subtle lift* on a dark page (1.20:1 against `floor`) and a **black slab** on
+    white (17.25:1). A ghost "cancel" was outweighing the amber primary beside it
+    by roughly six times, exactly inverting the hierarchy.
   - `destructive` — a `destructive` fill with `destructive-foreground` text,
-    hovering to `destructive-hover`. **Target state, not current state:** the
-    variant shipped in R2 with zero call sites. Delete affordances still render
-    the amber `link` variant, and **R10** (`ClubHomeScreen.tsx:371`, delete
-    club) and **R15** (`AdminScreen.tsx:452`, delete account) are the tickets
-    that adopt it. Once they land, this is the rule: delete and other
-    irreversible actions use `destructive`, never `link`, because amber means
-    action or achievement and a delete is neither in the sense that matters.
+    hovering to `destructive-hover`. **Delete and other irreversible actions use
+    `destructive`, never `link`**, because amber means action or achievement and
+    a delete is neither in the sense that matters. Adopted by delete-club
+    (`ClubHomeScreen`), delete-account (`ProfileScreen`) and the admin
+    hard-delete (`AdminScreen`).
   - `link` — a text button in `link` (blue), underlined, hovering to
     `foreground`. Blue rather than amber since 2026-08-09: see Link below.
 - **Disabled controls** drop the box entirely — no fill, no edge — and drop the
@@ -562,6 +604,39 @@ established system-wide, and binding on all of them:
   states at once should use several rungs — the club page's mix list uses three.
   The label always spells the state out, so the ladder is emphasis, never the
   signal itself.
+- **Section headings come in two ranks and must not look alike.** Typography
+  rule 7 has the rule; `PaperSectionHeading` is the light-surface implementation
+  of the major rank. A screen rendering both ranks as the same mono eyebrow has
+  no landmarks — that was the mix screen until 2026-08-11, where "playlists" and
+  "cast your votes" sat at the same 11px grey as "admin tools".
+- **A collapsed group of controls is a heading wrapping a button.** The mix
+  screen's organizer tools use it: `<h2><button aria-expanded aria-controls>`, so
+  the label keeps its place in the heading outline while being the thing you
+  click. Three rules came out of building it:
+  - The toggle needs `min-h-6`. It is a standalone control, not a link inside a
+    sentence, so WCAG 2.5.8's inline exception does not cover it.
+  - **Collapsing abandons any armed confirm step.** Leaving one armed behind a
+    closed panel means re-opening lands on "yes, delete" rather than on the
+    controls you asked for.
+  - Controls inside the panel are **peers at one weight**. The disclosure is what
+    keeps the set quiet; an amber row inside it just moves the same noise one
+    click deeper. A confirm step *within* the panel is different — that is a
+    decision, not a menu, and keeps its amber primary.
+- **A service row is `service · status · action` on one line**, with anything
+  subordinate nested beneath it at an indent and a rule
+  (`components/playlists/`). Two rules make it hold: the status line answers only
+  "can I play this right now" (what went wrong belongs in the children), and
+  anything *caused by* a service is nested, never rendered beside it. Before
+  this, the three services each had their own shape and one service's fallback
+  link sat at the same weight as another service's real playlist link.
+- **A brand mark may carry its brand colour when it is genuinely decorative.**
+  `ServiceMark` draws each streaming service's silhouette in its own brand hue,
+  `aria-hidden`, immediately beside that service's name in text. That is what
+  exempts it from 1.4.11's 3:1 floor — nothing depends on recognising it. The
+  numbers would otherwise forbid it: on paper, YouTube red is 4.00:1 and Apple
+  red 3.58:1, but Spotify green is only 2.59:1. **Keep the text label.** It is
+  what makes the mark decorative; without it Spotify's green is a real failure
+  rather than an exempt one.
 - **Charts** follow ADR 0008 unchanged: **d3 for math only** — scales, extents,
   and shape generators; d3 never touches the DOM, the SVG is JSX, React owns
   every node. Tick text stays an HTML overlay at fixed size rather than SVG
@@ -570,6 +645,33 @@ established system-wide, and binding on all of them:
   use `muted-foreground`. No area fills, legends, tooltips, gridlines, or
   load-in animation. **Charts must not be placed on `sheet`** — two series
   colors fall below 3:1 there.
+
+---
+
+## Mix state
+
+A club is a list of mystery mixes in three groups, and the design treats the
+**group** — not the raw state — as what a reader scans. `utils/mixState.ts` owns
+all of it, so a mix cannot read "live" in a list and something else on its own
+page.
+
+| Group      | States                           | Badge      | Order |
+|------------|----------------------------------|------------|-------|
+| `active`   | `open_submission`, `open_voting` | `positive` | 1     |
+| `upcoming` | `pending`                        | `strong`   | 2     |
+| `done`     | `closed`                         | `default`  | 3     |
+
+- **Order is act-on-it, then what is coming, then what is done**, each group by
+  mix number. Not chronological, and not by state enum.
+- **The badge ladder carries the distinction**, and the label always spells the
+  state out — emphasis is never the only signal. `positive`'s solid green fill
+  is affordable precisely because the API allows **one** active mix per club, so
+  it can never become a column of green.
+- **An active mix also takes a `positive` side bar** on its card. That bar is the
+  group marker, not decoration.
+- **On a completed mix, the winner and the most-noted pick take amber.** This is
+  the achievement half of amber's job, it is bounded (one section each, once per
+  mix), and it is the thing a reader opens a finished mix to see.
 
 ---
 
@@ -697,6 +799,17 @@ MYS-121 and MYS-186 darkened the old palette twice specifically to clear
 - **Focus rings.** `ring-accent` is comfortable on `card` (7.43:1), but an
   amber ring on an amber-filled button is invisible — those need
   `ring-foreground` or a ring offset.
+- **Target size: 24×24 CSS px** (WCAG 2.5.8). A `Button` at `px-4 py-2` is
+  ~29px tall, which is the margin the whole system runs on — shrinking button
+  padding again means re-measuring. A standalone text control (a disclosure
+  toggle, a filter) needs `min-h-6` explicitly; the spec's *inline* exception
+  covers a link inside a sentence, not a control sitting on its own.
+- **An audit only sees what is currently rendered.** Conditional UI — an
+  organizer's controls, an armed confirm, an open edit form, an error state —
+  passes a contrast sweep while being wrong, and icons are never checked at all.
+  Both cost real bugs during the redesign (three amber crowns at 2.62:1 sat
+  behind a passing audit). Drive the states, or read the markup; one green audit
+  is not coverage.
 - **`text-micro` is chrome only** — see Typography.
 - **Modals stay dark on a light page.** A dialog sits *above* the page, so the
   light surface stops at the scrim, and `sheet`'s own limits still apply:
@@ -709,15 +822,57 @@ MYS-121 and MYS-186 darkened the old palette twice specifically to clear
 
 - Short, confident, lowercase where possible
 - No exclamation marks
-- No em dashes in UI copy — use a period, comma, or parentheses instead
+- **No em dashes in any user-facing copy.** Rendered UI strings, email subject
+  lines and bodies, and API `detail` messages that reach a user. Code comments
+  and these docs are exempt — it is a voice rule, not a character ban.
+
+  **Rephrase; do not swap the mark.** Usually a full stop, a semicolon, a colon
+  before a list, or a conjunction. `"a — b"` often just wants `"a, b"`. Email
+  subjects that read `{club} — {label}` now read `{club}: {label}`.
+
+  This rule predates the redesign and was quietly violated in ~30 places anyway,
+  in the app *and* in the backend's notification subjects, because it was written
+  as a UI-copy rule and nobody read it as covering email or API errors. It does.
+  Swept 2026-08-11. Watch for tests that assert copy by regex when changing a
+  sentence.
 - Mystery mix names can be poetic, e.g. *Late Summer Feels*, *The One That Got Away*
-- Status labels are plain: `open`, `voting`, `closed`, `reveal`
+- Status labels are plain: `open`, `voting`, `completed`, `reveal`. Note
+  **`completed`, not `closed`** — `closed` is the API's state name and stays that
+  way in the data; the label a person reads says the mix finished, not that a
+  door shut. `utils/mixState.ts` owns the mapping so the two cannot drift. The
+  *action* is still "close mix": closing is the verb, completed is the state.
 - Error messages: direct and calm, e.g. "That link didn't work. Try another." not "Oops!"
 
 ---
 
+## Checking your work
+
+The redesign's costliest mistakes were all cases of *looking* rather than
+*measuring*. Roughly in order of how much time each one ate:
+
+1. **Resolve colours through the browser, not by parsing.** Tokens ship as
+   `oklch()`, so `getComputedStyle` hands back an `oklch()` string. An audit that
+   parses it as an RGB triple produces confident, fabricated failures. Paint into
+   a 1×1 canvas and read the pixel back.
+2. **Compute the ratio from the rounded 8-bit value.** See the light-surface
+   rules — quantization costs ~0.05, exactly the margin a value solved *to* the
+   threshold has.
+3. **Drive the state you want to check.** See Accessibility: conditional UI and
+   icons are invisible to a single-pass audit.
+4. **Let a transition settle before measuring it.** A `getComputedStyle` read
+   immediately after a click returns the *start* of the animation. This produced
+   two separate false alarms during the redesign — once a 90° rotation reported
+   as the identity matrix, purely because the read was mid-transition.
+5. **Compare against the branch you changed, not your memory of it.** A layout
+   bug is far easier to confirm by measuring the same page on both branches than
+   by reasoning about which rule caused it.
+
+---
+
 *Last updated: August 2026 — replaced wholesale by Design System v1.0
-(MysteryMixClub-0fnf.1, ADR 0009). The retired Duchamp/Rotorelief system
+(MysteryMixClub-0fnf.1, ADR 0009), then extended through the redesign epic:
+ADR 0011 (link blue), ADR 0012 (the amber rule), ADR 0013 (the light `paper`
+surface, twelve routes). The retired Duchamp/Rotorelief system
 (Cream `#F0EDE6`, Sage `#506755`, Rust `#AD4F39`, Gold `#83681A`, DM Serif
 Display / DM Mono) is gone; its tokens remain **defined** in
 `tailwind.config.js` at their original values only so un-migrated surfaces keep

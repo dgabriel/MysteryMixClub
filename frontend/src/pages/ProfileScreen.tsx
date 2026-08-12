@@ -10,13 +10,11 @@ import { FormError } from "../components/FormError";
 import { ConcentricRings } from "../components/ConcentricRings";
 import { CrownIcon } from "../components/CrownIcon";
 import { UserAvatar } from "../components/avatars/UserAvatar";
-import { HelpLink } from "../components/HelpLink";
 
 type ProfileScreenProps = {
   userId: string | null;
   displayName: string | null;
   email: string | null;
-  preferredService: "spotify" | "youtube" | "deezer" | null;
   archivedClubs: Club[];
   loading: boolean;
   error?: string | null;
@@ -25,10 +23,6 @@ type ProfileScreenProps = {
   saving: boolean;
   saveError?: string | null;
   saved: boolean;
-  onSavePreferredService: (service: "spotify" | "youtube" | "deezer" | null) => void;
-  savingService: boolean;
-  saveServiceError?: string | null;
-  savedService: boolean;
   hasPassword: boolean;
   onSetPassword: (password: string) => void;
   settingPassword: boolean;
@@ -55,12 +49,21 @@ type ProfileScreenProps = {
 };
 
 /**
- * Profile screen: edit display name, preferred service, browse archived clubs,
- * and manage account (log out all devices, export data, delete account).
+ * Profile screen: edit display name, browse archived clubs, and manage account
+ * (log out all devices, export data, delete account).
  *
- * Amber here. Placement is a design decision (ADR 0012), and this screen leans
- * on it more than most: the section headings are all `accent`, and the cassette
- * avatar is drawn in it because it is the *viewer's own*. That last point is the
+ * The preferred-service picker was pulled on 2026-08-11 (Dawn) pending a
+ * design. Display only: `preferred_service` still lives on the user, `useAuth`
+ * still exposes it, and every platform-link ordering across the app still
+ * honours whatever is already saved — there is simply no longer a way to
+ * change it here. `updatePreferredService` in services/api.ts is kept for the
+ * same reason; it is not dead code.
+ *
+ * Renders on the light `paper` surface (ADR 0013). Amber here. Placement is a
+ * design decision (ADR 0012), and this screen leans on it more than most: the
+ * section headings are all amber — `ink-accent`, the paper-legal value, since
+ * `accent` is 2.62:1 on white — and the cassette avatar is drawn in it because
+ * it is the *viewer's own*. That last point is the
  * line worth holding — `ClubHomeScreen`'s member roster passes no `accent`, so
  * amber on a person keeps meaning "you", the same rule the `/home` display-name
  * eyebrow follows.
@@ -72,7 +75,8 @@ type ProfileScreenProps = {
  *    would render a column of amber, which is amber as pattern. That is the one
  *    constraint ADR 0012 kept. Completion is carried instead by the "archived"
  *    grouping, a `muted-foreground` crown glyph, and the state Badge already
- *    reading "complete".
+ *    reading "complete". Those cards are dark islands on the light page and
+ *    keep the dark ramp throughout (the frame model).
  *  - Delete-account is irreversible and takes `Button variant="destructive"`,
  *    never the amber `link` variant. See DeleteAccountSection. The three
  *    recoverable account actions (log out everywhere, export data, arm/cancel
@@ -86,7 +90,6 @@ export function ProfileScreen({
   userId,
   displayName,
   email,
-  preferredService,
   archivedClubs,
   loading,
   error,
@@ -95,10 +98,6 @@ export function ProfileScreen({
   saving,
   saveError,
   saved,
-  onSavePreferredService,
-  savingService,
-  saveServiceError,
-  savedService,
   hasPassword,
   onSetPassword,
   settingPassword,
@@ -167,14 +166,6 @@ export function ProfileScreen({
               saving={saving}
               saveError={saveError}
               saved={saved}
-            />
-
-            <PreferredServicePicker
-              current={preferredService}
-              onSave={onSavePreferredService}
-              saving={savingService}
-              saveError={saveServiceError}
-              saved={savedService}
             />
 
             <ArchivedClubs clubs={archivedClubs} onOpenClub={onOpenClub} />
@@ -286,86 +277,6 @@ function NameForm({
           ) : null}
         </div>
       </form>
-    </section>
-  );
-}
-
-const SERVICES = [
-  { value: "spotify", label: "spotify" },
-  { value: "youtube", label: "youtube" },
-  { value: "deezer", label: "deezer" },
-  { value: null, label: "none" },
-] as const;
-
-/**
- * Which service's link shows first. The selected option is `foreground` with an
- * underline and the rest are `muted-foreground` — the same neutral pair the
- * retired system used, not amber: exactly one option is selected at all times,
- * so an amber selection would be permanent screen furniture rather than a
- * signal that something happened. Hover goes amber (R10's inline text-button
- * treatment), which is transient and one-at-a-time.
- *
- * The selected option is `disabled` by design, so it deliberately carries no
- * `disabled:` recolor — dropping it to `muted-foreground` would erase the
- * selection. The unselected options take the primitive's disabled treatment
- * (no hover, `cursor-not-allowed`) while a save is in flight. Never
- * `disabled:opacity-50`.
- */
-function PreferredServicePicker({
-  current,
-  onSave,
-  saving,
-  saveError,
-  saved,
-}: {
-  current: "spotify" | "youtube" | "deezer" | null;
-  onSave: (service: "spotify" | "youtube" | "deezer" | null) => void;
-  saving: boolean;
-  saveError?: string | null;
-  saved: boolean;
-}) {
-  return (
-    <section className="mt-12">
-      <span className="flex items-center gap-2">
-        <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-accent">
-          preferred service
-        </h2>
-        <HelpLink anchor="listening-playlists" onPaper />
-      </span>
-      <p className="mt-1 text-sm leading-[1.72] text-ink-muted">
-        platform links show this service first.
-      </p>
-      <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2">
-        {SERVICES.map(({ value, label }) => {
-          const isActive = current === value;
-          return (
-            <button
-              key={label}
-              type="button"
-              disabled={saving || isActive}
-              onClick={() => onSave(value)}
-              className={[
-                "py-1.5 font-mono uppercase tracking-mono text-mini transition-colors duration-150",
-                isActive
-                  ? "text-ink underline underline-offset-[3px] cursor-default"
-                  : "text-ink-muted hover:text-ink-accent disabled:cursor-not-allowed disabled:text-ink-muted",
-              ].join(" ")}
-            >
-              {label}
-            </button>
-          );
-        })}
-        {saved ? (
-          <span className="font-mono text-mini uppercase tracking-mono-caps text-ink-muted">
-            saved
-          </span>
-        ) : null}
-      </div>
-      {saveError ? (
-        <div className="mt-2">
-          <FormError onPaper>{saveError}</FormError>
-        </div>
-      ) : null}
     </section>
   );
 }

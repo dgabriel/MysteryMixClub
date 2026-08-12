@@ -13,7 +13,6 @@ import {
   setPassword as apiSetPassword,
   startGoogleLink,
   updateDisplayName,
-  updatePreferredService,
   type Club,
 } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
@@ -57,9 +56,6 @@ export function ProfileRoute() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { userId, displayName, email, applyDisplayName, logout, logoutAll } = useAuth();
 
-  const [preferredService, setPreferredService] = useState<
-    "spotify" | "youtube" | "deezer" | null
-  >(null);
   const [archived, setArchived] = useState<Club[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -67,10 +63,6 @@ export function ProfileRoute() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
-
-  const [savingService, setSavingService] = useState(false);
-  const [saveServiceError, setSaveServiceError] = useState<string | null>(null);
-  const [savedService, setSavedService] = useState(false);
 
   const [hasPassword, setHasPassword] = useState(false);
   const [settingPassword, setSettingPassword] = useState(false);
@@ -109,9 +101,6 @@ export function ProfileRoute() {
           .filter((l) => l.state === "complete")
           .sort((a, b) => (b.completed_at ?? "").localeCompare(a.completed_at ?? ""));
         setArchived(completed);
-        setPreferredService(
-          (profile.preferred_service as "spotify" | "youtube" | "deezer" | null) ?? null,
-        );
 
         // A successful google-link redirect (?google_link=linked) means the
         // profile we just fetched may already be stale -- re-fetch once,
@@ -133,7 +122,9 @@ export function ProfileRoute() {
         setGoogleLinked(latestProfile.google_linked);
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof ApiError ? err.message : "couldn't load your profile. try again.");
+          setError(
+            err instanceof ApiError ? err.message : "couldn't load your profile. try again.",
+          );
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -181,12 +172,6 @@ export function ProfileRoute() {
     return () => window.clearTimeout(timer);
   }, [saved]);
 
-  useEffect(() => {
-    if (!savedService) return;
-    const timer = window.setTimeout(() => setSavedService(false), 2000);
-    return () => window.clearTimeout(timer);
-  }, [savedService]);
-
   async function handleSaveName(name: string) {
     setSaving(true);
     setSaveError(null);
@@ -199,25 +184,6 @@ export function ProfileRoute() {
       setSaveError(err instanceof ApiError ? err.message : "that didn't save. try again.");
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function handleSavePreferredService(
-    service: "spotify" | "youtube" | "deezer" | null,
-  ) {
-    setSavingService(true);
-    setSaveServiceError(null);
-    setSavedService(false);
-    try {
-      await updatePreferredService(service);
-      setPreferredService(service);
-      setSavedService(true);
-    } catch (err) {
-      setSaveServiceError(
-        err instanceof ApiError ? err.message : "that didn't save. try again.",
-      );
-    } finally {
-      setSavingService(false);
     }
   }
 
@@ -316,7 +282,6 @@ export function ProfileRoute() {
       userId={userId}
       displayName={displayName}
       email={email}
-      preferredService={preferredService}
       archivedClubs={archived}
       loading={loading}
       error={error}
@@ -325,10 +290,6 @@ export function ProfileRoute() {
       saving={saving}
       saveError={saveError}
       saved={saved}
-      onSavePreferredService={handleSavePreferredService}
-      savingService={savingService}
-      saveServiceError={saveServiceError}
-      savedService={savedService}
       hasPassword={hasPassword}
       onSetPassword={handleSetPassword}
       settingPassword={settingPassword}

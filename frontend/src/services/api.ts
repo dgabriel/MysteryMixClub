@@ -375,7 +375,12 @@ export async function updateDisplayName(displayName: string): Promise<UserProfil
   return (await res.json()) as UserProfile;
 }
 
-/** Set the current user's preferred streaming service (or null to clear). */
+/** Set the current user's preferred streaming service (or null to clear).
+ *
+ *  No caller since the /profile picker was pulled on 2026-08-11 (see
+ *  ProfileScreen's note). Kept deliberately: the endpoint is live, the stored
+ *  value is still read everywhere to order platform links, and the control is
+ *  expected back. Not dead code. */
 export async function updatePreferredService(
   service: "spotify" | "youtube" | "deezer" | null,
 ): Promise<UserProfile> {

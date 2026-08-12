@@ -22,7 +22,11 @@
 > "Modals" below.
 >
 > **And again, MysteryMixClub-0fnf.34:** `/clubs/new` and `/profile`. Ten
-> routes. The first
+> routes.
+>
+> **And again, MysteryMixClub-0fnf.35:** `/admin` and `/admin/metrics` — the
+> last two authed screens still on the dark ramp. Twelve routes. Every authed
+> route is now paper; the four remaining dark screens are all pre-auth. The first
 > screen that is *only* a form, so it exercised the field primitives'
 > `onPaper` paths end to end (`TextField`, `DeadlineWindowField`, `FormError`)
 > and the drawn checkbox. The checkbox is the one thing that needed a
@@ -62,8 +66,12 @@ foreground ramp, brand accent included.
 ## Decision
 
 **`/login`, `/about`, `/terms`, `/privacy`, `/help`, `/home`, `/clubs/:id`,
-`/mixes/:id`, `/clubs/new` and `/profile` render on a light surface with their
-own derived `ink` ramp. Everything else stays exactly as ADR 0009 specifies.**
+`/mixes/:id`, `/clubs/new`, `/profile`, `/admin` and `/admin/metrics` render on
+a light surface with their own derived `ink` ramp. Everything else stays exactly
+as ADR 0009 specifies.**
+
+Everything left on the dark ramp is now pre-auth: `/auth/verify`,
+`/auth/reset-password`, `/onboarding` and `/invite/:token`.
 
 Four parts:
 

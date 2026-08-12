@@ -4,6 +4,7 @@ import type { AdminUser, SpotifyStatus, WaitlistEntry } from "../services/api";
 import { Badge } from "../components/Badge";
 import { Button } from "../components/Button";
 import { Card } from "../components/Card";
+import { PaperSurface } from "../components/PaperSurface";
 import { InviteShare } from "../components/InviteShare";
 import { TextField } from "../components/TextField";
 
@@ -69,12 +70,16 @@ type AdminScreenProps = {
  * than becoming `table` markup — these are record rows with one control each,
  * not a grid, and neither carries a header row.
  *
- * Amber budget (category rule, not a count). Amber appears here only on
- * actions, and nowhere per-row at rest:
- *  - ACTION: the `primary` fill on "search", "generate invite" and the spotify
- *    connect button, plus `InviteShare`'s own copy button.
- *  - ACTION: hover on the metrics link, the per-row "delete" arming control and
- *    the waitlist status filters — transient and one-at-a-time.
+ * Renders on the light `paper` surface (ADR 0013). The record cards stay dark —
+ * the frame model — so every row inside one keeps the dark ramp, including its
+ * inline controls and the typed-confirm field. Only the headings, the page
+ * copy, the page-level fields and buttons, and the waitlist filters move to
+ * `ink`.
+ *
+ * Amber: the three section headings in `ink-accent` (the paper-legal value,
+ * matching /profile), the `primary` fill on "search", "generate invite" and the
+ * spotify connect button plus `InviteShare`'s own copy button, and hover on the
+ * per-row "delete" arming control and the waitlist status filters.
  * The per-row controls are neutral at rest and go amber only on hover, because
  * a search can return any number of rows and a per-row accent at rest would be
  * amber as pattern (the conclusion R10 and R12 reached for the same shape of
@@ -114,182 +119,185 @@ export function AdminScreen({
   }
 
   return (
-    <main className="mx-auto w-full max-w-lg px-4 pt-8 pb-16 sm:px-8">
-      <h1 className="font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
-        admin
-      </h1>
-      <p className="mt-4 text-sm leading-[1.72] text-muted-foreground">
-        find a user by email, then remove their account and all of their data.
-      </p>
-
-      <Link
-        to="/admin/metrics"
-        className="mt-4 inline-block py-1.5 font-mono uppercase tracking-mono text-label text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-link"
-      >
-        metrics
-      </Link>
-
-      <form onSubmit={handleSubmit} className="mt-8 flex items-end gap-4">
-        <div className="flex-1">
-          <TextField
-            id="admin-user-search"
-            label="email"
-            type="search"
-            name="email"
-            autoComplete="off"
-            placeholder="name@example.com"
-            value={query}
-            onChange={(e) => onQueryChange(e.target.value)}
-            disabled={searching}
-          />
-        </div>
-        <Button type="submit" disabled={searching || !query.trim()}>
-          {searching ? "searching…" : "search"}
-        </Button>
-      </form>
-
-      {/* A failed search is an outcome from the server, not form validation:
-          nothing the admin typed is invalid, so it stays ordinary body copy
-          rather than taking ADR 0004's `destructive-text` category. */}
-      {searchError ? (
-        <p role="alert" className="mt-4 text-sm leading-[1.72] text-foreground">
-          {searchError}
-        </p>
-      ) : null}
-
-      <div className="mt-8">
-        {searched && results.length === 0 && !searching ? (
-          <p className="text-sm leading-[1.72] text-muted-foreground">no matches</p>
-        ) : results.length > 0 ? (
-          <Card>
-            <ul className="divide-y divide-hairline-soft">
-              {results.map((user) => (
-                <li key={user.id} className="py-4 first:pt-0 last:pb-0">
-                  <AdminUserRow
-                    user={user}
-                    deleting={deletingUserId === user.id}
-                    onDelete={() => onDeleteUser(user.id)}
-                  />
-                </li>
-              ))}
-            </ul>
-          </Card>
-        ) : null}
-      </div>
-
-      {/* Same category as the search failure — the backend's calm 409
-          self-delete message, shown verbatim. */}
-      {deleteError ? (
-        <p role="alert" className="mt-4 text-sm leading-[1.72] text-foreground">
-          {deleteError}
-        </p>
-      ) : null}
-
-      <section className="mt-16">
-        <h2 className="font-mono text-meta uppercase tracking-mono-wide text-muted-foreground">
-          invite
-        </h2>
-        <p className="mt-2 text-sm leading-[1.72] text-muted-foreground">
-          generate a signup invite. no club attached; whoever uses it creates their own, or later
-          joins an open one.
+    // Light surface (ADR 0013), `nested` because AuthedLayout owns the shell.
+    <PaperSurface nested>
+      <main className="mx-auto w-full max-w-lg px-4 pt-8 pb-16 sm:px-8">
+        <h1 className="font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
+          admin
+        </h1>
+        <p className="mt-4 text-sm leading-[1.72] text-ink-muted">
+          find a user by email, then remove their account and all of their data.
         </p>
 
-        {inviteError ? (
-          <p role="alert" className="mt-4 text-sm leading-[1.72] text-foreground">
-            {inviteError}
-          </p>
-        ) : null}
+        <Link
+          to="/admin/metrics"
+          className="mt-4 inline-block py-1.5 font-mono uppercase tracking-mono text-label text-ink-link underline underline-offset-[3px] transition-colors duration-150 hover:text-ink"
+        >
+          metrics
+        </Link>
 
-        <div className="mt-6">
-          {platformInviteUrl ? (
-            <InviteShare inviteUrl={platformInviteUrl} />
-          ) : (
-            <Button type="button" onClick={onGenerateInvite} disabled={generatingInvite}>
-              {generatingInvite ? "generating…" : "generate invite"}
-            </Button>
-          )}
-        </div>
-      </section>
-
-      <section className="mt-16">
-        <h2 className="font-mono text-meta uppercase tracking-mono-wide text-muted-foreground">
-          waitlist
-        </h2>
-        <p className="mt-2 text-sm leading-[1.72] text-muted-foreground">
-          temporary, pre-launch. inviting a waitlist entry sends them a signup invite by email. the
-          same kind generated above.
-        </p>
-
-        {waitlistError ? (
-          <p role="alert" className="mt-4 text-sm leading-[1.72] text-foreground">
-            {waitlistError}
-          </p>
-        ) : null}
-
-        <div className="mt-6">
-          {waitlistLoading ? null : waitlistEntries.length === 0 ? (
-            <p className="text-sm leading-[1.72] text-muted-foreground">
-              no one on the waitlist yet
-            </p>
-          ) : (
-            <WaitlistList
-              entries={waitlistEntries}
-              invitingEntryId={invitingEntryId}
-              onInviteFromWaitlist={onInviteFromWaitlist}
+        <form onSubmit={handleSubmit} className="mt-8 flex items-end gap-4">
+          <div className="flex-1">
+            <TextField
+              onPaper
+              id="admin-user-search"
+              label="email"
+              type="search"
+              name="email"
+              autoComplete="off"
+              placeholder="name@example.com"
+              value={query}
+              onChange={(e) => onQueryChange(e.target.value)}
+              disabled={searching}
             />
-          )}
+          </div>
+          <Button onPaper type="submit" disabled={searching || !query.trim()}>
+            {searching ? "searching…" : "search"}
+          </Button>
+        </form>
+
+        {/* A failed search is an outcome from the server, not form validation:
+            nothing the admin typed is invalid, so it stays ordinary body copy
+            rather than taking ADR 0004's `destructive-text` category. */}
+        {searchError ? (
+          <p role="alert" className="mt-4 text-sm leading-[1.72] text-ink">
+            {searchError}
+          </p>
+        ) : null}
+
+        <div className="mt-8">
+          {searched && results.length === 0 && !searching ? (
+            <p className="text-sm leading-[1.72] text-ink-muted">no matches</p>
+          ) : results.length > 0 ? (
+            <Card>
+              <ul className="divide-y divide-hairline-soft">
+                {results.map((user) => (
+                  <li key={user.id} className="py-4 first:pt-0 last:pb-0">
+                    <AdminUserRow
+                      user={user}
+                      deleting={deletingUserId === user.id}
+                      onDelete={() => onDeleteUser(user.id)}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          ) : null}
         </div>
-      </section>
 
-      <section className="mt-16">
-        <h2 className="font-mono text-meta uppercase tracking-mono-wide text-muted-foreground">
-          spotify
-        </h2>
-        <p className="mt-2 text-sm leading-[1.72] text-muted-foreground">
-          connect the one shared mysterymixclub spotify account playlist generation runs under.
-        </p>
-
-        {/* The OAuth round-trip's outcome. ADR 0004 explicitly keeps a
-            third-party authorization being denied or cancelled outside the
-            form-error category, so this is plain body copy in every case. */}
-        {spotifyResultMessage(spotifyResult) ? (
-          <p className="mt-4 text-sm leading-[1.72] text-foreground">
-            {spotifyResultMessage(spotifyResult)}
+        {/* Same category as the search failure — the backend's calm 409
+            self-delete message, shown verbatim. */}
+        {deleteError ? (
+          <p role="alert" className="mt-4 text-sm leading-[1.72] text-ink">
+            {deleteError}
           </p>
         ) : null}
 
-        {spotifyError ? (
-          <p role="alert" className="mt-4 text-sm leading-[1.72] text-foreground">
-            {spotifyError}
+        <section className="mt-16">
+          <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-accent">
+            invite
+          </h2>
+          <p className="mt-2 text-sm leading-[1.72] text-ink-muted">
+            generate a signup invite. no club attached; whoever uses it creates their own, or later
+            joins an open one.
           </p>
-        ) : null}
 
-        <div className="mt-6">
-          {spotifyStatusLoading ? null : (
-            <div className="flex items-center gap-4">
-              <Badge>
-                {!spotifyStatus?.configured
-                  ? "not configured"
-                  : spotifyStatus.connected
-                    ? "connected"
-                    : "not connected"}
-              </Badge>
-              <Button
-                type="button"
-                onClick={onConnectSpotify}
-                disabled={connectingSpotify || !spotifyStatus?.configured}
-              >
-                {connectingSpotify
-                  ? "connecting…"
-                  : spotifyStatus?.connected
-                    ? "reconnect spotify"
-                    : "connect spotify"}
+          {inviteError ? (
+            <p role="alert" className="mt-4 text-sm leading-[1.72] text-ink">
+              {inviteError}
+            </p>
+          ) : null}
+
+          <div className="mt-6">
+            {platformInviteUrl ? (
+              <InviteShare inviteUrl={platformInviteUrl} onPaper />
+            ) : (
+              <Button onPaper type="button" onClick={onGenerateInvite} disabled={generatingInvite}>
+                {generatingInvite ? "generating…" : "generate invite"}
               </Button>
-            </div>
-          )}
-        </div>
-      </section>
-    </main>
+            )}
+          </div>
+        </section>
+
+        <section className="mt-16">
+          <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-accent">
+            waitlist
+          </h2>
+          <p className="mt-2 text-sm leading-[1.72] text-ink-muted">
+            temporary, pre-launch. inviting a waitlist entry sends them a signup invite by email.
+            the same kind generated above.
+          </p>
+
+          {waitlistError ? (
+            <p role="alert" className="mt-4 text-sm leading-[1.72] text-ink">
+              {waitlistError}
+            </p>
+          ) : null}
+
+          <div className="mt-6">
+            {waitlistLoading ? null : waitlistEntries.length === 0 ? (
+              <p className="text-sm leading-[1.72] text-ink-muted">no one on the waitlist yet</p>
+            ) : (
+              <WaitlistList
+                entries={waitlistEntries}
+                invitingEntryId={invitingEntryId}
+                onInviteFromWaitlist={onInviteFromWaitlist}
+              />
+            )}
+          </div>
+        </section>
+
+        <section className="mt-16">
+          <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-accent">
+            spotify
+          </h2>
+          <p className="mt-2 text-sm leading-[1.72] text-ink-muted">
+            connect the one shared mysterymixclub spotify account playlist generation runs under.
+          </p>
+
+          {/* The OAuth round-trip's outcome. ADR 0004 explicitly keeps a
+              third-party authorization being denied or cancelled outside the
+              form-error category, so this is plain body copy in every case. */}
+          {spotifyResultMessage(spotifyResult) ? (
+            <p className="mt-4 text-sm leading-[1.72] text-ink">
+              {spotifyResultMessage(spotifyResult)}
+            </p>
+          ) : null}
+
+          {spotifyError ? (
+            <p role="alert" className="mt-4 text-sm leading-[1.72] text-ink">
+              {spotifyError}
+            </p>
+          ) : null}
+
+          <div className="mt-6">
+            {spotifyStatusLoading ? null : (
+              <div className="flex items-center gap-4">
+                <Badge>
+                  {!spotifyStatus?.configured
+                    ? "not configured"
+                    : spotifyStatus.connected
+                      ? "connected"
+                      : "not connected"}
+                </Badge>
+                <Button
+                  onPaper
+                  type="button"
+                  onClick={onConnectSpotify}
+                  disabled={connectingSpotify || !spotifyStatus?.configured}
+                >
+                  {connectingSpotify
+                    ? "connecting…"
+                    : spotifyStatus?.connected
+                      ? "reconnect spotify"
+                      : "connect spotify"}
+                </Button>
+              </div>
+            )}
+          </div>
+        </section>
+      </main>
+    </PaperSurface>
   );
 }
 
@@ -332,6 +340,7 @@ function WaitlistList({
       <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
         <div className="min-w-0 flex-1">
           <TextField
+            onPaper
             id="admin-waitlist-search"
             label="search"
             type="search"
@@ -357,8 +366,8 @@ function WaitlistList({
               className={[
                 "py-1.5 font-mono uppercase tracking-mono text-mini transition-colors duration-150",
                 status === option
-                  ? "text-foreground underline underline-offset-[3px]"
-                  : "text-muted-foreground hover:text-accent",
+                  ? "text-ink underline underline-offset-[3px]"
+                  : "text-ink-muted hover:text-ink-accent",
               ].join(" ")}
             >
               {option}
@@ -369,7 +378,7 @@ function WaitlistList({
 
       <div className="mt-6">
         {filtered.length === 0 ? (
-          <p className="text-sm leading-[1.72] text-muted-foreground">no matches</p>
+          <p className="text-sm leading-[1.72] text-ink-muted">no matches</p>
         ) : (
           <Card>
             <ul className="divide-y divide-hairline-soft">

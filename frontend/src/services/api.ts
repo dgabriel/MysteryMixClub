@@ -375,7 +375,12 @@ export async function updateDisplayName(displayName: string): Promise<UserProfil
   return (await res.json()) as UserProfile;
 }
 
-/** Set the current user's preferred streaming service (or null to clear). */
+/** Set the current user's preferred streaming service (or null to clear).
+ *
+ *  No caller since the /profile picker was pulled on 2026-08-11 (see
+ *  ProfileScreen's note). Kept deliberately: the endpoint is live, the stored
+ *  value is still read everywhere to order platform links, and the control is
+ *  expected back. Not dead code. */
 export async function updatePreferredService(
   service: "spotify" | "youtube" | "deezer" | null,
 ): Promise<UserProfile> {
@@ -462,6 +467,13 @@ export type Club = {
   voting_window_hours: number;
   created_at: string;
   completed_at: string | null;
+  /** Whether *you* administer this club — the organizer or a promoted
+   *  co-organizer (MYS-99). Only `GET /clubs` computes it; `null` elsewhere
+   *  means "not answered here", which is deliberately not the same as `false`.
+   *
+   *  Do not re-derive this from `organizer_id`: that misses co-organizers, who
+   *  hold full operational parity. */
+  viewer_is_admin: boolean | null;
 };
 
 /** The caller's own per-club participation setting (GET/PATCH

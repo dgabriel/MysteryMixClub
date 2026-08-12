@@ -32,9 +32,7 @@ export function HomeRoute() {
         const result = await getClubs();
         setClubs(result);
       } catch (err) {
-        setError(
-          err instanceof ApiError ? err.message : "couldn't load your clubs. try again.",
-        );
+        setError(err instanceof ApiError ? err.message : "couldn't load your clubs. try again.");
       } finally {
         setLoading(false);
       }

@@ -1,25 +1,50 @@
 /**
- * Google's official "Sign in with Google" button (light theme), rendered as a
+ * Google's official "Sign in with Google" button (dark theme), rendered as a
  * real link because the endpoint 302s to Google's consent screen — a fetch
  * through services/api.ts can't follow a top-level navigation.
  *
  * Google's branding terms forbid restyling the logo, colors, or type, so this is
- * the one component in the app that sits outside the Sage/DM Mono system, and
- * the one place raw hex in a className is correct: these values are Google's
- * brand, not ours to tokenize. A documented standing style-guide exception
- * (ADR 0007), alongside the nav brand mark. Height is 44px — Google's spec
- * allows it and it clears the touch-target floor.
+ * the one component in the app that sits outside the Design System v1.0 token
+ * set, and the one place raw hex in a className is correct: these values are
+ * Google's brand, not ours to tokenize. A documented standing style-guide
+ * exception (ADR 0007). Height is 44px — Google's spec allows it and it clears
+ * the touch-target floor.
+ *
+ * It renders Google's DARK variant, not their light one. That is a choice
+ * between two options Google itself publishes rather than a reskin: the light
+ * button's white fill was the single brightest object on a near-black page.
+ * Every value below is Google's own for the dark theme —
+ *
+ *   - container `#131314`, stroke `#8E918F`, label `#E3E3E3`
+ *   - the state layer: white at 8% on hover, 12% on press
+ *
+ * — with the 4px radius, Roboto, 14px / 0.25px type, and the unmodified
+ * multi-color `G` all carried over untouched from the light button. The state
+ * layer is a `before:` overlay rather than a second flat hex precisely so no
+ * hover/press color has to be invented; it composites Google's published
+ * percentages over Google's published fill. It sits above the mark, which is
+ * what Google's own `gsi-material-button-state` element does.
+ *
+ * The one thing Google does NOT publish for the dark button is a focus-ring
+ * color: their implementation reuses the 12% state layer and draws no ring at
+ * all. A 12% white veil on a near-black page is not a visible focus indicator,
+ * so the ring stays, colored with `#E3E3E3` — the button's own published
+ * dark-theme label color, 14.5:1 against the `#131314` fill. That is a value
+ * from this same Google spec rather than an invented one or an app token
+ * imported into a component that is exempt from app tokens.
  */
 export function GoogleSignInButton({ href }: { href: string }) {
   return (
     <a
       href={href}
       className={[
-        "flex h-11 items-center justify-center gap-[10px] rounded-[4px] px-3",
-        "border border-[#747775] bg-white text-[#1F1F1F] no-underline",
+        "relative flex h-11 items-center justify-center gap-[10px] rounded-[4px] px-3",
+        "border border-[#8E918F] bg-[#131314] text-[#E3E3E3] no-underline",
         "font-[Roboto,arial,sans-serif] text-[14px] font-medium tracking-[0.25px]",
-        "transition-colors duration-150 hover:bg-[#F8F9FA] active:bg-[#F1F3F4]",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0B57D0]",
+        "before:pointer-events-none before:absolute before:inset-0 before:rounded-[4px]",
+        "before:bg-white before:opacity-0 before:transition-opacity before:duration-150",
+        "hover:before:opacity-[0.08] active:before:opacity-[0.12]",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E3E3E3]",
       ].join(" ")}
     >
       <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">

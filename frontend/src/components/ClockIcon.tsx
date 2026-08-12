@@ -1,3 +1,10 @@
+/**
+ * Rendered stroke = strokeWidth x (size / viewBox). A 24-unit viewBox drawn at
+ * 12px halves it, so the old 1.5 landed at 0.75px — below the style guide's
+ * 1px floor. A sub-pixel light stroke antialiases away far more perceived
+ * contrast on a near-black page than a dark one ever did on cream.
+ * strokeWidth 2 renders at exactly 1px.
+ */
 export function ClockIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -6,7 +13,7 @@ export function ClockIcon({ className }: { className?: string }) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.5"
+      strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"

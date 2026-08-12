@@ -1,5 +1,6 @@
-import { ConcentricRings } from "../components/ConcentricRings";
+import { BrandLockup } from "../components/BrandLockup";
 import { ContactEmail } from "../components/ContactEmail";
+import { PaperSurface } from "../components/PaperSurface";
 import { TopNav } from "../components/TopNav";
 
 /**
@@ -10,59 +11,63 @@ import { TopNav } from "../components/TopNav";
  */
 export function PrivacyRoute() {
   return (
-    <div className="min-h-screen flex flex-col">
+    <PaperSurface>
       <TopNav />
       <main className="flex-1 flex flex-col items-center px-4 py-16 sm:px-8">
         <div className="w-full max-w-md">
-          {/* Motif — the screen's single Rust use lives in the off-center ring dot. */}
-          <ConcentricRings size={72} accent className="mx-auto" />
+          {/* Brand first, page second. The lockup's wordmark is a `p`, not a
+              heading — `privacy policy` below stays this page's one `h1`, so the
+              heading outline still describes the document rather than the site.
+              Visual weight and heading semantics are independent; the wordmark
+              is the loudest thing here without being a heading. */}
+          <BrandLockup />
 
-          <h1 className="mt-8 text-center font-serif text-[34px] leading-tight">
+          <h1 className="mt-10 border-t border-ink-hairline pt-8 text-center font-display text-[2rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
             privacy policy
           </h1>
-          <p className="mt-2 text-center font-mono text-[11px] font-light text-muted">
+          <p className="mt-2 text-center font-mono text-meta text-ink-muted">
             last updated july 2026
           </p>
 
-          <p className="mt-8 font-mono text-[13px] font-semibold leading-relaxed text-ink">
-            while ai was used to help write the code, there are no ai features in this app and no
-            ai will ingest your data.
+          <p className="mt-8 text-sm font-medium leading-[1.72] text-ink">
+            while ai was used to help write the code, there are no ai features in this app and no ai
+            will ingest your data.
           </p>
 
-          <div className="mt-8 space-y-8 font-mono text-[13px] font-light leading-relaxed text-ink">
+          <div className="mt-8 space-y-8 text-sm leading-[1.72] text-ink">
             <section>
               <p>
-                this page explains what mysterymixclub collects, why, and what control you have
-                over it.
+                this page explains what mysterymixclub collects, why, and what control you have over
+                it.
               </p>
             </section>
 
             <section>
-              <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-ink-accent">
                 what we collect
-              </p>
+              </h2>
               <p className="mt-3">
                 your email, display name, and preferred streaming service; the songs, notes, and
-                votes you submit to clubs you're a member of; and basic session data needed to
-                keep you signed in.
+                votes you submit to clubs you're a member of; and basic session data needed to keep
+                you signed in.
               </p>
             </section>
 
             <section>
-              <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-ink-accent">
                 what we don't do
-              </p>
+              </h2>
               <p className="mt-3">
                 no individual behavior tracking and no third-party analytics scripts (no google
-                analytics, no mixpanel). we only look at aggregate, app-wide numbers — total
-                clubs, total mystery mixes, total submissions — never a single user's activity pattern.
+                analytics, no mixpanel). we only look at aggregate, app-wide numbers: total clubs,
+                total mystery mixes, total submissions. never a single user's activity pattern.
               </p>
             </section>
 
             <section>
-              <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-ink-accent">
                 cookies
-              </p>
+              </h2>
               <p className="mt-3">
                 the only cookie we set is a strictly-necessary, HttpOnly session cookie that keeps
                 you signed in. it isn't used for tracking or advertising, and it's not readable by
@@ -71,14 +76,14 @@ export function PrivacyRoute() {
             </section>
 
             <section>
-              <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-ink-accent">
                 subprocessors
-              </p>
+              </h2>
               <p className="mt-3">
-                two services process personal data on our behalf, each under its own data
-                processing agreement: resend (your email address, to deliver sign-in links and
-                notifications) and digitalocean (hosting our servers and database, so everything
-                you store in the app).
+                two services process personal data on our behalf, each under its own data processing
+                agreement: resend (your email address, to deliver sign-in links and notifications)
+                and digitalocean (hosting our servers and database, so everything you store in the
+                app).
               </p>
               <p className="mt-3">
                 spotify, youtube, apple music, and deezer help us look up and play the songs you
@@ -90,39 +95,38 @@ export function PrivacyRoute() {
             </section>
 
             <section>
-              <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-ink-accent">
                 your data, your control
-              </p>
+              </h2>
               <p className="mt-3">
-                download a copy of everything tied to your account (profile, submissions, votes,
-                and notes) any time from your profile page, satisfying your right of access and
-                data portability under gdpr articles 15 and 20. delete your account any time from
-                the same page: this cascades to your submissions, votes, notes, sessions, and
-                club memberships, with a scheduled hard purge of any remaining trace within 30
-                days.
+                download a copy of everything tied to your account (profile, submissions, votes, and
+                notes) any time from your profile page, satisfying your right of access and data
+                portability under gdpr articles 15 and 20. delete your account any time from the
+                same page: this cascades to your submissions, votes, notes, sessions, and club
+                memberships, with a scheduled hard purge of any remaining trace within 30 days.
               </p>
             </section>
 
             <section>
-              <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-ink-accent">
                 changes to this policy
-              </p>
+              </h2>
               <p className="mt-3">
-                if we make a material change to how we handle your data, we'll update this page
-                and ask returning members to review it again.
+                if we make a material change to how we handle your data, we'll update this page and
+                ask returning members to review it again.
               </p>
             </section>
 
-            <section className="border-t border-border pt-6">
-              <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
+            <section className="border-t border-ink-hairline pt-6">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-ink-accent">
                 questions
-              </p>
+              </h2>
               <p className="mt-3">
                 <ContactEmail
                   user="privacy"
                   domain="mysterymixclub.com"
                   label="email us"
-                  className="text-sage underline underline-offset-[3px] hover:text-ink"
+                  className="text-ink-link underline underline-offset-[3px] hover:text-ink"
                 />{" "}
                 with any privacy questions or requests.
               </p>
@@ -130,6 +134,6 @@ export function PrivacyRoute() {
           </div>
         </div>
       </main>
-    </div>
+    </PaperSurface>
   );
 }

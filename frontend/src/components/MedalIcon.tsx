@@ -1,3 +1,9 @@
+/**
+ * Rendered stroke = strokeWidth x (size / viewBox). A 12-unit viewBox drawn at
+ * 10px scaled the old 1 down to 0.83px — below the style guide's 1px floor,
+ * and sub-pixel light strokes degrade badly on a near-black page.
+ * strokeWidth 1.5 renders at 1.25px, matching Crown and MusicNote.
+ */
 export function MedalIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -6,7 +12,7 @@ export function MedalIcon({ className }: { className?: string }) {
       viewBox="0 0 12 12"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1"
+      strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"

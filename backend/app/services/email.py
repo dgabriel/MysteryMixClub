@@ -24,7 +24,7 @@ def _password_reset_html(link: str) -> str:
         "<p>Click the link below to choose a new MysteryMixClub password. "
         "It expires in 30 minutes and can only be used once.</p>"
         f'<p><a href="{link}">Reset your password</a></p>'
-        "<p>If you didn't ask for this, you can ignore this email — "
+        "<p>If you didn't ask for this, you can ignore this email. "
         "your password hasn't changed.</p>"
     )
 

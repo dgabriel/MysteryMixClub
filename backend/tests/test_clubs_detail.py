@@ -34,6 +34,7 @@ _CLUB_KEYS = {
     "state",
     "created_at",
     "completed_at",
+    "viewer_is_admin",
 }
 
 

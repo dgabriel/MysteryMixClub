@@ -116,6 +116,37 @@ describe("DeadlineChip", () => {
     expect(setIntervalSpy).not.toHaveBeenCalled();
   });
 
+  // The urgency grading is the one thing R2 added that is visible in the DOM
+  // rather than purely a token swap, so both branches are pinned. Amber is
+  // category-restricted to action or achievement: "closing soon" is an action
+  // prompt, a future date is not.
+  it("takes the amber callout treatment once the deadline is closing soon", () => {
+    const mix = mixWith({
+      state: "open_submission",
+      // Already passed, but the mix has not been force-advanced yet.
+      submission_deadline: "2026-07-01T11:00:00Z",
+    });
+    const { container } = render(<DeadlineChip mix={mix} showCountdown />);
+
+    expect(container.textContent).toContain("closing soon");
+    const chip = container.querySelector("span");
+    expect(chip?.className).toMatch(/bg-accent-surface/);
+    expect(chip?.className).toMatch(/text-accent/);
+  });
+
+  it("stays neutral for a plain future deadline", () => {
+    const mix = mixWith({
+      state: "open_submission",
+      submission_deadline: "2026-07-05T12:00:00Z",
+    });
+    const { container } = render(<DeadlineChip mix={mix} />);
+
+    const chip = container.querySelector("span");
+    expect(chip?.className).toMatch(/bg-tile/);
+    expect(chip?.className).toMatch(/text-foreground/);
+    expect(chip?.className).not.toMatch(/accent/);
+  });
+
   it("renders nothing when the mix has no active-phase deadline, without showCountdown", () => {
     const mix = mixWith({ state: "pending" });
     const { container } = render(<DeadlineChip mix={mix} />);

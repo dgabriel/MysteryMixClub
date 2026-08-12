@@ -82,6 +82,7 @@ function clubWith(overrides: Partial<Club> = {}): Club {
     voting_window_hours: 72,
     created_at: "2026-01-01T00:00:00Z",
     completed_at: "2026-02-01T00:00:00Z",
+    viewer_is_admin: null,
     ...overrides,
   };
 }
@@ -139,7 +140,7 @@ describe("ProfileRoute", () => {
 
     // Active club is excluded from the archive.
     expect(await screen.findByText("archived (2)")).toBeInTheDocument();
-    expect(screen.queryByText("In Progress")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "In Progress" })).not.toBeInTheDocument();
 
     // Account email shown read-only from the auth context.
     expect(screen.getByText("ada@example.com")).toBeInTheDocument();
@@ -211,9 +212,9 @@ describe("ProfileRoute", () => {
     const user = userEvent.setup();
 
     renderProfile();
-    await screen.findByText("Click Me");
+    await screen.findByRole("heading", { name: "Click Me" });
 
-    await user.click(screen.getByText("Click Me"));
+    await user.click(screen.getByRole("heading", { name: "Click Me" }));
 
     expect(await screen.findByText("CLUB DETAIL CONTENT")).toBeInTheDocument();
   });

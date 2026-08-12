@@ -1,7 +1,8 @@
 import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
-import { ConcentricRings } from "../components/ConcentricRings";
+import { BrandLockup } from "../components/BrandLockup";
 import { ContactEmail } from "../components/ContactEmail";
+import { PaperSurface } from "../components/PaperSurface";
 import { TopNav } from "../components/TopNav";
 
 type QA = { q: string; a: string };
@@ -13,7 +14,7 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
     items: [
       {
         q: "do i need an invite?",
-        a: "yes. mysterymixclub is invite-only — there's no open signup. someone already in a club can send you a club invite link, or a platform admin can send you a general one.",
+        a: "yes. mysterymixclub is invite-only; there's no open signup. someone already in a club can send you a club invite link, or a platform admin can send you a general one.",
       },
       {
         q: "what's the waitlist?",
@@ -61,7 +62,7 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
       },
       {
         q: "who sets the theme and deadlines?",
-        a: "the club's organizer (or co-organizer, if it has one). themes can be anything — literal or poetic.",
+        a: "the club's organizer (or co-organizer, if it has one). themes can be anything, literal or poetic.",
       },
       {
         q: "what happens when a mystery mix closes?",
@@ -75,11 +76,11 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
     items: [
       {
         q: "how do i submit?",
-        a: "search for a song right in the app, or paste a link you already have. both land on the same kind of submission — there's no lesser option. you can add a short note about why you picked it.",
+        a: "search for a song right in the app, or paste a link you already have. both land on the same kind of submission, and neither is the lesser option. you can add a short note about why you picked it.",
       },
       {
         q: "do i need a spotify or apple music account?",
-        a: "no. mysterymixclub itself is the platform — you can search and submit without connecting anything. a streaming account only matters for how you listen afterward.",
+        a: "no. mysterymixclub itself is the platform, so you can search and submit without connecting anything. a streaming account only matters for how you listen afterward.",
       },
       {
         q: "which services can i paste a link from?",
@@ -101,14 +102,14 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
     items: [
       {
         q: "is voting anonymous?",
-        a: "yes. while voting is open, songs are shuffled into one playlist with no names attached — nobody can tell who submitted what until the mystery mix closes.",
+        a: "yes. while voting is open, songs are shuffled into one playlist with no names attached, so nobody can tell who submitted what until the mystery mix closes.",
       },
       {
         q: "can i vote for my own song?",
         a: "no. everything else is fair game, up to your club's vote limit.",
       },
       {
-        q: "what's \"most noted\"?",
+        q: 'what\'s "most noted"?',
         a: "a separate recognition from winning: the song that collected the most written notes from other members. it runs alongside the vote-based winner, not instead of it, and can be won by a different song entirely.",
       },
       {
@@ -163,7 +164,7 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
       },
       {
         q: "can i turn them off?",
-        a: "yes, every notification email has a one-click unsubscribe link at the bottom. that doesn't affect sign-in emails — you'll always need those to log in.",
+        a: "yes, every notification email has a one-click unsubscribe link at the bottom. that doesn't affect sign-in emails; you'll always need those to log in.",
       },
     ],
   },
@@ -177,7 +178,7 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
       },
       {
         q: "can i download my data?",
-        a: "yes, your profile has a \"download my data\" option that exports everything tied to your account.",
+        a: 'yes, your profile has a "download my data" option that exports everything tied to your account.',
       },
       {
         q: "can i delete my account?",
@@ -224,47 +225,51 @@ export function HelpRoute() {
   }, [hash]);
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <PaperSurface>
       <TopNav />
       <main className="flex-1 flex flex-col items-center px-4 py-16 sm:px-8">
         <div className="w-full max-w-md">
-          {/* Motif — the screen's single Rust use lives in the off-center ring dot. */}
-          <ConcentricRings size={72} accent className="mx-auto" />
+          {/* Brand first, page second. The lockup's wordmark is a `p`, not a
+              heading — `help` below stays this page's one `h1`, so the heading
+              outline still describes the document rather than the site. Visual
+              weight and heading semantics are independent; the wordmark is the
+              loudest thing here without being a heading. */}
+          <BrandLockup />
 
-          <h1 className="mt-8 text-center font-serif text-[34px] leading-tight">help</h1>
-          <p className="mt-2 text-center font-mono text-[13px] font-light text-muted">
+          <h1 className="mt-10 border-t border-ink-hairline pt-8 text-center font-display text-[2rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
+            help
+          </h1>
+          <p className="mt-2 text-center text-sm leading-[1.72] text-ink-muted">
             everything from signing in to your first reveal
           </p>
 
           <div className="mt-10 space-y-10">
             {SECTIONS.map((section) => (
               <section key={section.slug} id={section.slug} className="scroll-mt-8">
-                <h2 className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
+                <h2 className="font-mono text-mini uppercase tracking-mono-wide text-ink-accent">
                   {section.label}
                 </h2>
                 <div className="mt-4 space-y-5">
                   {section.items.map((item) => (
                     <div key={item.q}>
-                      <p className="font-mono text-[13px] leading-relaxed text-ink">{item.q}</p>
-                      <p className="mt-1 font-mono text-[13px] font-light leading-relaxed text-muted">
-                        {item.a}
-                      </p>
+                      <p className="text-sm leading-[1.72] text-ink">{item.q}</p>
+                      <p className="mt-1 text-sm leading-[1.72] text-ink-muted">{item.a}</p>
                     </div>
                   ))}
                 </div>
               </section>
             ))}
 
-            <section className="border-t border-border pt-6">
-              <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
+            <section className="border-t border-ink-hairline pt-6">
+              <h2 className="font-mono text-mini uppercase tracking-mono-wide text-ink-accent">
                 still have questions
-              </p>
-              <p className="mt-3 font-mono text-[13px] font-light leading-relaxed text-ink">
+              </h2>
+              <p className="mt-3 text-sm leading-[1.72] text-ink">
                 <ContactEmail
                   user="info"
                   domain="mysterymixclub.com"
                   label="email us"
-                  className="text-sage underline underline-offset-[3px] hover:text-ink"
+                  className="text-ink-link underline underline-offset-[3px] hover:text-ink"
                 />{" "}
                 and we'll help you out.
               </p>
@@ -272,6 +277,6 @@ export function HelpRoute() {
           </div>
         </div>
       </main>
-    </div>
+    </PaperSurface>
   );
 }

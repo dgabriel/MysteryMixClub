@@ -46,6 +46,24 @@ const COMMANDS = {
     catch (e) { console.log('click', sel, '-> ERROR:', e.message); }
   },
 
+  // Real Playwright hover, because CSS :hover cannot be triggered from a
+  // synthetic event — `eval` dispatching mouseover leaves :hover unmatched, so
+  // a hover style screenshots identically to its resting state and looks fine
+  // when it is not implemented at all.
+  async hover(sel) {
+    if (!page) return console.log('ERROR: launch first');
+    try { await page.hover(sel, { timeout: 10_000 }); console.log('hover', sel, '-> OK'); }
+    catch (e) { console.log('hover', sel, '-> ERROR:', e.message); }
+  },
+
+  async 'hover-text'(text) {
+    if (!page) return console.log('ERROR: launch first');
+    try {
+      await page.getByText(text, { exact: false }).first().hover({ timeout: 10_000 });
+      console.log('hover-text', JSON.stringify(text), '-> OK');
+    } catch (e) { console.log('hover-text', JSON.stringify(text), '-> ERROR:', e.message); }
+  },
+
   async 'click-text'(text) {
     if (!page) return console.log('ERROR: launch first');
     try {

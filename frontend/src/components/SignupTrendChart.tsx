@@ -23,8 +23,14 @@ const pctY = (y: number) => `${(((MARGIN.top + y) / VIEW_HEIGHT) * 100).toFixed(
 const VALUE_TICK_RIGHT = `${((VIEW_WIDTH - (MARGIN.left - 6)) / VIEW_WIDTH) * 100}%`;
 
 const formatDay = utcFormat("%b %-d");
+// `text-meta` (11.2px) is the nearest step on the new mono scale to the 11px
+// this shipped at, and it keeps clear headroom over the readable floor: the
+// guide puts `text-micro` (8.8px) out of bounds for anything information-
+// bearing and holds a label a user must read to `text-mini` at minimum. Ticks
+// are read metadata, so they take the uppercase-mono eyebrow pairing
+// (`text-meta` + `tracking-mono-wide`) rather than the label default.
 const TICK_CLASS =
-  "absolute whitespace-nowrap font-mono uppercase leading-none tracking-label text-[11px] text-muted";
+  "absolute whitespace-nowrap font-mono uppercase leading-none tracking-mono-wide text-meta text-muted-foreground";
 
 /**
  * Daily signups over a trailing window (MysteryMixClub-etz7.4) — the app's first
@@ -32,13 +38,20 @@ const TICK_CLASS =
  * generators) and React owns the DOM (the SVG is plain JSX, d3 never touches a
  * node React renders into). Pure — the caller fetches the data.
  *
- * Restraint over decoration: one Sage line, one Border baseline, and four tick
- * labels (0, the peak, the first day, the last day). No gridlines, no per-point
- * dots, no area fill, no Rust.
+ * Restraint over decoration: one `chart-1` line, one `hairline` baseline, and
+ * four tick labels (0, the peak, the first day, the last day). No gridlines, no
+ * per-point dots, no area fill, no legend, no tooltip, no load-in animation.
+ *
+ * `chart-1` is the same value as `accent`, and the style guide names a
+ * single-series chart as the one sanctioned amber-not-on-action case — so the
+ * amber here is the series, not a signal. The chart is placed on a `Card`
+ * (`card`, Z1), where `chart-1` measures 7.42:1, far above the 3:1 floor for a
+ * non-text graphic. It is deliberately not on `sheet`, which the guide puts
+ * off-limits to charts.
  *
  * The marks scale with the viewBox; the tick labels don't. They're HTML
- * positioned by percentage over the SVG so their size stays a true 11px instead
- * of shrinking under the Label role's 9px floor on a phone-width card.
+ * positioned by percentage over the SVG so their size stays a true `text-meta`
+ * instead of shrinking under the readable floor on a phone-width card.
  */
 export function SignupTrendChart({ buckets }: SignupTrendChartProps) {
   const chart = useMemo(() => {
@@ -78,7 +91,7 @@ export function SignupTrendChart({ buckets }: SignupTrendChartProps) {
   }, [buckets]);
 
   if (!chart) {
-    return <p className="font-mono text-[13px] font-light text-muted">no signups to chart yet.</p>;
+    return <p className="text-sm leading-[1.72] text-muted-foreground">no signups to chart yet.</p>;
   }
 
   const { points, peak, path, total, peakY, first, last, markerX, markerY } = chart;
@@ -98,19 +111,19 @@ export function SignupTrendChart({ buckets }: SignupTrendChartProps) {
             y1={INNER_HEIGHT}
             x2={INNER_WIDTH}
             y2={INNER_HEIGHT}
-            className="stroke-border"
+            className="stroke-hairline"
             strokeWidth={1}
           />
 
           {/* d3.line on a single point emits a bare moveto and draws nothing, so a
               one-day window gets a dot instead of an invisible line. */}
           {single ? (
-            <circle cx={markerX} cy={markerY} r={2.5} className="fill-sage" />
+            <circle cx={markerX} cy={markerY} r={2.5} className="fill-chart-1" />
           ) : (
             <path
               d={path ?? undefined}
               fill="none"
-              className="stroke-sage"
+              className="stroke-chart-1"
               strokeWidth={1.5}
               strokeLinecap="round"
               strokeLinejoin="round"

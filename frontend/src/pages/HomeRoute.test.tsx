@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { HomeRoute } from "./HomeRoute";
@@ -10,9 +10,7 @@ import { useAuth } from "../hooks/useAuth";
 
 // Mock the API module (no network). Keep ApiError real so instanceof / status work.
 vi.mock("../services/api", async () => {
-  const actual = await vi.importActual<typeof import("../services/api")>(
-    "../services/api",
-  );
+  const actual = await vi.importActual<typeof import("../services/api")>("../services/api");
   return {
     ...actual,
     getClubs: vi.fn(),
@@ -44,6 +42,7 @@ function clubWith(overrides: Partial<Club> = {}): Club {
     submission_window_hours: 72,
     voting_window_hours: 72,
     completed_at: null,
+    viewer_is_admin: false,
     ...overrides,
   };
 }
@@ -87,9 +86,9 @@ describe("HomeRoute (My Clubs)", () => {
       needsOnboarding: false,
       isPlatformAdmin: false,
       applyDisplayName: vi.fn(),
-    preferredService: null,
-    tosAccepted: true,
-    applyTosAccepted: vi.fn(),
+      preferredService: null,
+      tosAccepted: true,
+      applyTosAccepted: vi.fn(),
     });
   });
 
@@ -100,11 +99,11 @@ describe("HomeRoute (My Clubs)", () => {
   it("happy path: calls getClubs on mount and renders the club name", async () => {
     renderHome();
 
-    expect(await screen.findByText("Friday Mixtape")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Friday Mixtape" })).toBeInTheDocument();
     expect(mockGetClubs).toHaveBeenCalledTimes(1);
   });
 
-  it("groups completed clubs below active ones under a 'completed' heading with gold accent", async () => {
+  it("groups completed clubs below active ones under a 'completed' heading with the crown marker", async () => {
     mockGetClubs.mockResolvedValue([
       clubWith({ id: "a1", name: "Active One", state: "active" }),
       clubWith({ id: "c1", name: "Finished One", state: "complete", current_mix: 6 }),
@@ -112,8 +111,8 @@ describe("HomeRoute (My Clubs)", () => {
     renderHome();
 
     const completedHeading = await screen.findByText("completed");
-    const active = screen.getByText("Active One");
-    const done = screen.getByText("Finished One");
+    const active = screen.getByRole("heading", { name: "Active One" });
+    const done = screen.getByRole("heading", { name: "Finished One" });
 
     // Active club precedes the "completed" heading, which precedes the completed club.
     expect(
@@ -123,9 +122,85 @@ describe("HomeRoute (My Clubs)", () => {
       completedHeading.compareDocumentPosition(done) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
 
-    // Only the completed card wears the gold achievement accent.
-    expect(done.closest(".border-l-gold")).not.toBeNull();
-    expect(active.closest(".border-l-gold")).toBeNull();
+    // Only the completed card wears the achievement marker. The marker is the
+    // crown glyph (the only svg a club row renders) rather than the retired
+    // gold left bar — see ClubCard for why completion carries no accent color.
+    expect(done.closest("li")?.querySelector("svg")).not.toBeNull();
+    expect(active.closest("li")?.querySelector("svg")).toBeNull();
+  });
+
+  it("admin: the chip follows the server's viewer_is_admin, not organizer_id", async () => {
+    mockGetClubs.mockResolvedValue([
+      // A co-organizer: NOT the organizer_id, but an admin all the same
+      // (MYS-99). Deriving the chip from organizer_id would miss this club,
+      // which is why the server computes the flag.
+      clubWith({
+        id: "co",
+        name: "Co Organized",
+        organizer_id: "22222222-2222-2222-2222-222222222222",
+        viewer_is_admin: true,
+      }),
+      clubWith({
+        id: "theirs",
+        name: "Their Club",
+        organizer_id: "22222222-2222-2222-2222-222222222222",
+        viewer_is_admin: false,
+      }),
+    ]);
+    renderHome();
+
+    const co = (await screen.findByRole("heading", { name: "Co Organized" })).closest("li")!;
+    const theirs = screen.getByRole("heading", { name: "Their Club" }).closest("li")!;
+
+    expect(within(co).getByText("admin")).toBeInTheDocument();
+    expect(within(theirs).queryByText("admin")).toBeNull();
+  });
+
+  it("admin: a null viewer_is_admin claims nothing", async () => {
+    // null means "this endpoint didn't answer", which must not be read as true.
+    // Being wrong in that direction would brand someone else's club as yours.
+    mockGetClubs.mockResolvedValue([
+      clubWith({ id: "x", name: "Some Club", viewer_is_admin: null }),
+    ]);
+    renderHome();
+
+    const row = (await screen.findByRole("heading", { name: "Some Club" })).closest("li")!;
+    expect(within(row).queryByText("admin")).toBeNull();
+  });
+
+  it("active clubs carry the status bar, completed ones do not", async () => {
+    mockGetClubs.mockResolvedValue([
+      clubWith({ id: "a1", name: "Active One", state: "active" }),
+      clubWith({ id: "c1", name: "Finished One", state: "complete" }),
+    ]);
+    renderHome();
+
+    const active = (await screen.findByRole("heading", { name: "Active One" })).closest("li")!;
+    const done = screen.getByRole("heading", { name: "Finished One" }).closest("li")!;
+
+    // Green, not amber: active is the default state and would otherwise paint
+    // nearly every row in the accent. See ClubCard for the full argument.
+    expect(active.querySelector(".bg-positive")).not.toBeNull();
+    expect(active.querySelector(".bg-accent")).toBeNull();
+    expect(done.querySelector(".bg-positive")).toBeNull();
+  });
+
+  it("state is never carried by colour alone", async () => {
+    // The bar is aria-hidden decoration, so WCAG 1.4.1 requires the state to be
+    // readable as text. That is the Badge, and it is why the bar may be a colour
+    // at all.
+    mockGetClubs.mockResolvedValue([
+      clubWith({ id: "a1", name: "Active One", state: "active" }),
+      clubWith({ id: "c1", name: "Finished One", state: "complete" }),
+    ]);
+    renderHome();
+
+    const active = (await screen.findByRole("heading", { name: "Active One" })).closest("li")!;
+    const done = screen.getByRole("heading", { name: "Finished One" }).closest("li")!;
+
+    expect(within(active).getByText("active")).toBeInTheDocument();
+    expect(within(done).getByText("complete")).toBeInTheDocument();
+    expect(active.querySelector(".bg-positive")).toHaveAttribute("aria-hidden", "true");
   });
 
   it("empty list: renders the empty-state copy", async () => {
@@ -156,7 +231,7 @@ describe("HomeRoute (My Clubs)", () => {
     const user = userEvent.setup();
     renderHome();
 
-    await user.click(await screen.findByText("Friday Mixtape"));
+    await user.click(await screen.findByRole("heading", { name: "Friday Mixtape" }));
 
     expect(await screen.findByText("CLUB DETAIL CONTENT")).toBeInTheDocument();
   });
@@ -165,7 +240,7 @@ describe("HomeRoute (My Clubs)", () => {
     const user = userEvent.setup();
     renderHome();
 
-    await screen.findByText("Friday Mixtape");
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
     await user.click(screen.getByRole("button", { name: /^logout$/i }));
 
     expect(logout).toHaveBeenCalledTimes(1);
@@ -183,7 +258,7 @@ describe("HomeRoute (My Clubs)", () => {
   it("admin nav: hidden for a non-admin", async () => {
     renderHome();
 
-    await screen.findByText("Friday Mixtape");
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
     expect(screen.queryByRole("button", { name: /^admin$/i })).not.toBeInTheDocument();
   });
 
@@ -202,9 +277,9 @@ describe("HomeRoute (My Clubs)", () => {
       needsOnboarding: false,
       isPlatformAdmin: true,
       applyDisplayName: vi.fn(),
-    preferredService: null,
-    tosAccepted: true,
-    applyTosAccepted: vi.fn(),
+      preferredService: null,
+      tosAccepted: true,
+      applyTosAccepted: vi.fn(),
     });
     const user = userEvent.setup();
     renderHome();

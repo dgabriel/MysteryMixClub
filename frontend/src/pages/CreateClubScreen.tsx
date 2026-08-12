@@ -3,6 +3,7 @@ import { Button } from "../components/Button";
 import { PaperSurface } from "../components/PaperSurface";
 import { FormError } from "../components/FormError";
 import { TextField } from "../components/TextField";
+import { HelpLink } from "../components/HelpLink";
 import { DeadlineWindowField } from "../components/DeadlineWindowField";
 import { daysAndHoursToTotal, validateWindowHours } from "../utils/deadlineWindow";
 
@@ -193,12 +194,36 @@ export function CreateClubScreen({ onSubmit, submitting, error, onCancel }: Crea
           the toolbar was scrolled off on load (61px, measured). */}
       <main className="flex flex-col items-center px-4 pt-8 pb-16 sm:px-8">
         <div className="w-full max-w-sm">
-          <h1 className="text-center font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
-            new club
-          </h1>
-          <p className="mt-2 text-center text-sm leading-[1.72] text-ink-muted">
-            anyone you invite skips the waitlist and joins straight in.
-          </p>
+          {/* Left-aligned like every other screen in the nav shell. Centring
+              was for the standalone version of this page, which had no
+              toolbar to align to. */}
+          <div className="flex items-center gap-3">
+            <h1 className="font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
+              new club
+            </h1>
+            {/* Beside the heading, the same place every other screen puts it —
+                a lone `?` under a paragraph has nothing to be "about". */}
+            <HelpLink anchor="clubs" onPaper />
+          </div>
+          {/* Actual help, not a tagline. Two things a first-time organizer
+              cannot work out from the fields themselves: what a club *is*, and
+              that votes-per-player and songs-per-submission are the only
+              settings here with no edit path afterward (they are absent from
+              the API's ClubUpdate — everything else on this form is in it). */}
+          <div className="mt-3 space-y-3">
+            <p className="text-sm leading-[1.72] text-ink-muted">
+              a club is a private group running a series of mystery mixes together — one mix at a
+              time, each with its own theme, songs and votes. you&apos;ll get a shareable invite
+              link once it exists; anyone who uses it skips the waitlist and joins straight in.
+            </p>
+            <p className="text-sm leading-[1.72] text-ink-muted">
+              the name, the number of mixes and the deadlines can all be changed later.{" "}
+              <strong className="font-normal text-ink">
+                votes per player and songs per submission can&apos;t
+              </strong>{" "}
+              — those are fixed for the life of the club, so set them here.
+            </p>
+          </div>
 
           <form onSubmit={handleSubmit} noValidate className="mt-10 space-y-8">
             <TextField

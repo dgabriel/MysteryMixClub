@@ -14,7 +14,7 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
     items: [
       {
         q: "do i need an invite?",
-        a: "yes. mysterymixclub is invite-only — there's no open signup. someone already in a club can send you a club invite link, or a platform admin can send you a general one.",
+        a: "yes. mysterymixclub is invite-only; there's no open signup. someone already in a club can send you a club invite link, or a platform admin can send you a general one.",
       },
       {
         q: "what's the waitlist?",
@@ -62,7 +62,7 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
       },
       {
         q: "who sets the theme and deadlines?",
-        a: "the club's organizer (or co-organizer, if it has one). themes can be anything — literal or poetic.",
+        a: "the club's organizer (or co-organizer, if it has one). themes can be anything, literal or poetic.",
       },
       {
         q: "what happens when a mystery mix closes?",
@@ -76,11 +76,11 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
     items: [
       {
         q: "how do i submit?",
-        a: "search for a song right in the app, or paste a link you already have. both land on the same kind of submission — there's no lesser option. you can add a short note about why you picked it.",
+        a: "search for a song right in the app, or paste a link you already have. both land on the same kind of submission, and neither is the lesser option. you can add a short note about why you picked it.",
       },
       {
         q: "do i need a spotify or apple music account?",
-        a: "no. mysterymixclub itself is the platform — you can search and submit without connecting anything. a streaming account only matters for how you listen afterward.",
+        a: "no. mysterymixclub itself is the platform, so you can search and submit without connecting anything. a streaming account only matters for how you listen afterward.",
       },
       {
         q: "which services can i paste a link from?",
@@ -102,7 +102,7 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
     items: [
       {
         q: "is voting anonymous?",
-        a: "yes. while voting is open, songs are shuffled into one playlist with no names attached — nobody can tell who submitted what until the mystery mix closes.",
+        a: "yes. while voting is open, songs are shuffled into one playlist with no names attached, so nobody can tell who submitted what until the mystery mix closes.",
       },
       {
         q: "can i vote for my own song?",
@@ -164,7 +164,7 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
       },
       {
         q: "can i turn them off?",
-        a: "yes, every notification email has a one-click unsubscribe link at the bottom. that doesn't affect sign-in emails — you'll always need those to log in.",
+        a: "yes, every notification email has a one-click unsubscribe link at the bottom. that doesn't affect sign-in emails; you'll always need those to log in.",
       },
     ],
   },

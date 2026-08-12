@@ -54,7 +54,7 @@ export function OnboardingScreen({
         <p className="mt-2 text-center text-sm leading-[1.72] text-muted-foreground">
           {needsDisplayName
             ? "choose a display name your friends will recognize."
-            : "we've published a terms of service and privacy policy — please review and accept to continue."}
+            : "we've published a terms of service and privacy policy. please review and accept to continue."}
         </p>
 
         <form onSubmit={handleSubmit} noValidate className="mt-10 space-y-8">

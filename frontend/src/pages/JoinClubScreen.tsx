@@ -58,7 +58,7 @@ export function JoinClubScreen({
                   rather than `muted-foreground` because with no heading above it
                   this paragraph IS the screen's primary text. */}
               <p className="mt-8 text-sm leading-[1.72] text-foreground">
-                this link has expired — ask the organizer for a new one.
+                this link has expired. ask the organizer for a new one.
               </p>
               <div className="mt-8">
                 {isAuthenticated ? (

@@ -236,7 +236,7 @@ describe("SongSearchCard", () => {
     await user.click(screen.getByRole("button", { name: /^search$/i }));
 
     expect(
-      await screen.findByText(/too many matches — try adding the artist name/i),
+      await screen.findByText(/too many matches\. try adding the artist name/i),
     ).toBeInTheDocument();
   });
 

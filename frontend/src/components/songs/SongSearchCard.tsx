@@ -58,7 +58,7 @@ const BANDCAMP_CUSTOM_DOMAIN_ERROR =
 function isBandcampCustomDomainError(err: unknown): boolean {
   return err instanceof ApiError && err.status === 404 && err.message.includes("custom domain");
 }
-const TOO_MANY = "Too many matches — try adding the artist name";
+const TOO_MANY = "Too many matches. Try adding the artist name";
 
 // Display order + labels for the platform link row. Keys match ResolvedSong.platforms.
 const PLATFORMS: { key: PlatformKey; label: string }[] = [
@@ -374,7 +374,7 @@ export function SongSearchCard({
                   aria-describedby={error ? `${idPrefix}-search-error` : undefined}
                 />
                 <p className="mt-2 text-meta leading-[1.6] text-muted-foreground">
-                  paste any link — we'll detect the service automatically
+                  paste any link and we'll detect the service automatically
                 </p>
               </div>
               <div className="mt-5">

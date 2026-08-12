@@ -60,7 +60,7 @@ export function CheckEmailScreen({ email, onBack }: CheckEmailScreenProps) {
           ) : (
             <>
               <p className="mt-6 text-sm leading-[1.72] text-ink-muted">
-                no account yet? you won&apos;t receive anything — you&apos;ll need an invite.{" "}
+                no account yet? you won&apos;t receive anything; you&apos;ll need an invite.{" "}
                 <ContactEmail
                   user="info"
                   domain="mysterymixclub.com"

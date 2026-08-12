@@ -212,16 +212,16 @@ export function CreateClubScreen({ onSubmit, submitting, error, onCancel }: Crea
               the API's ClubUpdate — everything else on this form is in it). */}
           <div className="mt-3 space-y-3">
             <p className="text-sm leading-[1.72] text-ink-muted">
-              a club is a private group running a series of mystery mixes together — one mix at a
+              a club is a private group running a series of mystery mixes together, one mix at a
               time, each with its own theme, songs and votes. you&apos;ll get a shareable invite
               link once it exists; anyone who uses it skips the waitlist and joins straight in.
             </p>
             <p className="text-sm leading-[1.72] text-ink-muted">
               the name, the number of mixes and the deadlines can all be changed later.{" "}
               <strong className="font-normal text-ink">
-                votes per player and songs per submission can&apos;t
+                votes per player and songs per submission can&apos;t.
               </strong>{" "}
-              — those are fixed for the life of the club, so set them here.
+              those are fixed for the life of the club, so set them here.
             </p>
           </div>
 
@@ -279,7 +279,7 @@ export function CreateClubScreen({ onSubmit, submitting, error, onCancel }: Crea
                 error={fieldErrors.mixes}
               />
               <p className="mt-2 text-meta leading-[1.6] text-ink-muted">
-                we&apos;ll create this many mystery mixes for you — name each one later.
+                we&apos;ll create this many mystery mixes for you. name each one later.
               </p>
             </div>
 
@@ -319,7 +319,7 @@ export function CreateClubScreen({ onSubmit, submitting, error, onCancel }: Crea
                 error={fieldErrors.songs}
               />
               <p className="mt-2 text-meta leading-[1.6] text-ink-muted">
-                how many songs each player can submit per mystery mix — 1 to 5.
+                how many songs each player can submit per mystery mix, from 1 to 5.
               </p>
             </div>
 

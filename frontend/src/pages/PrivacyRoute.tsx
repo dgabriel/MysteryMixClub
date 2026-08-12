@@ -59,8 +59,8 @@ export function PrivacyRoute() {
               </h2>
               <p className="mt-3">
                 no individual behavior tracking and no third-party analytics scripts (no google
-                analytics, no mixpanel). we only look at aggregate, app-wide numbers — total clubs,
-                total mystery mixes, total submissions — never a single user's activity pattern.
+                analytics, no mixpanel). we only look at aggregate, app-wide numbers: total clubs,
+                total mystery mixes, total submissions. never a single user's activity pattern.
               </p>
             </section>
 

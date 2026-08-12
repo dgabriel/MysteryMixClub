@@ -2098,7 +2098,7 @@ describe("MixDetailRoute", () => {
 
       expect(
         await screen.findByText(
-          /your votes are locked — they will be revealed when the mystery mix closes/i,
+          /your votes are locked\. they will be revealed when the mystery mix closes/i,
         ),
       ).toBeInTheDocument();
     });

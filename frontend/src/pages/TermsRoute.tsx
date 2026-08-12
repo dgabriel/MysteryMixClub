@@ -77,7 +77,7 @@ export function TermsRoute() {
               </h2>
               <p className="mt-3">
                 you can delete your account at any time from your profile. this removes your
-                personal data — see the{" "}
+                personal data. see the{" "}
                 <a
                   href="/privacy"
                   className="text-ink-link underline underline-offset-[3px] hover:text-ink"

@@ -190,7 +190,7 @@ export function AdminScreen({
           invite
         </h2>
         <p className="mt-2 text-sm leading-[1.72] text-muted-foreground">
-          generate a signup invite. no club attached — whoever uses it creates their own, or later
+          generate a signup invite. no club attached; whoever uses it creates their own, or later
           joins an open one.
         </p>
 
@@ -216,7 +216,7 @@ export function AdminScreen({
           waitlist
         </h2>
         <p className="mt-2 text-sm leading-[1.72] text-muted-foreground">
-          temporary, pre-launch. inviting a waitlist entry sends them a signup invite by email — the
+          temporary, pre-launch. inviting a waitlist entry sends them a signup invite by email. the
           same kind generated above.
         </p>
 
@@ -478,7 +478,9 @@ function AdminUserRow({
             {user.email}
           </span>
           <span className="mt-0.5 block font-mono text-meta text-muted-foreground">
-            {user.display_name || "—"}
+            {/* "no name set", not an em-dash placeholder: an empty cell marker
+                is one more thing to decode, and this row already has room. */}
+            {user.display_name || "no name set"}
           </span>
         </span>
         {!confirming ? (

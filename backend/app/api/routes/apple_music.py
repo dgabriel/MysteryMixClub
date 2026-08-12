@@ -185,7 +185,7 @@ async def create_mix_apple_playlist(
         # end — an expired/revoked MUT is the one failure the user can fix.
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="apple music authorization expired — reconnect and try again",
+            detail="apple music authorization expired; reconnect and try again",
         ) from exc
     except AppleMusicApiError as exc:
         raise HTTPException(

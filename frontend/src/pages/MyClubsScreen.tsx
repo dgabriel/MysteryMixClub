@@ -152,7 +152,7 @@ export function MyClubsScreen({
             {/* Permanent home-screen fixture, below the club list (MYS-45). */}
             <section className="mt-12 border-t border-ink-hairline pt-10">
               <p className="mt-1 text-base leading-[1.72] text-ink">
-                practice your song search skills here — no club required
+                practice your song search skills here, no club required
               </p>
               <SongSearchCard preferredService={preferredService} />
             </section>

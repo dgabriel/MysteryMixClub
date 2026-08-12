@@ -724,7 +724,7 @@ function MixRow({
               </span>
             ) : isAdmin ? (
               <span className="mt-2 block truncate text-sm italic leading-[1.65] text-muted-foreground">
-                untitled — add a theme
+                untitled, add a theme
               </span>
             ) : null}
           </span>
@@ -1137,9 +1137,8 @@ function OrganizerEdit({
         error={windowErrorField === "voting_window" ? windowError : null}
       />
       <p className="text-meta leading-[1.6] text-ink-muted">
-        this only applies going forward — a mystery mix already collecting submissions or votes
-        keeps its current deadline. it takes effect the next time a mystery mix (or its next phase)
-        opens.
+        this only applies going forward. a mystery mix already collecting submissions or votes keeps
+        its current deadline. it takes effect the next time a mystery mix (or its next phase) opens.
       </p>
       {/* A failed save is a screen-level form error (ADR 0004) — its own color
           category, so it consumes nothing from this screen's amber and may show

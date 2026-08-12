@@ -365,7 +365,7 @@ export function MixDetailRoute() {
     } catch (err) {
       if (err instanceof ApiError && err.message.includes("already in this")) {
         setActionError(
-          `"${song.title}" by ${song.artist} is already in this mystery mix — someone else has great taste too.`,
+          `"${song.title}" by ${song.artist} is already in this mystery mix. someone else has great taste too.`,
         );
       } else {
         setActionError(err instanceof ApiError ? err.message : "couldn't submit. try again.");
@@ -402,7 +402,7 @@ export function MixDetailRoute() {
     } catch (err) {
       if (err instanceof ApiError && err.message.includes("already in this")) {
         setActionError(
-          `"${song.title}" by ${song.artist} is already in this mystery mix — someone else has great taste too.`,
+          `"${song.title}" by ${song.artist} is already in this mystery mix. someone else has great taste too.`,
         );
       } else {
         setActionError(
@@ -707,7 +707,7 @@ export function MixDetailRoute() {
           ) : null}
           {clubRepeatWarning && !actionError ? (
             <p className="mt-6 text-sm leading-[1.72] text-ink-muted">
-              this song was submitted in a previous mystery mix — submitted anyway.
+              this song was submitted in a previous mystery mix. submitted anyway.
             </p>
           ) : null}
 
@@ -2243,7 +2243,7 @@ function VotingTally({
   return (
     <>
       <p className="text-sm leading-[1.72] text-muted-foreground">
-        you&apos;ve locked in your votes — check back to see how the voting goes.
+        you&apos;ve locked in your votes. check back to see how the voting goes.
       </p>
       <PlaylistsSection>
         <YouTubePlaylistRow
@@ -2306,7 +2306,7 @@ function VotingTally({
       {myVotes.length > 0 && (
         <div className="mt-6 border-t border-hairline pt-6">
           <p className="font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
-            your votes are locked — they will be revealed when the mystery mix closes
+            your votes are locked. they will be revealed when the mystery mix closes
           </p>
         </div>
       )}

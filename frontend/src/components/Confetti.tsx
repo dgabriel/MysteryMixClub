@@ -1,11 +1,19 @@
 import { useEffect, useState } from "react";
 
+/** Particle colors, tuned to read on a near-black page. Confetti fires only on
+ *  club completion (`ClubHomeScreen`, `isComplete`), which is an achievement
+ *  moment, so the burst is amber-led and that amber is in category.
+ *
+ *  These are inline `backgroundColor` values — a particle cannot read a
+ *  Tailwind class — so each literal names the token it comes from, for the R18
+ *  sweep. The retired palette this replaces had already drifted: its `#7A9E82`
+ *  was the *pre*-MYS-186 sage, stale before the redesign began. */
 const COLORS = [
-  "#7A9E82", // sage
-  "#83681A", // gold
-  "#A8C4AD", // sage-light
-  "#D4E3D7", // sage-pale
-  "#2E2B27", // ink
+  "#F3821D", // accent
+  "#F7F5F1", // foreground
+  "#D2B27C", // chart-5
+  "#00A692", // chart-2
+  "#8E8F93", // muted-foreground
 ];
 
 const COUNT = 55;

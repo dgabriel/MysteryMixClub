@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import type { AdminUser, SpotifyStatus, WaitlistEntry } from "../services/api";
 import { Badge } from "../components/Badge";
 import { Button } from "../components/Button";
+import { Card } from "../components/Card";
+import { PaperSurface } from "../components/PaperSurface";
 import { InviteShare } from "../components/InviteShare";
 import { TextField } from "../components/TextField";
 
@@ -56,10 +58,33 @@ type AdminScreenProps = {
 /**
  * Thin platform-admin page: search users by email, then hard-delete a match
  * behind a typed confirm; and generate a club-less signup invite (MYS-182).
- * Content-only — the shared TopNav is rendered by AuthedLayout. The single
- * Rust signal on this screen is the destructive confirm action; everything
- * else, including the invite section, stays in the Sage/Ink family.
- * Underline-only inputs, ALL-CAPS labels, calm lowercase copy.
+ * Content-only — the shared TopNav is rendered by AuthedLayout, so this screen
+ * renders no hero mark of its own.
+ *
+ * **The record table.** The user results and the waitlist are the app's first
+ * real data tables, and the system has no table spec, so both are derived from
+ * what it does define: a `Card` surface holding the rows, `hairline-soft`
+ * separators between them (the step the guide names for dividers *within* a
+ * card), mono for every data cell, `foreground` for the value that identifies
+ * the row and `muted-foreground` for its metadata. They stay `ul`/`li` rather
+ * than becoming `table` markup — these are record rows with one control each,
+ * not a grid, and neither carries a header row.
+ *
+ * Renders on the light `paper` surface (ADR 0013). The record cards stay dark —
+ * the frame model — so every row inside one keeps the dark ramp, including its
+ * inline controls and the typed-confirm field. Only the headings, the page
+ * copy, the page-level fields and buttons, and the waitlist filters move to
+ * `ink`.
+ *
+ * Amber: the three section headings in `ink-accent` (the paper-legal value,
+ * matching /profile), the `primary` fill on "search", "generate invite" and the
+ * spotify connect button plus `InviteShare`'s own copy button, and hover on the
+ * per-row "delete" arming control and the waitlist status filters.
+ * The per-row controls are neutral at rest and go amber only on hover, because
+ * a search can return any number of rows and a per-row accent at rest would be
+ * amber as pattern (the conclusion R10 and R12 reached for the same shape of
+ * list). The one irreversible action on the screen — the armed hard-delete —
+ * takes `Button variant="destructive"`, never the amber `link` variant.
  */
 export function AdminScreen({
   query,
@@ -94,164 +119,185 @@ export function AdminScreen({
   }
 
   return (
-    <main className="mx-auto w-full max-w-lg px-4 pb-16 sm:px-8">
-      <h1 className="font-serif lowercase text-[28px] leading-tight text-ink">admin</h1>
-      <p className="mt-4 font-mono text-[13px] font-light text-muted">
-        find a user by email, then remove their account and all of their data.
-      </p>
-
-      <Link
-        to="/admin/metrics"
-        className="mt-4 inline-block py-1.5 font-mono uppercase tracking-ui text-[11px] text-ink underline underline-offset-[3px] hover:text-sage"
-      >
-        metrics
-      </Link>
-
-      <form onSubmit={handleSubmit} className="mt-8 flex items-end gap-4">
-        <div className="flex-1">
-          <TextField
-            id="admin-user-search"
-            label="email"
-            type="search"
-            name="email"
-            autoComplete="off"
-            placeholder="name@example.com"
-            value={query}
-            onChange={(e) => onQueryChange(e.target.value)}
-            disabled={searching}
-          />
-        </div>
-        <Button type="submit" disabled={searching || !query.trim()}>
-          {searching ? "searching…" : "search"}
-        </Button>
-      </form>
-
-      {searchError ? (
-        <p role="alert" className="mt-4 font-mono text-[11px] text-ink">
-          {searchError}
-        </p>
-      ) : null}
-
-      <div className="mt-8">
-        {searched && results.length === 0 && !searching ? (
-          <p className="font-mono text-[13px] font-light text-muted">no matches</p>
-        ) : (
-          <ul className="divide-y divide-border border-t border-border">
-            {results.map((user) => (
-              <li key={user.id} className="py-4">
-                <AdminUserRow
-                  user={user}
-                  deleting={deletingUserId === user.id}
-                  onDelete={() => onDeleteUser(user.id)}
-                />
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      {deleteError ? (
-        <p role="alert" className="mt-4 font-mono text-[11px] text-ink">
-          {deleteError}
-        </p>
-      ) : null}
-
-      <section className="mt-16">
-        <h2 className="font-serif lowercase text-[20px] leading-tight text-ink">invite</h2>
-        <p className="mt-2 font-mono text-[13px] font-light text-muted">
-          generate a signup invite. no club attached — whoever uses it creates their own, or later
-          joins an open one.
+    // Light surface (ADR 0013), `nested` because AuthedLayout owns the shell.
+    <PaperSurface nested>
+      <main className="mx-auto w-full max-w-lg px-4 pt-8 pb-16 sm:px-8">
+        <h1 className="font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
+          admin
+        </h1>
+        <p className="mt-4 text-sm leading-[1.72] text-ink-muted">
+          find a user by email, then remove their account and all of their data.
         </p>
 
-        {inviteError ? (
-          <p role="alert" className="mt-4 font-mono text-[11px] text-ink">
-            {inviteError}
-          </p>
-        ) : null}
+        <Link
+          to="/admin/metrics"
+          className="mt-4 inline-block py-1.5 font-mono uppercase tracking-mono text-label text-ink-link underline underline-offset-[3px] transition-colors duration-150 hover:text-ink"
+        >
+          metrics
+        </Link>
 
-        <div className="mt-6">
-          {platformInviteUrl ? (
-            <InviteShare inviteUrl={platformInviteUrl} />
-          ) : (
-            <Button type="button" onClick={onGenerateInvite} disabled={generatingInvite}>
-              {generatingInvite ? "generating…" : "generate invite"}
-            </Button>
-          )}
-        </div>
-      </section>
-
-      <section className="mt-16">
-        <h2 className="font-serif lowercase text-[20px] leading-tight text-ink">waitlist</h2>
-        <p className="mt-2 font-mono text-[13px] font-light text-muted">
-          temporary, pre-launch. inviting a waitlist entry sends them a signup invite by email — the
-          same kind generated above.
-        </p>
-
-        {waitlistError ? (
-          <p role="alert" className="mt-4 font-mono text-[11px] text-ink">
-            {waitlistError}
-          </p>
-        ) : null}
-
-        <div className="mt-6">
-          {waitlistLoading ? null : waitlistEntries.length === 0 ? (
-            <p className="font-mono text-[13px] font-light text-muted">
-              no one on the waitlist yet
-            </p>
-          ) : (
-            <WaitlistList
-              entries={waitlistEntries}
-              invitingEntryId={invitingEntryId}
-              onInviteFromWaitlist={onInviteFromWaitlist}
+        <form onSubmit={handleSubmit} className="mt-8 flex items-end gap-4">
+          <div className="flex-1">
+            <TextField
+              onPaper
+              id="admin-user-search"
+              label="email"
+              type="search"
+              name="email"
+              autoComplete="off"
+              placeholder="name@example.com"
+              value={query}
+              onChange={(e) => onQueryChange(e.target.value)}
+              disabled={searching}
             />
-          )}
+          </div>
+          <Button onPaper type="submit" disabled={searching || !query.trim()}>
+            {searching ? "searching…" : "search"}
+          </Button>
+        </form>
+
+        {/* A failed search is an outcome from the server, not form validation:
+            nothing the admin typed is invalid, so it stays ordinary body copy
+            rather than taking ADR 0004's `destructive-text` category. */}
+        {searchError ? (
+          <p role="alert" className="mt-4 text-sm leading-[1.72] text-ink">
+            {searchError}
+          </p>
+        ) : null}
+
+        <div className="mt-8">
+          {searched && results.length === 0 && !searching ? (
+            <p className="text-sm leading-[1.72] text-ink-muted">no matches</p>
+          ) : results.length > 0 ? (
+            <Card>
+              <ul className="divide-y divide-hairline-soft">
+                {results.map((user) => (
+                  <li key={user.id} className="py-4 first:pt-0 last:pb-0">
+                    <AdminUserRow
+                      user={user}
+                      deleting={deletingUserId === user.id}
+                      onDelete={() => onDeleteUser(user.id)}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          ) : null}
         </div>
-      </section>
 
-      <section className="mt-16">
-        <h2 className="font-serif lowercase text-[20px] leading-tight text-ink">spotify</h2>
-        <p className="mt-2 font-mono text-[13px] font-light text-muted">
-          connect the one shared mysterymixclub spotify account playlist generation runs under.
-        </p>
-
-        {spotifyResultMessage(spotifyResult) ? (
-          <p className="mt-4 font-mono text-[11px] text-ink">
-            {spotifyResultMessage(spotifyResult)}
+        {/* Same category as the search failure — the backend's calm 409
+            self-delete message, shown verbatim. */}
+        {deleteError ? (
+          <p role="alert" className="mt-4 text-sm leading-[1.72] text-ink">
+            {deleteError}
           </p>
         ) : null}
 
-        {spotifyError ? (
-          <p role="alert" className="mt-4 font-mono text-[11px] text-ink">
-            {spotifyError}
+        <section className="mt-16">
+          <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-accent">
+            invite
+          </h2>
+          <p className="mt-2 text-sm leading-[1.72] text-ink-muted">
+            generate a signup invite. no club attached; whoever uses it creates their own, or later
+            joins an open one.
           </p>
-        ) : null}
 
-        <div className="mt-6">
-          {spotifyStatusLoading ? null : (
-            <div className="flex items-center gap-4">
-              <Badge>
-                {!spotifyStatus?.configured
-                  ? "not configured"
-                  : spotifyStatus.connected
-                    ? "connected"
-                    : "not connected"}
-              </Badge>
-              <Button
-                type="button"
-                onClick={onConnectSpotify}
-                disabled={connectingSpotify || !spotifyStatus?.configured}
-              >
-                {connectingSpotify
-                  ? "connecting…"
-                  : spotifyStatus?.connected
-                    ? "reconnect spotify"
-                    : "connect spotify"}
+          {inviteError ? (
+            <p role="alert" className="mt-4 text-sm leading-[1.72] text-ink">
+              {inviteError}
+            </p>
+          ) : null}
+
+          <div className="mt-6">
+            {platformInviteUrl ? (
+              <InviteShare inviteUrl={platformInviteUrl} onPaper />
+            ) : (
+              <Button onPaper type="button" onClick={onGenerateInvite} disabled={generatingInvite}>
+                {generatingInvite ? "generating…" : "generate invite"}
               </Button>
-            </div>
-          )}
-        </div>
-      </section>
-    </main>
+            )}
+          </div>
+        </section>
+
+        <section className="mt-16">
+          <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-accent">
+            waitlist
+          </h2>
+          <p className="mt-2 text-sm leading-[1.72] text-ink-muted">
+            temporary, pre-launch. inviting a waitlist entry sends them a signup invite by email.
+            the same kind generated above.
+          </p>
+
+          {waitlistError ? (
+            <p role="alert" className="mt-4 text-sm leading-[1.72] text-ink">
+              {waitlistError}
+            </p>
+          ) : null}
+
+          <div className="mt-6">
+            {waitlistLoading ? null : waitlistEntries.length === 0 ? (
+              <p className="text-sm leading-[1.72] text-ink-muted">no one on the waitlist yet</p>
+            ) : (
+              <WaitlistList
+                entries={waitlistEntries}
+                invitingEntryId={invitingEntryId}
+                onInviteFromWaitlist={onInviteFromWaitlist}
+              />
+            )}
+          </div>
+        </section>
+
+        <section className="mt-16">
+          <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-accent">
+            spotify
+          </h2>
+          <p className="mt-2 text-sm leading-[1.72] text-ink-muted">
+            connect the one shared mysterymixclub spotify account playlist generation runs under.
+          </p>
+
+          {/* The OAuth round-trip's outcome. ADR 0004 explicitly keeps a
+              third-party authorization being denied or cancelled outside the
+              form-error category, so this is plain body copy in every case. */}
+          {spotifyResultMessage(spotifyResult) ? (
+            <p className="mt-4 text-sm leading-[1.72] text-ink">
+              {spotifyResultMessage(spotifyResult)}
+            </p>
+          ) : null}
+
+          {spotifyError ? (
+            <p role="alert" className="mt-4 text-sm leading-[1.72] text-ink">
+              {spotifyError}
+            </p>
+          ) : null}
+
+          <div className="mt-6">
+            {spotifyStatusLoading ? null : (
+              <div className="flex items-center gap-4">
+                <Badge>
+                  {!spotifyStatus?.configured
+                    ? "not configured"
+                    : spotifyStatus.connected
+                      ? "connected"
+                      : "not connected"}
+                </Badge>
+                <Button
+                  onPaper
+                  type="button"
+                  onClick={onConnectSpotify}
+                  disabled={connectingSpotify || !spotifyStatus?.configured}
+                >
+                  {connectingSpotify
+                    ? "connecting…"
+                    : spotifyStatus?.connected
+                      ? "reconnect spotify"
+                      : "connect spotify"}
+                </Button>
+              </div>
+            )}
+          </div>
+        </section>
+      </main>
+    </PaperSurface>
   );
 }
 
@@ -294,6 +340,7 @@ function WaitlistList({
       <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
         <div className="min-w-0 flex-1">
           <TextField
+            onPaper
             id="admin-waitlist-search"
             label="search"
             type="search"
@@ -304,6 +351,11 @@ function WaitlistList({
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
+        {/* Exactly one filter is selected at all times, so the selection is
+            permanent furniture rather than something that happened: it takes
+            `foreground` plus an underline, not amber. Hover goes amber, which
+            is transient and one-at-a-time. Same pair R14's service picker
+            settled on. */}
         <div className="flex gap-4 pb-[10px]">
           {(["all", "pending", "invited"] as const).map((option) => (
             <button
@@ -312,10 +364,10 @@ function WaitlistList({
               onClick={() => setStatus(option)}
               aria-pressed={status === option}
               className={[
-                "py-1.5 font-mono uppercase tracking-ui text-[11px] transition-colors duration-150",
+                "py-1.5 font-mono uppercase tracking-mono text-mini transition-colors duration-150",
                 status === option
-                  ? "text-sage underline underline-offset-[3px]"
-                  : "text-muted hover:text-ink",
+                  ? "text-ink underline underline-offset-[3px]"
+                  : "text-ink-muted hover:text-ink-accent",
               ].join(" ")}
             >
               {option}
@@ -326,19 +378,21 @@ function WaitlistList({
 
       <div className="mt-6">
         {filtered.length === 0 ? (
-          <p className="font-mono text-[13px] font-light text-muted">no matches</p>
+          <p className="text-sm leading-[1.72] text-ink-muted">no matches</p>
         ) : (
-          <ul className="divide-y divide-border border-t border-border">
-            {filtered.map((entry) => (
-              <li key={entry.id} className="py-4">
-                <WaitlistRow
-                  entry={entry}
-                  inviting={invitingEntryId === entry.id}
-                  onInvite={() => onInviteFromWaitlist(entry.id)}
-                />
-              </li>
-            ))}
-          </ul>
+          <Card>
+            <ul className="divide-y divide-hairline-soft">
+              {filtered.map((entry) => (
+                <li key={entry.id} className="py-4 first:pt-0 last:pb-0">
+                  <WaitlistRow
+                    entry={entry}
+                    inviting={invitingEntryId === entry.id}
+                    onInvite={() => onInviteFromWaitlist(entry.id)}
+                  />
+                </li>
+              ))}
+            </ul>
+          </Card>
         )}
       </div>
     </>
@@ -346,9 +400,11 @@ function WaitlistList({
 }
 
 /** One waitlist entry: email, when they joined, and whether/when they've
- *  already been invited. Non-destructive, resendable — a plain ghost button,
- *  no confirm step and no Rust (this screen's single Rust use stays on the
- *  destructive user-delete confirm above). */
+ *  already been invited. Sending or resending an invite changes nothing that
+ *  can't be repeated, so it stays a `ghost` button with no confirm step — the
+ *  same recoverable-vs-irreversible line R10 drew between leaving a club and
+ *  deleting one. `ghost` also keeps the accent off a control that repeats once
+ *  per row. */
 function WaitlistRow({
   entry,
   inviting,
@@ -366,10 +422,10 @@ function WaitlistRow({
   return (
     <div className="flex items-center justify-between gap-4">
       <span className="min-w-0">
-        <span className="block truncate font-mono text-[13px] text-ink" title={entry.email}>
+        <span className="block truncate font-mono text-sm text-foreground" title={entry.email}>
           {entry.email}
         </span>
-        <span className="mt-0.5 block font-mono text-[11px] font-light text-muted">
+        <span className="mt-0.5 block font-mono text-meta text-muted-foreground">
           joined {joined}
           {entry.invited_at
             ? ` · invited ${new Date(entry.invited_at).toLocaleDateString(undefined, {
@@ -394,8 +450,20 @@ function WaitlistRow({
 
 /**
  * One search result. The destructive delete is gated behind a typed confirm:
- * the admin must type the user's exact email to arm it. The armed delete button
- * is the page's single Rust signal (the `link` Button variant renders in Rust).
+ * the admin must type the user's exact email to arm it, and that step is
+ * unchanged in every respect.
+ *
+ * Two controls, two verdicts. The "delete" control only *arms* the confirm —
+ * it destroys nothing and is undone by "cancel" — so it stays a neutral inline
+ * text button that goes amber only on hover, the treatment R10 gave the
+ * per-member "remove"/"make admin" controls: a search can return any number of
+ * rows, and an accent at rest on each of them would read as pattern. The
+ * commit takes `Button variant="destructive"` (R2) rather than the amber `link`
+ * variant it used to carry. Hard-deleting another person's account takes their
+ * clubs, submissions, votes and notes with it and cannot be restored, so it
+ * reads as danger; amber means action or achievement, and this is neither in
+ * the sense that matters. "cancel" is `ghost` for the same reason it is in R10
+ * and R14 — giving both buttons the red fill would flatten the difference.
  */
 function AdminUserRow({
   user,
@@ -415,18 +483,20 @@ function AdminUserRow({
     <div className="flex flex-col gap-3">
       <div className="flex items-start justify-between gap-4">
         <span className="min-w-0">
-          <span className="block truncate font-mono text-[13px] text-ink" title={user.email}>
+          <span className="block truncate font-mono text-sm text-foreground" title={user.email}>
             {user.email}
           </span>
-          <span className="mt-0.5 block font-mono text-[11px] font-light text-muted">
-            {user.display_name || "—"}
+          <span className="mt-0.5 block font-mono text-meta text-muted-foreground">
+            {/* "no name set", not an em-dash placeholder: an empty cell marker
+                is one more thing to decode, and this row already has room. */}
+            {user.display_name || "no name set"}
           </span>
         </span>
         {!confirming ? (
           <button
             type="button"
             onClick={() => setConfirming(true)}
-            className="shrink-0 py-1.5 font-mono uppercase tracking-ui text-[11px] text-ink underline underline-offset-[3px] hover:text-sage"
+            className="shrink-0 py-1.5 font-mono uppercase tracking-mono text-mini text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-link"
           >
             delete
           </button>
@@ -434,8 +504,8 @@ function AdminUserRow({
       </div>
 
       {confirming ? (
-        <div className="space-y-3 border-l border-border pl-4">
-          <p className="font-mono text-[13px] font-light text-muted">
+        <div className="space-y-3 border-l border-hairline pl-4">
+          <p className="text-sm leading-[1.72] text-muted-foreground">
             type the email to confirm. this can't be undone.
           </p>
           <TextField
@@ -448,8 +518,14 @@ function AdminUserRow({
             disabled={deleting}
           />
           <div className="flex items-center gap-4">
-            {/* The page's single Rust use: the armed destructive confirm. */}
-            <Button variant="link" type="button" onClick={onDelete} disabled={!matches || deleting}>
+            {/* The one irreversible action on this screen: a `destructive`
+                fill, never the amber `link` variant it used to carry. */}
+            <Button
+              variant="destructive"
+              type="button"
+              onClick={onDelete}
+              disabled={!matches || deleting}
+            >
               {deleting ? "deleting…" : "delete account"}
             </Button>
             <Button

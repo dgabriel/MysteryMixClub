@@ -1,8 +1,9 @@
-import { ConcentricRings } from "../components/ConcentricRings";
+import { BrandLockup } from "../components/BrandLockup";
+import { PaperSurface } from "../components/PaperSurface";
 import { TopNav } from "../components/TopNav";
 
 const LINK_CLASS =
-  "font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink";
+  "font-mono uppercase tracking-mono text-label text-ink-link underline underline-offset-[3px] transition-colors duration-150 hover:text-ink";
 
 /**
  * Public "about" page (MYS-155) — no auth required, reachable from the login
@@ -11,37 +12,49 @@ const LINK_CLASS =
  */
 export function AboutRoute() {
   return (
-    <div className="min-h-screen flex flex-col">
+    <PaperSurface>
       <TopNav />
       <main className="flex-1 flex flex-col items-center justify-center px-4 py-16 sm:px-8">
         <div className="w-full max-w-md">
-          {/* Motif — the screen's single Rust use lives in the off-center ring dot. */}
-          <ConcentricRings size={72} accent className="mx-auto" />
+          {/* Brand first, page second. The lockup's wordmark is a `p`, not a
+              heading — `about` below stays this page's one `h1`, so the heading
+              outline still describes the document rather than the site. Visual
+              weight and heading semantics are independent; the wordmark is the
+              loudest thing here without being a heading. */}
+          <BrandLockup />
 
-          <h1 className="mt-8 text-center font-serif text-[34px] leading-tight">about</h1>
+          <h1 className="mt-10 border-t border-ink-hairline pt-8 text-center font-display text-[2rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
+            about
+          </h1>
 
-          <p className="mt-6 font-mono text-[13px] font-light leading-relaxed text-ink">
-            mysterymixclub is a place for friends to trade songs, discover what everyone's
-            been listening to, and put their taste on the line. no algorithm, no popularity
-            contest, just people who love music, sharing it with people they love.
+          <p className="mt-6 text-sm leading-[1.72] text-ink">
+            mysterymixclub is a place for friends to trade songs, discover what everyone's been
+            listening to, and put their taste on the line. no algorithm, no popularity contest, just
+            people who love music, sharing it with people they love.
           </p>
-          <p className="mt-4 font-mono text-[13px] font-light leading-relaxed text-ink">
+          <p className="mt-4 text-sm leading-[1.72] text-ink">
             you can search and verify songs across spotify, apple music, deezer, youtube, youtube
             music, and bandcamp. we auto-generate playlists for spotify, apple music, and youtube; a
             track that lives only on bandcamp comes through as a link everyone can open, rather than
             on those playlists.
           </p>
 
-          <div className="mt-10 border-t border-border pt-6">
-            <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
+          <div className="mt-10 border-t border-ink-hairline pt-6">
+            <h2 className="font-mono text-mini uppercase tracking-mono-wide text-ink-accent">
               who built this
+            </h2>
+            <p className="mt-3 text-sm leading-[1.72] text-ink">
+              dawn gabriel, a software engineer who loves art and poems and rock and roll.
             </p>
-            <p className="mt-3 font-mono text-[13px] font-light leading-relaxed text-ink">
-              dawn gabriel, a software engineer who loves art and poems and rock and roll. i design and
-              build mysterymixclub end to end: the backend, the interface, the concentric rings
-              on this page.  please reach out if you have questions, feedback, or want to contribute! 
-              d gabriel at gmail dot com.
-            </p>
+            <a
+              href="https://dawngabriel.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`mt-3 inline-block ${LINK_CLASS}`}
+            >
+              see more about me at dawngabriel.com
+            </a>
+            <br />
             <a
               href="https://github.com/dgabriel"
               target="_blank"
@@ -50,13 +63,13 @@ export function AboutRoute() {
             >
               see the code on github
             </a>
-            <p className="mt-4 font-mono text-[13px] font-light text-muted">
+            <p className="mt-4 text-sm leading-[1.72] text-ink-muted">
               built with{" "}
               <a
                 href="https://claude.com/claude-code"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-sage underline underline-offset-[3px] hover:text-ink"
+                className="text-ink-link underline underline-offset-[3px] hover:text-ink"
               >
                 claude code
               </a>{" "}
@@ -65,7 +78,7 @@ export function AboutRoute() {
                 href="https://ollama.com"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-sage underline underline-offset-[3px] hover:text-ink"
+                className="text-ink-link underline underline-offset-[3px] hover:text-ink"
               >
                 ollama
               </a>
@@ -73,19 +86,25 @@ export function AboutRoute() {
             </p>
           </div>
 
-          <div className="mt-8 border-t border-border pt-6">
-            <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
+          <div className="mt-8 border-t border-ink-hairline pt-6">
+            <h2 className="font-mono text-mini uppercase tracking-mono-wide text-ink-accent">
               support
-            </p>
-            <p className="mt-3 font-mono text-[13px] font-light leading-relaxed text-ink">
-              i will never *make* you look at an ad.  i won't use ai to scrape your data and sell it.
-              for many people, the app is free, but it does cost me a lil money to run.  the
-              total cost for developing this app was about $220 including hosting on digital ocean,
-               domain registration, apple developer program, apple music, and extra claude usage tokens.
-               monthly ongoing cost is just hosting and claude tokens, which is about $30-$40.  annual costs
-               include apple developer program and domain renewal, which is about $120.  
-               if you want to help me keep this app running, or if you just want to say thanks,
-              you can tip me on venmo.  any amount is appreciated <span className="text-rust">&lt;3</span>
+            </h2>
+            <p className="mt-3 text-sm leading-[1.72] text-ink">
+              i will never *make* you look at an ad. i won't use ai to scrape your data and sell it.
+              for many people, the app is free, but it does cost me a lil money to run. the total
+              cost for developing this app was about <b className="font-medium">$220</b> including
+              hosting on digital ocean, domain registration, apple developer program, apple music,
+              and extra claude usage tokens. monthly ongoing cost is just hosting and claude tokens,
+              which is about <b className="font-medium">$30-$40</b>. annual costs include apple
+              developer program and domain renewal, which is about{" "}
+              <b className="font-medium">$120</b>. if you want to help me keep this app running, or
+              if you just want to say thanks, you can tip me on venmo. any amount is appreciated{" "}
+              {/* Deliberate: Dawn added this as a second decorative accent under the
+                  retired system, and the style guide carries it forward by name. It is
+                  the one sanctioned exception to amber being action, achievement, or
+                  identity only. Do not remove it and do not flag it as a violation. */}
+              <span className="text-ink-accent">&lt;3</span>
             </p>
             <a
               href="https://www.venmo.com/u/dgbklyn"
@@ -97,11 +116,11 @@ export function AboutRoute() {
             </a>
           </div>
 
-          <div className="mt-8 border-t border-border pt-6">
-            <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted">
+          <div className="mt-8 border-t border-ink-hairline pt-6">
+            <h2 className="font-mono text-mini uppercase tracking-mono-wide text-ink-accent">
               thanks
-            </p>
-            <p className="mt-3 font-mono text-[13px] font-light leading-relaxed text-ink">
+            </h2>
+            <p className="mt-3 text-sm leading-[1.72] text-ink">
               thanks to my dear slam family pals, nv pals, and my lovely family here in brooklyn.
             </p>
             <a
@@ -114,7 +133,7 @@ export function AboutRoute() {
             </a>
           </div>
 
-          <div className="mt-8 flex justify-center gap-4 border-t border-border pt-6">
+          <div className="mt-8 flex justify-center gap-4 border-t border-ink-hairline pt-6">
             <a href="/terms" className={LINK_CLASS}>
               terms
             </a>
@@ -124,6 +143,6 @@ export function AboutRoute() {
           </div>
         </div>
       </main>
-    </div>
+    </PaperSurface>
   );
 }

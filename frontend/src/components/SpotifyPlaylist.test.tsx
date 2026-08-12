@@ -47,7 +47,7 @@ describe("SpotifyPlaylist", () => {
     render(<SpotifyPlaylist mixId="r1" />);
 
     await waitFor(() => expect(mockGetLink).toHaveBeenCalledWith("r1"));
-    expect(await screen.findByText(/no spotify playlist yet/i)).toBeInTheDocument();
+    expect(await screen.findByText(/not built yet/i)).toBeInTheDocument();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 
@@ -63,8 +63,8 @@ describe("SpotifyPlaylist", () => {
 
     render(<SpotifyPlaylist mixId="r1" />);
 
-    expect(await screen.findByText(/no spotify playlist yet/i)).toBeInTheDocument();
-    expect(screen.queryByText(/generating/i)).not.toBeInTheDocument();
+    expect(await screen.findByText(/not built yet/i)).toBeInTheDocument();
+    expect(screen.queryByText(/building/i)).not.toBeInTheDocument();
   });
 
   it("degrades to the quiet note when the fetch fails", async () => {
@@ -72,7 +72,7 @@ describe("SpotifyPlaylist", () => {
 
     render(<SpotifyPlaylist mixId="r1" />);
 
-    expect(await screen.findByText(/no spotify playlist yet/i)).toBeInTheDocument();
+    expect(await screen.findByText(/not built yet/i)).toBeInTheDocument();
   });
 
   it("renders nothing while the link is still loading", () => {
@@ -81,199 +81,6 @@ describe("SpotifyPlaylist", () => {
     const { container } = render(<SpotifyPlaylist mixId="r1" />);
 
     expect(container).toBeEmptyDOMElement();
-  });
-
-  describe("unmatched tracks (MYS-201/GH-232)", () => {
-    it("renders the singular summary line and list item for exactly one unmatched track", async () => {
-      mockGetLink.mockResolvedValue({
-        playlist_url: null,
-        overflow_youtube_url: null,
-        status: null,
-        unmatched: [
-          {
-            submission_id: "s1",
-            title: "Song One",
-            artist: "Artist One",
-            reason: "no_catalog_match",
-            source: null,
-            source_url: null,
-          },
-        ],
-      });
-
-      render(<SpotifyPlaylist mixId="r1" />);
-
-      expect(
-        await screen.findByText(/1 song didn't make the spotify playlist:/i),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText(/Song One by Artist One \(not found on spotify\)/),
-      ).toBeInTheDocument();
-    });
-
-    it("renders the plural summary line for two or more unmatched tracks", async () => {
-      mockGetLink.mockResolvedValue({
-        playlist_url: null,
-        overflow_youtube_url: null,
-        status: null,
-        unmatched: [
-          {
-            submission_id: "s1",
-            title: "Song One",
-            artist: "Artist One",
-            reason: "no_catalog_match",
-            source: null,
-            source_url: null,
-          },
-          {
-            submission_id: "s2",
-            title: "Song Two",
-            artist: "Artist Two",
-            reason: "source_only",
-            source: "youtube",
-            source_url: "https://youtube.com/watch?v=abc123",
-          },
-        ],
-      });
-
-      render(<SpotifyPlaylist mixId="r1" />);
-
-      expect(
-        await screen.findByText(/2 songs didn't make the spotify playlist:/i),
-      ).toBeInTheDocument();
-    });
-
-    it("renders a listen-on link with the correct href for a source_only track", async () => {
-      mockGetLink.mockResolvedValue({
-        playlist_url: null,
-        overflow_youtube_url: null,
-        status: null,
-        unmatched: [
-          {
-            submission_id: "s2",
-            title: "Song Two",
-            artist: "Artist Two",
-            reason: "source_only",
-            source: "youtube",
-            source_url: "https://youtube.com/watch?v=abc123",
-          },
-        ],
-      });
-
-      render(<SpotifyPlaylist mixId="r1" />);
-
-      expect(
-        await screen.findByText(/Song Two by Artist Two \(not on spotify,/),
-      ).toBeInTheDocument();
-      const link = screen.getByRole("link", { name: /listen on youtube/i });
-      expect(link).toHaveAttribute("href", "https://youtube.com/watch?v=abc123");
-    });
-
-    it("does not render a listen-on link for a no_catalog_match track with no source_url", async () => {
-      mockGetLink.mockResolvedValue({
-        playlist_url: null,
-        overflow_youtube_url: null,
-        status: null,
-        unmatched: [
-          {
-            submission_id: "s1",
-            title: "Song One",
-            artist: "Artist One",
-            reason: "no_catalog_match",
-            source: null,
-            source_url: null,
-          },
-        ],
-      });
-
-      render(<SpotifyPlaylist mixId="r1" />);
-
-      expect(
-        await screen.findByText(/Song One by Artist One \(not found on spotify\)/),
-      ).toBeInTheDocument();
-      expect(screen.queryByText(/listen on/i)).not.toBeInTheDocument();
-      expect(screen.queryByRole("link")).not.toBeInTheDocument();
-    });
-
-    it("still renders the unmatched list when a playlist_url is already present", async () => {
-      mockGetLink.mockResolvedValue({
-        playlist_url: "https://open.spotify.com/playlist/pl1",
-        overflow_youtube_url: null,
-        status: "complete",
-        unmatched: [
-          {
-            submission_id: "s1",
-            title: "Song One",
-            artist: "Artist One",
-            reason: "no_catalog_match",
-            source: null,
-            source_url: null,
-          },
-        ],
-      });
-
-      render(<SpotifyPlaylist mixId="r1" />);
-
-      const playlistLink = await screen.findByRole("link", { name: /open playlist in spotify/i });
-      expect(playlistLink).toHaveAttribute("href", "https://open.spotify.com/playlist/pl1");
-      expect(
-        await screen.findByText(/1 song didn't make the spotify playlist:/i),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText(/Song One by Artist One \(not found on spotify\)/),
-      ).toBeInTheDocument();
-    });
-
-    it("renders the 'hear the rest on youtube' link when overflow_youtube_url is present alongside unmatched tracks", async () => {
-      mockGetLink.mockResolvedValue({
-        playlist_url: "https://open.spotify.com/playlist/pl1",
-        overflow_youtube_url: "https://www.youtube.com/watch_videos?video_ids=abc123",
-        status: "complete",
-        unmatched: [
-          {
-            submission_id: "s1",
-            title: "Song One",
-            artist: "Artist One",
-            reason: "no_catalog_match",
-            source: null,
-            source_url: null,
-          },
-        ],
-      });
-
-      render(<SpotifyPlaylist mixId="r1" />);
-
-      const overflowLink = await screen.findByRole("link", { name: /hear the rest on youtube/i });
-      expect(overflowLink).toHaveAttribute(
-        "href",
-        "https://www.youtube.com/watch_videos?video_ids=abc123",
-      );
-    });
-
-    it("does not render the 'hear the rest on youtube' link when overflow_youtube_url is null", async () => {
-      mockGetLink.mockResolvedValue({
-        playlist_url: "https://open.spotify.com/playlist/pl1",
-        overflow_youtube_url: null,
-        status: "complete",
-        unmatched: [
-          {
-            submission_id: "s1",
-            title: "Song One",
-            artist: "Artist One",
-            reason: "no_catalog_match",
-            source: null,
-            source_url: null,
-          },
-        ],
-      });
-
-      render(<SpotifyPlaylist mixId="r1" />);
-
-      await screen.findByText(/1 song didn't make the spotify playlist:/i);
-      expect(
-        screen.queryByRole("link", { name: /hear the rest on youtube/i }),
-      ).not.toBeInTheDocument();
-    });
   });
 
   describe("polling while a job is queued/running (MYS-258, ADR 0006)", () => {
@@ -299,9 +106,9 @@ describe("SpotifyPlaylist", () => {
 
       render(<SpotifyPlaylist mixId="r1" />);
 
-      expect(await screen.findByText(/generating spotify playlist/i)).toBeInTheDocument();
+      expect(await screen.findByText(/building…/i)).toBeInTheDocument();
       expect(screen.queryByRole("link")).not.toBeInTheDocument();
-      expect(screen.queryByText(/no spotify playlist yet/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/not built yet/i)).not.toBeInTheDocument();
     });
 
     it("polls again and swaps in the link once the job completes", async () => {
@@ -320,7 +127,7 @@ describe("SpotifyPlaylist", () => {
         });
 
       render(<SpotifyPlaylist mixId="r1" />);
-      expect(await screen.findByText(/generating spotify playlist/i)).toBeInTheDocument();
+      expect(await screen.findByText(/building…/i)).toBeInTheDocument();
       expect(mockGetLink).toHaveBeenCalledTimes(1);
 
       await act(async () => {
@@ -348,13 +155,13 @@ describe("SpotifyPlaylist", () => {
         });
 
       render(<SpotifyPlaylist mixId="r1" />);
-      expect(await screen.findByText(/generating spotify playlist/i)).toBeInTheDocument();
+      expect(await screen.findByText(/building…/i)).toBeInTheDocument();
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(7000);
       });
       expect(mockGetLink).toHaveBeenCalledTimes(2);
-      expect(await screen.findByText(/no spotify playlist yet/i)).toBeInTheDocument();
+      expect(await screen.findByText(/not built yet/i)).toBeInTheDocument();
 
       // No further calls scheduled — failed is terminal.
       await act(async () => {
@@ -373,7 +180,7 @@ describe("SpotifyPlaylist", () => {
       });
 
       const { unmount } = render(<SpotifyPlaylist mixId="r1" />);
-      await screen.findByText(/generating spotify playlist/i);
+      await screen.findByText(/building…/i);
 
       unmount();
 

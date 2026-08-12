@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
 import { MusicNoteIcon } from "./MusicNoteIcon";
-import { getSpotifyPlaylistLink, type PlaylistJobStatus, type UnmatchedTrack } from "../services/api";
+import { PlaylistRow } from "./playlists/PlaylistRow";
+import { ServiceMark } from "./playlists/ServiceMark";
+import { PlaylistLink } from "./playlists/PlaylistAction";
+import {
+  getSpotifyPlaylistLink,
+  type PlaylistJobStatus,
+  type UnmatchedTrack,
+} from "../services/api";
 
 /**
  * Read-only Spotify playlist link for a mix (MYS-83, MYS-169).
@@ -20,21 +27,31 @@ import { getSpotifyPlaylistLink, type PlaylistJobStatus, type UnmatchedTrack } f
  * note as no job at all, matching this component's existing no-error-state
  * philosophy above.
  *
- * Stays firmly in the Sage/Ink family — a sage underline-style link mirroring
- * the YouTube link. No Rust: on the voting screen that single signal is reserved
- * for the selected song.
- *
  * Also lists any submissions that didn't make the playlist (`unmatched`,
  * MYS-201/GH-232) — the backend recomputes this on every fetch regardless of
  * job status, so it's shown whenever present rather than gated on `complete`.
  * A `source_only` track links back out to its original source. When at least
  * one unmatched track resolved to a YouTube id, `overflow_youtube_url`
  * (GH-232) offers a single ad-hoc link that plays all of them at once.
+ *
+ * **No Spotify green anywhere.** Third-party brand values live in
+ * `lib/platformBrand.ts`, not in the theme, and this component has never used
+ * one — the service is named in the link text, which is enough. Adding
+ * `#1DB954` here would also be constrained by the placement table in that
+ * module, and buys nothing the label doesn't already say.
+ *
+ * **Shape.** Renders as a `PlaylistRow` inside the shared "listen" card, so it
+ * has the same service/status/action anatomy as YouTube and Apple. Its status
+ * line is a count like theirs; the unmatched tracks and the overflow link are
+ * *nested beneath it*, because both are consequences of this service's gap
+ * rather than peers of it.
+ *
+ * The overflow link is worded to name what is missing ("hear the missing song
+ * on youtube") rather than "hear the rest". The old wording sat at the same
+ * indent and weight as the YouTube row's own playlist link and named the same
+ * service, which is what made the section confusing.
  */
 
-const LINK_CLASS =
-  "inline-flex items-center gap-1.5 font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink";
-const NOTE_CLASS = "font-mono text-[13px] font-light text-muted";
 
 // How often to re-check while a job is queued/running. Plain polling (ADR
 // 0006) — not fast enough to feel like a live stream, fast enough that a
@@ -43,13 +60,6 @@ const POLL_INTERVAL_MS = 7000;
 
 const IN_PROGRESS_STATUSES: PlaylistJobStatus[] = ["queued", "running"];
 
-// Human-readable reason text (MYS-201): `source_only` tracks were never in
-// any streaming catalog to begin with, `no_catalog_match` tracks are catalog
-// tracks Spotify's search just couldn't resolve.
-function reasonLabel(track: UnmatchedTrack): string {
-  return track.reason === "source_only" ? "not on spotify" : "not found on spotify";
-}
-
 type LinkState = {
   playlistUrl: string | null;
   status: PlaylistJobStatus | null;
@@ -57,7 +67,7 @@ type LinkState = {
   overflowYoutubeUrl: string | null;
 };
 
-export function SpotifyPlaylist({ mixId }: { mixId: string }) {
+export function SpotifyPlaylist({ mixId, entryCount }: { mixId: string; entryCount?: number }) {
   const [state, setState] = useState<LinkState | undefined>(undefined);
 
   useEffect(() => {
@@ -94,61 +104,45 @@ export function SpotifyPlaylist({ mixId }: { mixId: string }) {
   // undefined = still loading; render nothing rather than a flash of the note.
   if (state === undefined) return null;
 
-  const { playlistUrl, status, unmatched, overflowYoutubeUrl } = state;
+  const { playlistUrl, status, unmatched } = state;
   const inProgress = !playlistUrl && !!status && IN_PROGRESS_STATUSES.includes(status);
 
+  const matched = entryCount !== undefined ? entryCount - unmatched.length : undefined;
+
   return (
-    <div className="mb-8">
-      {playlistUrl ? (
-        <a href={playlistUrl} target="_blank" rel="noopener noreferrer" className={LINK_CLASS}>
-          <MusicNoteIcon />
-          open playlist in Spotify
-        </a>
-      ) : inProgress ? (
-        <p className={NOTE_CLASS}>generating spotify playlist&hellip;</p>
-      ) : (
-        <p className={NOTE_CLASS}>no spotify playlist yet</p>
-      )}
-      {unmatched.length > 0 ? (
-        <div className="mt-2">
-          <p className={NOTE_CLASS}>
-            {unmatched.length} {unmatched.length === 1 ? "song didn't" : "songs didn't"} make the
-            spotify playlist:
-          </p>
-          {overflowYoutubeUrl ? (
-            <a
-              href={overflowYoutubeUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`${LINK_CLASS} mt-1`}
-            >
-              <MusicNoteIcon />
-              hear the rest on youtube
-            </a>
-          ) : null}
-          <ul className="mt-1 space-y-1">
-            {unmatched.map((track) => (
-              <li key={track.submission_id} className={NOTE_CLASS}>
-                {track.title} by {track.artist} ({reasonLabel(track)}
-                {track.source_url ? (
-                  <>
-                    ,{" "}
-                    <a
-                      href={track.source_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={LINK_CLASS}
-                    >
-                      listen on {track.source}
-                    </a>
-                  </>
-                ) : null}
-                )
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-    </div>
+    <PlaylistRow
+      service="spotify"
+      mark={<ServiceMark service="spotify" />}
+      status={
+        playlistUrl
+          ? // The status slot answers "can I play this right now", in the same
+            // shape as every other service — a count, not a complaint. What went
+            // wrong is nested below, where it belongs.
+            unmatched.length > 0
+            ? // A gap, phrased as a count when the total is known. When it is
+              // not, say how many are missing rather than falling back to "all
+              // songs" — which would be an outright lie in exactly the case the
+              // user most needs the truth.
+              matched !== undefined
+              ? `${matched} of ${entryCount} songs`
+              : `${unmatched.length} missing`
+            : entryCount !== undefined
+              ? // Phrased exactly as the YouTube row phrases it, so the three
+                // statuses are directly comparable rather than merely similar.
+                `all ${entryCount} songs`
+              : "all songs"
+          : inProgress
+            ? "building…"
+            : "not built yet"
+      }
+      action={
+        playlistUrl ? (
+          <PlaylistLink href={playlistUrl} label="open playlist in spotify">
+            <MusicNoteIcon />
+            open playlist
+          </PlaylistLink>
+        ) : null
+      }
+    />
   );
 }

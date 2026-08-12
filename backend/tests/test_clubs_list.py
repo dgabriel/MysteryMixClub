@@ -36,6 +36,7 @@ _CLUB_KEYS = {
     "state",
     "created_at",
     "completed_at",
+    "viewer_is_admin",
 }
 
 
@@ -152,6 +153,40 @@ async def test_returns_organized_and_member_clubs_with_full_shape(client, db_ses
     assert returned_ids == {str(organized.id), str(joined.id)}
     for item in data:
         assert set(item.keys()) == _CLUB_KEYS
+
+
+async def test_viewer_is_admin_covers_organizer_and_co_organizer(client, db_session):
+    """`viewer_is_admin` is the same union `_load_club_as_organizer` gates on.
+
+    The distinction matters: `organizer_id` alone would silently exclude
+    co-organizers, who hold full operational parity (MYS-99). A client marking
+    "clubs you administer" from `organizer_id` would quietly mislabel them, which
+    is exactly why this is computed server-side rather than derived on the client.
+    """
+    caller = await _seed_user(db_session, email="caller@example.com", display_name="Caller")
+    other = await _seed_user(db_session, email="other@example.com", display_name="Other")
+
+    organized = await _seed_club(db_session, other, name="Organized By Caller")
+    organized.organizer_id = caller.id
+    await _seed_member(db_session, organized, caller, role="admin")
+
+    co_organized = await _seed_club(db_session, other, name="Co Organized")
+    await _seed_member(db_session, co_organized, caller, role="admin")
+
+    plain_member = await _seed_club(db_session, other, name="Just A Member")
+    await _seed_member(db_session, plain_member, caller, role="member")
+
+    await db_session.commit()
+
+    resp = await client.get(CLUBS_URL, headers=_auth_header(caller.id))
+    assert resp.status_code == 200, resp.text
+    by_id = {item["id"]: item for item in resp.json()}
+
+    assert by_id[str(organized.id)]["viewer_is_admin"] is True
+    # The co-organizer case: not organizer_id, still an admin.
+    assert by_id[str(co_organized.id)]["viewer_is_admin"] is True
+    assert by_id[str(co_organized.id)]["organizer_id"] != str(caller.id)
+    assert by_id[str(plain_member.id)]["viewer_is_admin"] is False
 
 
 async def test_excludes_removed_and_never_joined_clubs(client, db_session):

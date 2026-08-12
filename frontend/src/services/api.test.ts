@@ -65,6 +65,7 @@ const sampleClub: Club = {
   voting_window_hours: 72,
   created_at: "2026-06-01T00:00:00Z",
   completed_at: null,
+  viewer_is_admin: null,
 };
 
 /** Build a Response-like object with a json() body. */

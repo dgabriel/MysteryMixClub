@@ -297,7 +297,7 @@ async def submit_song(
     if await _duplicate_in_mix(payload, round_id, db):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="oops, someone else has great taste too — this track is already in this mystery mix",
+            detail="oops, someone else has great taste too. this track is already in this mystery mix",
         )
     club_repeat = await _duplicate_in_prior_club_mixes(payload, mix_.club_id, round_id, db)
 
@@ -351,7 +351,7 @@ async def edit_song(
     if await _duplicate_in_mix(payload, round_id, db, exclude_submission_id=submission_id):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="oops, someone else has great taste too — this track is already in this mystery mix",
+            detail="oops, someone else has great taste too. this track is already in this mystery mix",
         )
     club_repeat = await _duplicate_in_prior_club_mixes(payload, mix_.club_id, round_id, db)
 

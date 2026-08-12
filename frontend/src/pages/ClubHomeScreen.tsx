@@ -1,14 +1,11 @@
 import { type FormEvent, useState } from "react";
-import type {
-  LeaderboardEntry,
-  Club,
-  ClubMember,
-  Mix,
-  MixResults,
-  MixState,
-} from "../services/api";
+import type { LeaderboardEntry, Club, ClubMember, Mix, MixResults } from "../services/api";
 import { Button } from "../components/Button";
 import { Badge } from "../components/Badge";
+import { Card } from "../components/Card";
+import { PaperSurface } from "../components/PaperSurface";
+import { ClubName } from "../components/ClubName";
+import { FormError } from "../components/FormError";
 import { TextField } from "../components/TextField";
 import { ConcentricRings } from "../components/ConcentricRings";
 import { CheckmarkIcon } from "../components/CheckmarkIcon";
@@ -17,23 +14,13 @@ import { Confetti } from "../components/Confetti";
 import { DeadlineChip } from "../components/DeadlineChip";
 import { DeadlineWindowField } from "../components/DeadlineWindowField";
 import { InviteShare } from "../components/InviteShare";
+import { UserAvatar } from "../components/avatars/UserAvatar";
+import { MIX_BADGE, MIX_ORDER, MIX_STATE_LABEL, mixGroup } from "../utils/mixState";
 import {
   daysAndHoursToTotal,
   hoursToDaysAndHours,
   validateWindowHours,
 } from "../utils/deadlineWindow";
-
-const MIX_STATE_LABEL: Record<MixState, string> = {
-  pending: "upcoming",
-  open_submission: "submissions open",
-  open_voting: "voting open",
-  closed: "closed",
-};
-
-/** A mix is "active" when members can act on it right now. */
-function isActiveMix(state: MixState): boolean {
-  return state === "open_submission" || state === "open_voting";
-}
 
 type ClubHomeScreenProps = {
   club: Club;
@@ -130,52 +117,77 @@ export function ClubHomeScreen({
 }: ClubHomeScreenProps) {
   if (loading) {
     return (
-      <main className="flex flex-1 items-center justify-center px-4 sm:px-8">
-        <ConcentricRings size={88} spinning className="mx-auto" />
-      </main>
+      <PaperSurface nested>
+        <main className="flex flex-1 items-center justify-center px-4 sm:px-8">
+          <ConcentricRings size={88} spinning onPaper className="mx-auto" />
+        </main>
+      </PaperSurface>
     );
   }
 
   if (error) {
     return (
-      <main className="flex flex-1 flex-col items-center justify-center px-4 text-center sm:px-8">
-        <p className="font-mono text-[13px] font-light text-muted">{error}</p>
-        <div className="mt-6">
-          <Button variant="ghost" type="button" onClick={onBack}>
-            back
-          </Button>
-        </div>
-      </main>
+      // A failed *load*, not a form error: the club never resolved, so this is
+      // the whole content of the screen rather than a message about a field.
+      // ADR 0004's `destructive-text` category is for form validation, so this
+      // stays plain `foreground` — and it deliberately keeps no `role="alert"`,
+      // since it is present on first paint rather than announced later.
+      <PaperSurface nested>
+        <main className="flex flex-1 flex-col items-center justify-center px-4 text-center sm:px-8">
+          <p className="text-sm leading-[1.72] text-ink">{error}</p>
+          <div className="mt-6">
+            <Button variant="ghost" onPaper type="button" onClick={onBack}>
+              back
+            </Button>
+          </div>
+        </main>
+      </PaperSurface>
     );
   }
 
-  // Rust budget: this screen's single Rust signal is reserved for the
-  // destructive delete-club confirm (DeleteClubSection below), visible to
-  // any admin — the fixed organizer or a co-organizer (MYS-99). Every other
-  // element — including the club-state badge and the co-organizer badge —
-  // stays in the Sage family. The shared TopNav is rendered by AuthedLayout,
-  // so this is content-only.
+  // Where colour goes on this screen (updated 2026-08-11 — the older "nothing
+  // per-mix-row carries amber" note is superseded, don't trust copies of it):
+  //  - AMBER, per mix row: the mix number, a listed accent use. Also the club
+  //    title's second word (`ClubName`), rank 1 of the all-time standings, and
+  //    `DeadlineChip` while a deadline is closing.
+  //  - GREEN (`positive`): the one mix that can be acted on — its card bar and
+  //    its state badge. The API allows at most one active mix per club, so this
+  //    is scarce by construction rather than by convention.
+  //  - The delete-club confirm takes `Button variant="destructive"` rather than
+  //    an amber `link`: a delete is not amber's category.
+  // Member rows stay neutral: that list is unbounded, so a per-row accent there
+  // would read as pattern.
+  // The shared TopNav is rendered by AuthedLayout, so this is content-only.
   const isComplete = club.state === "complete";
 
   return (
-    <main className="mx-auto w-full max-w-lg px-4 pb-16 sm:px-8">
-      {isComplete ? <Confetti /> : null}
-      <div className="flex items-start justify-between gap-4">
-        <h1 className="font-serif text-[32px] leading-tight text-ink">{club.name}</h1>
-        <div className="shrink-0 pt-2">
-          <Badge>{club.state}</Badge>
+    // The light surface (ADR 0013), same frame model as /home: the page is
+    // `paper`, every card stays dark. `nested` because this screen sits under
+    // AuthedLayout, which already fills the viewport below the nav.
+    <PaperSurface nested>
+      <main className="mx-auto w-full max-w-lg px-4 pt-8 pb-16 sm:px-8">
+        {isComplete ? <Confetti /> : null}
+        <div className="flex items-start justify-between gap-4">
+          <h1 className="font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
+            {/* `onPaper`: the accented second word is 2.62:1 as `accent` here,
+                and this is ordinary title text rather than large-display type,
+                so it owes the full 4.5:1. */}
+            <ClubName name={club.name} onPaper />
+          </h1>
+          <div className="shrink-0 pt-2">
+            <Badge>{club.state}</Badge>
+          </div>
         </div>
-      </div>
         {club.description ? (
-          <p className="mt-2 font-mono text-[13px] font-light text-muted">{club.description}</p>
+          <p className="mt-2 text-sm leading-[1.72] text-ink-muted">{club.description}</p>
         ) : null}
-        <p className="mt-3 font-mono text-[11px] font-light text-muted">
+        {/* Mono at normal tracking is the system's signature for a value, which
+            is what a mix counter is. */}
+        <p className="mt-3 font-mono text-meta text-ink-muted">
           mix {club.current_mix} of {club.total_mixes}
         </p>
         {isComplete ? (
-          <p className="mt-4 font-serif italic text-[18px] text-muted">
-            this club has wrapped.
-          </p>
+          <p className="mt-4 text-base leading-[1.72] text-ink-muted">this club has wrapped.</p>
         ) : null}
 
         {isAdmin ? (
@@ -198,12 +210,20 @@ export function ClubHomeScreen({
           updateMixError={updateMixError}
         />
 
-        {/* Members / all-time leaderboard (MYS-157) */}
+        {/* Members / all-time leaderboard (MYS-157) — the style tile's ScoreRow:
+            rank numeral, avatar, name, a thin progress track, and a
+            right-aligned mono score. This is the screen's ONLY standings table,
+            so its rank-1 amber is bounded to one row and stays achievement
+            rather than pattern (unlike the per-mix winner lines further up,
+            which repeat once per closed mix and therefore stay neutral).
+            The bar and the rank column only appear once somebody actually has a
+            vote — with a scoreless roster there is no achievement to mark, so
+            no amber and no empty rails. */}
         <section className="mt-12">
-          <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
+          <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-muted">
             members ({members.length})
           </h2>
-          <ul className="mt-4 divide-y divide-border border-t border-border">
+          <ul className="mt-4 space-y-2">
             {leaderboard.map((entry) => {
               const member = members.find((m) => m.user_id === entry.user_id);
               const isMe = entry.user_id === userId;
@@ -212,73 +232,112 @@ export function ClubHomeScreen({
               // fair game for any current admin.
               const showRoleAndRemove = isAdmin && member && !member.is_organizer;
               const anyVotes = leaderboard.some((e) => e.vote_count > 0);
+              // Ranks are sequential, so rank 1 always holds the top vote count
+              // and its bar always reads 100%.
+              const topVotes = leaderboard[0]?.vote_count ?? 0;
+              const leading = anyVotes && entry.rank === 1;
               return (
                 <li
                   key={entry.user_id}
-                  className="flex items-center justify-between gap-4 py-3"
+                  className={[
+                    // `text-foreground` anchors this row to the DARK ramp, the
+                    // same way `Card` does and for the same reason (ADR 0013):
+                    // these are dark islands on a light page, and anything inside
+                    // that merely inherits would pick up `ink` and render at
+                    // 1.65:1. It is a hand-rolled surface rather than a `Card`,
+                    // so it has to say so itself.
+                    "rounded-hair border px-4 py-3 text-foreground",
+                    leading
+                      ? "border-accent-hairline bg-accent-surface"
+                      : "border-hairline-soft bg-card",
+                  ].join(" ")}
                 >
-                  <span className="flex items-center gap-3">
-                    <span className="w-6 shrink-0 font-mono text-[11px] text-muted">
-                      {anyVotes
-                        ? entry.rank === 1
-                          ? <CrownIcon className="h-3.5 w-3.5 text-muted" />
-                          : `#${entry.rank}`
-                        : null}
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="flex items-center gap-3">
+                      <span className="w-6 shrink-0 text-right font-mono text-mini text-muted-foreground">
+                        {anyVotes ? (
+                          entry.rank === 1 ? (
+                            <CrownIcon className="h-3.5 w-3.5 text-accent" />
+                          ) : (
+                            `#${entry.rank}`
+                          )
+                        ) : null}
+                      </span>
+                      <UserAvatar userId={entry.user_id} size={28} />
+                      <span
+                        className={`font-mono text-sm text-foreground ${isMe ? "font-medium" : ""}`}
+                      >
+                        {entry.display_name}
+                      </span>
+                      {member?.is_organizer ? <Badge>organizer</Badge> : null}
+                      {member?.is_admin && !member?.is_organizer ? (
+                        <Badge>co-organizer</Badge>
+                      ) : null}
                     </span>
-                    <span
-                      className={`font-mono text-[13px] ${isMe ? "font-semibold text-sage" : "text-ink"}`}
+                    <span className="flex items-center gap-4">
+                      <span
+                        className={`text-right font-mono text-xs ${leading ? "text-accent" : "text-muted-foreground"}`}
+                      >
+                        {entry.vote_count} {entry.vote_count === 1 ? "vote" : "votes"}
+                      </span>
+                      {showRoleAndRemove ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onChangeMemberRole(entry.user_id, member.is_admin ? "member" : "admin")
+                          }
+                          disabled={changingRoleUserId === entry.user_id}
+                          className="py-1.5 font-mono uppercase tracking-mono text-mini text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-link disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline"
+                        >
+                          {changingRoleUserId === entry.user_id
+                            ? "saving…"
+                            : member.is_admin
+                              ? "remove admin"
+                              : "make admin"}
+                        </button>
+                      ) : null}
+                      {showRoleAndRemove ? (
+                        <button
+                          type="button"
+                          onClick={() => onRemoveMember(entry.user_id)}
+                          disabled={removingUserId === entry.user_id}
+                          className="py-1.5 font-mono uppercase tracking-mono text-mini text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-link disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline"
+                        >
+                          {removingUserId === entry.user_id ? "removing…" : "remove"}
+                        </button>
+                      ) : null}
+                    </span>
+                  </div>
+                  {/* The tile runs the bar inline between name and score; it
+                      moves to its own line here because these rows also carry
+                      role badges and two admin controls, which leave no room
+                      for a legible track at this column width. */}
+                  {anyVotes ? (
+                    <div
+                      aria-hidden="true"
+                      className="mt-2 h-0.5 w-full overflow-hidden rounded-hair bg-track"
                     >
-                      {entry.display_name}
-                    </span>
-                    {member?.is_organizer ? <Badge>organizer</Badge> : null}
-                    {member?.is_admin && !member?.is_organizer ? (
-                      <Badge>co-organizer</Badge>
-                    ) : null}
-                  </span>
-                  <span className="flex items-center gap-4">
-                    <span className="font-mono text-[11px] text-muted">
-                      {entry.vote_count} {entry.vote_count === 1 ? "vote" : "votes"}
-                    </span>
-                    {showRoleAndRemove ? (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          onChangeMemberRole(entry.user_id, member.is_admin ? "member" : "admin")
-                        }
-                        disabled={changingRoleUserId === entry.user_id}
-                        className="py-1.5 font-mono uppercase tracking-ui text-[11px] text-ink underline underline-offset-[3px] hover:text-sage disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {changingRoleUserId === entry.user_id
-                          ? "saving…"
-                          : member.is_admin
-                            ? "remove admin"
-                            : "make admin"}
-                      </button>
-                    ) : null}
-                    {showRoleAndRemove ? (
-                      <button
-                        type="button"
-                        onClick={() => onRemoveMember(entry.user_id)}
-                        disabled={removingUserId === entry.user_id}
-                        className="py-1.5 font-mono uppercase tracking-ui text-[11px] text-ink underline underline-offset-[3px] hover:text-sage disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {removingUserId === entry.user_id ? "removing…" : "remove"}
-                      </button>
-                    ) : null}
-                  </span>
+                      <div
+                        className={`h-full rounded-hair ${leading ? "bg-accent" : "bg-muted-foreground"}`}
+                        style={{
+                          width: `${topVotes > 0 ? (entry.vote_count / topVotes) * 100 : 0}%`,
+                        }}
+                      />
+                    </div>
+                  ) : null}
                 </li>
               );
             })}
           </ul>
           {roleChangeError ? (
-            <p role="alert" className="mt-3 font-mono text-[13px] text-ink">
-              {roleChangeError}
-            </p>
+            <div className="mt-3">
+              <FormError onPaper>{roleChangeError}</FormError>
+            </div>
           ) : null}
           {removeError ? (
-            <p role="alert" className="mt-3 font-mono text-[13px] text-ink">
-              {removeError}
-            </p>
+            <div className="mt-3">
+              <FormError onPaper>{removeError}</FormError>
+            </div>
           ) : null}
         </section>
 
@@ -287,25 +346,32 @@ export function ClubHomeScreen({
             member must not even see the option. */}
         {isAdmin ? (
           <section className="mt-12">
-            <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">invite</h2>
+            <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-muted">
+              invite
+            </h2>
             <div className="mt-4">
               {inviteUrl ? (
-                <InviteShare inviteUrl={inviteUrl} />
+                <InviteShare inviteUrl={inviteUrl} onPaper />
               ) : (
                 <>
-                  <Button type="button" onClick={onGenerateInvite} disabled={generatingInvite}>
+                  <Button
+                    onPaper
+                    type="button"
+                    onClick={onGenerateInvite}
+                    disabled={generatingInvite}
+                  >
                     {generatingInvite ? "generating…" : "invite"}
                   </Button>
-                  <p className="mt-3 font-mono text-[13px] font-light text-muted">
+                  <p className="mt-3 text-meta leading-[1.6] text-ink-muted">
                     a shareable link, good for 48 hours.
                   </p>
                 </>
               )}
             </div>
             {inviteError ? (
-              <p role="alert" className="mt-3 font-mono text-[13px] text-ink">
-                {inviteError}
-              </p>
+              <div className="mt-3">
+                <FormError onPaper>{inviteError}</FormError>
+              </div>
             ) : null}
           </section>
         ) : null}
@@ -315,10 +381,11 @@ export function ClubHomeScreen({
             can never leave (the backend guard blocks it) so they only see
             delete; a co-organizer is the one case that sees both — they can
             leave individually, or delete the whole club; a plain member
-            only sees leave. Delete's confirm carries this screen's single
-            Rust signal (see DeleteClubSection) — because a co-organizer can
-            have both sections open at once, LeaveClubSection's confirm
-            intentionally stays in the Sage/ghost family, never Rust. */}
+            only sees leave. Delete is irreversible and takes the
+            `destructive` fill (see DeleteClubSection); leaving is reversible
+            by re-invite, so LeaveClubSection stays `ghost`. Neither is amber,
+            and the two now read as different weights of severity rather than
+            competing for one accent budget. */}
         {isAdmin ? (
           <DeleteClubSection
             onDeleteClub={onDeleteClub}
@@ -333,17 +400,19 @@ export function ClubHomeScreen({
             leaveClubError={leaveClubError}
           />
         ) : null}
-    </main>
+      </main>
+    </PaperSurface>
   );
 }
 
 /**
  * Admin-only destructive action — the fixed organizer or any co-organizer
  * (MYS-99). A two-step confirm (calm copy, no exclamation marks): the first
- * action arms the confirm, the second commits. This confirm carries the
- * screen's single Rust signal — the `link`-variant Button renders in Rust.
- * The backend rejects deleting an in-progress club (409); that calm
- * message is surfaced verbatim.
+ * action arms the confirm, the second commits. The commit takes
+ * `Button variant="destructive"` (R2), replacing the amber `link` variant it
+ * used to carry: amber means action or achievement, and an irreversible delete
+ * is neither in the sense that matters. The backend rejects deleting an
+ * in-progress club (409); that calm message is surfaced verbatim.
  */
 function DeleteClubSection({
   onDeleteClub,
@@ -357,18 +426,21 @@ function DeleteClubSection({
   const [confirming, setConfirming] = useState(false);
 
   return (
-    <section className="mt-12 border-t border-border pt-6">
-      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">delete club</h2>
+    <section className="mt-12 border-t border-ink-hairline pt-6">
+      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-muted">
+        delete club
+      </h2>
 
       {confirming ? (
         <div className="mt-4 space-y-4">
-          <p className="font-mono text-[13px] font-light text-muted">
+          <p className="text-sm leading-[1.72] text-ink-muted">
             this removes the club and everything in it. it can't be undone.
           </p>
           <div className="flex items-center gap-4">
-            {/* The screen's single Rust use: the destructive confirm. */}
+            {/* The one irreversible action on this screen: a `destructive`
+                fill, never the amber `link` variant it used to carry. */}
             <Button
-              variant="link"
+              variant="destructive"
               type="button"
               onClick={onDeleteClub}
               disabled={deletingClub}
@@ -376,6 +448,7 @@ function DeleteClubSection({
               {deletingClub ? "deleting…" : "delete this club"}
             </Button>
             <Button
+              onPaper
               variant="ghost"
               type="button"
               onClick={() => setConfirming(false)}
@@ -387,16 +460,16 @@ function DeleteClubSection({
         </div>
       ) : (
         <div className="mt-4">
-          <Button variant="ghost" type="button" onClick={() => setConfirming(true)}>
+          <Button onPaper variant="ghost" type="button" onClick={() => setConfirming(true)}>
             delete club
           </Button>
         </div>
       )}
 
       {deleteClubError ? (
-        <p role="alert" className="mt-3 font-mono text-[13px] text-ink">
-          {deleteClubError}
-        </p>
+        <div className="mt-3">
+          <FormError onPaper>{deleteClubError}</FormError>
+        </div>
       ) : null}
     </section>
   );
@@ -405,11 +478,11 @@ function DeleteClubSection({
 /**
  * Destructive action for anyone but the fixed organizer (plain members and,
  * since MYS-99, co-organizers too). Two-step confirm, mirrors
- * DeleteClubSection — but its confirm intentionally uses the `ghost`
- * Button variant, not `link` (Rust). A co-organizer can have this section
- * open at the same time as DeleteClubSection, which already spends this
- * screen's single Rust use; keeping this one in the Sage/ghost family avoids
- * a second Rust element appearing in the same view.
+ * DeleteClubSection — but its confirm stays on the `ghost` variant rather
+ * than taking `destructive`. Leaving is recoverable (an admin can re-invite
+ * you) where deleting a club is not, and a co-organizer sees both sections at
+ * once: giving them the same red fill would flatten that difference into one
+ * undifferentiated danger zone.
  */
 function LeaveClubSection({
   onLeaveClub,
@@ -423,16 +496,19 @@ function LeaveClubSection({
   const [confirming, setConfirming] = useState(false);
 
   return (
-    <section className="mt-12 border-t border-border pt-6">
-      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">leave club</h2>
+    <section className="mt-12 border-t border-ink-hairline pt-6">
+      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-muted">
+        leave club
+      </h2>
 
       {confirming ? (
         <div className="mt-4 space-y-4">
-          <p className="font-mono text-[13px] font-light text-muted">
+          <p className="text-sm leading-[1.72] text-ink-muted">
             you'll lose access to this club's mystery mixes and results.
           </p>
           <div className="flex items-center gap-4">
             <Button
+              onPaper
               variant="ghost"
               type="button"
               onClick={onLeaveClub}
@@ -441,6 +517,7 @@ function LeaveClubSection({
               {leavingClub ? "leaving…" : "leave this club"}
             </Button>
             <Button
+              onPaper
               variant="ghost"
               type="button"
               onClick={() => setConfirming(false)}
@@ -452,16 +529,16 @@ function LeaveClubSection({
         </div>
       ) : (
         <div className="mt-4">
-          <Button variant="ghost" type="button" onClick={() => setConfirming(true)}>
+          <Button onPaper variant="ghost" type="button" onClick={() => setConfirming(true)}>
             leave club
           </Button>
         </div>
       )}
 
       {leaveClubError ? (
-        <p role="alert" className="mt-3 font-mono text-[13px] text-ink">
-          {leaveClubError}
-        </p>
+        <div className="mt-3">
+          <FormError onPaper>{leaveClubError}</FormError>
+        </div>
       ) : null}
     </section>
   );
@@ -489,17 +566,31 @@ function MixesSection({
 }) {
   // Mixes are auto-created with the club, so the slate always exists. The
   // empty state is a fallback only (e.g. a stale/odd club with zero mixes).
+  //
+  // Order: the mix you can act on, then what is coming, then what is done —
+  // each group by mix number. The API returns them in plain mix-number order,
+  // which buries the only actionable row somewhere in the middle of a finished
+  // list. Sorted here rather than server-side because it is a presentation
+  // concern and the list is small and already fully loaded.
+  //
+  // Sorting a COPY: `mixes` is the prop as handed down from the route's state,
+  // and Array.prototype.sort mutates in place.
+  const orderedMixes = [...mixes].sort(
+    (a, b) =>
+      MIX_ORDER[mixGroup(a.state)] - MIX_ORDER[mixGroup(b.state)] || a.mix_number - b.mix_number,
+  );
+
   return (
     <section className="mt-12">
-      <h2 className="font-mono uppercase tracking-label text-[9px] text-muted">
+      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-muted">
         mystery mixes ({mixes.length})
       </h2>
 
-      {mixes.length === 0 ? (
-        <p className="mt-4 font-mono text-[13px] font-light text-muted">no mystery mixes yet</p>
+      {orderedMixes.length === 0 ? (
+        <p className="mt-4 text-sm leading-[1.72] text-ink-muted">no mystery mixes yet</p>
       ) : (
-        <ul className="mt-4 space-y-3">
-          {mixes.map((mix) => (
+        <ul className="mt-4 space-y-4">
+          {orderedMixes.map((mix) => (
             <li key={mix.id}>
               <MixRow
                 mix={mix}
@@ -519,12 +610,31 @@ function MixesSection({
 }
 
 /**
- * One mix in the mixes list. State drives the visual weight, within the
- * Sage/Ink family only — no Rust here (the screen reserves its single Rust use
- * for the delete-club confirm):
- *  - active mix (open submission/voting) → Sage-pale fill, the eye lands here
- *  - upcoming (pending) → muted theme, quiet
- *  - closed → plain
+ * One mix in the mixes list, on R8's list-card pattern: a `Card` surface with
+ * the pure-CSS hover lift, a mono eyebrow, a `font-display` uppercase title,
+ * and a mono meta row.
+ *
+ * **Colour on a mix row** (Dawn, 2026-08-11 — this reverses the row's earlier
+ * "no amber in any state" rule, so read this rather than trusting older
+ * comments elsewhere):
+ *  - the mix number is `accent`, on every row. "Mix/season numbers" is a listed
+ *    accent use in the style guide.
+ *  - the row that can be acted on carries a `positive` green bar, exactly like
+ *    an active club card on `/home`. This one is genuinely scarce rather than
+ *    merely selective: the API allows at most one active mix per club, so only
+ *    one row in the list can ever have it.
+ *  - `shadow-z3` at rest still lifts the active row, so state survives for
+ *    anyone who cannot distinguish the bar's colour.
+ *
+ * What that cost, recorded honestly: `DeadlineChip` used to be the row's only
+ * amber, and going amber was how it signalled a *closing* deadline. It is no
+ * longer alone, so that urgency reads a little less sharply. It remains
+ * distinguishable because the chip is an amber *fill* (`accent-surface` +
+ * `accent-hairline`) rather than amber text, which is a different shape of
+ * signal — but the dilution is real and was accepted deliberately.
+ *
+ * The eyebrow no longer varies by state, because the bar now carries "live" and
+ * the eyebrow is free to be one consistent thing across the list.
  *
  * The heading is always "mix N". When the organizer has named the mix the
  * theme shows beneath it; an unnamed mix shows a quiet muted prompt to the
@@ -555,13 +665,14 @@ function MixRow({
 }) {
   const [editing, setEditing] = useState(false);
 
-  const active = isActiveMix(mix.state);
+  const group = mixGroup(mix.state);
+  const active = group === "active";
   const pending = mix.state === "pending";
   const named = !!mix.theme;
 
   if (editing) {
     return (
-      <div className="rounded-[3px] border border-border bg-white px-5 py-5">
+      <Card>
         <MixEditForm
           mix={mix}
           saving={saving}
@@ -572,88 +683,85 @@ function MixRow({
             if (ok) setEditing(false);
           }}
         />
-      </div>
+      </Card>
     );
   }
 
   return (
-    <div
+    <Card
+      // Green bar on the mix that can be acted on, matching the club cards on
+      // /home. Unlike those, this one is genuinely scarce rather than merely
+      // selective: the API allows at most ONE active mix per club, so exactly
+      // one row in this list can ever carry it.
+      bar={active ? "positive" : undefined}
       className={[
-        "rounded-[3px] border px-5 py-4 transition-colors duration-150",
-        active ? "border-sage bg-sage-pale" : "border-border bg-white",
-      ].join(" ")}
+        "transition-[box-shadow,transform] duration-150 hover:-translate-y-0.5 hover:shadow-z3",
+        // One step of extra rest elevation for the single row that can be acted
+        // on. `shadow-z3` is emitted after `shadow-z2` in the config's shadow
+        // scale, so it wins over the one baked into `Card`.
+        active ? "shadow-z3" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
     >
       <button type="button" onClick={onOpen} className="block w-full text-left">
         <div className="flex items-start justify-between gap-4">
           <span className="min-w-0">
-            <span
-              className={[
-                "block font-mono uppercase tracking-label text-[9px]",
-                active ? "text-sage" : "text-muted",
-              ].join(" ")}
-            >
+            {/* The mix number in the accent — "mix/season numbers" is a listed
+                accent use in the style guide. It no longer varies by state: the
+                green bar now says which row is live, so this is free to be one
+                consistent thing across the list rather than doing double duty.
+                7.42:1 on `card`. */}
+            <span className="block font-mono uppercase tracking-mono-caps text-mini text-accent">
               mystery mix {mix.mix_number}
             </span>
             {named ? (
               <span
-                className="mt-0.5 block truncate font-serif text-[16px] text-ink"
+                className="mt-2 block truncate font-display text-sm font-bold uppercase leading-none"
                 title={mix.theme ?? undefined}
               >
                 {mix.theme}
               </span>
             ) : isAdmin ? (
-              <span
-                className={[
-                  "mt-0.5 block truncate font-mono text-[13px] font-light italic",
-                  active ? "text-sage" : "text-muted",
-                ].join(" ")}
-              >
-                untitled — add a theme
+              <span className="mt-2 block truncate text-sm italic leading-[1.65] text-muted-foreground">
+                untitled, add a theme
               </span>
             ) : null}
           </span>
           <span className="shrink-0">
-            <Badge>{MIX_STATE_LABEL[mix.state]}</Badge>
+            {/* The state, at a weight that matches how much it matters: a solid
+                green fill while the mix is live, a bright neutral for what is
+                coming, and a quiet one for what is done. The label itself is
+                unchanged and still carries the state in words, so the ladder is
+                emphasis rather than the signal. */}
+            <Badge variant={MIX_BADGE[group]}>{MIX_STATE_LABEL[mix.state]}</Badge>
           </span>
         </div>
         {mix.description ? (
-          <p
-            className={[
-              "mt-2 font-mono text-[11px] font-light leading-relaxed",
-              active ? "text-sage" : "text-muted",
-            ].join(" ")}
-          >
-            {mix.description}
-          </p>
+          <p className="mt-2 text-sm leading-[1.65] text-muted-foreground">{mix.description}</p>
         ) : null}
         {/* Submission progress while the mix is open for submissions (MYS-101). */}
         {mix.state === "open_submission" && mix.member_count > 0 ? (
-          <p
-            className={[
-              "mt-2 font-mono uppercase tracking-label text-[9px]",
-              active ? "text-sage" : "text-muted",
-            ].join(" ")}
-          >
+          <p className="mt-2 font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
             {mix.submission_count} of {mix.member_count} submitted
           </p>
         ) : null}
         {/* Voting progress while the mix is open for voting (MYS-110). */}
         {mix.state === "open_voting" && mix.voting_eligible_count > 0 ? (
-          <p
-            className={[
-              "mt-2 font-mono uppercase tracking-label text-[9px]",
-              active ? "text-sage" : "text-muted",
-            ].join(" ")}
-          >
+          <p className="mt-2 font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
             {mix.voted_count} of {mix.voting_eligible_count} voted
           </p>
         ) : null}
         {/* Prominent, phase-appropriate deadline chip (MYS-161) — viewer-local
-            time. Renders nothing for legacy mixes with no deadline set. */}
+            time. Renders nothing for legacy mixes with no deadline set. This is
+            the only element in the row that may go amber, and only while the
+            deadline is closing. */}
         <DeadlineChip mix={mix} className="mt-3" />
-        {/* Viewer participation indicators — subtle sage checkmarks. */}
+        {/* Viewer participation indicators. `foreground` rather than the accent:
+            "you already did this" is a completed fact, not an action or an
+            achievement, and it can appear on every row at once. */}
         {mix.viewer_submitted || mix.viewer_voted ? (
-          <p className="mt-1.5 flex items-center gap-3 font-mono uppercase tracking-label text-[9px] text-sage">
+          <p className="mt-1.5 flex items-center gap-3 font-mono uppercase tracking-mono-caps text-mini text-foreground">
             {mix.viewer_submitted ? <ViewerCheck label="you submitted" /> : null}
             {mix.viewer_voted ? <ViewerCheck label="you voted" /> : null}
           </p>
@@ -667,23 +775,23 @@ function MixRow({
             <button
               type="button"
               onClick={() => setEditing(true)}
-              className="font-mono uppercase tracking-ui text-[11px] text-sage underline underline-offset-[3px] transition-colors duration-150 hover:text-ink"
+              className="font-mono uppercase tracking-mono text-mini text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-link"
             >
               {named ? "edit" : "add a theme"}
             </button>
           ) : (
-            <p className="font-mono text-[13px] font-light text-muted">
+            <p className="text-meta leading-[1.6] text-muted-foreground">
               theme locks once a mystery mix opens
             </p>
           )}
         </div>
       ) : null}
-    </div>
+    </Card>
   );
 }
 
-/** Small checkmark with a visible label — sage-coloured, screened from AT so
- *  only the label text is announced. */
+/** Small checkmark with a visible label, screened from AT so only the label
+ *  text is announced. Inherits its color from the row above it. */
 function ViewerCheck({ label }: { label: string }) {
   return (
     <span className="inline-flex items-center gap-1">
@@ -707,8 +815,29 @@ function topVoteWinners(leaderboard: LeaderboardEntry[]): LeaderboardEntry[] {
 /**
  * Compact reveal summary for a closed mix's card: the winner (top of the vote
  * leaderboard) and the most-noted pick. Both can tie — every co-winner is named.
- * Label-left / value-right, staying in the Sage/Ink family (no Rust here — the
- * screen reserves its single Rust use for the delete-club confirm).
+ * Label-left / value-right.
+ *
+ * **The reveal is an amber callout** (Dawn, 2026-08-11 — this reverses the
+ * earlier "the crowns stay neutral" rule, so read this rather than older copies
+ * of that reasoning). It takes `accent-surface` + `accent-hairline` + `accent`,
+ * which the style guide defines for exactly this: an achievement or callout row.
+ *
+ * A *surface* rather than amber text, and that choice is load-bearing here. The
+ * mix number in the row above is already `accent`, so amber text would read as
+ * more of the same; a tinted block with its own edge reads as a different kind
+ * of object, which is what makes the result pop instead of blend.
+ *
+ * The cost, recorded: this block renders once per closed mix, and a finished
+ * club shows one for every mix it ran (up to the 50-mix cap). That is the
+ * repetition the previous rule existed to avoid. It is accepted because the
+ * reveal is the *point* of a closed mix — the state is finished and quiet, but
+ * its result is the content people come back for — and because the callout is
+ * bounded to one block per card rather than spreading across a row.
+ *
+ * `accent` is 6.92:1 on `accent-surface`; the values stay `foreground` at
+ * 16.63:1 so the names and titles remain the most legible thing in the block.
+ * The tint is only 1.07:1 against `card`, so `accent-hairline` is what actually
+ * draws the edge — do not drop it.
  */
 function ClosedMixSummary({ results }: { results: MixResults }) {
   const winners = topVoteWinners(results.leaderboard);
@@ -716,25 +845,25 @@ function ClosedMixSummary({ results }: { results: MixResults }) {
   if (winners.length === 0 && mostNoted.length === 0) return null;
 
   return (
-    <dl className="mt-3 space-y-2 border-t border-border pt-3">
+    <dl className="mt-3 space-y-2 rounded-hair border border-accent-hairline bg-accent-surface px-3 py-2.5">
       {winners.length > 0 ? (
         <div className="flex items-baseline justify-between gap-4">
-          <dt className="flex shrink-0 items-center gap-1 font-mono uppercase tracking-label text-[9px] text-muted">
-            <CrownIcon className="text-gold" />
+          <dt className="flex shrink-0 items-center gap-1 font-mono uppercase tracking-mono-caps text-mini text-accent">
+            <CrownIcon className="text-accent" />
             {winners.length > 1 ? "winners" : "winner"}
           </dt>
-          <dd className="min-w-0 text-right font-mono text-[13px] font-light text-ink">
+          <dd className="min-w-0 text-right font-mono text-sm text-foreground">
             {winners.map((w) => w.display_name).join(" & ")}
           </dd>
         </div>
       ) : null}
       {mostNoted.length > 0 ? (
         <div className="flex items-baseline justify-between gap-4">
-          <dt className="flex shrink-0 items-center gap-1 font-mono uppercase tracking-label text-[9px] text-muted">
-            <CrownIcon className="text-gold" />
+          <dt className="flex shrink-0 items-center gap-1 font-mono uppercase tracking-mono-caps text-mini text-accent">
+            <CrownIcon className="text-accent" />
             most noted
           </dt>
-          <dd className="min-w-0 text-right font-mono text-[13px] font-light text-ink">
+          <dd className="min-w-0 text-right font-mono text-sm text-foreground">
             {mostNoted.map((w) => w.title).join(" · ")}
           </dd>
         </div>
@@ -746,8 +875,8 @@ function ClosedMixSummary({ results }: { results: MixResults }) {
 /**
  * Inline theme + description editor for a single pending mix, shown in place
  * within the mixes list. Underline inputs only (TextField + an underline
- * textarea), matching the mix-detail editor. No Rust — this screen's single
- * Rust use is the delete-club confirm.
+ * textarea whose resting/focus/label treatment is copied from TextField, since
+ * there is no textarea primitive).
  */
 function MixEditForm({
   mix,
@@ -792,7 +921,7 @@ function MixEditForm({
 
   return (
     <form onSubmit={handleSubmit} noValidate className="space-y-5">
-      <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
+      <span className="block font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
         mystery mix {mix.mix_number}
       </span>
 
@@ -810,9 +939,14 @@ function MixEditForm({
       />
 
       <label htmlFor={`mix-description-${mix.id}`} className="block">
-        <span className="block font-mono uppercase tracking-label text-[9px] text-muted">
+        <span className="block font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
           description
         </span>
+        {/* Resting underline is `muted-foreground`, not `hairline`: when the
+            underline IS the affordance, WCAG 1.4.11 applies and a ~1.2:1
+            hairline fails it. `focus:outline-none` is only acceptable because
+            `focus:border-accent` replaces the indicator it removes. Matches
+            TextField exactly, including having no disabled recolor. */}
         <textarea
           id={`mix-description-${mix.id}`}
           rows={2}
@@ -820,15 +954,11 @@ function MixEditForm({
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           disabled={saving}
-          className="mt-2 w-full resize-none rounded-none border-0 border-b border-ink bg-transparent px-0 py-1 font-mono text-[13px] font-light text-ink placeholder:text-muted focus:border-sage focus:outline-none disabled:opacity-50"
+          className="mt-2 w-full resize-none rounded-none border-0 border-b border-muted-foreground bg-transparent px-0 py-1 font-mono text-sm text-foreground placeholder:text-muted-foreground focus:border-accent focus:outline-none"
         />
       </label>
 
-      {error ? (
-        <p id={errorId} role="alert" className="font-mono text-[13px] text-ink">
-          {error}
-        </p>
-      ) : null}
+      {error ? <FormError id={errorId}>{error}</FormError> : null}
 
       <div className="flex items-center gap-4">
         <Button type="submit" disabled={saving}>
@@ -942,7 +1072,7 @@ function OrganizerEdit({
   if (!open) {
     return (
       <div className="mt-6">
-        <Button variant="ghost" type="button" onClick={openForm}>
+        <Button onPaper variant="ghost" type="button" onClick={openForm}>
           edit
         </Button>
       </div>
@@ -950,8 +1080,13 @@ function OrganizerEdit({
   }
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="mt-6 space-y-6 border-t border-border pt-6">
+    <form
+      onSubmit={handleSubmit}
+      noValidate
+      className="mt-6 space-y-6 border-t border-ink-hairline pt-6"
+    >
       <TextField
+        onPaper
         id="edit-club-name"
         label="name"
         name="name"
@@ -960,6 +1095,7 @@ function OrganizerEdit({
         disabled={updating}
       />
       <TextField
+        onPaper
         id="edit-club-description"
         label="description"
         name="description"
@@ -968,6 +1104,7 @@ function OrganizerEdit({
         disabled={updating}
       />
       <TextField
+        onPaper
         id="edit-club-total-mixes"
         label="mystery mixes"
         name="total_mixes"
@@ -978,6 +1115,7 @@ function OrganizerEdit({
         disabled={updating}
       />
       <DeadlineWindowField
+        onPaper
         idPrefix="edit-submission-window"
         label="submission window"
         days={submissionWindowDays}
@@ -988,6 +1126,7 @@ function OrganizerEdit({
         error={windowErrorField === "submission_window" ? windowError : null}
       />
       <DeadlineWindowField
+        onPaper
         idPrefix="edit-voting-window"
         label="voting window"
         days={votingWindowDays}
@@ -997,25 +1136,28 @@ function OrganizerEdit({
         disabled={updating}
         error={windowErrorField === "voting_window" ? windowError : null}
       />
-      <p className="font-mono text-[13px] font-light text-muted">
-        this only applies going forward — a mystery mix already collecting submissions or
-        votes keeps its current deadline. it takes effect the next time a mystery mix (or
-        its next phase) opens.
+      <p className="text-meta leading-[1.6] text-ink-muted">
+        this only applies going forward. a mystery mix already collecting submissions or votes keeps
+        its current deadline. it takes effect the next time a mystery mix (or its next phase) opens.
       </p>
-      {updateError ? (
-        <p role="alert" className="font-mono text-[13px] text-ink">
-          {updateError}
-        </p>
-      ) : null}
+      {/* A failed save is a screen-level form error (ADR 0004) — its own color
+          category, so it consumes nothing from this screen's amber and may show
+          at the same time as either window field's own inline message. */}
+      {updateError ? <FormError onPaper>{updateError}</FormError> : null}
       <div className="flex items-center gap-4">
-        <Button type="submit" disabled={updating}>
+        <Button onPaper type="submit" disabled={updating}>
           {updating ? "saving…" : "save"}
         </Button>
-        <Button variant="ghost" type="button" onClick={() => setOpen(false)} disabled={updating}>
+        <Button
+          onPaper
+          variant="ghost"
+          type="button"
+          onClick={() => setOpen(false)}
+          disabled={updating}
+        >
           cancel
         </Button>
       </div>
     </form>
   );
 }
-

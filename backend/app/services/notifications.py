@@ -140,7 +140,7 @@ def _subject_and_body(event: MixEvent, club: Club, mix_: Mix, club_url: str) -> 
             else ""
         )
         return (
-            f"{club.name} — {label} is open for submissions",
+            f"{club.name}: {label} is open for submissions",
             f"<p><strong>{label}</strong> just opened in <strong>{club.name}</strong>. "
             f"Time to pick a song and get it in before everyone else hears it.{by}</p>"
             f"<p>{link}</p>",
@@ -153,14 +153,14 @@ def _subject_and_body(event: MixEvent, club: Club, mix_: Mix, club_url: str) -> 
             else ""
         )
         return (
-            f"{club.name} — voting is open for {label}",
+            f"{club.name}: voting is open for {label}",
             f"<p>All the submissions are in for <strong>{label}</strong> in "
             f"<strong>{club.name}</strong>. Settle in, listen to the mix, and cast "
             f"your votes.{by}</p><p>{link}</p>",
         )
     if event == "mix_closed":
         return (
-            f"{club.name} — {label} results are in",
+            f"{club.name}: {label} results are in",
             f"<p><strong>{label}</strong> in <strong>{club.name}</strong> has closed. "
             f"The results are in and the reveal is ready, see who picked what.</p>"
             f"<p>{link}</p>",
@@ -170,21 +170,21 @@ def _subject_and_body(event: MixEvent, club: Club, mix_: Mix, club_url: str) -> 
         # the caller only reaches here from an already-open_voting mix.
         by = _format_deadline(mix_.voting_deadline) if mix_.voting_deadline else ""
         return (
-            f"{club.name} — voting extended for {label}",
+            f"{club.name}: voting extended for {label}",
             f"<p>Voting for <strong>{label}</strong> in <strong>{club.name}</strong> has "
             f"been extended, there's a bit more time. New deadline: {by}.</p>"
             f"<p>{link}</p>",
         )
     if event == "needs_theme":
         return (
-            f"{club.name} — {label} needs a theme before it can open",
+            f"{club.name}: {label} needs a theme before it can open",
             f"<p><strong>{label}</strong> in <strong>{club.name}</strong> was next up, "
             f"but it still needs a theme before it can open. Set one whenever you're "
             f"ready, then open the mix yourself.</p><p>{link}</p>",
         )
     # club_complete
     return (
-        f"{club.name} — that's a wrap",
+        f"{club.name}: that's a wrap",
         f"<p><strong>{club.name}</strong> has wrapped after its final mystery mix. "
         f"Thanks for playing, check the standings for the final results.</p>"
         f"<p>{link}</p>",
@@ -314,10 +314,10 @@ def send_deadline_warning(
     label = _mix_label(mix_)
     link = _cta_link(club, club_url)
     if phase == "submission":
-        subject = f"{club.name} — about 12 hours left to submit"
+        subject = f"{club.name}: about 12 hours left to submit"
         action = f"submit to <strong>{label}</strong>"
     else:
-        subject = f"{club.name} — about 12 hours left to vote"
+        subject = f"{club.name}: about 12 hours left to vote"
         action = f"vote in <strong>{label}</strong>"
     body = (
         f"<p>About 12 hours left to {action} in <strong>{club.name}</strong>. "
@@ -344,7 +344,7 @@ def send_empty_mix_notice(
     club_url = _club_url(settings, club.id)
     label = _mix_label(mix_)
     link = _cta_link(club, club_url)
-    subject = f"{club.name} — {label} closed with no submissions"
+    subject = f"{club.name}: {label} closed with no submissions"
     body = (
         f"<p>The submission deadline for <strong>{label}</strong> in "
         f"<strong>{club.name}</strong> passed with no songs in. You can extend the "

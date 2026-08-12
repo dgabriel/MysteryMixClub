@@ -1,3 +1,9 @@
+/**
+ * Rendered stroke = strokeWidth x (size / viewBox). A 24-unit viewBox drawn at
+ * 12px halves it, so the old 1.5 landed at 0.75px — below the style guide's
+ * 1px floor, and sub-pixel light strokes degrade badly on a near-black page.
+ * strokeWidth 2 renders at exactly 1px. The inner filled dot is unaffected.
+ */
 export function WarningIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -6,7 +12,7 @@ export function WarningIcon({ className }: { className?: string }) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.5"
+      strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"

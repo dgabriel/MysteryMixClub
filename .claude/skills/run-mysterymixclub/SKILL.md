@@ -135,6 +135,8 @@ tmux capture-pane -t mmc -p
 | `ss [name]` | screenshot → `/tmp/shots/<name>.png` |
 | `click <css-sel>` | Playwright `.click()` |
 | `click-text <text>` | click first element containing text |
+| `hover <css-sel>` | Playwright `.hover()` — the only way to see a CSS `:hover` state; a synthetic mouseover does **not** match `:hover` |
+| `hover-text <text>` | hover the first element containing text |
 | `fill <css-sel> <value>` | fill an input (goes through React's onChange — see Gotchas) |
 | `press <key>` | keyboard press, e.g. `Enter` |
 | `wait-for <css-sel>` or `text=<text>` | wait up to 15s |

@@ -18,6 +18,15 @@ function Reel({ cx, cy }: ReelProps) {
   );
 }
 
+/** The one music-hardware avatar illustration. Strokes `currentColor`, so the
+ *  color decision lives in `UserAvatar`.
+ *
+ *  `strokeWidth="1.5"` is in viewBox units and the 44×28 viewBox is fitted into
+ *  a square box, so the rendered weight is `1.5 × size / 44`. At the sizes that
+ *  actually ship — `UserAvatar` passes `size * 0.72`, so 35px from its own
+ *  default 48 and 40px from ProfileScreen's 56 — that is 1.19px and 1.36px.
+ *  Both clear the 1px floor and sit inside the style guide's 1–1.5px band, so
+ *  the value is correct as-is. Below a 30px `size` it would drop under 1px. */
 export function CassetteAvatar({ size = 48 }: { size?: number }) {
   return (
     <svg

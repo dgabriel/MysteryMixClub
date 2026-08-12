@@ -135,10 +135,20 @@ class ClubResponse(WireModel):
     voting_window_hours: int
     created_at: datetime
     completed_at: datetime | None
+    # Whether the *caller* administers this club — the fixed organizer_id OR a
+    # promoted co-organizer (club_members.role == "admin", MYS-99), matching
+    # MemberResponse.is_admin and what _load_club_as_organizer actually gates on.
+    #
+    # None means "not computed on this endpoint", which is deliberately distinct
+    # from False. Only GET /clubs sets it, because only there does the query
+    # already have the caller's membership row in hand; returning False elsewhere
+    # would be asserting something untrue rather than declining to answer.
+    viewer_is_admin: bool | None = None
 
 
-def _to_response(club: Club) -> ClubResponse:
+def _to_response(club: Club, *, viewer_is_admin: bool | None = None) -> ClubResponse:
     return ClubResponse(
+        viewer_is_admin=viewer_is_admin,
         id=str(club.id),
         name=club.name,
         description=club.description,
@@ -238,8 +248,13 @@ async def list_clubs(
 ) -> list[ClubResponse]:
     # Every club the caller is an active member of. The organizer holds such
     # a row from club creation, so organized clubs are included naturally.
-    clubs = await db.scalars(
-        select(Club)
+    #
+    # The membership row is selected alongside the club rather than discarded,
+    # so each club can report whether the caller administers it without a second
+    # query or an N+1. "Admin" here is the same union _load_club_as_organizer
+    # gates on: the fixed organizer_id, or a co-organizer (role == "admin").
+    rows = await db.execute(
+        select(Club, ClubMember.role)
         .join(ClubMember, ClubMember.club_id == Club.id)
         .where(
             ClubMember.user_id == current_user.id,
@@ -247,7 +262,13 @@ async def list_clubs(
         )
         .order_by(Club.created_at.desc())
     )
-    return [_to_response(club) for club in clubs]
+    return [
+        _to_response(
+            club,
+            viewer_is_admin=(club.organizer_id == current_user.id or role == "admin"),
+        )
+        for club, role in rows
+    ]
 
 
 async def _load_club_as_organizer(

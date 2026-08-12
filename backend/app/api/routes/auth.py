@@ -130,7 +130,7 @@ _AT_CAPACITY_MESSAGE = "MysteryMixClub is at capacity right now"
 _INVALID_CREDENTIALS_MESSAGE = "invalid email or password"
 _TOO_MANY_LOGINS_MESSAGE = "Too many sign-in attempts. Please try again later."
 _RESET_NEUTRAL_MESSAGE = "If that email has a password set, a reset link is on its way."
-_ACCOUNT_EXISTS_MESSAGE = "an account already exists for this email — sign in instead"
+_ACCOUNT_EXISTS_MESSAGE = "an account already exists for this email; sign in instead"
 
 # The invite-gate helpers signal rejection by raising, but the Google callback
 # is a top-level navigation — map each rejection to a landing-page flag the

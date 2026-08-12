@@ -128,6 +128,7 @@ function club(): Club {
     submission_window_hours: 72,
     voting_window_hours: 72,
     completed_at: null,
+    viewer_is_admin: null,
   };
 }
 
@@ -252,6 +253,20 @@ function renderMix() {
     { initialEntries: ["/mixes/r1"] },
   );
   return render(<RouterProvider router={router} />);
+}
+
+/**
+ * The organizer controls live behind a collapsed "admin tools" disclosure, so
+ * every test that drives one has to open it first.
+ *
+ * Note what this means for the negative assertions below: after this change,
+ * "the button isn't on screen" is true for a member AND for an organizer who
+ * hasn't expanded the panel. Tests that mean "this viewer has no admin powers"
+ * therefore assert on the absence of the *toggle*, not of the buttons — that's
+ * the thing gated on being an admin.
+ */
+async function openAdminTools(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole("button", { name: /^admin tools$/i }));
 }
 
 describe("MixDetailRoute", () => {
@@ -555,8 +570,13 @@ describe("MixDetailRoute", () => {
       renderMix();
 
       await screen.findByText("Song One");
-      // filled slot 1 carries its number; the empty slot 2 prompts "submit song 2"
-      expect(screen.getByText("song 1")).toBeInTheDocument();
+      // filled slot 1 carries its number; the empty slot 2 prompts "submit song 2".
+      // The numeral is accented, so the eyebrow is split across a span and a
+      // plain string — match the element whose OWN text is exactly "song 1"
+      // rather than a bare string, which only sees direct text children.
+      expect(
+        screen.getByText((_content, el) => el?.tagName === "SPAN" && el.textContent === "song 1"),
+      ).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: /^submit song 2$/i })).toBeInTheDocument();
     });
 
@@ -695,9 +715,57 @@ describe("MixDetailRoute", () => {
     });
   });
 
+  describe("admin tools disclosure", () => {
+    it("starts collapsed: the toggle is there, the controls are not", async () => {
+      renderMix();
+      const toggle = await screen.findByRole("button", { name: /^admin tools$/i });
+      expect(toggle).toHaveAttribute("aria-expanded", "false");
+      expect(
+        screen.queryByRole("button", { name: /open mystery mix voting/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("toggles the controls open and shut again", async () => {
+      const user = userEvent.setup();
+      renderMix();
+      const toggle = await screen.findByRole("button", { name: /^admin tools$/i });
+
+      await user.click(toggle);
+      expect(toggle).toHaveAttribute("aria-expanded", "true");
+      expect(
+        await screen.findByRole("button", { name: /open mystery mix voting/i }),
+      ).toBeInTheDocument();
+
+      await user.click(toggle);
+      expect(toggle).toHaveAttribute("aria-expanded", "false");
+      expect(
+        screen.queryByRole("button", { name: /open mystery mix voting/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("collapsing abandons an armed confirm step rather than hiding it", async () => {
+      mockGetMix.mockResolvedValue(mix({ state: "open_voting" }));
+      const user = userEvent.setup();
+      renderMix();
+      const toggle = await screen.findByRole("button", { name: /^admin tools$/i });
+
+      await user.click(toggle);
+      await user.click(await screen.findByRole("button", { name: "close mix" }));
+      expect(await screen.findByRole("button", { name: "yes, close mix" })).toBeInTheDocument();
+
+      // Shut and reopen: you land back on the tools, not mid-confirm.
+      await user.click(toggle);
+      await user.click(toggle);
+      expect(await screen.findByRole("button", { name: "close mix" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "yes, close mix" })).not.toBeInTheDocument();
+      expect(mockUpdateMix).not.toHaveBeenCalled();
+    });
+  });
+
   it("organizer can open voting; advancing calls updateMix", async () => {
     const user = userEvent.setup();
     renderMix();
+    await openAdminTools(user);
     const btn = await screen.findByRole("button", { name: /open mystery mix voting/i });
     await user.click(btn);
     expect(mockUpdateMix).toHaveBeenCalledWith("r1", { state: "open_voting" });
@@ -707,6 +775,7 @@ describe("MixDetailRoute", () => {
     mockGetClub.mockResolvedValue({ ...club(), default_vibe_mode: true });
     const user = userEvent.setup();
     renderMix();
+    await openAdminTools(user);
 
     expect(
       screen.queryByRole("button", { name: /open mystery mix voting/i }),
@@ -718,7 +787,9 @@ describe("MixDetailRoute", () => {
 
   it("competitive club: the open_submission → open_voting button reads 'open mystery mix voting' — MYS-256", async () => {
     mockGetClub.mockResolvedValue({ ...club(), default_vibe_mode: false });
+    const user = userEvent.setup();
     renderMix();
+    await openAdminTools(user);
 
     expect(
       await screen.findByRole("button", { name: /^open mystery mix voting$/i }),
@@ -731,8 +802,17 @@ describe("MixDetailRoute", () => {
   it("advance button resets after a successful open (not stuck on 'opening…') — MYS-95", async () => {
     const user = userEvent.setup();
     renderMix();
+    await openAdminTools(user);
     await user.click(await screen.findByRole("button", { name: /open mystery mix voting/i }));
     expect(mockUpdateMix).toHaveBeenCalled();
+    // Advancing refetches the mix, and the refetch's loading state unmounts the
+    // whole panel — so the tools collapse behind the toggle again. That's the
+    // same unmount that clears any armed confirm step, and it's why this test
+    // has to reopen before checking the label.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /^admin tools$/i })).toBeEnabled(),
+    );
+    await openAdminTools(user);
     // After success the button returns to its label; it must not stay "opening…".
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /open mystery mix voting/i })).toBeInTheDocument(),
@@ -744,6 +824,10 @@ describe("MixDetailRoute", () => {
     setAuth(OTHER);
     renderMix();
     await screen.findByText("late summer feels");
+    // The toggle, not the button behind it: a collapsed panel would hide the
+    // button from an organizer too, so only the toggle's absence proves the
+    // controls are actually gated on being an admin.
+    expect(screen.queryByRole("button", { name: /^admin tools$/i })).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /open mystery mix voting/i }),
     ).not.toBeInTheDocument();
@@ -756,8 +840,10 @@ describe("MixDetailRoute", () => {
   it("co-organizer viewer: sees OrganizerControls (advance control) though they are not the fixed organizer", async () => {
     mockGetClubMembers.mockResolvedValue(membersWithCoOrganizer());
     setAuth(CO_ORGANIZER);
+    const user = userEvent.setup();
     renderMix();
     await screen.findByText("late summer feels");
+    await openAdminTools(user);
     expect(
       await screen.findByRole("button", { name: /open mystery mix voting/i }),
     ).toBeInTheDocument();
@@ -778,6 +864,7 @@ describe("MixDetailRoute", () => {
     setAuth(OTHER);
     renderMix();
     await screen.findByText("late summer feels");
+    expect(screen.queryByRole("button", { name: /^admin tools$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /open mix/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^edit mix$/i })).not.toBeInTheDocument();
   });
@@ -786,6 +873,7 @@ describe("MixDetailRoute", () => {
     mockGetMix.mockResolvedValue(mix({ state: "pending" }));
     const user = userEvent.setup();
     renderMix();
+    await openAdminTools(user);
     const btn = await screen.findByRole("button", { name: "open mix" });
     await user.click(btn);
     expect(mockUpdateMix).toHaveBeenCalledWith("r1", { state: "open_submission" });
@@ -797,6 +885,7 @@ describe("MixDetailRoute", () => {
     mockGetMix.mockResolvedValue(mix({ state: "pending", theme: null }));
     const user = userEvent.setup();
     renderMix();
+    await openAdminTools(user);
     const btn = await screen.findByRole("button", { name: "open mix" });
     expect(btn).toBeDisabled();
     expect(
@@ -810,7 +899,7 @@ describe("MixDetailRoute", () => {
   it("a themeless pending mix shows the theme/description fields directly, no 'edit mix' click needed", async () => {
     mockGetMix.mockResolvedValue(mix({ state: "pending", theme: null }));
     renderMix();
-    await screen.findByRole("button", { name: "open mix" });
+    await screen.findByRole("button", { name: /^admin tools$/i });
     expect(screen.getByLabelText(/^theme$/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/description/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^edit mix$/i })).not.toBeInTheDocument();
@@ -832,6 +921,7 @@ describe("MixDetailRoute", () => {
     it("clicking 'close mix' shows a confirm panel instead of calling updateMix immediately", async () => {
       const user = userEvent.setup();
       renderMix();
+      await openAdminTools(user);
       const closeBtn = await screen.findByRole("button", { name: "close mix" });
       await user.click(closeBtn);
 
@@ -846,6 +936,7 @@ describe("MixDetailRoute", () => {
       // default club() has total_mixes: 6; mix() defaults mix_number: 1.
       const user = userEvent.setup();
       renderMix();
+      await openAdminTools(user);
       await user.click(await screen.findByRole("button", { name: "close mix" }));
 
       expect(
@@ -861,6 +952,7 @@ describe("MixDetailRoute", () => {
       mockGetClub.mockResolvedValue({ ...club(), total_mixes: 6 });
       const user = userEvent.setup();
       renderMix();
+      await openAdminTools(user);
       await user.click(await screen.findByRole("button", { name: "close mix" }));
 
       expect(
@@ -874,6 +966,7 @@ describe("MixDetailRoute", () => {
     it("clicking 'yes, close mix' in the confirm panel calls updateMix with state: closed", async () => {
       const user = userEvent.setup();
       renderMix();
+      await openAdminTools(user);
       await user.click(await screen.findByRole("button", { name: "close mix" }));
       await user.click(await screen.findByRole("button", { name: "yes, close mix" }));
 
@@ -883,6 +976,7 @@ describe("MixDetailRoute", () => {
     it("clicking 'cancel' dismisses the confirm panel without calling updateMix", async () => {
       const user = userEvent.setup();
       renderMix();
+      await openAdminTools(user);
       await user.click(await screen.findByRole("button", { name: "close mix" }));
       await user.click(await screen.findByRole("button", { name: "cancel" }));
 
@@ -900,7 +994,9 @@ describe("MixDetailRoute", () => {
     });
 
     it("shows both 'close mix' and 'reopen submissions' buttons while open_voting", async () => {
+      const user = userEvent.setup();
       renderMix();
+      await openAdminTools(user);
       expect(await screen.findByRole("button", { name: "close mix" })).toBeInTheDocument();
       expect(await screen.findByRole("button", { name: "reopen submissions" })).toBeInTheDocument();
     });
@@ -908,6 +1004,7 @@ describe("MixDetailRoute", () => {
     it("clicking 'reopen submissions' shows a confirm panel instead of calling updateMix immediately", async () => {
       const user = userEvent.setup();
       renderMix();
+      await openAdminTools(user);
       const reopenBtn = await screen.findByRole("button", { name: "reopen submissions" });
       await user.click(reopenBtn);
 
@@ -931,6 +1028,7 @@ describe("MixDetailRoute", () => {
       });
       const user = userEvent.setup();
       renderMix();
+      await openAdminTools(user);
       await user.click(await screen.findByRole("button", { name: "reopen submissions" }));
 
       expect(
@@ -947,6 +1045,7 @@ describe("MixDetailRoute", () => {
       });
       const user = userEvent.setup();
       renderMix();
+      await openAdminTools(user);
       await user.click(await screen.findByRole("button", { name: "reopen submissions" }));
 
       expect(
@@ -960,6 +1059,7 @@ describe("MixDetailRoute", () => {
       // beforeEach default mockGetVoteCounts resolves to an empty entries list.
       const user = userEvent.setup();
       renderMix();
+      await openAdminTools(user);
       await user.click(await screen.findByRole("button", { name: "reopen submissions" }));
 
       expect(
@@ -973,6 +1073,7 @@ describe("MixDetailRoute", () => {
     it("clicking 'cancel' dismisses the confirm panel without calling updateMix", async () => {
       const user = userEvent.setup();
       renderMix();
+      await openAdminTools(user);
       await user.click(await screen.findByRole("button", { name: "reopen submissions" }));
       await user.click(await screen.findByRole("button", { name: "cancel" }));
 
@@ -988,6 +1089,7 @@ describe("MixDetailRoute", () => {
     it("clicking 'yes, reopen submissions' calls updateMix(mixId, { state: 'open_submission' })", async () => {
       const user = userEvent.setup();
       renderMix();
+      await openAdminTools(user);
       await user.click(await screen.findByRole("button", { name: "reopen submissions" }));
       await user.click(await screen.findByRole("button", { name: "yes, reopen submissions" }));
 
@@ -997,6 +1099,7 @@ describe("MixDetailRoute", () => {
     it("the two confirm flows don't interfere: canceling 'reopen submissions' returns to the plain row, not a broken close-mix state", async () => {
       const user = userEvent.setup();
       renderMix();
+      await openAdminTools(user);
       await user.click(await screen.findByRole("button", { name: "reopen submissions" }));
       await user.click(await screen.findByRole("button", { name: "cancel" }));
 
@@ -1012,6 +1115,7 @@ describe("MixDetailRoute", () => {
     it("the two confirm flows don't interfere: canceling 'close mix' returns to the plain row, not a broken reopen state", async () => {
       const user = userEvent.setup();
       renderMix();
+      await openAdminTools(user);
       await user.click(await screen.findByRole("button", { name: "close mix" }));
       await user.click(await screen.findByRole("button", { name: "cancel" }));
 
@@ -1031,13 +1135,16 @@ describe("MixDetailRoute", () => {
     });
 
     it("shows an 'extend voting' button while open_voting", async () => {
+      const user = userEvent.setup();
       renderMix();
+      await openAdminTools(user);
       expect(await screen.findByRole("button", { name: "extend voting" })).toBeInTheDocument();
     });
 
     it("clicking it opens a datetime picker, prefilled and bounded off the current deadline", async () => {
       const user = userEvent.setup();
       renderMix();
+      await openAdminTools(user);
       await user.click(await screen.findByRole("button", { name: "extend voting" }));
 
       const input = await screen.findByLabelText(/new voting deadline/i);
@@ -1057,6 +1164,7 @@ describe("MixDetailRoute", () => {
       );
       const user = userEvent.setup();
       renderMix();
+      await openAdminTools(user);
       await user.click(await screen.findByRole("button", { name: "extend voting" }));
 
       const input = await screen.findByLabelText(/new voting deadline/i);
@@ -1075,6 +1183,7 @@ describe("MixDetailRoute", () => {
     it("clicking 'cancel' dismisses the picker without calling extendVotingDeadline", async () => {
       const user = userEvent.setup();
       renderMix();
+      await openAdminTools(user);
       await user.click(await screen.findByRole("button", { name: "extend voting" }));
       await user.click(await screen.findByRole("button", { name: "cancel" }));
 
@@ -1086,20 +1195,29 @@ describe("MixDetailRoute", () => {
     it("is not rendered once the mix is closed", async () => {
       mockGetMix.mockResolvedValue(mix({ state: "closed" }));
       renderMix();
-      await screen.findByText(/closed/i);
+      // The API state is still `closed`; the label people read is "completed".
+      await screen.findByText(/completed/i);
+      // A closed mix has no admin tools at all — not even the disclosure.
+      expect(screen.queryByRole("button", { name: /^admin tools$/i })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "extend voting" })).not.toBeInTheDocument();
     });
   });
 
   it("'reopen submissions' is never rendered while the mix is pending", async () => {
     mockGetMix.mockResolvedValue(mix({ state: "pending" }));
+    const user = userEvent.setup();
     renderMix();
+    await openAdminTools(user);
+    // With the panel open, so this proves the button is absent by state rather
+    // than merely collapsed.
     await screen.findByRole("button", { name: "open mix" });
     expect(screen.queryByRole("button", { name: "reopen submissions" })).not.toBeInTheDocument();
   });
 
   it("'reopen submissions' is never rendered while the mix is open_submission", async () => {
+    const user = userEvent.setup();
     renderMix(); // default mix() state is open_submission
+    await openAdminTools(user);
     await screen.findByRole("button", { name: "open mystery mix voting" });
     expect(screen.queryByRole("button", { name: "reopen submissions" })).not.toBeInTheDocument();
   });
@@ -1137,10 +1255,11 @@ describe("MixDetailRoute", () => {
     renderMix();
     expect(await screen.findByText("Debaser")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /on Spotify/i })).toHaveAttribute("href", "https://s");
-    expect(screen.getByRole("button", { name: /close mix/i })).toBeInTheDocument();
+    // Organizer controls are present, collapsed behind their toggle.
+    expect(screen.getByRole("button", { name: /^admin tools$/i })).toBeInTheDocument();
   });
 
-  it("open_voting: lists bandcamp/youtube-only tracks above the playlist links", async () => {
+  it("open_voting: lists songs that may not be on all playlists", async () => {
     mockGetMix.mockResolvedValue(mix({ state: "open_voting" }));
     mockGetPlaylist.mockResolvedValue({
       mix_id: "r1",
@@ -1165,10 +1284,10 @@ describe("MixDetailRoute", () => {
       vibing_count: 0,
     });
     renderMix();
+    // One agnostic, hedged section now, rather than a bandcamp/youtube-specific
+    // list plus a per-service gap list under each playlist row.
     expect(
-      await screen.findByText(
-        "bandcamp or YouTube only tracks that may not appear on your playlists",
-      ),
+      await screen.findByRole("heading", { name: /songs that may not be on all playlists/i }),
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Only Here" })).toHaveAttribute(
       "href",
@@ -1176,7 +1295,7 @@ describe("MixDetailRoute", () => {
     );
   });
 
-  it("open_voting: omits the source-only list when every track is a catalog track", async () => {
+  it("open_voting: omits the section when nothing is known to be missing", async () => {
     mockGetMix.mockResolvedValue(mix({ state: "open_voting" }));
     mockGetPlaylist.mockResolvedValue({
       mix_id: "r1",
@@ -1397,7 +1516,7 @@ describe("MixDetailRoute", () => {
       expect(link).toHaveAttribute("href", "https://www.youtube.com/watch_videos?video_ids=a,b");
       expect(link).toHaveAttribute("target", "_blank");
       // N (youtube_track_count) of M (entry count) on YouTube
-      expect(screen.getByText("1 of 2 on YouTube")).toBeInTheDocument();
+      expect(screen.getByText("1 of 2 songs")).toBeInTheDocument();
     });
 
     it("open YouTube affordance: hidden entirely when youtube_playlist_url is null (MYS-78)", async () => {
@@ -1883,7 +2002,7 @@ describe("MixDetailRoute", () => {
       expect(svg?.querySelector("polyline")).toHaveAttribute("points", "1.5 6.5 4.5 9.5 10.5 2.5");
     });
 
-    it("uses Sage styling for the voted row, never Rust (Rust is reserved elsewhere on this screen)", async () => {
+    it("marks the voted row without the accent — a locked tally is neither an action nor an achievement", async () => {
       setupLockedTally({
         voteCounts: [
           { submission_id: "p1", title: "Debaser", artist: "Pixies", vote_count: 2 },
@@ -1891,22 +2010,29 @@ describe("MixDetailRoute", () => {
         ],
         myVotes: ["p1"],
       });
-      const { container } = renderMix();
+      renderMix();
 
       await screen.findByText(/vote tally/i);
 
+      // The row the caller voted for is told apart by weight, not color: the
+      // strongest hairline step and a `foreground` label.
       const votedRow = tallyRowFor("Debaser");
-      expect(votedRow.className).toMatch(/border-sage/);
+      expect(votedRow.className).toMatch(/border-hairline-strong/);
       const voteLabel = within(votedRow).getByText("your vote", { exact: true });
-      expect(voteLabel.className).toMatch(/text-sage/);
+      expect(voteLabel.className).toMatch(/text-foreground/);
 
-      // The unvoted row keeps its neutral border.
+      // The unvoted row keeps the quieter in-card divider weight.
       const heyRow = tallyRowFor("Hey");
-      expect(heyRow.className).toMatch(/border-border/);
+      expect(heyRow.className).toMatch(/border-hairline-soft/);
 
-      // Rust is never used in the locked tally view.
-      expect(container.innerHTML).not.toMatch(/border-rust/);
-      expect(container.innerHTML).not.toMatch(/text-rust/);
+      // No row in the tally carries the accent, in any form. Scoped to the
+      // tally's own rows container rather than the whole page: the organizer's
+      // "close mix" CTA elsewhere on this screen is an amber fill and is a
+      // legitimate action, so a page-wide assertion would either fail or have
+      // to be weakened.
+      const tallyRows = votedRow.parentElement as HTMLElement;
+      expect(tallyRows.innerHTML).not.toMatch(/text-accent/);
+      expect(tallyRows.innerHTML).not.toMatch(/bg-accent/);
     });
 
     it("zero-votes case: no checkmark anywhere and the locked-footer doesn't render when myVotes is empty", async () => {
@@ -1972,7 +2098,7 @@ describe("MixDetailRoute", () => {
 
       expect(
         await screen.findByText(
-          /your votes are locked — they will be revealed when the mystery mix closes/i,
+          /your votes are locked\. they will be revealed when the mystery mix closes/i,
         ),
       ).toBeInTheDocument();
     });
@@ -1992,11 +2118,8 @@ describe("MixDetailRoute", () => {
       await screen.findByText(/vote tally/i);
 
       const link = screen.getByRole("link", { name: /open playlist in youtube/i });
-      expect(link).toHaveAttribute(
-        "href",
-        "https://www.youtube.com/watch_videos?video_ids=a,b",
-      );
-      expect(screen.getByText("2 of 2 on YouTube")).toBeInTheDocument();
+      expect(link).toHaveAttribute("href", "https://www.youtube.com/watch_videos?video_ids=a,b");
+      expect(screen.getByText("all 2 songs")).toBeInTheDocument();
     });
   });
 
@@ -2126,7 +2249,9 @@ describe("MixDetailRoute", () => {
       // composer collapsed: textarea gone. MYS-257: one note per player per
       // song, so "leave a note" is replaced by "edit note".
       expect(within(card).queryByRole("textbox")).not.toBeInTheDocument();
-      expect(within(card).queryByRole("button", { name: /^leave a note$/i })).not.toBeInTheDocument();
+      expect(
+        within(card).queryByRole("button", { name: /^leave a note$/i }),
+      ).not.toBeInTheDocument();
       expect(within(card).getByRole("button", { name: /edit note/i })).toBeInTheDocument();
     });
 
@@ -2419,9 +2544,7 @@ describe("MixDetailRoute", () => {
       await user.click(within(card).getByRole("button", { name: /^leave note$/i }));
 
       expect(mockAddNote).toHaveBeenCalledWith("mine", "glad I finally caught this one");
-      expect(
-        await within(card).findByText("glad I finally caught this one"),
-      ).toBeInTheDocument();
+      expect(await within(card).findByText("glad I finally caught this one")).toBeInTheDocument();
     });
 
     // ----- Most Noted ------------------------------------------------------ //
@@ -2578,7 +2701,9 @@ describe("MixDetailRoute", () => {
 
       await screen.findByRole("heading", { name: /^winners$/i });
       const section = sectionFor(/^winners$/i);
-      expect(within(section).getByText("tied for the most votes this mystery mix")).toBeInTheDocument();
+      expect(
+        within(section).getByText("tied for the most votes this mystery mix"),
+      ).toBeInTheDocument();
       expect(within(section).getByText("Bad Guy")).toBeInTheDocument();
       expect(within(section).getByText("Vienna")).toBeInTheDocument();
       // the lower-voted song is not co-recognized
@@ -2912,7 +3037,7 @@ describe("MixDetailRoute", () => {
 
     // ----- Data loading ---------------------------------------------------- //
 
-    it("closed mix shows a 'listen back' affordance when there are tracks (MYS-133)", async () => {
+    it("closed mix shows the playlists section when there are tracks (MYS-133)", async () => {
       mockGetPlaylist.mockResolvedValue({
         mix_id: "r1",
         mix_number: 1,
@@ -2928,7 +3053,9 @@ describe("MixDetailRoute", () => {
       setupClosed({ submissions: [sub({ title: "Debaser" })] });
       renderMix();
 
-      expect(await screen.findByRole("heading", { name: /listen back/i })).toBeInTheDocument();
+      // One heading for this block in every state now — it used to be "listen
+      // back" when closed and "playlist (N)" elsewhere, for identical content.
+      expect(await screen.findByRole("heading", { name: /^playlists$/i })).toBeInTheDocument();
       expect(screen.getByRole("link", { name: /open playlist in youtube/i })).toBeInTheDocument();
     });
 

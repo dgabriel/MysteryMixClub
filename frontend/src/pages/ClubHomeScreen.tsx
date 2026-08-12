@@ -351,7 +351,7 @@ export function ClubHomeScreen({
             </h2>
             <div className="mt-4">
               {inviteUrl ? (
-                <InviteShare inviteUrl={inviteUrl} />
+                <InviteShare inviteUrl={inviteUrl} onPaper />
               ) : (
                 <>
                   <Button

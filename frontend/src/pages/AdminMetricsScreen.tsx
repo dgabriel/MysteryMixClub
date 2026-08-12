@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { AdminMetrics, AdminSignupTrend } from "../services/api";
 import { Card } from "../components/Card";
+import { PaperSurface } from "../components/PaperSurface";
 import { ConcentricRings } from "../components/ConcentricRings";
 import { SignupTrendChart } from "../components/SignupTrendChart";
 
@@ -32,11 +33,15 @@ type AdminMetricsScreenProps = {
  * takes the Mono Data value (`text-sm`, normal tracking, `foreground`), so the
  * value is what the eye lands on when seventeen of these stack up.
  *
- * Amber budget (category rule, not a count): none. Nothing on this page is an
- * action or an achievement — it is a read-only snapshot with no controls. The
- * one place amber appears is inside the chart, where `chart-1` *is* `accent`;
- * the style guide names a single-series chart as the sanctioned
- * amber-not-on-action case.
+ * Renders on the light `paper` surface (ADR 0013). The stat cards and the chart
+ * card stay dark — the frame model — so everything inside one keeps the dark
+ * ramp and only the headings and page copy move to `ink`.
+ *
+ * Amber: the section headings, in `ink-accent` (the paper-legal value), the
+ * same treatment /profile carries. ADR 0012 retired the category gate, so
+ * "nothing here is an action" is no longer a reason to withhold it; these are
+ * the landmarks of a page that is otherwise seventeen identical number rows.
+ * Amber also appears inside the chart, where `chart-1` *is* `accent`.
  *
  * The snapshot and the trend are two independent requests, so each carries its
  * own loading and error state and neither section waits on the other.
@@ -51,104 +56,107 @@ export function AdminMetricsScreen({
 }: AdminMetricsScreenProps) {
   if (loading && trendLoading) {
     return (
-      <main className="flex flex-1 items-center justify-center px-4 sm:px-8">
-        <ConcentricRings size={88} spinning className="mx-auto" />
-      </main>
+      <PaperSurface nested>
+        <main className="flex flex-1 items-center justify-center px-4 sm:px-8">
+          <ConcentricRings size={88} spinning onPaper className="mx-auto" />
+        </main>
+      </PaperSurface>
     );
   }
 
   return (
-    <main className="mx-auto w-full max-w-lg px-4 pt-8 pb-16 sm:px-8">
-      <h1 className="font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
-        metrics
-      </h1>
-      <p className="mt-4 text-sm leading-[1.72] text-muted-foreground">
-        platform totals as of right now.
-      </p>
-
-      {loading ? (
-        <div className="mt-8 flex justify-center">
-          <ConcentricRings size={56} spinning />
-        </div>
-      ) : error || !metrics ? (
-        // A failed fetch is an outcome from the server, not form validation, so
-        // it stays ordinary body copy rather than taking ADR 0004's
-        // `destructive-text` category — the same call R15 made.
-        <p role="alert" className="mt-8 text-sm leading-[1.72] text-foreground">
-          {error ?? "couldn't load the metrics."}
+    // Light surface (ADR 0013), `nested` because AuthedLayout owns the shell.
+    <PaperSurface nested>
+      <main className="mx-auto w-full max-w-lg px-4 pt-8 pb-16 sm:px-8">
+        <h1 className="font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
+          metrics
+        </h1>
+        <p className="mt-4 text-sm leading-[1.72] text-ink-muted">
+          platform totals as of right now.
         </p>
-      ) : (
-        <div className="mt-8 space-y-12">
-          <StatGroup title="users and clubs">
-            <Stat label="users" value={metrics.total_users} />
-            <Stat label="clubs" value={metrics.total_clubs} />
-            <Stat label="active clubs" value={metrics.active_clubs} />
-            <Stat label="complete clubs" value={metrics.complete_clubs} />
-            {/* 30+ days old, zero submissions ever — mixes are still cycling
-                open/closed on the scheduler with nobody actually using them. */}
-            <Stat label="abandoned clubs" value={metrics.abandoned_clubs} />
-          </StatGroup>
 
-          <StatGroup title="mystery mixes">
-            <Stat label="mixes" value={metrics.total_mixes} />
-            <Stat label="pending" value={metrics.pending_mixes} />
-            <Stat label="open for submissions" value={metrics.open_submission_mixes} />
-            <Stat label="open for voting" value={metrics.open_voting_mixes} />
-            <Stat label="closed" value={metrics.closed_mixes} />
-          </StatGroup>
+        {loading ? (
+          <div className="mt-8 flex justify-center">
+            <ConcentricRings size={56} spinning onPaper />
+          </div>
+        ) : error || !metrics ? (
+          // A failed fetch is an outcome from the server, not form validation, so
+          // it stays ordinary body copy rather than taking ADR 0004's
+          // `destructive-text` category — the same call R15 made.
+          <p role="alert" className="mt-8 text-sm leading-[1.72] text-ink">
+            {error ?? "couldn't load the metrics."}
+          </p>
+        ) : (
+          <div className="mt-8 space-y-12">
+            <StatGroup title="users and clubs">
+              <Stat label="users" value={metrics.total_users} />
+              <Stat label="clubs" value={metrics.total_clubs} />
+              <Stat label="active clubs" value={metrics.active_clubs} />
+              <Stat label="complete clubs" value={metrics.complete_clubs} />
+              {/* 30+ days old, zero submissions ever — mixes are still cycling
+                  open/closed on the scheduler with nobody actually using them. */}
+              <Stat label="abandoned clubs" value={metrics.abandoned_clubs} />
+            </StatGroup>
 
-          <StatGroup title="submissions and engagement">
-            <Stat label="submissions" value={metrics.total_submissions} />
-            {/* Averaged over mixes that received at least one submission — every
-                club auto-creates all of its mixes up front, so "per mix" would
-                mostly measure how far ahead clubs are scheduled. */}
-            <Stat
-              label="avg per mix with submissions"
-              value={metrics.avg_submissions_per_mix.toFixed(1)}
-            />
-            <Stat label="votes" value={metrics.total_votes} />
-            <Stat label="notes" value={metrics.total_notes} />
-          </StatGroup>
+            <StatGroup title="mystery mixes">
+              <Stat label="mixes" value={metrics.total_mixes} />
+              <Stat label="pending" value={metrics.pending_mixes} />
+              <Stat label="open for submissions" value={metrics.open_submission_mixes} />
+              <Stat label="open for voting" value={metrics.open_voting_mixes} />
+              <Stat label="closed" value={metrics.closed_mixes} />
+            </StatGroup>
 
-          <StatGroup title="waitlist">
-            <Stat label="on the waitlist" value={metrics.waitlist_total} />
-            <Stat label="pending" value={metrics.waitlist_pending} />
-            <Stat label="invited" value={metrics.waitlist_invited} />
-          </StatGroup>
-        </div>
-      )}
+            <StatGroup title="submissions and engagement">
+              <Stat label="submissions" value={metrics.total_submissions} />
+              {/* Averaged over mixes that received at least one submission — every
+                  club auto-creates all of its mixes up front, so "per mix" would
+                  mostly measure how far ahead clubs are scheduled. */}
+              <Stat
+                label="avg per mix with submissions"
+                value={metrics.avg_submissions_per_mix.toFixed(1)}
+              />
+              <Stat label="votes" value={metrics.total_votes} />
+              <Stat label="notes" value={metrics.total_notes} />
+            </StatGroup>
 
-      <section className="mt-12">
-        <h2 className="font-mono text-meta uppercase tracking-mono-wide text-muted-foreground">
-          signups
-        </h2>
-        <p className="mt-2 font-mono uppercase tracking-mono text-mini text-muted-foreground">
-          {trend ? `last ${trend.days} days` : "over time"}
-        </p>
-        <Card className="mt-4">
-          {trendLoading ? (
-            <div className="flex justify-center py-4">
-              <ConcentricRings size={56} spinning />
-            </div>
-          ) : trendError || !trend ? (
-            <p role="alert" className="text-sm leading-[1.72] text-foreground">
-              {trendError ?? "couldn't load the signup trend."}
-            </p>
-          ) : (
-            <SignupTrendChart buckets={trend.buckets} />
-          )}
-        </Card>
-      </section>
-    </main>
+            <StatGroup title="waitlist">
+              <Stat label="on the waitlist" value={metrics.waitlist_total} />
+              <Stat label="pending" value={metrics.waitlist_pending} />
+              <Stat label="invited" value={metrics.waitlist_invited} />
+            </StatGroup>
+          </div>
+        )}
+
+        <section className="mt-12">
+          <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-accent">
+            signups
+          </h2>
+          <p className="mt-2 font-mono uppercase tracking-mono text-mini text-ink-muted">
+            {trend ? `last ${trend.days} days` : "over time"}
+          </p>
+          <Card className="mt-4">
+            {trendLoading ? (
+              <div className="flex justify-center py-4">
+                <ConcentricRings size={56} spinning />
+              </div>
+            ) : trendError || !trend ? (
+              <p role="alert" className="text-sm leading-[1.72] text-foreground">
+                {trendError ?? "couldn't load the signup trend."}
+              </p>
+            ) : (
+              <SignupTrendChart buckets={trend.buckets} />
+            )}
+          </Card>
+        </section>
+      </main>
+    </PaperSurface>
   );
 }
 
 function StatGroup({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section>
-      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-muted-foreground">
-        {title}
-      </h2>
+      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-accent">{title}</h2>
       <Card className="mt-4">
         {/* `hairline-soft` is the step the guide names for dividers *within* a
             card, and the rows inset to the card's own padding the way R15's

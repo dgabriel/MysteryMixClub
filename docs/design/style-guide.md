@@ -166,9 +166,10 @@ until the sweep ticket.
 
 ### Light surface — public pages only (ADR 0013)
 
-Ten routes — `/login`, `/about`, `/terms`, `/privacy`, `/help`, `/home`,
-`/clubs/:id`, `/mixes/:id`, `/clubs/new` and `/profile` — render on a **light**
-surface. Everything else in the app is dark, exactly as the
+Twelve routes — `/login`, `/about`, `/terms`, `/privacy`, `/help`, `/home`,
+`/clubs/:id`, `/mixes/:id`, `/clubs/new`, `/profile`, `/admin` and
+`/admin/metrics` — render on a **light** surface. Every authed route is paper;
+what is left on the dark ramp is all pre-auth. Everything else in the app is dark, exactly as the
 rest of this guide describes.
 
 On those pages the model is **light page, dark cards**: a `bg-card` island is its

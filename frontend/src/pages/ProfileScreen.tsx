@@ -133,8 +133,9 @@ export function ProfileScreen({
       <main className="mx-auto w-full max-w-lg px-4 pt-8 pb-16 sm:px-8">
         <div className="flex items-center gap-4">
           {/* Amber because this is the viewer's own avatar — the roster on
-              ClubHomeScreen deliberately stays neutral. */}
-          {userId ? <UserAvatar userId={userId} size={56} accent /> : null}
+              ClubHomeScreen deliberately stays neutral. `onPaper` inverts the
+              chip: white fill, near-black ring, `ink-accent` cassette. */}
+          {userId ? <UserAvatar userId={userId} size={56} accent onPaper /> : null}
           <h1 className="font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
             profile
           </h1>

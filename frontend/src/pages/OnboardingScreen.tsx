@@ -40,12 +40,10 @@ export function OnboardingScreen({
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-4 sm:px-8">
       <div className="w-full max-w-sm">
-        {/* The brand mark, accented. Amber-as-identity is bounded to the shared
-            nav's persistent mark plus at most one hero mark in a screen's own
-            content (ADR 0010). /onboarding is registered as a top-level route in
-            App.tsx, outside the AuthedLayout children that mount TopNav, so this
-            screen carries no nav mark — the hero mark is the only amber identity
-            placement here and keeping `accent` is in bounds. */}
+        {/* The brand mark, accented — it carries the brand on a screen that has
+            no other identity placement. /onboarding is registered as a top-level
+            route in App.tsx, outside the AuthedLayout children that mount
+            TopNav, so this screen renders no nav mark of its own. */}
         <ConcentricRings size={72} accent className="mx-auto" />
 
         <h1 className="mt-8 text-center font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">

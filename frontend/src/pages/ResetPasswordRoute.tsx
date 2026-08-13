@@ -86,9 +86,9 @@ export function ResetPasswordRoute() {
     return (
       <main className="min-h-screen flex flex-col items-center justify-center px-4 sm:px-8">
         <div className="w-full max-w-sm text-center">
-          {/* Unaccented, as on every screen in this family: amber-as-identity is
-              bounded to the shared nav's mark plus at most one hero mark per
-              screen, and this is not one of those screens (ADR 0010). */}
+          {/* Unaccented, as on every screen in this family: the disc is the
+              motif here, and the confirmation heading below is what the screen
+              is about. */}
           <ConcentricRings size={72} className="mx-auto" />
           <h1 className="mt-8 font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
             password updated
@@ -111,11 +111,9 @@ export function ResetPasswordRoute() {
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-4 sm:px-8">
       <div className="w-full max-w-sm">
-        {/* Unaccented. Amber-as-identity is bounded to the shared nav's mark
-            plus at most one hero mark per screen, and this screen is not one of
-            the ones that carries the hero mark (ADR 0010). Form validation
-            errors below are their own color category and consume nothing from
-            this screen's amber either way (ADR 0004). */}
+        {/* Unaccented — the disc is the motif, and the form below is what the
+            screen is about. Form validation errors take `destructive-text`
+            rather than any amber (ADR 0004). */}
         <ConcentricRings size={72} className="mx-auto" />
         <h1 className="mt-8 text-center font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
           set a new password

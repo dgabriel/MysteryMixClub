@@ -590,18 +590,18 @@ export function MixDetailRoute() {
     );
   }
 
-  // Amber budget (category rule, not a count). Every amber on this screen is
-  // an ACTION or an ACHIEVEMENT, and none of it is per-row on an unbounded
-  // list:
-  //  - ACTION: the organizer CTAs, the cast-votes CTA, the playlist/listen
-  //    links, the `link`-variant text buttons, and hover/focus states.
-  //  - ACTION (interactive state): a selected vote card. Bounded by
-  //    `votes_per_player`, entirely user-driven, and the design system's own
-  //    AlbumCard "guessed" state marks exactly this with amber.
-  //  - ACHIEVEMENT: Most Noted and the Winner(s) — one section of each per
-  //    mix.
-  //  - ACTION: `DeadlineChip`, which grades its own urgency and goes amber
-  //    only while the deadline is actually closing.
+  // Where the amber goes on this screen and what each placement marks. None of
+  // it is per-row on an unbounded list, which is what would stop it marking
+  // anything:
+  //  - the organizer CTAs, the cast-votes CTA, the playlist/listen links, the
+  //    `link`-variant text buttons, and hover/focus states — all actions.
+  //  - a selected vote card: the user's own choice, bounded by
+  //    `votes_per_player`, and the design system's own AlbumCard "guessed"
+  //    state marks exactly this with amber.
+  //  - Most Noted and the Winner(s) — the achievements, one section of each
+  //    per mix.
+  //  - `DeadlineChip`, which grades its own urgency and goes amber only while
+  //    the deadline is actually closing.
   // Dropped to neutral on purpose (see each component): the rank medals in the
   // picks list, the locked vote tally, the per-row source/platform/unmatched
   // links, submitter-note rules, and the "your submission" own-song card.
@@ -2772,8 +2772,8 @@ function RankBadge({ rank }: { rank: number }) {
 /**
  * The reveal a vibing viewer sees (MYS-112 / MYS-134): Most Noted, the
  * winner(s) by votes — named, no counts — and the full tracklist with notes
- * but NO scores or leaderboard. Same amber budget as the full reveal: the two
- * achievement sections, and nothing per-row.
+ * but NO scores or leaderboard. Amber lands the same way as in the full
+ * reveal: the two achievement sections, and nothing per-row.
  */
 function VibingReveal({
   results,

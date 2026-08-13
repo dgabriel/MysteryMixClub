@@ -59,7 +59,7 @@ type AdminScreenProps = {
  * Thin platform-admin page: search users by email, then hard-delete a match
  * behind a typed confirm; and generate a club-less signup invite (MYS-182).
  * Content-only — the shared TopNav is rendered by AuthedLayout, so this screen
- * renders no hero mark of its own.
+ * renders no brand mark of its own.
  *
  * **The record table.** The user results and the waitlist are the app's first
  * real data tables, and the system has no table spec, so both are derived from

@@ -37,9 +37,8 @@ export function CheckEmailScreen({ email, onBack }: CheckEmailScreenProps) {
     <PaperSurface>
       <main className="flex flex-1 flex-col items-center justify-center px-4 sm:px-8">
         <div className="w-full max-w-sm text-center">
-          {/* The disc, unaccented. Amber-as-identity is bounded to the shared
-            nav's mark plus at most one hero mark per screen, and this screen is
-            not one of the ones that carries the hero mark (ADR 0010). */}
+          {/* The disc, unaccented — it is here as the motif, not marking
+            anything. The instruction below is what the screen is about. */}
           <ConcentricRings size={72} onPaper className="mx-auto" />
 
           <h1 className="mt-8 font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">

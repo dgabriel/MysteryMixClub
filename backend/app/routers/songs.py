@@ -45,6 +45,7 @@ from app.services.song_links import (
     assemble_source_links,
     get_link_assembler,
 )
+from app.services.youtube_resolver import YouTubeResolver, get_youtube_resolver
 
 router = APIRouter(prefix="/songs", tags=["songs"])
 
@@ -83,6 +84,7 @@ async def resolve_song(
     _user: User = Depends(get_current_user),
     resolver: LinkResolver = Depends(get_link_resolver),
     assembler: SongLinkAssembler = Depends(get_link_assembler),
+    youtube: YouTubeResolver = Depends(get_youtube_resolver),
 ) -> ResolvedSong:
     # Only ever set on a Bandcamp paste (both catalog-hit and source-only); the
     # frontend passes it back on submit so it persists for the embedded player.
@@ -122,7 +124,7 @@ async def resolve_song(
             if not payload.allow_source_only:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="song not found")
             assert song.source_key is not None  # guaranteed alongside song.source
-            platforms, _ = await assemble_source_links(
+            platforms, source_video_id = await assemble_source_links(
                 assembler, song.title, song.artist, song.source_key
             )
             return ResolvedSong(
@@ -136,12 +138,21 @@ async def resolve_song(
                 source_url=song.source_url,
                 bandcamp_track_id=song.bandcamp_track_id,
                 platforms=platforms,
+                # Exact, never guessed: comes straight out of a youtube:<id>
+                # source_key, and is None for a Bandcamp track (MYS-201). No
+                # search.list call was made here either way.
+                youtube_video_id=source_video_id,
             )
         title, artist, isrc = song.title, song.artist, song.isrc
         album, thumbnail_url = song.album, song.thumbnail_url
         bandcamp_track_id = song.bandcamp_track_id
 
-    platforms = await assembler.assemble(title, artist, isrc)
+    # Resolve the video id here rather than letting assemble() do it internally,
+    # so it can be handed back to the client and echoed on submit instead of
+    # being resolved a second time (MysteryMixClub-0rkm). Same "resolve once,
+    # pass it through" pattern assemble()'s own docstring prescribes.
+    video_id = await youtube.video_id_for(title, artist)
+    platforms = await assembler.assemble(title, artist, isrc, youtube_video_id=video_id)
     return ResolvedSong(
         title=title,
         artist=artist,
@@ -150,6 +161,7 @@ async def resolve_song(
         isrc=isrc,
         bandcamp_track_id=bandcamp_track_id,
         platforms=platforms,
+        youtube_video_id=video_id,
     )
 
 

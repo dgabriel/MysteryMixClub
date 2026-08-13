@@ -338,9 +338,14 @@ export function MixDetailRoute() {
       artist: song.artist ?? "",
       // Exactly one identity: a catalog isrc, or a source-only key (+ Bandcamp
       // track id when present) for a Bandcamp/YouTube pick (MYS-201).
+      //
+      // A catalog track also carries the video id resolve already found, so the
+      // server reuses it instead of spending a second YouTube search on the
+      // track we just looked up (MysteryMixClub-0rkm). A source-only track
+      // doesn't need it: the server derives the exact id from source_key.
       ...(song.source_key
         ? { source_key: song.source_key, bandcamp_track_id: song.bandcamp_track_id }
-        : { isrc: song.isrc }),
+        : { isrc: song.isrc, youtube_video_id: song.youtube_video_id }),
       album: song.album,
       album_art_url: song.thumbnail_url,
       // The stance is uniform across all your songs; the backend propagates it.

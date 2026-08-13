@@ -44,7 +44,7 @@ from app.services.song_links import (
     assemble_source_links,
     get_link_assembler,
 )
-from app.services.source_tracks import SOURCE_KEY_PATTERN, source_fields
+from app.services.source_tracks import SOURCE_KEY_PATTERN, VIDEO_ID_PATTERN, source_fields
 from app.services.youtube_resolver import YouTubeResolver, get_youtube_resolver
 
 router = APIRouter(tags=["submissions"])
@@ -58,6 +58,11 @@ Note = Annotated[str, StringConstraints(strip_whitespace=True, max_length=280)]
 Album = Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)]
 AlbumArtUrl = Annotated[str, StringConstraints(max_length=2048)]
 BandcampTrackId = Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^\d{1,20}$")]
+# Echoed back from POST /songs/resolve so submit doesn't re-resolve the song the
+# client just picked (MysteryMixClub-0rkm). Pattern-bound to exactly the 11
+# URL-safe chars a real id has: the value lands straight in a watch?v= URL, so a
+# looser bound would let a caller steer that link anywhere.
+YouTubeVideoId = Annotated[str, StringConstraints(strip_whitespace=True, pattern=VIDEO_ID_PATTERN)]
 
 # Reserved, non-URL key under which the Bandcamp numeric track id rides along in
 # the platform_links JSONB (MYS-201, for the MYS-204 embedded player). Namespaced
@@ -82,6 +87,10 @@ class SubmissionCreate(WireModel):
     # any Bandcamp-sourced track (catalog-hit or source-only), for the embedded
     # player (MYS-204). Persisted into platform_links; None for everything else.
     bandcamp_track_id: BandcampTrackId | None = None
+    # The video id POST /songs/resolve already resolved for this exact track.
+    # Optional: omitted (or from an older client), the server resolves it as
+    # before — this only removes the duplicate call, it is never required.
+    youtube_video_id: YouTubeVideoId | None = None
     note: Note | None = None
     participation_mode: Literal["playing", "vibing"] | None = None
 
@@ -153,6 +162,10 @@ async def _assemble_track(
     timeout, unconfigured key) — the caller must not record that as an attempt,
     or the backfill will never revisit the track (ADR 0015).
 
+    A ``payload.youtube_video_id`` echoed back from ``POST /songs/resolve`` is
+    used as-is and skips the lookup entirely, which is what keeps a submitted
+    song to one ``search.list`` call rather than two (MysteryMixClub-0rkm).
+
     Source-only tracks (MYS-201) bypass every fuzzy lookup: the source_key's
     exact video id (or Bandcamp page) drives the links — never a guessed match.
     """
@@ -161,6 +174,19 @@ async def _assemble_track(
             assembler, payload.title, payload.artist, payload.source_key
         )
         return links, video_id, False
+    if payload.youtube_video_id is not None:
+        # The client already paid for this lookup at /songs/resolve; spending a
+        # second search.list call on the same track is the whole bug
+        # (MysteryMixClub-0rkm). Treated as answered: a resolve DID happen, just
+        # one request earlier, so the row is correctly stamped rather than left
+        # pending for a backfill that has nothing to find (ADR 0015).
+        platform_links = await assembler.assemble(
+            payload.title,
+            payload.artist,
+            payload.isrc,
+            youtube_video_id=payload.youtube_video_id,
+        )
+        return platform_links, payload.youtube_video_id, True
     lookup = await youtube.resolve(payload.title, payload.artist)
     platform_links = await assembler.assemble(
         payload.title, payload.artist, payload.isrc, youtube_video_id=lookup.video_id

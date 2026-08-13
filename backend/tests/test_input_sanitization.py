@@ -614,7 +614,9 @@ class _FakeLinkResolve:
 
 
 class _FakeResolveAssembler:
-    async def assemble(self, title, artist=None, isrc=None) -> dict[str, str]:
+    async def assemble(
+        self, title, artist=None, isrc=None, *, youtube_video_id=None, fuzzy=True
+    ) -> dict[str, str]:
         return _ASSEMBLED
 
 
@@ -630,6 +632,9 @@ def _build_songs_client(session_factory) -> AsyncClient:
     app.dependency_overrides[get_deezer_client] = lambda: _FakeDeezerSearch()
     app.dependency_overrides[get_link_resolver] = lambda: _FakeLinkResolve()
     app.dependency_overrides[get_link_assembler] = lambda: _FakeResolveAssembler()
+    # /songs/resolve resolves the video id itself now (MysteryMixClub-0rkm), so
+    # this override is what keeps these tests off the live YouTube Data API.
+    app.dependency_overrides[get_youtube_resolver] = lambda: _FakeYouTube()
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
 

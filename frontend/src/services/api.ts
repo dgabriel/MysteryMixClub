@@ -724,6 +724,11 @@ export type ResolvedSong = {
    *  (MYS-204); null for everything else. */
   bandcamp_track_id: string | null;
   platforms: Partial<Record<PlatformKey, string>>;
+  /** The exact YouTube video id behind `platforms.youtube`, when one resolved.
+   *  Echo it back on submit so the server doesn't spend a second YouTube search
+   *  on the track you just picked (MysteryMixClub-0rkm). Null when nothing
+   *  resolved, in which case the youtube link is a search deep link. */
+  youtube_video_id: string | null;
 };
 
 /** A single search hit (GET /api/v1/songs/search). `resolve_url` is the platform
@@ -981,6 +986,10 @@ export type SubmissionInput = {
   /** Bandcamp's numeric track id from the resolve step, echoed back for the
    *  embedded player (MYS-204); omitted for everything else. */
   bandcamp_track_id?: string | null;
+  /** The video id from the resolve step. Omitting it is safe — the backend just
+   *  resolves it again, which is the duplicate YouTube call this exists to
+   *  avoid (MysteryMixClub-0rkm). */
+  youtube_video_id?: string | null;
   album?: string | null;
   album_art_url?: string | null;
   note?: string | null;

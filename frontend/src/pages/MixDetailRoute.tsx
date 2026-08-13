@@ -1284,6 +1284,69 @@ function SubmissionProgress({ submitted, total }: { submitted: number; total: nu
  *  allowance would otherwise push a row of discs through the side of the card. */
 const PIP_CAP = 5;
 
+const STACKING_HINT_KEY = "mmc.dismissed.stackingHint";
+
+/**
+ * One-time explainer for weighted voting (ADR 0014).
+ *
+ * The ring teaches itself — an empty circle beside a song reads as "click to
+ * vote" — but nothing on the card says a second click up puts a *second* vote
+ * on the same track. A player who never tries it would reasonably conclude one
+ * vote per song is still the rule, which is the whole feature missed. Hover
+ * text was the first attempt and is not enough: there is no hover on a phone,
+ * so it reached nobody on touch.
+ *
+ * Dismissable and persisted, because this is a fact you learn once. It is not
+ * an error or a warning, so it stays on the neutral `ink` ramp rather than
+ * taking amber — the same call HelpLink makes, and for the same reason: a help
+ * affordance is never the screen's signal. The border is what separates it from
+ * the page.
+ *
+ * localStorage rather than a user column: dismissing a tip is device-local
+ * preference, not account state worth a migration and an endpoint. The tradeoff
+ * is that it reappears on a new device, which for a one-line hint is the
+ * cheaper failure.
+ */
+function StackingHint() {
+  const [dismissed, setDismissed] = useState(() => {
+    try {
+      return localStorage.getItem(STACKING_HINT_KEY) === "1";
+    } catch {
+      // Private-mode Safari throws on access. A hint that always shows beats a
+      // ballot that won't render.
+      return false;
+    }
+  });
+
+  if (dismissed) return null;
+
+  function dismiss() {
+    setDismissed(true);
+    try {
+      localStorage.setItem(STACKING_HINT_KEY, "1");
+    } catch {
+      // Dismissed for this session only; nothing else to do.
+    }
+  }
+
+  return (
+    <div className="mt-4 flex items-start gap-3 rounded-tile border border-ink-hairline px-4 py-3">
+      <p className="flex-1 text-meta leading-[1.6] text-ink-muted">
+        love a track? click the up caret to put more than one of your votes on it. click down to
+        take a vote back.
+      </p>
+      <button
+        type="button"
+        onClick={dismiss}
+        aria-label="dismiss this tip"
+        className="-mr-1 -mt-1 flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-hair font-mono text-sm text-ink-muted transition-colors duration-150 hover:bg-black/5 hover:text-ink"
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
 /** Spinner caret for the vote control. Drawn rather than typed: the unicode
  *  triangles sit on their own baselines and would need per-glyph nudging to
  *  centre inside a button, and this file has no icon set to borrow from. */
@@ -2014,6 +2077,8 @@ function VotingSection({
           {selected.length} / {votesPerPlayer} used
         </span>
       </div>
+
+      <StackingHint />
 
       <ul className="mt-4 space-y-4">
         {entries.map((entry) => {

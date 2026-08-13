@@ -272,6 +272,9 @@ async function openAdminTools(user: ReturnType<typeof userEvent.setup>) {
 describe("MixDetailRoute", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // The stacking hint persists its dismissal, so a test that dismisses it
+    // would otherwise hide it from every test that ran after.
+    localStorage.clear();
     mockGetMix.mockResolvedValue(mix());
     mockGetClub.mockResolvedValue(club());
     mockGetClubMembers.mockResolvedValue(members());
@@ -1784,6 +1787,36 @@ describe("MixDetailRoute", () => {
       expect(countFor("Debaser")).toBe("0");
       // The whole allowance is handed back, not just one vote.
       expect(screen.getByText("0 / 3 used")).toBeInTheDocument();
+    });
+
+    it("shows a dismissable hint explaining how to stack votes", async () => {
+      const user = userEvent.setup();
+      setupVoting({
+        entries: [entry({ submission_id: "p1", title: "Debaser" })],
+        myVotes: [],
+      });
+      renderMix();
+
+      expect(await screen.findByText(/click the up caret to put more than one/i)).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "dismiss this tip" }));
+      expect(screen.queryByText(/click the up caret to put more than one/i)).not.toBeInTheDocument();
+      // Dismissal sticks, so it doesn't nag on the next mix.
+      expect(localStorage.getItem("mmc.dismissed.stackingHint")).toBe("1");
+    });
+
+    it("stays dismissed on a later visit", async () => {
+      localStorage.setItem("mmc.dismissed.stackingHint", "1");
+      setupVoting({
+        entries: [entry({ submission_id: "p1", title: "Debaser" })],
+        myVotes: [],
+      });
+      renderMix();
+
+      // The ballot renders; only the hint is gone.
+      await findPlusFor("Debaser");
+      expect(screen.queryByText(/click the up caret to put more than one/i)).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "dismiss this tip" })).not.toBeInTheDocument();
     });
 
     it("the discs carry hover text explaining how to stack votes", async () => {

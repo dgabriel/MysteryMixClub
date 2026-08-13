@@ -1503,12 +1503,16 @@ describe("MixDetailRoute", () => {
       );
     }
 
-    // Vote stepper accessors (ADR 0014). Each votable row carries a −/+ pair
-    // labelled by song title, plus the current count rendered between them.
+    // Vote circle accessors (ADR 0014). Each votable row renders one button per
+    // vote spent (filled, "remove a vote from X") followed by the next empty
+    // circle (add a vote to X) while the player still has an allowance left.
     const plusFor = (title: string) =>
       screen.getByRole("button", { name: `add a vote to ${title}` });
-    const minusFor = (title: string) =>
-      screen.getByRole("button", { name: `remove a vote from ${title}` });
+    const queryPlusFor = (title: string) =>
+      screen.queryByRole("button", { name: `add a vote to ${title}` });
+    /** Every filled circle on a row — one per vote, all doing the same thing. */
+    const filledFor = (title: string) =>
+      screen.queryAllByRole("button", { name: `remove a vote from ${title}` });
     const findPlusFor = (title: string) =>
       screen.findByRole("button", { name: `add a vote to ${title}` });
     /** The current vote count for a song. The discs are aria-hidden graphics,
@@ -1653,9 +1657,9 @@ describe("MixDetailRoute", () => {
       // seeded from getMyVotes (empty in this case)
       expect(countFor("Debaser")).toBe("0");
       expect(countFor("Hey")).toBe("0");
-      // nothing spent yet, so minus is inert on both rows
-      expect(minusFor("Debaser")).toBeDisabled();
-      expect(minusFor("Hey")).toBeDisabled();
+      // nothing spent yet, so each row is just the one empty circle
+      expect(filledFor("Debaser")).toHaveLength(0);
+      expect(filledFor("Hey")).toHaveLength(0);
       // live counter reflects the seeded selection
       expect(screen.getByText("0 / 3 used")).toBeInTheDocument();
     });
@@ -1740,12 +1744,12 @@ describe("MixDetailRoute", () => {
       expect(countFor("Debaser")).toBe("1");
       expect(screen.getByText("1 / 3 used")).toBeInTheDocument();
 
-      await user.click(minusFor("Debaser"));
+      await user.click(filledFor("Debaser")[0]);
       expect(countFor("Debaser")).toBe("0");
       expect(screen.getByText("0 / 3 used")).toBeInTheDocument();
     });
 
-    it("one tap on the empty ring casts a vote; one tap on a filled ring clears", async () => {
+    it("clicking the empty circle fills it and grows a new empty one", async () => {
       const user = userEvent.setup();
       setupVoting({
         entries: [entry({ submission_id: "p1", title: "Debaser" })],
@@ -1754,22 +1758,25 @@ describe("MixDetailRoute", () => {
       });
       renderMix();
 
-      // The common case costs one tap, exactly as the old binary toggle did.
-      const ring = await screen.findByRole("button", { name: "vote for Debaser" });
-      expect(ring).toHaveAttribute("aria-pressed", "false");
-      await user.click(ring);
+      // One empty circle, nothing filled.
+      await findPlusFor("Debaser");
+      expect(filledFor("Debaser")).toHaveLength(0);
+
+      // One click: the circle fills, and a fresh empty one appears after it
+      // because there is still allowance left to spend.
+      await user.click(plusFor("Debaser"));
       expect(countFor("Debaser")).toBe("1");
+      expect(filledFor("Debaser")).toHaveLength(1);
+      expect(queryPlusFor("Debaser")).toBeInTheDocument();
       expect(screen.getByText("1 / 3 used")).toBeInTheDocument();
 
-      // Filled: the same control now clears the song back to zero.
-      const filled = screen.getByRole("button", { name: "clear your votes for Debaser" });
-      expect(filled).toHaveAttribute("aria-pressed", "true");
-      await user.click(filled);
-      expect(countFor("Debaser")).toBe("0");
-      expect(screen.getByText("0 / 3 used")).toBeInTheDocument();
+      // Again: two filled, still one empty waiting.
+      await user.click(plusFor("Debaser"));
+      expect(filledFor("Debaser")).toHaveLength(2);
+      expect(queryPlusFor("Debaser")).toBeInTheDocument();
     });
 
-    it("tapping a stacked ring clears every vote on that song at once", async () => {
+    it("clicking a filled circle gives back one vote, not all of them", async () => {
       const user = userEvent.setup();
       setupVoting({
         entries: [entry({ submission_id: "p1", title: "Debaser" })],
@@ -1783,10 +1790,15 @@ describe("MixDetailRoute", () => {
       await user.click(plusFor("Debaser"));
       expect(countFor("Debaser")).toBe("2");
 
-      await user.click(screen.getByRole("button", { name: "clear your votes for Debaser" }));
+      // Any filled circle gives one back — they are the same action.
+      await user.click(filledFor("Debaser")[0]);
+      expect(countFor("Debaser")).toBe("1");
+      expect(filledFor("Debaser")).toHaveLength(1);
+      expect(screen.getByText("1 / 3 used")).toBeInTheDocument();
+
+      await user.click(filledFor("Debaser")[0]);
       expect(countFor("Debaser")).toBe("0");
-      // The whole allowance is handed back, not just one vote.
-      expect(screen.getByText("0 / 3 used")).toBeInTheDocument();
+      expect(filledFor("Debaser")).toHaveLength(0);
     });
 
     it("shows a dismissable hint explaining how to stack votes", async () => {
@@ -1797,10 +1809,10 @@ describe("MixDetailRoute", () => {
       });
       renderMix();
 
-      expect(await screen.findByText(/click the up caret to put more than one/i)).toBeInTheDocument();
+      expect(await screen.findByText(/keep clicking its circle to stack/i)).toBeInTheDocument();
 
       await user.click(screen.getByRole("button", { name: "dismiss this tip" }));
-      expect(screen.queryByText(/click the up caret to put more than one/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/keep clicking its circle to stack/i)).not.toBeInTheDocument();
       // Dismissal sticks, so it doesn't nag on the next mix.
       expect(localStorage.getItem("mmc.dismissed.stackingHint")).toBe("1");
     });
@@ -1815,22 +1827,8 @@ describe("MixDetailRoute", () => {
 
       // The ballot renders; only the hint is gone.
       await findPlusFor("Debaser");
-      expect(screen.queryByText(/click the up caret to put more than one/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/keep clicking its circle to stack/i)).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "dismiss this tip" })).not.toBeInTheDocument();
-    });
-
-    it("the discs carry hover text explaining how to stack votes", async () => {
-      setupVoting({
-        entries: [entry({ submission_id: "p1", title: "Debaser" })],
-        myVotes: [],
-      });
-      renderMix();
-
-      const ring = await screen.findByRole("button", { name: "vote for Debaser" });
-      expect(ring).toHaveAttribute(
-        "title",
-        "click up or down to put more than one vote on this track",
-      );
     });
 
     it("shows one amber disc per vote, and an empty ring when unvoted", async () => {
@@ -1846,21 +1844,21 @@ describe("MixDetailRoute", () => {
       const row = () => screen.getByText("Debaser").closest("li") as HTMLElement;
       const discs = () => Array.from(row().querySelectorAll("span.rounded-full")) as HTMLElement[];
 
-      // Unvoted: a single empty ring, no amber.
+      // Unvoted: a single empty circle, no amber.
       expect(discs()).toHaveLength(1);
       expect(discs()[0].className).toContain("border-muted-foreground");
       expect(discs()[0].className).not.toContain("bg-accent");
 
-      // One vote: still one disc, now filled amber — identical to the
-      // pre-weighted-voting marker.
-      await user.click(plusFor("Debaser"));
-      expect(discs()).toHaveLength(1);
-      expect(discs()[0].className).toContain("bg-accent");
-
-      // Two votes: a second disc rather than a digit.
+      // One vote: one amber circle plus the next empty one waiting.
       await user.click(plusFor("Debaser"));
       expect(discs()).toHaveLength(2);
-      expect(discs().every((d) => d.className.includes("bg-accent"))).toBe(true);
+      expect(discs()[0].className).toContain("bg-accent");
+      expect(discs()[1].className).not.toContain("bg-accent");
+
+      // Two votes: two amber, still one empty trailing it.
+      await user.click(plusFor("Debaser"));
+      expect(discs()).toHaveLength(3);
+      expect(discs().filter((d) => d.className.includes("bg-accent"))).toHaveLength(2);
     });
 
     it("collapses to one disc and a ×N past the pip cap", async () => {
@@ -1901,19 +1899,22 @@ describe("MixDetailRoute", () => {
 
       expect(countFor("Debaser")).toBe("3");
       expect(screen.getByText("3 / 3 used")).toBeInTheDocument();
-      // The whole allowance is spent, so every plus is inert — including this
-      // song's own, since there is nothing left to spend.
-      expect(plusFor("Debaser")).toBeDisabled();
+      // Allowance spent: the trailing empty circle is gone from the row you
+      // spent it on, so the row reads as all amber — "you're done".
+      expect(queryPlusFor("Debaser")).not.toBeInTheDocument();
+      expect(filledFor("Debaser")).toHaveLength(3);
+      // A row with nothing spent keeps its empty circle, but inert — a row
+      // with no control at all would read as broken.
       expect(plusFor("Hey")).toBeDisabled();
-      // …but backing a vote off is always available.
-      expect(minusFor("Debaser")).not.toBeDisabled();
 
-      await user.click(minusFor("Debaser"));
+      // Giving one back re-opens both.
+      await user.click(filledFor("Debaser")[0]);
       expect(countFor("Debaser")).toBe("2");
+      expect(queryPlusFor("Debaser")).toBeInTheDocument();
       expect(plusFor("Hey")).not.toBeDisabled();
     });
 
-    it("at the votes_per_player limit, every plus is disabled but minus still works", async () => {
+    it("at the votes_per_player limit, unspent rows go inert but votes can be given back", async () => {
       const user = userEvent.setup();
       setupVoting({
         entries: [
@@ -1934,16 +1935,18 @@ describe("MixDetailRoute", () => {
       await user.click(plusFor("Debaser"));
       expect(countFor("Debaser")).toBe("1");
       expect(screen.getByText("1 / 1 used")).toBeInTheDocument();
-      // now at limit: no more can be added anywhere, but Debaser can be undone
+      // At limit: Debaser's trailing empty circle is gone, Hey keeps one but
+      // inert, and the spent vote can still be given back.
+      expect(queryPlusFor("Debaser")).not.toBeInTheDocument();
       expect(plusFor("Hey")).toBeDisabled();
-      expect(plusFor("Debaser")).toBeDisabled();
-      expect(minusFor("Debaser")).not.toBeDisabled();
+      expect(filledFor("Debaser")[0]).not.toBeDisabled();
 
-      await user.click(minusFor("Debaser"));
+      await user.click(filledFor("Debaser")[0]);
       expect(countFor("Debaser")).toBe("0");
       expect(screen.getByText("0 / 1 used")).toBeInTheDocument();
       // back under the limit, adding is possible again
       expect(plusFor("Hey")).not.toBeDisabled();
+      expect(queryPlusFor("Debaser")).toBeInTheDocument();
     });
 
     it("cast votes calls castVotes with the selected submission_ids and shows the confirmation", async () => {

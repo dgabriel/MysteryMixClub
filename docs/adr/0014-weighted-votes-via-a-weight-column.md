@@ -98,8 +98,13 @@ dumping turns out to hurt the game; hard to remove once players expect it.
   only when weight is above 1. `ResultVoter` gains a `weight` field. Repeating
   the name three times was considered and rejected as looking like a bug.
 - The vote-selection affordance shipped in the redesign assumes a binary
-  selected/unselected marker. It becomes a quantity stepper, so that work is
-  revisited rather than extended — anticipated when it shipped.
+  selected/unselected marker. It becomes a quantity, so that work is revisited
+  rather than extended — anticipated when it shipped. The marker stays a circle
+  and stays the control: filled circles are votes spent, a trailing empty circle
+  is the next vote available, clicking it spends one and clicking a filled one
+  gives one back. Indicator and control are the same object, so stacking is
+  found by using the thing you already understand rather than by discovering a
+  second widget.
 - The GDPR export gains weight per vote, since a weighted vote is a different
   fact about a person than an unweighted one.
 - Voting stays anonymous until close. Weight is revealed with the voter's name

@@ -2175,6 +2175,14 @@ function VotingSection({
                                 ? `clear your votes for ${entry.title}`
                                 : `vote for ${entry.title}`
                             }
+                            // Native `title`, the same hover-text mechanism
+                            // HelpLink uses — this file has no tooltip
+                            // component and one affordance does not justify
+                            // introducing one. Stacking is the non-obvious half
+                            // of this control (the ring teaches itself, the
+                            // carets do not), so the hint names the gesture
+                            // rather than restating what a click does.
+                            title="click up or down to put more than one vote on this track"
                             disabled={!isSelected && atLimit}
                             onClick={() =>
                               isSelected

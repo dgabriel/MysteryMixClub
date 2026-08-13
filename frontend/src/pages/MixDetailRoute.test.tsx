@@ -1786,6 +1786,20 @@ describe("MixDetailRoute", () => {
       expect(screen.getByText("0 / 3 used")).toBeInTheDocument();
     });
 
+    it("the discs carry hover text explaining how to stack votes", async () => {
+      setupVoting({
+        entries: [entry({ submission_id: "p1", title: "Debaser" })],
+        myVotes: [],
+      });
+      renderMix();
+
+      const ring = await screen.findByRole("button", { name: "vote for Debaser" });
+      expect(ring).toHaveAttribute(
+        "title",
+        "click up or down to put more than one vote on this track",
+      );
+    });
+
     it("shows one amber disc per vote, and an empty ring when unvoted", async () => {
       const user = userEvent.setup();
       setupVoting({

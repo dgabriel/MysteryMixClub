@@ -976,6 +976,10 @@ class ResultNote(WireModel):
 class ResultVoter(WireModel):
     user_id: str
     display_name: str
+    # How many of their allowance this voter put on the song (ADR 0014). One
+    # entry per voter regardless — the reveal renders "Dawn ×3" rather than
+    # listing Dawn three times.
+    weight: int
 
 
 class ResultSubmission(WireModel):
@@ -1104,10 +1108,12 @@ async def get_mix_results(
     ).all()
 
     # Vote tallies in one pass; submissions with no votes are simply absent here
-    # and default to 0 below.
+    # and default to 0 below. SUM(weight), not COUNT(*) — a stacked vote is one
+    # row worth several votes (ADR 0014). No coalesce needed: this is an inner
+    # scan of votes that exist, so every group has at least one row.
     vote_count_rows = (
         await db.execute(
-            select(Vote.submission_id, func.count())
+            select(Vote.submission_id, func.sum(Vote.weight))
             .where(Vote.mix_id == round_id)
             .group_by(Vote.submission_id)
         )
@@ -1119,15 +1125,15 @@ async def get_mix_results(
     # open_voting; this endpoint is already gated to state == "closed" above).
     voter_rows = (
         await db.execute(
-            select(Vote.submission_id, Vote.voter_id, User.display_name)
+            select(Vote.submission_id, Vote.voter_id, User.display_name, Vote.weight)
             .join(User, User.id == Vote.voter_id)
             .where(Vote.mix_id == round_id)
         )
     ).all()
     voters_by_submission: dict[uuid.UUID, list[ResultVoter]] = {}
-    for submission_id, voter_id, display_name in voter_rows:
+    for submission_id, voter_id, display_name, weight in voter_rows:
         voters_by_submission.setdefault(submission_id, []).append(
-            ResultVoter(user_id=str(voter_id), display_name=display_name)
+            ResultVoter(user_id=str(voter_id), display_name=display_name, weight=weight)
         )
     for voters in voters_by_submission.values():
         voters.sort(key=lambda v: v.display_name)

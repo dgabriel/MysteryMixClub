@@ -1370,8 +1370,8 @@ describe("MixDetailRoute", () => {
             vote_count: 2,
             notes: [],
             voters: [
-              { user_id: "u-ada", display_name: "Ada" },
-              { user_id: "u-cal", display_name: "Cal" },
+              { user_id: "u-ada", display_name: "Ada", weight: 1 },
+              { user_id: "u-cal", display_name: "Cal", weight: 1 },
             ],
           },
         ],
@@ -1500,6 +1500,21 @@ describe("MixDetailRoute", () => {
       );
     }
 
+    // Vote stepper accessors (ADR 0014). Each votable row carries a −/+ pair
+    // labelled by song title, plus the current count rendered between them.
+    const plusFor = (title: string) =>
+      screen.getByRole("button", { name: `add a vote to ${title}` });
+    const minusFor = (title: string) =>
+      screen.getByRole("button", { name: `remove a vote from ${title}` });
+    const findPlusFor = (title: string) =>
+      screen.findByRole("button", { name: `add a vote to ${title}` });
+    /** The stepper's current count for a song, read off the row itself. */
+    const countFor = (title: string) => {
+      const row = screen.getByText(title).closest("li") as HTMLElement;
+      const plus = within(row).getByRole("button", { name: `add a vote to ${title}` });
+      return (plus.previousElementSibling as HTMLElement).textContent;
+    };
+
     it("open YouTube affordance: renders a new-tab link to youtube_playlist_url with the N of M count (MYS-78)", async () => {
       setupVoting({
         entries: [
@@ -1527,7 +1542,7 @@ describe("MixDetailRoute", () => {
       });
       renderMix();
 
-      await screen.findByRole("button", { name: /Debaser/i });
+      await screen.findByRole("button", { name: "add a vote to Debaser" });
       expect(
         screen.queryByRole("link", { name: /open playlist in youtube/i }),
       ).not.toBeInTheDocument();
@@ -1611,7 +1626,7 @@ describe("MixDetailRoute", () => {
       renderMix();
 
       expect(await screen.findByText("1 of 4 competitive mode voted or noted")).toBeInTheDocument();
-      await user.click(await screen.findByRole("button", { name: /Debaser/i }));
+      await user.click(await screen.findByRole("button", { name: "add a vote to Debaser" }));
       await user.click(screen.getByRole("button", { name: /cast votes/i }));
 
       // After casting, the voting controls are replaced by the vote tally
@@ -1620,7 +1635,7 @@ describe("MixDetailRoute", () => {
       expect(screen.getByText(/vote tally/i)).toBeInTheDocument();
     });
 
-    it("playing voter sees votable entries as toggles, a counter, and pre-selection from getMyVotes", async () => {
+    it("playing voter sees votable entries as steppers, a counter, and pre-selection from getMyVotes", async () => {
       setupVoting({
         entries: [
           entry({ submission_id: "p1", title: "Debaser" }),
@@ -1630,13 +1645,43 @@ describe("MixDetailRoute", () => {
       });
       renderMix();
 
-      const debaser = await screen.findByRole("button", { name: /Debaser/i });
-      const hey = screen.getByRole("button", { name: /Hey/i });
-      // pre-selected from getMyVotes (empty in this case)
-      expect(debaser).toHaveAttribute("aria-pressed", "false");
-      expect(hey).toHaveAttribute("aria-pressed", "false");
+      await findPlusFor("Debaser");
+      // seeded from getMyVotes (empty in this case)
+      expect(countFor("Debaser")).toBe("0");
+      expect(countFor("Hey")).toBe("0");
+      // nothing spent yet, so minus is inert on both rows
+      expect(minusFor("Debaser")).toBeDisabled();
+      expect(minusFor("Hey")).toBeDisabled();
       // live counter reflects the seeded selection
-      expect(screen.getByText("0 / 3 selected")).toBeInTheDocument();
+      expect(screen.getByText("0 / 3 used")).toBeInTheDocument();
+    });
+
+    it("casting stacked votes posts the id once per vote (ADR 0014)", async () => {
+      const user = userEvent.setup();
+      setupVoting({
+        entries: [
+          entry({ submission_id: "p1", title: "Debaser" }),
+          entry({ submission_id: "p2", title: "Hey" }),
+        ],
+        votesPerPlayer: 3,
+        myVotes: [],
+      });
+      mockCastVotes.mockResolvedValue({
+        mix_id: "r1",
+        submission_ids: ["p1", "p1", "p2"],
+        count: 3,
+        votes_per_player: 3,
+      });
+      renderMix();
+
+      await findPlusFor("Debaser");
+      await user.click(plusFor("Debaser"));
+      await user.click(plusFor("Debaser"));
+      await user.click(plusFor("Hey"));
+      await user.click(screen.getByRole("button", { name: /cast votes/i }));
+
+      // The repeated id IS the weight on the wire — the server collapses it.
+      expect(mockCastVotes).toHaveBeenCalledWith("r1", ["p1", "p1", "p2"]);
     });
 
     it("own song (is_own): marked as yours, not a vote toggle, no notes affordance, not selectable (MYS-73/74/75/77)", async () => {
@@ -1653,12 +1698,14 @@ describe("MixDetailRoute", () => {
       // clearly marked as yours, with the no-self-vote explanation
       expect(screen.getByText("your submission")).toBeInTheDocument();
       expect(screen.getByText(/can't vote for your own song/i)).toBeInTheDocument();
-      // your own song is NOT a vote toggle…
-      expect(screen.queryByRole("button", { name: /My Track/i })).not.toBeInTheDocument();
-      // …while everyone else's still is
-      expect(screen.getByRole("button", { name: /Their Track/i })).toBeInTheDocument();
+      // your own song has NO vote stepper…
+      expect(
+        screen.queryByRole("button", { name: "add a vote to My Track" }),
+      ).not.toBeInTheDocument();
+      // …while everyone else's still does
+      expect(screen.getByRole("button", { name: "add a vote to Their Track" })).toBeInTheDocument();
       // and it doesn't count toward the selectable set
-      expect(screen.getByText("0 / 3 selected")).toBeInTheDocument();
+      expect(screen.getByText("0 / 3 used")).toBeInTheDocument();
 
       // you can't leave a note on your own submission (MYS-77): the own card has
       // no notes / leave-a-note affordance, while a peer's card still does.
@@ -1671,7 +1718,7 @@ describe("MixDetailRoute", () => {
       expect(within(peerCard).getByRole("button", { name: /^notes$/i })).toBeInTheDocument();
     });
 
-    it("toggling selects/deselects and updates the counter", async () => {
+    it("the stepper adds and removes votes and updates the counter", async () => {
       const user = userEvent.setup();
       setupVoting({
         entries: [
@@ -1682,19 +1729,50 @@ describe("MixDetailRoute", () => {
       });
       renderMix();
 
-      const debaser = await screen.findByRole("button", { name: /Debaser/i });
-      expect(screen.getByText("0 / 3 selected")).toBeInTheDocument();
+      await findPlusFor("Debaser");
+      expect(screen.getByText("0 / 3 used")).toBeInTheDocument();
 
-      await user.click(debaser);
-      expect(debaser).toHaveAttribute("aria-pressed", "true");
-      expect(screen.getByText("1 / 3 selected")).toBeInTheDocument();
+      await user.click(plusFor("Debaser"));
+      expect(countFor("Debaser")).toBe("1");
+      expect(screen.getByText("1 / 3 used")).toBeInTheDocument();
 
-      await user.click(debaser);
-      expect(debaser).toHaveAttribute("aria-pressed", "false");
-      expect(screen.getByText("0 / 3 selected")).toBeInTheDocument();
+      await user.click(minusFor("Debaser"));
+      expect(countFor("Debaser")).toBe("0");
+      expect(screen.getByText("0 / 3 used")).toBeInTheDocument();
     });
 
-    it("at the votes_per_player limit, unselected toggles are disabled but deselect still works", async () => {
+    it("stacks several votes onto one song, up to the whole allowance (ADR 0014)", async () => {
+      const user = userEvent.setup();
+      setupVoting({
+        entries: [
+          entry({ submission_id: "p1", title: "Debaser" }),
+          entry({ submission_id: "p2", title: "Hey" }),
+        ],
+        votesPerPlayer: 3,
+        myVotes: [],
+      });
+      renderMix();
+
+      await findPlusFor("Debaser");
+      await user.click(plusFor("Debaser"));
+      await user.click(plusFor("Debaser"));
+      await user.click(plusFor("Debaser"));
+
+      expect(countFor("Debaser")).toBe("3");
+      expect(screen.getByText("3 / 3 used")).toBeInTheDocument();
+      // The whole allowance is spent, so every plus is inert — including this
+      // song's own, since there is nothing left to spend.
+      expect(plusFor("Debaser")).toBeDisabled();
+      expect(plusFor("Hey")).toBeDisabled();
+      // …but backing a vote off is always available.
+      expect(minusFor("Debaser")).not.toBeDisabled();
+
+      await user.click(minusFor("Debaser"));
+      expect(countFor("Debaser")).toBe("2");
+      expect(plusFor("Hey")).not.toBeDisabled();
+    });
+
+    it("at the votes_per_player limit, every plus is disabled but minus still works", async () => {
       const user = userEvent.setup();
       setupVoting({
         entries: [
@@ -1706,25 +1784,25 @@ describe("MixDetailRoute", () => {
       });
       renderMix();
 
-      const debaser = await screen.findByRole("button", { name: /Debaser/i });
-      const hey = screen.getByRole("button", { name: /Hey/i });
-      expect(screen.getByText("0 / 1 selected")).toBeInTheDocument();
-      // at limit (0 selected, 1 allowed), no songs are disabled yet
-      expect(hey).not.toBeDisabled();
-      expect(debaser).not.toBeDisabled();
+      await findPlusFor("Debaser");
+      expect(screen.getByText("0 / 1 used")).toBeInTheDocument();
+      // nothing spent (0 of 1), so nothing is disabled yet
+      expect(plusFor("Hey")).not.toBeDisabled();
+      expect(plusFor("Debaser")).not.toBeDisabled();
 
-      await user.click(debaser);
-      expect(debaser).toHaveAttribute("aria-pressed", "true");
-      expect(screen.getByText("1 / 1 selected")).toBeInTheDocument();
-      // now at limit: hey is disabled, debaser can be deselected
-      expect(hey).toBeDisabled();
-      expect(debaser).not.toBeDisabled();
+      await user.click(plusFor("Debaser"));
+      expect(countFor("Debaser")).toBe("1");
+      expect(screen.getByText("1 / 1 used")).toBeInTheDocument();
+      // now at limit: no more can be added anywhere, but Debaser can be undone
+      expect(plusFor("Hey")).toBeDisabled();
+      expect(plusFor("Debaser")).toBeDisabled();
+      expect(minusFor("Debaser")).not.toBeDisabled();
 
-      await user.click(debaser);
-      expect(debaser).toHaveAttribute("aria-pressed", "false");
-      expect(screen.getByText("0 / 1 selected")).toBeInTheDocument();
-      // now under the limit, hey is enabled again
-      expect(hey).not.toBeDisabled();
+      await user.click(minusFor("Debaser"));
+      expect(countFor("Debaser")).toBe("0");
+      expect(screen.getByText("0 / 1 used")).toBeInTheDocument();
+      // back under the limit, adding is possible again
+      expect(plusFor("Hey")).not.toBeDisabled();
     });
 
     it("cast votes calls castVotes with the selected submission_ids and shows the confirmation", async () => {
@@ -1744,7 +1822,7 @@ describe("MixDetailRoute", () => {
       });
       renderMix();
 
-      const debaser = await screen.findByRole("button", { name: /Debaser/i });
+      const debaser = await screen.findByRole("button", { name: "add a vote to Debaser" });
       await user.click(debaser);
       await user.click(screen.getByRole("button", { name: /cast votes/i }));
 
@@ -1770,7 +1848,7 @@ describe("MixDetailRoute", () => {
       );
       renderMix();
 
-      await user.click(await screen.findByRole("button", { name: /Debaser/i }));
+      await user.click(await screen.findByRole("button", { name: "add a vote to Debaser" }));
       await user.click(screen.getByRole("button", { name: /cast votes/i }));
 
       expect(await screen.findByRole("button", { name: /casting…/i })).toBeInTheDocument();
@@ -1790,7 +1868,7 @@ describe("MixDetailRoute", () => {
       });
       renderMix();
 
-      await screen.findByRole("button", { name: /Debaser/i });
+      await screen.findByRole("button", { name: "add a vote to Debaser" });
       expect(screen.getByRole("button", { name: /cast votes/i })).toBeDisabled();
     });
 
@@ -1805,8 +1883,8 @@ describe("MixDetailRoute", () => {
       renderMix();
 
       // Every song is a votable toggle now — vibing is private during voting.
-      expect(await screen.findByRole("button", { name: /Debaser/i })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /Ambient Drift/i })).toBeInTheDocument();
+      expect(await screen.findByRole("button", { name: "add a vote to Debaser" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "add a vote to Ambient Drift" })).toBeInTheDocument();
       // No separate "just vibing" section or "along for the ride" copy.
       expect(screen.queryByRole("heading", { name: /just vibing/i })).not.toBeInTheDocument();
       expect(screen.queryByText(/along for the ride/i)).not.toBeInTheDocument();
@@ -1823,7 +1901,7 @@ describe("MixDetailRoute", () => {
       expect(await screen.findByText(/you sit voting out/i)).toBeInTheDocument();
       // no vote controls
       expect(screen.queryByRole("button", { name: /cast votes/i })).not.toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: /Debaser/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "add a vote to Debaser" })).not.toBeInTheDocument();
       // playlist still visible
       expect(screen.getByText("Debaser")).toBeInTheDocument();
     });
@@ -1847,7 +1925,7 @@ describe("MixDetailRoute", () => {
       expect(await screen.findByText(/you sit voting out/i)).toBeInTheDocument();
       // no vote controls
       expect(screen.queryByRole("button", { name: /cast votes/i })).not.toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: /Debaser/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "add a vote to Debaser" })).not.toBeInTheDocument();
       // playlist still visible
       expect(screen.getByText("Debaser")).toBeInTheDocument();
     });
@@ -1868,7 +1946,7 @@ describe("MixDetailRoute", () => {
       renderMix();
 
       // The song is a votable toggle and there's no sit-out message.
-      expect(await screen.findByRole("button", { name: /Debaser/i })).toBeInTheDocument();
+      expect(await screen.findByRole("button", { name: "add a vote to Debaser" })).toBeInTheDocument();
       expect(screen.queryByText(/you sit voting out/i)).not.toBeInTheDocument();
     });
 
@@ -1897,7 +1975,7 @@ describe("MixDetailRoute", () => {
       mockCastVotes.mockRejectedValue(new ApiError(403, "you can't vote for your own song"));
       renderMix();
 
-      const debaser = await screen.findByRole("button", { name: /Debaser/i });
+      const debaser = await screen.findByRole("button", { name: "add a vote to Debaser" });
       await user.click(debaser);
       await user.click(screen.getByRole("button", { name: /cast votes/i }));
 
@@ -2055,7 +2133,7 @@ describe("MixDetailRoute", () => {
       });
       renderMix();
 
-      await user.click(await screen.findByRole("button", { name: /Debaser/i }));
+      await user.click(await screen.findByRole("button", { name: "add a vote to Debaser" }));
       await user.click(screen.getByRole("button", { name: /cast votes/i }));
 
       await screen.findByText(/vote tally/i);
@@ -2168,7 +2246,7 @@ describe("MixDetailRoute", () => {
 
       // It's a votable toggle like any other, and the old vibing-only
       // "can't vote on this one — leave a note instead" hint is gone entirely.
-      expect(await screen.findByRole("button", { name: /Ambient Drift/i })).toBeInTheDocument();
+      expect(await screen.findByRole("button", { name: "add a vote to Ambient Drift" })).toBeInTheDocument();
       expect(screen.queryByText(/can't vote on this one/i)).not.toBeInTheDocument();
     });
 
@@ -2188,7 +2266,7 @@ describe("MixDetailRoute", () => {
       ]);
       renderMix();
 
-      await screen.findByRole("button", { name: /Debaser/i });
+      await screen.findByRole("button", { name: "add a vote to Debaser" });
       const card = cardFor("Debaser");
       await user.click(within(card).getByRole("button", { name: /^notes$/i }));
 
@@ -2203,7 +2281,7 @@ describe("MixDetailRoute", () => {
       mockGetNotes.mockResolvedValue([]);
       renderMix();
 
-      await screen.findByRole("button", { name: /Debaser/i });
+      await screen.findByRole("button", { name: "add a vote to Debaser" });
       const card = cardFor("Debaser");
       await user.click(within(card).getByRole("button", { name: /^notes$/i }));
 
@@ -2226,7 +2304,7 @@ describe("MixDetailRoute", () => {
       });
       renderMix();
 
-      await screen.findByRole("button", { name: /Debaser/i });
+      await screen.findByRole("button", { name: "add a vote to Debaser" });
       const card = cardFor("Debaser");
       await user.click(within(card).getByRole("button", { name: /leave a note/i }));
 
@@ -2280,7 +2358,7 @@ describe("MixDetailRoute", () => {
       });
       renderMix();
 
-      await screen.findByRole("button", { name: /Debaser/i });
+      await screen.findByRole("button", { name: "add a vote to Debaser" });
       const card = cardFor("Debaser");
       // Only affordance visible before loading is "leave a note"; clicking it
       // discovers the existing note (voting-open GET only ever returns the
@@ -2312,7 +2390,7 @@ describe("MixDetailRoute", () => {
       );
       renderMix();
 
-      await screen.findByRole("button", { name: /Debaser/i });
+      await screen.findByRole("button", { name: "add a vote to Debaser" });
       const card = cardFor("Debaser");
       await user.click(within(card).getByRole("button", { name: /leave a note/i }));
       await user.type(within(card).getByRole("textbox"), "nope");
@@ -2322,17 +2400,19 @@ describe("MixDetailRoute", () => {
       expect(alert).toHaveTextContent(/notes are only allowed while voting is open/i);
     });
 
-    it("a votable (playing) card exposes the notes affordance without losing its vote toggle", async () => {
+    it("a votable (playing) card exposes the notes affordance without losing its vote stepper", async () => {
       const user = userEvent.setup();
       setupVoting({ entries: [entry({ submission_id: "p1", title: "Debaser" })] });
       mockGetNotes.mockResolvedValue([]);
       renderMix();
 
-      // the vote toggle still works
-      const toggle = await screen.findByRole("button", { name: /Debaser/i });
-      expect(toggle).toHaveAttribute("aria-pressed", "false");
-      await user.click(toggle);
-      expect(toggle).toHaveAttribute("aria-pressed", "true");
+      // the vote stepper still works (countFor lives in the voting block, so
+      // read the count off the element beside the plus button directly)
+      const plus = await screen.findByRole("button", { name: "add a vote to Debaser" });
+      const count = plus.previousElementSibling as HTMLElement;
+      expect(count).toHaveTextContent("0");
+      await user.click(plus);
+      expect(count).toHaveTextContent("1");
 
       // and the same card exposes a notes affordance
       const card = cardFor("Debaser");

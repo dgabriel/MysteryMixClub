@@ -258,16 +258,26 @@ async def invite_from_waitlist(
 
 async def _count_abandoned_clubs(db: AsyncSession) -> int:
     """See the ``_ABANDONED_CLUB_*`` constants above for the definition."""
+    # Vote weight per mix, pre-aggregated (ADR 0014). This can't be a third
+    # outer join like the submissions one: joining votes and submissions off the
+    # same mix fans each vote row out once per submission, which COUNT(DISTINCT
+    # Vote.id) absorbed but SUM(Vote.weight) would silently multiply. Aggregating
+    # first gives one row per mix, so the join below can't fan out at all.
+    vote_totals = (
+        select(Vote.mix_id.label("mix_id"), func.sum(Vote.weight).label("vote_count"))
+        .group_by(Vote.mix_id)
+        .subquery()
+    )
     mix_rows = (
         await db.execute(
             select(
                 Mix.club_id,
                 Mix.state,
                 func.count(func.distinct(Submission.id)).label("sub_count"),
-                func.count(func.distinct(Vote.id)).label("vote_count"),
+                func.coalesce(func.max(vote_totals.c.vote_count), 0).label("vote_count"),
             )
             .outerjoin(Submission, Submission.mix_id == Mix.id)
-            .outerjoin(Vote, Vote.mix_id == Mix.id)
+            .outerjoin(vote_totals, vote_totals.c.mix_id == Mix.id)
             .group_by(Mix.id, Mix.club_id, Mix.state)
         )
     ).all()
@@ -349,7 +359,8 @@ async def get_metrics(
         await db.scalar(select(func.count(func.distinct(Submission.mix_id)))) or 0
     )
     abandoned_clubs = await _count_abandoned_clubs(db)
-    total_votes = await db.scalar(select(func.count()).select_from(Vote)) or 0
+    # Votes cast, not vote rows — one row can carry several votes (ADR 0014).
+    total_votes = await db.scalar(select(func.coalesce(func.sum(Vote.weight), 0))) or 0
     total_notes = await db.scalar(select(func.count()).select_from(Note)) or 0
     waitlist_total = await db.scalar(select(func.count()).select_from(WaitlistEntry)) or 0
     waitlist_invited = (

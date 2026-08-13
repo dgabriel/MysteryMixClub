@@ -100,16 +100,23 @@ async def cast_votes(
             detail="casual mode players don't cast votes (leave a note instead)",
         )
 
+    # Weighted voting (ADR 0014): a repeat in this list is a second vote on the
+    # same song, not an error. So the only bound left is the allowance itself —
+    # the old "no duplicates" 409 was exactly the rule this feature reverses.
+    # The list is the caller's votes spelled out one per entry, which keeps the
+    # wire shape identical for a client that never repeats an id.
     target_ids = payload.submission_ids
     if len(target_ids) < 1 or len(target_ids) > mix_.votes_per_player:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"you may cast up to {mix_.votes_per_player} votes",
         )
-    if len(set(target_ids)) != len(target_ids):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="duplicate votes are not allowed"
-        )
+
+    # Collapse into one weight per song, preserving first-mention order so the
+    # response echoes the caller's own ordering back.
+    weights: dict[uuid.UUID, int] = {}
+    for sid in target_ids:
+        weights[sid] = weights.get(sid, 0) + 1
 
     # Resolve targets in one query; every id must belong to this mix.
     targets = list(
@@ -118,7 +125,7 @@ async def cast_votes(
         )
     )
     targets_by_id = {s.id: s for s in targets}
-    for sid in target_ids:
+    for sid in weights:
         target = targets_by_id.get(sid)
         if target is None:
             raise HTTPException(
@@ -161,8 +168,8 @@ async def cast_votes(
     # Flush the deletes before inserting so the UNIQUE(voter_id, submission_id)
     # backstop never trips on a re-cast of an overlapping submission set.
     await db.flush()
-    for sid in target_ids:
-        db.add(Vote(mix_id=round_id, voter_id=current_user.id, submission_id=sid))
+    for sid, weight in weights.items():
+        db.add(Vote(mix_id=round_id, voter_id=current_user.id, submission_id=sid, weight=weight))
     # Flush the inserts so the just-cast votes count toward the voting quorum.
     await db.flush()
 
@@ -208,10 +215,13 @@ async def get_my_votes(
             .order_by(Vote.created_at.asc())
         )
     )
+    # Expand weights back into one entry per vote (ADR 0014), so what comes back
+    # is exactly what a client would POST to reproduce this state.
+    submission_ids = [str(v.submission_id) for v in votes for _ in range(v.weight)]
     return VotesResponse(
         round_id=str(round_id),
-        submission_ids=[str(v.submission_id) for v in votes],
-        count=len(votes),
+        submission_ids=submission_ids,
+        count=len(submission_ids),
         votes_per_player=mix_.votes_per_player,
     )
 
@@ -249,11 +259,13 @@ async def get_vote_counts(
             detail="vote counts are available while voting is open",
         )
 
-    # Get all submissions in this mix with their vote counts.
-    # The vote count is 0 for songs with no votes.
+    # Get all submissions in this mix with their vote counts. SUM(weight), not
+    # COUNT(*) — a stacked vote is one row worth several votes (ADR 0014). The
+    # outer join means no rows at all for an unvoted song, where SUM is NULL, so
+    # coalesce it to 0.
     submission_rows = (
         await db.execute(
-            select(Submission, func.count(Vote.id).label("vote_count"))
+            select(Submission, func.coalesce(func.sum(Vote.weight), 0).label("vote_count"))
             .outerjoin(Vote, Vote.submission_id == Submission.id)
             .where(Submission.mix_id == round_id)
             .group_by(Submission.id)

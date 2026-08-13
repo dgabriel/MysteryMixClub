@@ -379,7 +379,10 @@ async def get_club_leaderboard(
             select(
                 User.id.label("user_id"),
                 User.display_name,
-                func.count(Vote.id).label("vote_count"),
+                # SUM(weight), not COUNT(*): a stacked vote is one row worth
+                # several votes (ADR 0014). Coalesced because the outer joins
+                # keep members who never had a song voted for, where SUM is NULL.
+                func.coalesce(func.sum(Vote.weight), 0).label("vote_count"),
             )
             .select_from(ClubMember)
             .join(User, User.id == ClubMember.user_id)
@@ -396,7 +399,7 @@ async def get_club_leaderboard(
                 ClubMember.removed_at.is_(None),
             )
             .group_by(User.id, User.display_name)
-            .order_by(func.count(Vote.id).desc(), User.display_name.asc())
+            .order_by(func.coalesce(func.sum(Vote.weight), 0).desc(), User.display_name.asc())
         )
     ).all()
 

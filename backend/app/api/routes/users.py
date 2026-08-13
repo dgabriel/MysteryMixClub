@@ -104,6 +104,9 @@ class ExportVote(WireModel):
     id: str
     round_id: str
     submission_id: str
+    # How many votes the person put on this song (ADR 0014). Exported because a
+    # weighted vote is a different fact about them than a plain one.
+    weight: int
     created_at: datetime
 
 
@@ -198,6 +201,7 @@ async def export_me(
                 id=str(v.id),
                 round_id=str(v.mix_id),
                 submission_id=str(v.submission_id),
+                weight=v.weight,
                 created_at=v.created_at,
             )
             for v in votes

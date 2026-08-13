@@ -1868,15 +1868,26 @@ function VotingSection({
     return <p className="text-sm leading-[1.72] text-muted-foreground">no submissions yet</p>;
   }
 
-  function toggle(id: string) {
+  // `selected` is a multiset, not a set (ADR 0014): a song appears once per
+  // vote spent on it, so `selected.length` is the running total and the array
+  // is already the exact `submission_ids` payload the API wants.
+  function countFor(id: string) {
+    return selected.filter((x) => x === id).length;
+  }
+
+  function addVote(id: string) {
     onSelectionChange();
     setSelected((current) =>
-      current.includes(id)
-        ? current.filter((x) => x !== id)
-        : current.length >= votesPerPlayer
-          ? current
-          : [...current, id],
+      current.length >= votesPerPlayer ? current : [...current, id],
     );
+  }
+
+  function removeVote(id: string) {
+    onSelectionChange();
+    setSelected((current) => {
+      const at = current.indexOf(id);
+      return at === -1 ? current : [...current.slice(0, at), ...current.slice(at + 1)];
+    });
   }
 
   const atLimit = selected.length >= votesPerPlayer;
@@ -1968,7 +1979,9 @@ function VotingSection({
           aria-live="polite"
           className="font-mono uppercase tracking-mono-caps text-mini text-ink-muted"
         >
-          {selected.length} / {votesPerPlayer} selected
+          {/* "used", not "selected": with stacking these are votes spent, and
+              several of them can sit on one song. */}
+          {selected.length} / {votesPerPlayer} used
         </span>
       </div>
 
@@ -2033,8 +2046,9 @@ function VotingSection({
               </li>
             );
           }
-          const isSelected = selected.includes(entry.submission_id);
-          const disabled = !isSelected && atLimit;
+          const voteCount = countFor(entry.submission_id);
+          const isSelected = voteCount > 0;
+          const disabled = atLimit;
           return (
             <li key={entry.submission_id}>
               {/* Card wrapper — owns the surface/border/radius so notes can live
@@ -2043,40 +2057,27 @@ function VotingSection({
                   the border is stateful and the button has to reach the card's
                   own edges.
 
-                  **Amber marks the selected row, and this is the one place on
-                  this screen where a per-row accent survives.** It is an
-                  interactive state (amber's action half), it is entirely
+                  **Amber marks the row you spent votes on, and this is the one
+                  place on this screen where a per-row accent survives.** It is
+                  an interactive state (amber's action half), it is entirely
                   user-driven rather than a property of the data, it is bounded
                   by `votes_per_player`, and the design system's own AlbumCard
                   marks exactly this "I picked this one" state in amber. The
-                  `voted` label carries the state too, so the border is never
-                  the sole identifier (WCAG 1.4.11).
-
-                  A row you can no longer select (at the vote limit) drops its
-                  title to `muted-foreground` rather than taking `opacity-50` —
-                  on a near-black page opacity flattens a card into the
-                  background instead of quieting it. */}
+                  count beside the stepper carries the state too, so the border
+                  is never the sole identifier (WCAG 1.4.11). */}
               <div
                 className={[
                   "rounded-tile border bg-card shadow-z2 transition-colors duration-150",
                   isSelected ? "border-accent" : "border-hairline",
                 ].join(" ")}
               >
-                {/* Vote toggle — only the top portion of the card is clickable.
-                    Hover lifts to `popover`, the lightest surface a brand-tinted
-                    SourceBadge may sit on (4.40:1 for YouTube); `tile` and above
-                    would fail AA. See lib/platformBrand.ts. */}
-                <button
-                  type="button"
-                  aria-pressed={isSelected}
-                  disabled={disabled}
-                  onClick={() => toggle(entry.submission_id)}
-                  className={[
-                    "group block w-full rounded-t-tile px-6 pt-5 pb-3 text-left",
-                    disabled ? "cursor-not-allowed" : "cursor-pointer",
-                    !isSelected && !disabled ? "hover:bg-popover" : "",
-                  ].join(" ")}
-                >
+                {/* The card top is a plain container now, not one big toggle
+                    button (ADR 0014). A stepper is two controls, and nesting
+                    buttons inside a button is invalid — so the explicit −/+
+                    pair below is the only interactive element, which is also a
+                    stronger affordance than the whole-card hit area it
+                    replaces. */}
+                <div className="block w-full rounded-t-tile px-6 pt-5 pb-3 text-left">
                   <div className="flex items-start gap-4">
                     <AlbumArt
                       url={entry.album_art_url}
@@ -2086,54 +2087,76 @@ function VotingSection({
                     />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-3">
-                        <h3
-                          className={[
-                            "font-display text-sm font-bold uppercase leading-none",
-                            disabled ? "text-muted-foreground" : "text-foreground",
-                          ].join(" ")}
-                        >
+                        {/* Always `foreground`. The old dimming keyed off "you
+                            can't select this", which under a stepper would grey
+                            every title on the list the moment the allowance ran
+                            out — including the ones you spent it on. The
+                            disabled plus button already says that. */}
+                        <h3 className="font-display text-sm font-bold uppercase leading-none text-foreground">
                           {entry.title}
                         </h3>
-                        {/* The vote control. An UNSELECTED card previously showed
-                            nothing here, so its only interactive cue was a
-                            `hairline` border at ~1.2:1 plus a hover state — and
-                            hover does not exist on touch. That left the one card
-                            you cannot vote for ("your submission") as the most
-                            marked row in the list.
+                        {/* The vote stepper (ADR 0014). This was a single
+                            binary ring when a song could hold at most one vote;
+                            it is a quantity now, so the count itself is the
+                            state and the ring is gone.
 
-                            The empty ring is what says "this is a control". It
-                            is `muted-foreground` at 6.01:1 on `card`, well clear
-                            of the 3:1 a non-text graphic owes. Selected fills it
-                            amber and adds the word, so state is never colour
-                            alone (WCAG 1.4.11). At the vote limit the ring drops
-                            to `ghost-foreground`, the ramp's disabled-glyph step
-                            — WCAG exempts inactive controls, and it reads as
-                            unavailable rather than merely dim.
+                            The two glyph buttons are what say "this is a
+                            control" — they are `muted-foreground` at 6.01:1 on
+                            `card`, well clear of the 3:1 a non-text graphic
+                            owes, and each is a 36px target (the 24px AAA floor
+                            with room to spare on touch). A button that would do
+                            nothing — minus at zero, plus at the allowance —
+                            renders disabled at `ghost-foreground`, the ramp's
+                            disabled-glyph step; WCAG exempts inactive controls,
+                            and it reads as unavailable rather than merely dim.
 
-                            NOTE (MysteryMixClub-ih3l): this is a binary marker
-                            because a player may currently vote for a song at
-                            most once. When weighted voting lands it becomes a
-                            quantity, so expect to replace this rather than
-                            extend it. */}
-                        <span className="flex shrink-0 items-center gap-2">
-                          <span className="font-mono uppercase tracking-mono-caps text-mini text-accent">
-                            {isSelected ? "voted" : ""}
-                          </span>
-                          <span
-                            aria-hidden="true"
+                            The number is amber only once it is above zero, so
+                            the accent marks votes actually spent rather than
+                            painting an amber "0" onto every row in the list.
+                            State is never colour alone: the digit carries it
+                            (WCAG 1.4.11). */}
+                        <span className="flex shrink-0 items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => removeVote(entry.submission_id)}
+                            disabled={voteCount === 0}
+                            aria-label={`remove a vote from ${entry.title}`}
                             className={[
-                              "block h-4 w-4 rounded-full border transition-colors duration-150",
-                              isSelected
-                                ? "border-accent bg-accent"
-                                : disabled
-                                  ? "border-ghost-foreground"
-                                  : "border-muted-foreground group-hover:border-foreground",
+                              "flex h-9 w-9 items-center justify-center rounded-hair font-mono text-sm transition-colors duration-150",
+                              voteCount === 0
+                                ? "cursor-not-allowed text-ghost-foreground"
+                                : "cursor-pointer text-muted-foreground hover:bg-popover hover:text-foreground",
                             ].join(" ")}
-                          />
+                          >
+                            −
+                          </button>
+                          <span
+                            aria-live="polite"
+                            className={[
+                              "min-w-[1.25rem] text-center font-mono text-sm tabular-nums",
+                              voteCount > 0 ? "text-accent" : "text-muted-foreground",
+                            ].join(" ")}
+                          >
+                            {voteCount}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => addVote(entry.submission_id)}
+                            disabled={disabled}
+                            aria-label={`add a vote to ${entry.title}`}
+                            className={[
+                              "flex h-9 w-9 items-center justify-center rounded-hair font-mono text-sm transition-colors duration-150",
+                              disabled
+                                ? "cursor-not-allowed text-ghost-foreground"
+                                : "cursor-pointer text-muted-foreground hover:bg-popover hover:text-foreground",
+                            ].join(" ")}
+                          >
+                            +
+                          </button>
                         </span>
                       </div>
                       {entry.artist ? (
-                        <p className="mt-2 font-mono text-mini text-muted-foreground transition-colors duration-150 group-hover:text-foreground">
+                        <p className="mt-2 font-mono text-mini text-muted-foreground">
                           {entry.artist}
                         </p>
                       ) : null}
@@ -2149,7 +2172,7 @@ function VotingSection({
                       &ldquo;{entry.submitter_note}&rdquo;
                     </p>
                   ) : null}
-                </button>
+                </div>
                 {/* Platform links + notes live inside the card, below the vote area. */}
                 <div className="px-6 pb-5">
                   <PlatformLinks
@@ -2700,9 +2723,17 @@ function ResultsSection({
                         </p>
                       ) : null}
                       <PlatformLinks platforms={s.platforms} title={s.title} source={s.source} />
+                      {/* One entry per voter, with the multiplier only when
+                          they stacked (ADR 0014) — "Dawn ×3, Sam". Repeating
+                          the name three times would read as a bug. */}
                       {s.voters.length > 0 ? (
                         <p className="mt-2 text-meta leading-[1.6] text-muted-foreground">
-                          voted by {s.voters.map((v) => v.display_name).join(", ")}
+                          voted by{" "}
+                          {s.voters
+                            .map((v) =>
+                              v.weight > 1 ? `${v.display_name} ×${v.weight}` : v.display_name,
+                            )
+                            .join(", ")}
                         </p>
                       ) : null}
                       {s.notes.length > 0 ? <CollapsibleNotes notes={s.notes} /> : null}

@@ -82,10 +82,18 @@ as it does today, which also means the existing frontend keeps working
 unmodified while the new voting UI is built.
 
 **Capping how many votes may land on one song** (at N-1, or at half the
-allowance) to stop a player dumping everything on one track. Rejected: Dawn's
-framing was "up to as many votes as they have," and a cap is a rule players
-would have to be taught for a problem nobody has reported. Easy to add later if
-dumping turns out to hurt the game; hard to remove once players expect it.
+allowance) to stop a player dumping everything on one track. **Rejected
+outright, and this is settled rather than deferred.** Putting the whole
+allowance on one song is the intended behaviour, confirmed explicitly by Dawn
+on 2026-08-13 when asked directly: "up to as many votes as they have" means
+exactly that, including all of them.
+
+Recorded this plainly because the first draft of this ADR framed it as a
+provisional call — "easy to add later if dumping turns out to hurt the game" —
+which reads as an invitation. It is not one. A cap is a rule players would have
+to be taught, for a problem nobody has reported, and it would take expressive
+range away from the thing weighted voting exists to give them. Do not add one
+without a new decision that supersedes this.
 
 ## Consequences
 

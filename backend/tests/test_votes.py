@@ -345,7 +345,12 @@ async def test_cast_too_many_votes_409(client, db_session):
     assert resp.json()["detail"] == "you may cast up to 2 votes"
 
 
-async def test_cast_duplicate_ids_409(client, db_session):
+async def test_cast_stacked_votes_on_one_song(client, db_session):
+    """A repeat is a second vote on the same song, not a 409 (ADR 0014).
+
+    This reverses the pre-ADR-0014 rule, which rejected any repeated id with
+    "duplicate votes are not allowed".
+    """
     organizer = await _seed_user(db_session, "o@example.com")
     voter = await _seed_user(db_session, "v@example.com")
     mix_ = await _seed_club_with_mix(db_session, organizer)
@@ -353,13 +358,151 @@ async def test_cast_duplicate_ids_409(client, db_session):
     target = await _seed_submission(db_session, mix_.id, organizer)
     await _seed_submission(db_session, mix_.id, voter)
     tid = str(target.id)
+    # Capture ids before expire_all below — reading them off an expired ORM
+    # instance would re-issue IO outside the greenlet context.
+    mix_id, voter_id = mix_.id, voter.id
+
+    resp = await client.post(
+        _votes_url(mix_id),
+        json={"submission_ids": [tid, tid]},
+        headers=_auth(voter_id),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["count"] == 2
+
+    # Stored as ONE row carrying the weight, not two rows — the unique
+    # constraint on (voter_id, submission_id) still holds.
+    db_session.expire_all()
+    rows = list(
+        await db_session.scalars(
+            select(Vote).where(Vote.mix_id == mix_id, Vote.voter_id == voter_id)
+        )
+    )
+    assert len(rows) == 1
+    assert rows[0].weight == 2
+
+
+async def test_stacked_votes_round_trip_through_mine(client, db_session):
+    """GET /votes/mine expands weights back into one entry per vote."""
+    organizer = await _seed_user(db_session, "o@example.com")
+    voter = await _seed_user(db_session, "v@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    await _add_member(db_session, mix_.club_id, voter)
+    heavy = await _seed_submission(db_session, mix_.id, organizer)
+    other = await _seed_user(db_session, "x@example.com")
+    await _add_member(db_session, mix_.club_id, other)
+    light = await _seed_submission(db_session, mix_.id, other)
+    mix_id = mix_.id
+
+    posted = [str(heavy.id), str(heavy.id), str(light.id)]
+    resp = await client.post(
+        _votes_url(mix_id), json={"submission_ids": posted}, headers=_auth(voter.id)
+    )
+    assert resp.status_code == 200
+
+    resp = await client.get(f"{_votes_url(mix_id)}/mine", headers=_auth(voter.id))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["count"] == 3
+    # Same multiset as posted: what comes back is what you'd POST to reproduce it.
+    assert sorted(body["submission_ids"]) == sorted(posted)
+
+
+async def test_cast_all_votes_on_one_song(client, db_session):
+    """The whole allowance may land on a single song — no per-song cap."""
+    organizer = await _seed_user(db_session, "o@example.com")
+    voter = await _seed_user(db_session, "v@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer, votes_per_player=3)
+    await _add_member(db_session, mix_.club_id, voter)
+    target = await _seed_submission(db_session, mix_.id, organizer)
+    tid = str(target.id)
+    mix_id, voter_id = mix_.id, voter.id
+
+    resp = await client.post(
+        _votes_url(mix_id),
+        json={"submission_ids": [tid, tid, tid]},
+        headers=_auth(voter_id),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["count"] == 3
+
+    db_session.expire_all()
+    row = await db_session.scalar(
+        select(Vote).where(Vote.mix_id == mix_id, Vote.voter_id == voter_id)
+    )
+    assert row is not None and row.weight == 3
+
+
+async def test_stacked_votes_over_allowance_409(client, db_session):
+    """Stacking is still bounded by votes_per_player, counting repeats."""
+    organizer = await _seed_user(db_session, "o@example.com")
+    voter = await _seed_user(db_session, "v@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer, votes_per_player=2)
+    await _add_member(db_session, mix_.club_id, voter)
+    target = await _seed_submission(db_session, mix_.id, organizer)
+    tid = str(target.id)
+
     resp = await client.post(
         _votes_url(mix_.id),
-        json={"submission_ids": [tid, tid]},
+        json={"submission_ids": [tid, tid, tid]},
         headers=_auth(voter.id),
     )
     assert resp.status_code == 409
-    assert resp.json()["detail"] == "duplicate votes are not allowed"
+    assert resp.json()["detail"] == "you may cast up to 2 votes"
+
+
+async def test_recast_replaces_stacked_votes(client, db_session):
+    """Re-casting overwrites weight rather than accumulating onto it."""
+    organizer = await _seed_user(db_session, "o@example.com")
+    voter = await _seed_user(db_session, "v@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer, votes_per_player=3)
+    await _add_member(db_session, mix_.club_id, voter)
+    target = await _seed_submission(db_session, mix_.id, organizer)
+    tid = str(target.id)
+    mix_id, voter_id = mix_.id, voter.id
+
+    await client.post(
+        _votes_url(mix_id), json={"submission_ids": [tid, tid, tid]}, headers=_auth(voter_id)
+    )
+    resp = await client.post(
+        _votes_url(mix_id), json={"submission_ids": [tid]}, headers=_auth(voter_id)
+    )
+    assert resp.status_code == 200
+
+    db_session.expire_all()
+    rows = list(
+        await db_session.scalars(
+            select(Vote).where(Vote.mix_id == mix_id, Vote.voter_id == voter_id)
+        )
+    )
+    assert len(rows) == 1
+    assert rows[0].weight == 1
+
+
+async def test_vote_counts_sum_weights(client, db_session):
+    """The running tally counts votes, not voters (ADR 0014)."""
+    organizer = await _seed_user(db_session, "o@example.com")
+    voter = await _seed_user(db_session, "v@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer, votes_per_player=3)
+    await _add_member(db_session, mix_.club_id, voter)
+    heavy = await _seed_submission(db_session, mix_.id, organizer)
+    unvoted = await _seed_submission(db_session, mix_.id, voter)
+    mix_id = mix_.id
+    heavy_id, unvoted_id = str(heavy.id), str(unvoted.id)
+
+    await client.post(
+        _votes_url(mix_id),
+        json={"submission_ids": [heavy_id, heavy_id, heavy_id]},
+        headers=_auth(voter.id),
+    )
+
+    resp = await client.get(f"/api/v1/mixes/{mix_id}/vote-counts", headers=_auth(voter.id))
+    assert resp.status_code == 200
+    counts = {e["submission_id"]: e["vote_count"] for e in resp.json()["entries"]}
+    # One voter, three votes.
+    assert counts[heavy_id] == 3
+    # An unvoted song is 0, not NULL — the coalesce on the outer join.
+    assert counts[unvoted_id] == 0
 
 
 async def test_cast_id_not_in_mix_404(client, db_session):

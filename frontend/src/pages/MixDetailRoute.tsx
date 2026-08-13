@@ -1279,6 +1279,11 @@ function SubmissionProgress({ submitted, total }: { submitted: number; total: nu
  * one is not exported and this ticket's scope is these four files. The sweep
  * ticket can hoist a single `AlbumArt` primitive.
  */
+/** Above this many votes on one song, the vote discs collapse to a single disc
+ *  plus a ×N. `votes_per_player` has no upper bound, so a club running a large
+ *  allowance would otherwise push a row of discs through the side of the card. */
+const PIP_CAP = 5;
+
 function AlbumArt({
   url,
   alt,
@@ -1868,18 +1873,37 @@ function VotingSection({
     return <p className="text-sm leading-[1.72] text-muted-foreground">no submissions yet</p>;
   }
 
-  function toggle(id: string) {
+  // `selected` is a multiset, not a set (ADR 0014): a song appears once per
+  // vote spent on it, so `selected.length` is the running total and the array
+  // is already the exact `submission_ids` payload the API wants.
+  function countFor(id: string) {
+    return selected.filter((x) => x === id).length;
+  }
+
+  function addVote(id: string) {
     onSelectionChange();
-    setSelected((current) =>
-      current.includes(id)
-        ? current.filter((x) => x !== id)
-        : current.length >= votesPerPlayer
-          ? current
-          : [...current, id],
-    );
+    setSelected((current) => (current.length >= votesPerPlayer ? current : [...current, id]));
+  }
+
+  function removeVote(id: string) {
+    onSelectionChange();
+    setSelected((current) => {
+      const at = current.indexOf(id);
+      return at === -1 ? current : [...current.slice(0, at), ...current.slice(at + 1)];
+    });
   }
 
   const atLimit = selected.length >= votesPerPlayer;
+
+  // One entry per song voted for, ordered by when it FIRST took a vote (Set
+  // preserves insertion order over the multiset), so the summary doesn't
+  // reshuffle under you as you stack. Titles come from `entries` because
+  // `selected` only carries ids.
+  const tally = Array.from(new Set(selected)).map((id) => ({
+    id,
+    title: entries.find((e) => e.submission_id === id)?.title ?? "",
+    count: selected.filter((x) => x === id).length,
+  }));
 
   // Vibing participants sit voting out — show the playlist, no controls.
   if (isVibingParticipant) {
@@ -1968,7 +1992,9 @@ function VotingSection({
           aria-live="polite"
           className="font-mono uppercase tracking-mono-caps text-mini text-ink-muted"
         >
-          {selected.length} / {votesPerPlayer} selected
+          {/* "used", not "selected": with stacking these are votes spent, and
+              several of them can sit on one song. */}
+          {selected.length} / {votesPerPlayer} used
         </span>
       </div>
 
@@ -2033,8 +2059,8 @@ function VotingSection({
               </li>
             );
           }
-          const isSelected = selected.includes(entry.submission_id);
-          const disabled = !isSelected && atLimit;
+          const voteCount = countFor(entry.submission_id);
+          const isSelected = voteCount > 0;
           return (
             <li key={entry.submission_id}>
               {/* Card wrapper — owns the surface/border/radius so notes can live
@@ -2043,40 +2069,25 @@ function VotingSection({
                   the border is stateful and the button has to reach the card's
                   own edges.
 
-                  **Amber marks the selected row, and this is the one place on
-                  this screen where a per-row accent survives.** It is an
-                  interactive state (amber's action half), it is entirely
+                  **Amber marks the row you spent votes on, and this is the one
+                  place on this screen where a per-row accent survives.** It is
+                  an interactive state (amber's action half), it is entirely
                   user-driven rather than a property of the data, it is bounded
                   by `votes_per_player`, and the design system's own AlbumCard
                   marks exactly this "I picked this one" state in amber. The
-                  `voted` label carries the state too, so the border is never
-                  the sole identifier (WCAG 1.4.11).
-
-                  A row you can no longer select (at the vote limit) drops its
-                  title to `muted-foreground` rather than taking `opacity-50` —
-                  on a near-black page opacity flattens a card into the
-                  background instead of quieting it. */}
+                  filled disc carries the state too, so the border is never the
+                  sole identifier (WCAG 1.4.11). */}
               <div
                 className={[
                   "rounded-tile border bg-card shadow-z2 transition-colors duration-150",
                   isSelected ? "border-accent" : "border-hairline",
                 ].join(" ")}
               >
-                {/* Vote toggle — only the top portion of the card is clickable.
-                    Hover lifts to `popover`, the lightest surface a brand-tinted
-                    SourceBadge may sit on (4.40:1 for YouTube); `tile` and above
-                    would fail AA. See lib/platformBrand.ts. */}
-                <button
-                  type="button"
-                  aria-pressed={isSelected}
-                  disabled={disabled}
-                  onClick={() => toggle(entry.submission_id)}
-                  className={[
-                    "group block w-full rounded-t-tile px-6 pt-5 pb-3 text-left",
-                    disabled ? "cursor-not-allowed" : "cursor-pointer",
-                    !isSelected && !disabled ? "hover:bg-popover" : "",
-                  ].join(" ")}
-                >
+                {/* The card top is a plain container now, not one big toggle
+                    button (ADR 0014). The vote control is a row of buttons, one
+                    per circle, and nesting buttons inside a button is invalid —
+                    so the hit area moved onto the circles themselves. */}
+                <div className="block w-full rounded-t-tile px-6 pt-5 pb-3 text-left">
                   <div className="flex items-start gap-4">
                     <AlbumArt
                       url={entry.album_art_url}
@@ -2085,55 +2096,22 @@ function VotingSection({
                       interactive
                     />
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-3">
-                        <h3
-                          className={[
-                            "font-display text-sm font-bold uppercase leading-none",
-                            disabled ? "text-muted-foreground" : "text-foreground",
-                          ].join(" ")}
-                        >
-                          {entry.title}
-                        </h3>
-                        {/* The vote control. An UNSELECTED card previously showed
-                            nothing here, so its only interactive cue was a
-                            `hairline` border at ~1.2:1 plus a hover state — and
-                            hover does not exist on touch. That left the one card
-                            you cannot vote for ("your submission") as the most
-                            marked row in the list.
-
-                            The empty ring is what says "this is a control". It
-                            is `muted-foreground` at 6.01:1 on `card`, well clear
-                            of the 3:1 a non-text graphic owes. Selected fills it
-                            amber and adds the word, so state is never colour
-                            alone (WCAG 1.4.11). At the vote limit the ring drops
-                            to `ghost-foreground`, the ramp's disabled-glyph step
-                            — WCAG exempts inactive controls, and it reads as
-                            unavailable rather than merely dim.
-
-                            NOTE (MysteryMixClub-ih3l): this is a binary marker
-                            because a player may currently vote for a song at
-                            most once. When weighted voting lands it becomes a
-                            quantity, so expect to replace this rather than
-                            extend it. */}
-                        <span className="flex shrink-0 items-center gap-2">
-                          <span className="font-mono uppercase tracking-mono-caps text-mini text-accent">
-                            {isSelected ? "voted" : ""}
-                          </span>
-                          <span
-                            aria-hidden="true"
-                            className={[
-                              "block h-4 w-4 rounded-full border transition-colors duration-150",
-                              isSelected
-                                ? "border-accent bg-accent"
-                                : disabled
-                                  ? "border-ghost-foreground"
-                                  : "border-muted-foreground group-hover:border-foreground",
-                            ].join(" ")}
-                          />
-                        </span>
-                      </div>
+                      {/* The vote control is a SIBLING of this text column, not
+                          a member of the title row. Inside the row it set the
+                          row's height, which shoved the artist line clear of
+                          the title it belongs to. Out here it sits alongside
+                          the whole column and the title/artist rhythm is the
+                          same as every other card in the app. */}
+                      {/* Always `foreground`. The old dimming keyed off "you
+                          can't select this", which would grey every title on
+                          the list the moment the allowance ran out — including
+                          the ones you spent it on. The circles already say
+                          that. */}
+                      <h3 className="font-display text-sm font-bold uppercase leading-none text-foreground">
+                        {entry.title}
+                      </h3>
                       {entry.artist ? (
-                        <p className="mt-2 font-mono text-mini text-muted-foreground transition-colors duration-150 group-hover:text-foreground">
+                        <p className="mt-2 font-mono text-mini text-muted-foreground">
                           {entry.artist}
                         </p>
                       ) : null}
@@ -2143,13 +2121,114 @@ function VotingSection({
                         </div>
                       ) : null}
                     </div>
+                    {/* The vote control (ADR 0014). Each circle IS a vote:
+                        filled ones are votes you have spent on this song, and
+                        the trailing empty one is the next vote waiting to be
+                        spent. Click the empty circle to spend a vote and the
+                        row grows; click any filled circle to take one back and
+                        it shrinks. There is no separate stepper widget — the
+                        indicator and the control are the same object, so
+                        stacking is discovered by using the thing you already
+                        understand rather than by finding a second control.
+
+                        The trailing empty circle only appears while you have
+                        votes left, which makes the row self-describing: what
+                        you see is what you have spent plus what you could
+                        still spend. At the allowance it disappears and the row
+                        is all amber, which is the "you're done" signal.
+
+                        Empty is `muted-foreground` (6.01:1 on `card`, clear of
+                        the 3:1 a non-text graphic owes); filled is `accent`.
+                        A row with nothing spent and no allowance left keeps one
+                        empty circle, disabled at `ghost-foreground` — a row
+                        with no control at all would read as broken, and WCAG
+                        exempts inactive controls.
+
+                        Above PIP_CAP the filled circles collapse to one plus a
+                        ×N, because `votes_per_player` has no upper bound and a
+                        club running ten votes would otherwise push a row of
+                        circles through the side of the card.
+
+                        State is never colour alone (WCAG 1.4.11): filled and
+                        empty differ in shape, and the sr-only live region
+                        carries the count to a screen reader — which is why the
+                        circles themselves are aria-hidden, so an assistive user
+                        gets "2 votes" rather than a run of anonymous
+                        graphics. */}
+                    <span className="flex shrink-0 items-center gap-1">
+                      {voteCount > PIP_CAP ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => removeVote(entry.submission_id)}
+                            aria-label={`remove a vote from ${entry.title}`}
+                            className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-hair"
+                          >
+                            <span
+                              aria-hidden="true"
+                              className="block h-4 w-4 rounded-full border border-accent bg-accent"
+                            />
+                          </button>
+                          <span
+                            aria-hidden="true"
+                            className="font-mono text-mini tabular-nums text-accent"
+                          >
+                            ×{voteCount}
+                          </span>
+                        </>
+                      ) : (
+                        // One button per vote spent. They share a label because
+                        // they are genuinely the same action — any of them
+                        // gives one vote back.
+                        Array.from({ length: voteCount }, (_, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => removeVote(entry.submission_id)}
+                            aria-label={`remove a vote from ${entry.title}`}
+                            className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-hair transition-colors duration-150 hover:bg-popover"
+                          >
+                            <span
+                              aria-hidden="true"
+                              className="block h-4 w-4 rounded-full border border-accent bg-accent"
+                            />
+                          </button>
+                        ))
+                      )}
+                      {/* The next vote waiting to be spent. Kept when nothing
+                          is spent even at the allowance, so the row never
+                          renders without a control. */}
+                      {!atLimit || voteCount === 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => addVote(entry.submission_id)}
+                          disabled={atLimit}
+                          aria-label={`add a vote to ${entry.title}`}
+                          className={[
+                            "flex h-7 w-7 items-center justify-center rounded-hair transition-colors duration-150",
+                            atLimit ? "cursor-not-allowed" : "cursor-pointer hover:bg-popover",
+                          ].join(" ")}
+                        >
+                          <span
+                            aria-hidden="true"
+                            className={[
+                              "block h-4 w-4 rounded-full border transition-colors duration-150",
+                              atLimit ? "border-ghost-foreground" : "border-muted-foreground",
+                            ].join(" ")}
+                          />
+                        </button>
+                      ) : null}
+                      <span role="status" aria-live="polite" className="sr-only">
+                        {voteCount} {voteCount === 1 ? "vote" : "votes"} on {entry.title}
+                      </span>
+                    </span>
                   </div>
                   {entry.submitter_note ? (
                     <p className="mt-3 border-l-2 border-hairline pl-3 text-sm leading-[1.65] text-foreground">
                       &ldquo;{entry.submitter_note}&rdquo;
                     </p>
                   ) : null}
-                </button>
+                </div>
                 {/* Platform links + notes live inside the card, below the vote area. */}
                 <div className="px-6 pb-5">
                   <PlatformLinks
@@ -2166,6 +2245,52 @@ function VotingSection({
       </ul>
 
       <div className="mt-6 border-t border-ink-hairline pt-6">
+        {/* Running tally of what's about to be cast. The per-row circles say
+            how a single song stands; this says what the whole ballot adds up
+            to, which is the thing you actually commit. It matters more now
+            than it did under one-vote-per-song: spending is spread unevenly,
+            so "did I put two on the right one" is a real question, and the
+            songs are scattered down a long list where you cannot see your
+            choices together.
+
+            Only rendered once something is selected — an empty "your votes"
+            heading above a disabled button is noise.
+
+            Circles are `ink-accent`, NOT `accent`. This is the paper surface,
+            where `accent` measures 2.62:1 and a non-text graphic owes 3:1;
+            `ink-accent` is the AA-safe amber for this ramp (ADR 0013). Same
+            PIP_CAP collapse as the rows, for the same reason. */}
+        {tally.length > 0 ? (
+          <div className="mb-6">
+            <p className="font-mono uppercase tracking-mono-caps text-mini text-ink-muted">
+              your votes
+            </p>
+            <ul className="mt-3 space-y-2">
+              {tally.map(({ id, title, count }) => (
+                <li key={id} className="flex items-center justify-between gap-4">
+                  <span className="min-w-0 flex-1 truncate text-meta text-ink">{title}</span>
+                  <span className="flex shrink-0 items-center gap-1">
+                    {count > PIP_CAP ? (
+                      <>
+                        <span className="block h-3 w-3 rounded-full bg-ink-accent" />
+                        <span className="font-mono text-mini tabular-nums text-ink-accent">
+                          ×{count}
+                        </span>
+                      </>
+                    ) : (
+                      Array.from({ length: count }, (_, i) => (
+                        <span key={i} className="block h-3 w-3 rounded-full bg-ink-accent" />
+                      ))
+                    )}
+                    <span className="sr-only">
+                      {count} {count === 1 ? "vote" : "votes"}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         <Button
           type="button"
           onPaper
@@ -2700,9 +2825,17 @@ function ResultsSection({
                         </p>
                       ) : null}
                       <PlatformLinks platforms={s.platforms} title={s.title} source={s.source} />
+                      {/* One entry per voter, with the multiplier only when
+                          they stacked (ADR 0014) — "Dawn ×3, Sam". Repeating
+                          the name three times would read as a bug. */}
                       {s.voters.length > 0 ? (
                         <p className="mt-2 text-meta leading-[1.6] text-muted-foreground">
-                          voted by {s.voters.map((v) => v.display_name).join(", ")}
+                          voted by{" "}
+                          {s.voters
+                            .map((v) =>
+                              v.weight > 1 ? `${v.display_name} ×${v.weight}` : v.display_name,
+                            )
+                            .join(", ")}
                         </p>
                       ) : null}
                       {s.notes.length > 0 ? <CollapsibleNotes notes={s.notes} /> : null}

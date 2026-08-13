@@ -123,6 +123,15 @@ export default {
         // Light-surface counterpart to `hairline`. Same fixed-alpha rule: the
         // alpha is the token's whole meaning, so no opacity modifier.
         "ink-hairline": "rgba(0, 0, 0, 0.12)", // rule / divider on paper
+        //
+        // NOTE for whoever adds a tinted callout block on paper: the ink ramp
+        // above is solved against PURE WHITE, so any tint erodes it. On a
+        // #FFF6EF amber tint, `ink-accent` measures 4.32:1 and `ink-muted`
+        // 4.38:1 — both AA failures, despite both clearing 4.5 on `paper`
+        // itself. Only `ink` survives (11.05:1). A tinted surface therefore
+        // needs its own re-solved amber (oklch(0.55 0.142 55) / #AE5600 works,
+        // at 4.76:1 on that tint), not `ink-accent`. Measured, then removed
+        // with the one component that used it — don't re-derive it by eye.
 
         // --- Chart series (ADR 0008) ----------------------------------------
         "chart-1": "oklch(0.72 0.17 55 / <alpha-value>)", // #F3821D (identical to accent)

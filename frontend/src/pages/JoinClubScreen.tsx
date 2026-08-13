@@ -48,8 +48,8 @@ export function JoinClubScreen({
             <ConcentricRings size={88} spinning className="mx-auto" />
           ) : expired ? (
             <>
-              {/* Neutral. This is a dead end, not the screen's arrival state, so
-                  it does not claim the one hero mark ADR 0010 allows here. */}
+              {/* Neutral. This is a dead end, not the screen's arrival state —
+                  there is nothing here worth marking. */}
               <ConcentricRings size={72} className="mx-auto" />
               {/* An expired link is a statement of fact about the link, not a
                   validation error about something the user typed, so it stays on
@@ -83,14 +83,11 @@ export function JoinClubScreen({
             </>
           ) : preview ? (
             <>
-              {/* The brand mark, accented — the screen's one amber hero mark.
-                  ADR 0010 bounds amber-as-identity to the shared nav's
-                  persistent 28px mark (rendered above for authenticated
-                  visitors only) plus at most one hero mark in a screen's own
-                  content, and JoinClubScreen is named there. The four discs in
-                  this screen are mutually exclusive branches, so only ever one
-                  renders, and this is the branch that earns it: a resolved
-                  invite is the screen's arrival state. */}
+              {/* The brand mark, accented. The four discs in this screen are
+                  mutually exclusive branches, so only ever one renders, and this
+                  is the branch the accent belongs to: a resolved invite is the
+                  screen's arrival state, and the mark is what the visitor has
+                  arrived at. */}
               <ConcentricRings size={72} accent className="mx-auto" />
 
               {preview.club_id !== null ? (

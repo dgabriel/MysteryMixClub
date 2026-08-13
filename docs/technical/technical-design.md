@@ -344,9 +344,20 @@ id                  UUID PRIMARY KEY
 mix_id              UUID REFERENCES mixes(id)
 voter_id            UUID REFERENCES users(id)
 submission_id       UUID REFERENCES submissions(id)
+weight              INTEGER NOT NULL DEFAULT 1 CHECK (weight >= 1)
 created_at          TIMESTAMP
 UNIQUE(voter_id, submission_id)
 ```
+> *A player may spend several of their votes on one song (ADR 0014). That is
+> `weight`, not extra rows — the unique constraint still holds, so there is
+> exactly one row per (voter, submission) and a player's total spend for a mix
+> is `SUM(weight)` bounded by `mixes.votes_per_player`. Withdrawing a vote
+> deletes the row; `weight` is never 0. Every tally that means "how many votes"
+> is therefore `SUM(weight)`, while anything counting **voters** (the voting
+> quorum, "X of Y voted") stays a distinct count of `voter_id` — who voted and
+> how hard they voted are separate questions. On the wire, `submission_ids` is
+> the vote list spelled out one entry per vote, so a repeat is a stacked vote
+> and `[A, A, B]` is a legal payload.*
 > *Voting is anonymous throughout `open_voting` — `voter_id` is never surfaced
 > to other players before a mystery mix closes. Once `mixes.state == "closed"`,
 > `GET /mixes/:id/results` reveals each submission's voters by name

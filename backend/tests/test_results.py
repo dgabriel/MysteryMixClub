@@ -97,8 +97,12 @@ async def _seed_submission(
     return sub
 
 
-async def _seed_vote(db_session, mix_id, voter: User, submission: Submission) -> None:
-    db_session.add(Vote(mix_id=mix_id, voter_id=voter.id, submission_id=submission.id))
+async def _seed_vote(
+    db_session, mix_id, voter: User, submission: Submission, *, weight: int = 1
+) -> None:
+    db_session.add(
+        Vote(mix_id=mix_id, voter_id=voter.id, submission_id=submission.id, weight=weight)
+    )
     await db_session.commit()
 
 
@@ -265,10 +269,42 @@ async def test_results_voters_named_per_submission_and_sorted(client, db_session
 
     # Sorted by display_name asc (Bob before Carol), not vote order.
     assert subs[str(s_alice_id)]["voters"] == [
-        {"user_id": str(bob_id), "display_name": "Bob"},
-        {"user_id": str(carol_id), "display_name": "Carol"},
+        {"user_id": str(bob_id), "display_name": "Bob", "weight": 1},
+        {"user_id": str(carol_id), "display_name": "Carol", "weight": 1},
     ]
     assert subs[str(s_bob_id)]["voters"] == []
+
+
+async def test_results_weighted_vote_counts_and_voter_weight(client, db_session):
+    """ADR 0014: the reveal totals votes, and names each voter once with the
+    weight they spent — one Carol entry at ×3, not three Carol entries."""
+    organizer = await _seed_user(db_session, "o@example.com", "Org")
+    alice = await _seed_user(db_session, "a@example.com", "Alice")
+    bob = await _seed_user(db_session, "b@example.com", "Bob")
+    carol = await _seed_user(db_session, "c@example.com", "Carol")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    mix_id = mix_.id
+    for u in (alice, bob, carol):
+        await _add_member(db_session, mix_.club_id, u)
+
+    s_alice = await _seed_submission(db_session, mix_, alice, title="Banana")
+    s_alice_id = s_alice.id
+    carol_id = carol.id
+
+    # Carol stacks 3 on Alice's song; Bob spends 1.
+    await _seed_vote(db_session, mix_id, carol, s_alice, weight=3)
+    await _seed_vote(db_session, mix_id, bob, s_alice)
+
+    resp = await client.get(_url(mix_id), headers=_auth(organizer.id))
+    assert resp.status_code == 200, resp.text
+    subs = {s["submission_id"]: s for s in resp.json()["submissions"]}
+
+    # 4 votes from 2 people — the count is votes, not voters.
+    assert subs[str(s_alice_id)]["vote_count"] == 4
+    voters = subs[str(s_alice_id)]["voters"]
+    assert len(voters) == 2
+    carol_entry = next(v for v in voters if v["user_id"] == str(carol_id))
+    assert carol_entry["weight"] == 3
 
 
 async def test_results_submissions_tiebreak_title_asc(client, db_session):

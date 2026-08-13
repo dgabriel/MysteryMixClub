@@ -1248,6 +1248,9 @@ export type ResultNote = {
 export type ResultVoter = {
   user_id: string;
   display_name: string;
+  /** How many of their allowance this voter put on the song (ADR 0014). One
+   *  entry per voter regardless — the reveal renders "Dawn ×3". */
+  weight: number;
 };
 
 /** A revealed submission: submitter named, vote total, and the notes it drew. */

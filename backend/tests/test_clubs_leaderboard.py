@@ -73,8 +73,12 @@ async def _seed_submission(db_session, mix_: Mix, user: User) -> Submission:
     return sub
 
 
-async def _seed_vote(db_session, mix_: Mix, voter: User, submission: Submission) -> None:
-    db_session.add(Vote(mix_id=mix_.id, voter_id=voter.id, submission_id=submission.id))
+async def _seed_vote(
+    db_session, mix_: Mix, voter: User, submission: Submission, *, weight: int = 1
+) -> None:
+    db_session.add(
+        Vote(mix_id=mix_.id, voter_id=voter.id, submission_id=submission.id, weight=weight)
+    )
     await db_session.commit()
 
 
@@ -166,6 +170,37 @@ async def test_members_ranked_by_votes_descending(client, db_session):
     assert by_name["Bob"]["vote_count"] == 1
     assert by_name["Bob"]["rank"] == 2
     # Alice is first in the list
+    assert data[0]["display_name"] == "Alice"
+
+
+async def test_leaderboard_sums_vote_weight(client, db_session):
+    """ADR 0014: standings total votes, not vote rows — so one stacked vote can
+    outrank two plain ones, and ordering follows the weighted total."""
+    organizer = await _seed_user(db_session, "org@x.com", "Org")
+    alice = await _seed_user(db_session, "alice@x.com", "Alice")
+    bob = await _seed_user(db_session, "bob@x.com", "Bob")
+    club = await _seed_club(db_session, organizer)
+    await _add_member(db_session, club, alice)
+    await _add_member(db_session, club, bob)
+
+    mix_ = await _seed_mix(db_session, club, state="closed")
+    alice_sub = await _seed_submission(db_session, mix_, alice)
+    bob_sub = await _seed_submission(db_session, mix_, bob)
+
+    # Alice: one voter stacking 3. Bob: two separate voters, 1 each.
+    await _seed_vote(db_session, mix_, organizer, alice_sub, weight=3)
+    await _seed_vote(db_session, mix_, organizer, bob_sub)
+    await _seed_vote(db_session, mix_, alice, bob_sub)
+
+    resp = await client.get(_url(club.id), headers=_auth(organizer.id))
+    assert resp.status_code == 200
+    data = resp.json()
+
+    by_name = {e["display_name"]: e for e in data}
+    assert by_name["Alice"]["vote_count"] == 3
+    assert by_name["Bob"]["vote_count"] == 2
+    # Fewer voters but more votes still wins.
+    assert by_name["Alice"]["rank"] == 1
     assert data[0]["display_name"] == "Alice"
 
 

@@ -25,6 +25,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.youtube_resolver import YouTubeLookup
 from app.auth.jwt import create_access_token, create_oauth_state
 from app.config import Settings, get_settings
 from app.db.session import get_db
@@ -236,6 +237,11 @@ class _FakeYouTube:
     def __init__(self, *, by_title: dict[str, str] | None = None):
         self._by_title = by_title or {}
         self.calls: list[tuple[str, str | None]] = []
+
+    async def resolve(self, title, artist=None):
+        """ADR 0015: these fakes always stand in for a reachable YouTube, so
+        every outcome is an answer. Delegates so each fake keeps one behaviour."""
+        return YouTubeLookup(video_id=await self.video_id_for(title, artist), answered=True)
 
     async def video_id_for(self, title: str, artist: str | None = None) -> str | None:
         self.calls.append((title, artist))
@@ -770,19 +776,26 @@ async def test_link_reports_unmatched_gap_after_generation(
 # --------------------------------------------------------------------------- #
 
 
-async def test_link_overflow_youtube_url_from_resolved_unmatched_track(
+async def test_link_overflow_youtube_url_from_already_resolved_track(
     db_session, fake_spotify, session_factory
 ):
-    # An unmatched, non-source-only submission with a resolvable YouTube id
-    # produces a watch_videos overflow link containing that id, and the
-    # resolved id is cached back onto the submission (same lazy-backfill
-    # pattern as GET /mixes/:id/playlist).
-    youtube = _FakeYouTube(by_title={"miss": "yt-miss-1"})
+    # An unmatched, non-source-only submission whose YouTube id is ALREADY
+    # stored produces a watch_videos overflow link containing that id. Since
+    # ADR 0015 this read resolves nothing itself — it only spends ids the
+    # backfill job already wrote.
+    youtube = _FakeYouTube(by_title={"miss": "should-not-be-used"})
     organizer = await _seed_user(db_session, "o@example.com")
     mix_ = await _seed_mix(db_session, organizer)
     await _seed_shared_account(db_session)
     await _add_submission(db_session, mix_.id, organizer.id, isrc="I-MATCH", title="hit")
-    miss = await _add_submission(db_session, mix_.id, organizer.id, isrc="I-MISS", title="miss")
+    await _add_submission(
+        db_session,
+        mix_.id,
+        organizer.id,
+        isrc="I-MISS",
+        title="miss",
+        youtube_video_id="yt-miss-1",
+    )
 
     await _generate(db_session, mix_, fake_spotify)
 
@@ -795,13 +808,37 @@ async def test_link_overflow_youtube_url_from_resolved_unmatched_track(
         "https://www.youtube.com/watch_videos?video_ids="
     )
     assert "yt-miss-1" in body["overflow_youtube_url"]
-    assert youtube.calls == [("miss", "A")]
+    assert youtube.calls == []  # no upstream work on a read
 
-    # Best-effort cache: the resolved id is now persisted on the submission.
-    miss_id = miss.id
-    db_session.expire_all()
-    refreshed = await db_session.scalar(select(Submission).where(Submission.id == miss_id))
-    assert refreshed.youtube_video_id == "yt-miss-1"
+
+async def test_link_read_enqueues_backfill_instead_of_resolving(
+    db_session, fake_spotify, session_factory
+):
+    # The spotify link route carried the identical serial-lookup defect as the
+    # playlist route (ADR 0015): it must queue the work, not do it.
+    from app.models.playlist_job import PlaylistJob
+
+    youtube = _FakeYouTube(by_title={"miss": "yt-miss-1"})
+    organizer = await _seed_user(db_session, "o@example.com")
+    mix_ = await _seed_mix(db_session, organizer)
+    await _seed_shared_account(db_session)
+    # A matched track too, so generation actually stores a playlist and the read
+    # gets past its "nothing generated yet" early return.
+    await _add_submission(db_session, mix_.id, organizer.id, isrc="I-MATCH", title="hit")
+    await _add_submission(db_session, mix_.id, organizer.id, isrc="I-MISS", title="miss")
+
+    await _generate(db_session, mix_, fake_spotify)
+
+    async with _client_with_spotify(session_factory, fake_spotify, youtube=youtube) as c:
+        resp = await c.get(_link_url(mix_.id), headers=_auth(organizer.id))
+    assert resp.status_code == 200
+    assert youtube.calls == []
+    assert resp.json()["overflow_youtube_url"] is None  # nothing resolved yet
+
+    job = await db_session.scalar(
+        select(PlaylistJob).where(PlaylistJob.mix_id == mix_.id, PlaylistJob.provider == "youtube")
+    )
+    assert job is not None and job.status == "queued"
 
 
 async def test_link_overflow_youtube_url_none_when_no_unmatched_resolve(

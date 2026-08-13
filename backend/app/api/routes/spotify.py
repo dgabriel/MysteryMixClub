@@ -66,10 +66,11 @@ from app.services.spotify_playlist_generation import (
     get_shared_connection,
     playlist_account_user_id,
 )
+from app.services.playlist_jobs import enqueue_playlist_job
 from app.services.source_tracks import source_fields
 from app.services.spotify_token_crypto import encrypt_refresh_token
+from app.services.youtube_backfill import has_pending
 from app.services.youtube_playlist import build_watch_videos_url
-from app.services.youtube_resolver import YouTubeResolver, get_youtube_resolver
 
 router = APIRouter(tags=["spotify"])
 logger = logging.getLogger("app.api.routes.spotify")
@@ -273,7 +274,6 @@ async def get_mix_spotify_playlist_link(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
-    youtube: YouTubeResolver = Depends(get_youtube_resolver),
 ) -> SpotifyPlaylistLinkResponse:
     """The mix page's read-only view (MYS-169): any club member can read the
     link an admin already generated, but never trigger generation themselves.
@@ -322,11 +322,10 @@ async def get_mix_spotify_playlist_link(
     unmatched: list[UnmatchedTrack] = []
     # Ad-hoc YouTube link for just these submissions (GH-232), so the gap
     # summary can offer "hear the rest" rather than only "here's what's missing".
-    # Same lazy-backfill pattern as get_mix_playlist: a source-only submission
-    # already carries an exact id from submit time and is never fuzzy-resolved;
-    # anything else gets a best-effort title/artist lookup, cached back on hit.
+    # Uses only ids already resolved — same as get_mix_playlist, this read does
+    # no upstream YouTube work of its own (ADR 0015); the worker's backfill job
+    # fills the gaps and the next load picks them up.
     overflow_video_ids: list[str] = []
-    backfilled = False
     for s in submissions:
         if s.spotify_track_uri:
             continue
@@ -340,22 +339,12 @@ async def get_mix_spotify_playlist_link(
                 source_url=source_fields(s.source_key)[1],
             )
         )
-        video_id = s.youtube_video_id
-        if not video_id and not s.source_key:
-            video_id = await youtube.video_id_for(s.title, s.artist)
-            if video_id:
-                s.youtube_video_id = video_id
-                backfilled = True
-        if video_id:
-            overflow_video_ids.append(video_id)
+        if s.youtube_video_id:
+            overflow_video_ids.append(s.youtube_video_id)
 
-    # Best-effort: persist any backfilled ids, but never let a write failure
-    # break the read — the link is still returned from the in-memory ids.
-    if backfilled:
-        try:
-            await db.commit()
-        except Exception:
-            await db.rollback()
+    if await has_pending(db, round_id):
+        await enqueue_playlist_job(db, round_id, "youtube")
+        await db.commit()
 
     return SpotifyPlaylistLinkResponse(
         playlist_url=f"https://open.spotify.com/playlist/{stored.playlist_id}",

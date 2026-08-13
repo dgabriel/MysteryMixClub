@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # complexity (ADR 0006).
 NOTIFY_CHANNEL = "playlist_jobs"
 
-PlaylistJobProvider = Literal["spotify", "apple"]
+PlaylistJobProvider = Literal["spotify", "apple", "youtube"]
 
 
 async def enqueue_playlist_job(

@@ -19,6 +19,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.youtube_resolver import YouTubeLookup
 from app.auth.jwt import create_access_token
 from app.db.session import get_db
 from app.main import create_app
@@ -53,6 +54,11 @@ class _FakeYouTube:
 
     def __init__(self, video_id: str | None = None):
         self._video_id = video_id
+
+    async def resolve(self, title, artist=None):
+        """ADR 0015: these fakes always stand in for a reachable YouTube, so
+        every outcome is an answer. Delegates so each fake keeps one behaviour."""
+        return YouTubeLookup(video_id=await self.video_id_for(title, artist), answered=True)
 
     async def video_id_for(self, title, artist=None) -> str | None:
         return self._video_id
@@ -632,6 +638,11 @@ def _no_http_assembler() -> SongLinkAssembler:
 class _BoomYouTube:
     """A YouTube resolver that fails if consulted — a source-only submission must
     never fuzzy-resolve a video id (that is the isrc/catalog path only)."""
+
+    async def resolve(self, title, artist=None):
+        """ADR 0015: these fakes always stand in for a reachable YouTube, so
+        every outcome is an answer. Delegates so each fake keeps one behaviour."""
+        return YouTubeLookup(video_id=await self.video_id_for(title, artist), answered=True)
 
     async def video_id_for(self, title, artist=None) -> str | None:  # pragma: no cover
         raise AssertionError("YouTube resolver must not be called for a source-only track")

@@ -16,7 +16,13 @@ from app.db.base import Base
 # ended. That conflict is flagged, not silently worked around; the endpoint
 # stays synchronous pending an explicit decision on how (or whether) to queue
 # per-player Apple generation.
-PLAYLIST_JOB_PROVIDERS = ("spotify", "apple")
+#
+# "youtube" (ADR 0015) is not playlist *generation* at all — it resolves missing
+# submissions.youtube_video_id values for a mix. It reuses this queue rather
+# than standing up a second one because it is the same shape of work (slow,
+# third-party, per-mix, must not run in a request) and the partial unique index
+# below already gives it exactly the double-enqueue collapsing it needs.
+PLAYLIST_JOB_PROVIDERS = ("spotify", "apple", "youtube")
 PLAYLIST_JOB_STATUSES = ("queued", "running", "complete", "failed")
 
 
@@ -34,7 +40,9 @@ class PlaylistJob(Base):
 
     __tablename__ = "playlist_jobs"
     __table_args__ = (
-        CheckConstraint("provider IN ('spotify', 'apple')", name="ck_playlist_jobs_provider"),
+        CheckConstraint(
+            "provider IN ('spotify', 'apple', 'youtube')", name="ck_playlist_jobs_provider"
+        ),
         CheckConstraint(
             "status IN ('queued', 'running', 'complete', 'failed')",
             name="ck_playlist_jobs_status",

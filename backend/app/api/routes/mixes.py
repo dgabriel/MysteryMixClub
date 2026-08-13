@@ -52,8 +52,8 @@ from app.services.notifications import (
     organizer_recipient,
     queue_mix_event,
 )
+from app.services.youtube_backfill import has_pending
 from app.services.youtube_playlist import build_watch_videos_url, normalize_video_ids
-from app.services.youtube_resolver import YouTubeResolver, get_youtube_resolver
 
 router = APIRouter(tags=["mixes"])
 
@@ -869,7 +869,6 @@ async def get_mix_playlist(
     round_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    youtube: YouTubeResolver = Depends(get_youtube_resolver),
 ) -> PlaylistResponse:
     mix_ = await _load_mix(round_id, db)
     await _load_club_as_member(mix_.club_id, current_user, db)
@@ -902,7 +901,6 @@ async def get_mix_playlist(
 
     entries = []
     video_ids: list[str] = []
-    backfilled = False
     for s in submissions:
         platforms = s.platform_links or {}
         entries.append(
@@ -921,28 +919,19 @@ async def get_mix_playlist(
                 submitter_note=s.note,
             )
         )
-        # YouTube ids are resolved at submit time. Lazily backfill any submission
-        # that predates that (or whose submit-time resolve failed) so existing
-        # mixes light up; cache it back so it's a one-time cost per submission.
-        # Source-only tracks (MYS-201) are never fuzzy-resolved: a youtube: row
-        # already carries its exact id from submit time, and a bandcamp: row must
-        # never be linked to a *guessed* video, so it simply sits out the playlist.
-        video_id = s.youtube_video_id
-        if not video_id and not s.source_key:
-            video_id = await youtube.video_id_for(s.title, s.artist)
-            if video_id:
-                s.youtube_video_id = video_id
-                backfilled = True
-        if video_id:
-            video_ids.append(video_id)
+        if s.youtube_video_id:
+            video_ids.append(s.youtube_video_id)
 
-    # Best-effort: persist any backfilled ids, but never let a write failure break
-    # the read — the link is still returned from the in-memory ids.
-    if backfilled:
-        try:
-            await db.commit()
-        except Exception:
-            await db.rollback()
+    # YouTube ids are resolved at submit time; anything still missing is
+    # backfilled by the worker, never here (ADR 0015). This read used to await
+    # one YouTube search per unresolved submission, serially, which cost ~0.74s
+    # each and — because a miss was never recorded — repeated on every request
+    # forever. Enqueue instead and serve whatever is already resolved; the
+    # partial unique index on playlist_jobs collapses repeat loads onto one job,
+    # so a mix being viewed by five people still queues exactly one.
+    if await has_pending(db, round_id):
+        await enqueue_playlist_job(db, round_id, "youtube")
+        await db.commit()
 
     # Normalize once so the count and the URL can never disagree: the URL is
     # built from exactly these de-duped/capped ids, and the count is their length.

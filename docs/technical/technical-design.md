@@ -322,6 +322,7 @@ album               TEXT
 album_art_url       TEXT
 platform_links      JSONB (assembled {platform: url} cross-service links, best-effort — §8)
 youtube_video_id    TEXT (cached exact YouTube video id, resolved via YouTube Data API — MYS-78)
+youtube_lookup_attempted_at TIMESTAMP (nullable; when a YouTube resolve was last attempted, set on hit AND miss so a miss is never re-tried on every read — ADR 0015)
 spotify_track_uri   TEXT (cached spotify:track:... URI, resolved from ISRC at playlist-create time — MYS-83)
 note                TEXT (max 280 chars)
 participation_mode  TEXT (playing | vibing) — per-mix mode; defaults at submit from club_members.vibe_mode, overridable per mix (MYS-112)
@@ -584,7 +585,11 @@ per-platform lookups ranked against the query rather than trusted blindly
 - **YouTube** — exact video link via the YouTube Data API when a resolver is
   configured (ranked, MYS-175), cached on `submissions.youtube_video_id`;
   falls back to a search deep link when unconfigured or unmatched.
-  YouTube Music serves the same resolved video id.
+  YouTube Music serves the same resolved video id. Resolution happens at submit
+  time, or in the playlist worker's `youtube` job for rows that missed it; it
+  **never** happens on a read (ADR 0015). Every attempt stamps
+  `youtube_lookup_attempted_at`, so an unmatched track stays unmatched rather
+  than being re-queried on each page view.
 - **Spotify** — deep link only (keyless); `submissions.spotify_track_uri` is
   resolved separately, lazily, at playlist-create time (MYS-83).
 - **Bandcamp** — deep link only; Bandcamp's API is partner-only, so there is

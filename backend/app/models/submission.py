@@ -50,9 +50,19 @@ class Submission(Base):
     platform_links: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     # Cached YouTube video id for the mix playlist link (MYS-78). The stored
     # YouTube platform_link is only a search deep-link with no video id, so this
-    # is resolved via the YouTube Data API at submit time (and lazily backfilled
-    # at playlist time for pre-existing rows), then cached to avoid repeat calls.
+    # is resolved via the YouTube Data API at submit time, then cached to avoid
+    # repeat calls. Pre-existing rows are backfilled by the playlist worker's
+    # "youtube" job, never on a read (ADR 0015).
     youtube_video_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    # When a YouTube resolve was last *attempted*, set on success and on miss
+    # alike (ADR 0015). Without this a miss is indistinguishable from "never
+    # tried", so every read re-ran the lookup forever. NULL means never
+    # attempted; a timestamp with a NULL youtube_video_id means "tried, no
+    # match" and is not retried automatically. Deliberately a timestamp rather
+    # than a boolean so a retry-after-N-days policy needs no second migration.
+    youtube_lookup_attempted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # Cached Spotify track URI (spotify:track:...) resolved from the ISRC via the
     # Spotify search API, for building a saved playlist (MYS-83). Resolved lazily
     # at playlist-create time and cached; nullable when no match is found.

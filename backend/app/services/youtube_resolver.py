@@ -21,6 +21,7 @@ Reference: https://developers.google.com/youtube/v3/docs/search/list
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from functools import lru_cache
 
 import httpx
@@ -31,6 +32,23 @@ from app.services.search_relevance import best_match
 _SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
 _DEFAULT_TIMEOUT = 10.0
 _RESULT_LIMIT = 5
+
+
+@dataclass(frozen=True)
+class YouTubeLookup:
+    """One resolve attempt's outcome (ADR 0015).
+
+    ``answered`` separates the two ways ``video_id`` can be ``None``:
+
+    * ``answered=True``  — YouTube responded and nothing matched. A verdict on
+      the track; safe to record and stop asking.
+    * ``answered=False`` — the question never got through (quota 403, timeout,
+      transport error, unconfigured key). Says nothing about the track, and
+      must not be recorded as an attempt.
+    """
+
+    video_id: str | None
+    answered: bool
 
 
 def _query(title: str, artist: str | None) -> str:
@@ -61,9 +79,28 @@ class YouTubeResolver:
 
         Returns ``None`` for: an unconfigured API key, an empty title, a non-200
         response (quota/auth/etc.), no items, a timeout, or any transport/parse
-        error. Best-effort — never raises to the caller."""
+        error. Best-effort — never raises to the caller.
+
+        Callers that need to tell "YouTube has no match" apart from "YouTube
+        wouldn't answer" must use :meth:`resolve` instead — this method
+        deliberately flattens both to ``None``."""
+        return (await self.resolve(title, artist)).video_id
+
+    async def resolve(self, title: str, artist: str | None = None) -> YouTubeLookup:
+        """Same lookup as :meth:`video_id_for`, but reporting *why* it came back
+        empty (ADR 0015).
+
+        The distinction is load-bearing for the backfill: a genuine "searched,
+        nothing matched" is a final answer worth recording, while a quota 403,
+        a timeout, or an unconfigured key means the question was never actually
+        asked. Recording the second kind as an answer is how a whole batch of
+        resolvable tracks gets permanently written off during an outage — which
+        is exactly what happened the first time this ran against a spent quota.
+        """
         if not self._api_key or not title or not title.strip():
-            return None
+            # Nothing was asked, so nothing was answered — an unconfigured
+            # deployment must not poison every submission it sees.
+            return YouTubeLookup(video_id=None, answered=False)
 
         query = _query(title, artist)
         params: dict[str, str | int] = {
@@ -78,19 +115,21 @@ class YouTubeResolver:
                 response = await client.get(_SEARCH_URL, params=params)
         except httpx.HTTPError:
             # Timeouts are a subclass of HTTPError; both are swallowed.
-            return None
+            return YouTubeLookup(video_id=None, answered=False)
 
         if response.status_code != 200:
-            return None
+            # Quota exhaustion (403), auth failures, and 5xx all land here.
+            return YouTubeLookup(video_id=None, answered=False)
 
         try:
             payload = response.json()
         except ValueError:
-            return None
+            return YouTubeLookup(video_id=None, answered=False)
 
         items = payload.get("items") or []
         if not items:
-            return None
+            # A real, empty result set: YouTube answered, it just has nothing.
+            return YouTubeLookup(video_id=None, answered=True)
         # Video titles interleave artist + title (e.g. "Artist - Song (Audio)"),
         # so the full query is matched against the whole snippet title rather
         # than splitting title/artist like the other providers. The uploading
@@ -104,12 +143,15 @@ class YouTubeResolver:
             title_of=lambda item: (item.get("snippet") or {}).get("title") or "",
             artist_of=lambda item: (item.get("snippet") or {}).get("channelTitle"),
         )
+        # Answered from here down: YouTube returned candidates, so a rejection
+        # below is our own ranking calling them all unrelated (MYS-175) — a real
+        # verdict on this track, not an upstream failure.
         if chosen is None:
-            return None
+            return YouTubeLookup(video_id=None, answered=True)
         video_id = (chosen.get("id") or {}).get("videoId")
         if isinstance(video_id, str) and video_id:
-            return video_id
-        return None
+            return YouTubeLookup(video_id=video_id, answered=True)
+        return YouTubeLookup(video_id=None, answered=True)
 
 
 def build_youtube_resolver(settings: Settings) -> YouTubeResolver:

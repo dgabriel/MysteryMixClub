@@ -21,7 +21,7 @@ not a per-song one: it is kept uniform across all of a player's songs (MYS-112/1
 """
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -140,30 +140,40 @@ async def _assemble_track(
     payload: SubmissionCreate,
     assembler: SongLinkAssembler,
     youtube: YouTubeResolver,
-) -> tuple[dict[str, str], str | None]:
+) -> tuple[dict[str, str], str | None, bool]:
     """Resolve the keyless cross-service links + a YouTube video id for a track.
 
-    Best-effort: the assembler always returns at least deep links, and the
-    YouTube resolve is None on any failure, so neither blocks a submission.
-    The video id is resolved once here and handed to the assembler so it
-    doesn't make its own redundant YouTube Data API call (MYS-175).
+    Returns ``(links, video_id, youtube_answered)``. Best-effort: the assembler
+    always returns at least deep links, and the YouTube resolve is None on any
+    failure, so neither blocks a submission. The video id is resolved once here
+    and handed to the assembler so it doesn't make its own redundant YouTube
+    Data API call (MYS-175).
+
+    ``youtube_answered`` is False when the lookup never got through (quota,
+    timeout, unconfigured key) — the caller must not record that as an attempt,
+    or the backfill will never revisit the track (ADR 0015).
 
     Source-only tracks (MYS-201) bypass every fuzzy lookup: the source_key's
     exact video id (or Bandcamp page) drives the links — never a guessed match.
     """
     if payload.source_key is not None:
-        return await assemble_source_links(
+        links, video_id = await assemble_source_links(
             assembler, payload.title, payload.artist, payload.source_key
         )
-    youtube_video_id = await youtube.video_id_for(payload.title, payload.artist)
+        return links, video_id, False
+    lookup = await youtube.resolve(payload.title, payload.artist)
     platform_links = await assembler.assemble(
-        payload.title, payload.artist, payload.isrc, youtube_video_id=youtube_video_id
+        payload.title, payload.artist, payload.isrc, youtube_video_id=lookup.video_id
     )
-    return platform_links, youtube_video_id
+    return platform_links, lookup.video_id, lookup.answered
 
 
 def _apply_track(
-    s: Submission, payload: SubmissionCreate, links: dict[str, str], yt: str | None
+    s: Submission,
+    payload: SubmissionCreate,
+    links: dict[str, str],
+    yt: str | None,
+    youtube_answered: bool = False,
 ) -> None:
     """Write a resolved track onto a submission row (shared by add + replace)."""
     s.isrc = payload.isrc
@@ -179,6 +189,12 @@ def _apply_track(
         links = {**links, BANDCAMP_TRACK_ID_KEY: payload.bandcamp_track_id}
     s.platform_links = links
     s.youtube_video_id = yt
+    # Record the attempt only when YouTube actually answered (ADR 0015). A
+    # source-only track is never looked up at all, and a quota/timeout failure
+    # asked nothing — both stay "unattempted" so the backfill job picks them up.
+    # A genuine submit-time miss IS recorded, so the job doesn't re-ask forever.
+    if youtube_answered:
+        s.youtube_lookup_attempted_at = datetime.now(timezone.utc)
     s.note = payload.note
 
 
@@ -301,7 +317,9 @@ async def submit_song(
         )
     club_repeat = await _duplicate_in_prior_club_mixes(payload, mix_.club_id, round_id, db)
 
-    platform_links, youtube_video_id = await _assemble_track(payload, assembler, youtube)
+    platform_links, youtube_video_id, youtube_answered = await _assemble_track(
+        payload, assembler, youtube
+    )
     mode = await _resolve_mode(
         payload.participation_mode, existing, mix_.club_id, current_user.id, db
     )
@@ -310,7 +328,7 @@ async def submit_song(
         s.participation_mode = mode
 
     submission = Submission(mix_id=round_id, user_id=current_user.id, participation_mode=mode)
-    _apply_track(submission, payload, platform_links, youtube_video_id)
+    _apply_track(submission, payload, platform_links, youtube_video_id, youtube_answered)
     db.add(submission)
     await db.flush()
     await db.commit()
@@ -355,8 +373,10 @@ async def edit_song(
         )
     club_repeat = await _duplicate_in_prior_club_mixes(payload, mix_.club_id, round_id, db)
 
-    platform_links, youtube_video_id = await _assemble_track(payload, assembler, youtube)
-    _apply_track(submission, payload, platform_links, youtube_video_id)
+    platform_links, youtube_video_id, youtube_answered = await _assemble_track(
+        payload, assembler, youtube
+    )
+    _apply_track(submission, payload, platform_links, youtube_video_id, youtube_answered)
     # An explicit mode change applies to all the player's songs (uniform stance).
     if payload.participation_mode is not None:
         for s in await _own_mix_submissions(round_id, current_user.id, db):

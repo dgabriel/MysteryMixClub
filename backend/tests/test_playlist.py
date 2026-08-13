@@ -20,6 +20,7 @@ from app.models.club import Club
 from app.models.club_member import ClubMember
 from app.models.note import Note
 from app.models.mix import Mix
+from app.models.playlist_job import PlaylistJob
 from app.models.submission import Submission
 from app.models.user import User
 from app.models.vote import Vote
@@ -396,7 +397,8 @@ async def test_youtube_playlist_url_none_when_nothing_resolves(session_factory, 
         platform_links=_links("deezer"),
         youtube_video_id=None,
     )
-    # No stored id, and the resolver finds nothing on backfill.
+    # No stored id. The read never resolves one (ADR 0015), so the link is empty
+    # until the worker's backfill job has run.
     youtube = _FakeYouTube(by_title={})
 
     async with _client_with_youtube(session_factory, youtube) as client:
@@ -429,7 +431,12 @@ async def test_stored_id_is_used_without_calling_resolver(session_factory, db_se
     assert _ids_in_url(body) == ["CACHED1"]
 
 
-async def test_lazy_backfill_resolves_and_caches_null_id(session_factory, db_session):
+async def test_read_never_resolves_and_enqueues_a_backfill_job(session_factory, db_session):
+    """The core of ADR 0015: an unresolved submission costs the read nothing.
+
+    This used to await one YouTube search per unresolved row, inline, at ~0.74s
+    each. Now the read only queues the work.
+    """
     organizer = await _seed_user(db_session, "o@example.com")
     mix_ = await _seed_mix(db_session, organizer)
     await _add_submission(
@@ -444,22 +451,21 @@ async def test_lazy_backfill_resolves_and_caches_null_id(session_factory, db_ses
     youtube = _FakeYouTube(by_title={"needs backfill": "NEWVID"})
 
     async with _client_with_youtube(session_factory, youtube) as client:
-        first = await client.get(_url(mix_.id), headers=_auth(organizer.id))
-    body = first.json()
-    assert _ids_in_url(body) == ["NEWVID"]
-    assert body["youtube_track_count"] == 1
-    assert youtube.calls == [("needs backfill", "A")]  # resolved once
+        body = (await client.get(_url(mix_.id), headers=_auth(organizer.id))).json()
 
-    # The id is cached back; a fresh read sees it without resolving again.
-    sub = await db_session.scalar(select(Submission).where(Submission.mix_id == mix_.id))
-    assert sub.youtube_video_id == "NEWVID"
+    assert youtube.calls == []  # no upstream call on a read, ever
+    assert body["youtube_playlist_url"] is None
+    assert body["youtube_track_count"] == 0
 
-    async with _client_with_youtube(session_factory, youtube) as client:
-        await client.get(_url(mix_.id), headers=_auth(organizer.id))
-    assert youtube.calls == [("needs backfill", "A")]  # not called a second time
+    job = await db_session.scalar(
+        select(PlaylistJob).where(PlaylistJob.mix_id == mix_.id, PlaylistJob.provider == "youtube")
+    )
+    assert job is not None and job.status == "queued"
 
 
-async def test_resolver_failure_is_swallowed_and_endpoint_stays_200(session_factory, db_session):
+async def test_repeat_reads_collapse_onto_one_queued_job(session_factory, db_session):
+    # Five members opening the same mix page must not queue five jobs — the
+    # partial unique index on playlist_jobs is what makes the enqueue idempotent.
     organizer = await _seed_user(db_session, "o@example.com")
     mix_ = await _seed_mix(db_session, organizer)
     await _add_submission(
@@ -471,14 +477,46 @@ async def test_resolver_failure_is_swallowed_and_endpoint_stays_200(session_fact
         platform_links=_links("deezer"),
         youtube_video_id=None,
     )
-    youtube = _FakeYouTube(error=True)
+    youtube = _FakeYouTube(by_title={})
+
+    async with _client_with_youtube(session_factory, youtube) as client:
+        for _ in range(5):
+            resp = await client.get(_url(mix_.id), headers=_auth(organizer.id))
+            assert resp.status_code == 200, resp.text
+
+    jobs = list(
+        await db_session.scalars(
+            select(PlaylistJob).where(
+                PlaylistJob.mix_id == mix_.id, PlaylistJob.provider == "youtube"
+            )
+        )
+    )
+    assert len(jobs) == 1
+
+
+async def test_no_job_enqueued_when_nothing_is_pending(session_factory, db_session):
+    # Every submission already resolved: the read should queue no work at all.
+    organizer = await _seed_user(db_session, "o@example.com")
+    mix_ = await _seed_mix(db_session, organizer)
+    await _add_submission(
+        db_session,
+        mix_.id,
+        organizer.id,
+        title="done",
+        isrc="I",
+        platform_links=_links("deezer"),
+        youtube_video_id="VID",
+    )
+    youtube = _FakeYouTube(by_title={})
 
     async with _client_with_youtube(session_factory, youtube) as client:
         resp = await client.get(_url(mix_.id), headers=_auth(organizer.id))
     assert resp.status_code == 200, resp.text
-    body = resp.json()
-    assert body["youtube_playlist_url"] is None
-    assert body["youtube_track_count"] == 0
+
+    jobs = list(
+        await db_session.scalars(select(PlaylistJob).where(PlaylistJob.provider == "youtube"))
+    )
+    assert jobs == []
 
 
 async def test_track_count_matches_url_when_duplicate_ids_collapse(session_factory, db_session):

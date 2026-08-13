@@ -36,6 +36,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.youtube_resolver import YouTubeLookup
 from app.auth.jwt import create_access_token
 from app.db.session import get_db
 from app.main import create_app
@@ -70,6 +71,11 @@ class _FakeAssembler:
 
 
 class _FakeYouTube:
+    async def resolve(self, title, artist=None):
+        """ADR 0015: these fakes always stand in for a reachable YouTube, so
+        every outcome is an answer. Delegates so each fake keeps one behaviour."""
+        return YouTubeLookup(video_id=await self.video_id_for(title, artist), answered=True)
+
     async def video_id_for(self, title, artist=None) -> str | None:
         return None
 

@@ -18,7 +18,7 @@ type AdminMetricsScreenProps = {
  * Read-only platform snapshot (MysteryMixClub-etz7.3): the aggregate counts from
  * GET /admin/metrics, grouped into four cards, plus the daily signup trend
  * (MysteryMixClub-etz7.4). Content-only — the shared TopNav is rendered by
- * AuthedLayout, so this screen renders no hero mark of its own.
+ * AuthedLayout, so this screen renders no brand mark of its own.
  *
  * **Sibling of AdminScreen (R15).** The stat groups reuse the record-list
  * pattern that screen established: a `Card` surface holding the rows,

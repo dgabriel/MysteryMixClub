@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 /** Particle colors, tuned to read on a near-black page. Confetti fires only on
  *  club completion (`ClubHomeScreen`, `isComplete`), which is an achievement
- *  moment, so the burst is amber-led and that amber is in category.
+ *  moment, so the burst is amber-led — the amber marks the achievement.
  *
  *  These are inline `backgroundColor` values — a particle cannot read a
  *  Tailwind class — so each literal names the token it comes from, for the R18

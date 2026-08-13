@@ -51,14 +51,11 @@ export function MyClubsScreen({
           <div className="mx-auto w-full max-w-lg">
             {clubs.length === 0 ? (
               <div className="flex flex-col items-center pt-4 text-center">
-                {/* Empty state — the screen's one amber hero mark. ADR 0010
-                    bounds amber-as-identity to the shared nav's persistent 28px
-                    mark (rendered by AuthedLayout's TopNav) plus at most one
-                    hero mark in a screen's own content, and MyClubsScreen is
-                    named there. It qualifies as a hero rather than decoration:
-                    with no clubs it is the only object on the screen, at the
-                    88px page-hero size, and the loading disc it replaces can
-                    never render at the same time. */}
+                {/* Empty state — accented because it is marking the screen
+                    itself rather than decorating it: with no clubs the disc is
+                    the only object here, at the 88px page-hero size, and the
+                    loading disc it replaces can never render at the same
+                    time. */}
                 <ConcentricRings size={88} accent onPaper className="mx-auto" />
                 <span className="mt-8 flex items-center gap-2">
                   <p className="font-mono text-meta uppercase tracking-mono-wide text-ink-muted">

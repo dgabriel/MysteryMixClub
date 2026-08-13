@@ -18,10 +18,10 @@ export function VerifyScreen({ state, onBackToLogin, heading, message }: VerifyS
         {state === "verifying" ? (
           <>
             {/* Loading is the slowly rotating motif — not a spinner. The disc is
-                unaccented: amber-as-identity is bounded to the shared nav's mark
-                plus at most one hero mark per screen, and this screen is not one
-                of the ones that carries the hero mark (ADR 0010). 88px is the
-                page-hero size, and the disc is the only thing on screen here. */}
+                unaccented: waiting on a verification round-trip is not an
+                achievement or an action, so there is nothing to mark. 88px is
+                the page-hero size, and the disc is the only thing on screen
+                here. */}
             <ConcentricRings size={88} spinning className="mx-auto" />
             {/* Mono eyebrow. `text-mini` rather than a 9px arbitrary value —
                 this label carries the only information on the screen, so it sits
@@ -32,7 +32,8 @@ export function VerifyScreen({ state, onBackToLogin, heading, message }: VerifyS
           </>
         ) : (
           <>
-            {/* Unaccented for the same ADR 0010 reason as above. */}
+            {/* Unaccented for the same reason as above: a link that didn't work
+                is not something to mark. */}
             <ConcentricRings size={72} className="mx-auto" />
             <h1 className="mt-8 font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
               {heading ?? "that link didn’t work"}

@@ -124,6 +124,23 @@ export default {
         // alpha is the token's whole meaning, so no opacity modifier.
         "ink-hairline": "rgba(0, 0, 0, 0.12)", // rule / divider on paper
 
+        // Light-surface counterpart to `accent-surface` — the tinted callout
+        // block. Solved the same way as the ramp above, and it comes with a
+        // trap worth stating outright:
+        //
+        // THE INK RAMP IS SOLVED AGAINST PURE WHITE, SO ANY TINT ERODES IT.
+        // On this fill `ink-accent` measures 4.32:1 and `ink-muted` 4.38:1 —
+        // both AA failures, despite clearing 4.5 on `paper` itself. Only `ink`
+        // survives unchanged (11.05:1). So: body copy on this surface is `ink`,
+        // never `ink-muted`, and amber on it is `ink-accent-deep` below, never
+        // `ink-accent`.
+        "ink-accent-surface": "oklch(0.98 0.015 55 / <alpha-value>)", // #FFF6EF callout fill
+        // `ink-accent` re-solved for `ink-accent-surface` instead of `paper`:
+        // same hue (55) and same chroma (0.142), dropped in lightness until it
+        // clears the floor with margin. 4.76:1 on the tint, 5.08:1 on paper, so
+        // it is safe on both and the two never need swapping mid-component.
+        "ink-accent-deep": "oklch(0.55 0.142 55 / <alpha-value>)", // #AE5600 amber on the tint
+
         // --- Chart series (ADR 0008) ----------------------------------------
         "chart-1": "oklch(0.72 0.17 55 / <alpha-value>)", // #F3821D (identical to accent)
         "chart-2": "oklch(0.65 0.12 180 / <alpha-value>)", // #00A692 teal

@@ -1330,8 +1330,17 @@ function StackingHint() {
   }
 
   return (
-    <div className="mt-4 flex items-start gap-3 rounded-tile border border-ink-hairline px-4 py-3">
-      <p className="flex-1 text-meta leading-[1.6] text-ink-muted">
+    <div className="mt-4 flex items-start gap-3 rounded-tile border border-accent-hairline bg-ink-accent-surface px-4 py-3">
+      {/* The bulb is what types this block as a tip at a glance, before the
+          sentence is read. `ink-accent-deep`, not `ink-accent`: the tinted fill
+          costs the normal token ~0.3 and drops it under AA (see the token
+          notes). Amber earns its place here — the icon is marking the block,
+          which is the one thing ADR 0012 still requires. */}
+      <HintBulb />
+      {/* `ink`, not `ink-muted`. Partly because muted also fails AA on this
+          fill, and partly because the whole point of the block is to be read:
+          the first cut of this hint was too quiet to do its job. */}
+      <p className="flex-1 text-meta leading-[1.6] text-ink">
         love a track? click the up caret to put more than one of your votes on it. click down to
         take a vote back.
       </p>
@@ -1344,6 +1353,29 @@ function StackingHint() {
         ×
       </button>
     </div>
+  );
+}
+
+/** Tip marker for {@link StackingHint}. A bulb rather than another "?" circle:
+ *  HelpLink already owns that shape for "what is this?", and two circled glyphs
+ *  on one screen meaning different things is worse than one extra icon. */
+function HintBulb() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      className="mt-0.5 h-4 w-4 shrink-0 text-ink-accent-deep"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <circle cx="8" cy="6" r="4" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <path
+        d="M6 11.5h4M6.75 14h2.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
 

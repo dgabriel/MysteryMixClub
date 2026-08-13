@@ -1995,9 +1995,7 @@ function VotingSection({
 
   function addVote(id: string) {
     onSelectionChange();
-    setSelected((current) =>
-      current.length >= votesPerPlayer ? current : [...current, id],
-    );
+    setSelected((current) => (current.length >= votesPerPlayer ? current : [...current, id]));
   }
 
   function removeVote(id: string) {
@@ -2211,149 +2209,21 @@ function VotingSection({
                       interactive
                     />
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-3">
-                        {/* Always `foreground`. The old dimming keyed off "you
-                            can't select this", which under a stepper would grey
-                            every title on the list the moment the allowance ran
-                            out — including the ones you spent it on. The
-                            disabled plus button already says that. */}
-                        <h3 className="font-display text-sm font-bold uppercase leading-none text-foreground">
-                          {entry.title}
-                        </h3>
-                        {/* The vote control (ADR 0014). The amber disc is still
-                            both the indicator AND the primary control — it
-                            survives weighted voting intact, and one vote looks
-                            and costs exactly what it did when one vote was all
-                            you could cast. A second vote adds a second disc
-                            rather than a digit, so quantity is read at a glance
-                            and the marker never becomes a number.
-
-                            Unvoted is the empty ring at `muted-foreground`
-                            (6.01:1 on `card`, clear of the 3:1 a non-text
-                            graphic owes). Filled discs are `accent` — the row
-                            you spent votes on is the one thing on this card
-                            worth marking.
-
-                            Above PIP_CAP the discs collapse to one disc and a
-                            ×N, because `votes_per_player` has no upper bound
-                            and a club running ten votes would otherwise push a
-                            row of discs through the side of the card.
-
-                            The carets are a spinner: up adds, down removes.
-                            Each is a 28px-tall / 36px-wide target — clear of
-                            the 24px WCAG 2.2 AA minimum — and the pair stacks
-                            to exactly the 56px album-art height beside it. A
-                            caret that would do nothing (down at zero, up at the
-                            allowance) renders disabled at `ghost-foreground`,
-                            the ramp's disabled-glyph step; WCAG exempts
-                            inactive controls, and it reads as unavailable
-                            rather than merely dim.
-
-                            State is never colour alone (WCAG 1.4.11): the
-                            filled-vs-empty shape carries it visually, and the
-                            sr-only live region carries it to a screen reader,
-                            which is also why the discs are aria-hidden — an
-                            assistive user gets "2 votes", not two anonymous
-                            graphics. */}
-                        <span className="flex shrink-0 items-center gap-3">
-                          {/* The rings are the control, not just the readout:
-                              one tap on the empty ring casts a vote, and one
-                              tap on a filled one clears the song back to zero —
-                              the same two-tap on/off the binary toggle had, so
-                              the common case (vote for a song, change your
-                              mind) costs exactly what it used to. Stacking is
-                              the carets' job, deliberately kept off this
-                              gesture so the cheap path stays cheap. */}
-                          <button
-                            type="button"
-                            aria-pressed={isSelected}
-                            aria-label={
-                              isSelected
-                                ? `clear your votes for ${entry.title}`
-                                : `vote for ${entry.title}`
-                            }
-                            // Native `title`, the same hover-text mechanism
-                            // HelpLink uses — this file has no tooltip
-                            // component and one affordance does not justify
-                            // introducing one. Stacking is the non-obvious half
-                            // of this control (the ring teaches itself, the
-                            // carets do not), so the hint names the gesture
-                            // rather than restating what a click does.
-                            title="click up or down to put more than one vote on this track"
-                            disabled={!isSelected && atLimit}
-                            onClick={() =>
-                              isSelected
-                                ? clearVotes(entry.submission_id)
-                                : addVote(entry.submission_id)
-                            }
-                            className={[
-                              // px-2/py-2 puts a single ring in a 32x32 target,
-                              // clear of the 24x24 WCAG 2.2 AA minimum rather
-                              // than sitting exactly on it.
-                              "flex items-center gap-1 rounded-hair px-2 py-2",
-                              !isSelected && atLimit ? "cursor-not-allowed" : "cursor-pointer",
-                            ].join(" ")}
-                          >
-                            {voteCount > PIP_CAP ? (
-                              <>
-                                <span className="block h-4 w-4 rounded-full border border-accent bg-accent" />
-                                <span className="font-mono text-mini tabular-nums text-accent">
-                                  ×{voteCount}
-                                </span>
-                              </>
-                            ) : (
-                              // One empty ring at zero, otherwise one filled
-                              // disc per vote spent.
-                              Array.from({ length: Math.max(1, voteCount) }, (_, i) => (
-                                <span
-                                  key={i}
-                                  className={[
-                                    "block h-4 w-4 rounded-full border transition-colors duration-150",
-                                    voteCount > 0
-                                      ? "border-accent bg-accent"
-                                      : !isSelected && atLimit
-                                        ? "border-ghost-foreground"
-                                        : "border-muted-foreground",
-                                  ].join(" ")}
-                                />
-                              ))
-                            )}
-                          </button>
-                          <span role="status" aria-live="polite" className="sr-only">
-                            {voteCount} {voteCount === 1 ? "vote" : "votes"} on {entry.title}
-                          </span>
-                          <span className="flex flex-col">
-                            <button
-                              type="button"
-                              onClick={() => addVote(entry.submission_id)}
-                              disabled={disabled}
-                              aria-label={`add a vote to ${entry.title}`}
-                              className={[
-                                "flex h-7 w-9 items-center justify-center rounded-hair transition-colors duration-150",
-                                disabled
-                                  ? "cursor-not-allowed text-ghost-foreground"
-                                  : "cursor-pointer text-muted-foreground hover:bg-popover hover:text-foreground",
-                              ].join(" ")}
-                            >
-                              <Caret direction="up" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => removeVote(entry.submission_id)}
-                              disabled={voteCount === 0}
-                              aria-label={`remove a vote from ${entry.title}`}
-                              className={[
-                                "flex h-7 w-9 items-center justify-center rounded-hair transition-colors duration-150",
-                                voteCount === 0
-                                  ? "cursor-not-allowed text-ghost-foreground"
-                                  : "cursor-pointer text-muted-foreground hover:bg-popover hover:text-foreground",
-                              ].join(" ")}
-                            >
-                              <Caret direction="down" />
-                            </button>
-                          </span>
-                        </span>
-                      </div>
+                      {/* The vote control is a SIBLING of this text column, not
+                          a member of the title row. Inside the row it set the
+                          row's height — the caret stack is 56px against a 14px
+                          title — which shoved the artist line ~60px clear of
+                          the title it belongs to. Out here it sits alongside
+                          the whole column and the title/artist rhythm is the
+                          same as every other card in the app. */}
+                      {/* Always `foreground`. The old dimming keyed off "you
+                          can't select this", which under a stepper would grey
+                          every title on the list the moment the allowance ran
+                          out — including the ones you spent it on. The
+                          disabled up caret already says that. */}
+                      <h3 className="font-display text-sm font-bold uppercase leading-none text-foreground">
+                        {entry.title}
+                      </h3>
                       {entry.artist ? (
                         <p className="mt-2 font-mono text-mini text-muted-foreground">
                           {entry.artist}
@@ -2365,6 +2235,139 @@ function VotingSection({
                         </div>
                       ) : null}
                     </div>
+                    {/* The vote control (ADR 0014). The amber disc is still
+                        both the indicator AND the primary control — it
+                        survives weighted voting intact, and one vote looks
+                        and costs exactly what it did when one vote was all
+                        you could cast. A second vote adds a second disc
+                        rather than a digit, so quantity is read at a glance
+                        and the marker never becomes a number.
+
+                        Unvoted is the empty ring at `muted-foreground`
+                        (6.01:1 on `card`, clear of the 3:1 a non-text
+                        graphic owes). Filled discs are `accent` — the row
+                        you spent votes on is the one thing on this card
+                        worth marking.
+
+                        Above PIP_CAP the discs collapse to one disc and a
+                        ×N, because `votes_per_player` has no upper bound
+                        and a club running ten votes would otherwise push a
+                        row of discs through the side of the card.
+
+                        The carets are a spinner: up adds, down removes.
+                        Each is a 28px-tall / 36px-wide target — clear of
+                        the 24px WCAG 2.2 AA minimum — and the pair stacks
+                        to exactly the 56px album-art height beside it. A
+                        caret that would do nothing (down at zero, up at the
+                        allowance) renders disabled at `ghost-foreground`,
+                        the ramp's disabled-glyph step; WCAG exempts
+                        inactive controls, and it reads as unavailable
+                        rather than merely dim.
+
+                        State is never colour alone (WCAG 1.4.11): the
+                        filled-vs-empty shape carries it visually, and the
+                        sr-only live region carries it to a screen reader,
+                        which is also why the discs are aria-hidden — an
+                        assistive user gets "2 votes", not two anonymous
+                        graphics. */}
+                    <span className="flex shrink-0 items-center gap-3">
+                      {/* The rings are the control, not just the readout:
+                          one tap on the empty ring casts a vote, and one
+                          tap on a filled one clears the song back to zero —
+                          the same two-tap on/off the binary toggle had, so
+                          the common case (vote for a song, change your
+                          mind) costs exactly what it used to. Stacking is
+                          the carets' job, deliberately kept off this
+                          gesture so the cheap path stays cheap. */}
+                      <button
+                        type="button"
+                        aria-pressed={isSelected}
+                        aria-label={
+                          isSelected
+                            ? `clear your votes for ${entry.title}`
+                            : `vote for ${entry.title}`
+                        }
+                        // Native `title`, the same hover-text mechanism
+                        // HelpLink uses — this file has no tooltip
+                        // component and one affordance does not justify
+                        // introducing one. Stacking is the non-obvious half
+                        // of this control (the ring teaches itself, the
+                        // carets do not), so the hint names the gesture
+                        // rather than restating what a click does.
+                        title="click up or down to put more than one vote on this track"
+                        disabled={!isSelected && atLimit}
+                        onClick={() =>
+                          isSelected
+                            ? clearVotes(entry.submission_id)
+                            : addVote(entry.submission_id)
+                        }
+                        className={[
+                          // px-2/py-2 puts a single ring in a 32x32 target,
+                          // clear of the 24x24 WCAG 2.2 AA minimum rather
+                          // than sitting exactly on it.
+                          "flex items-center gap-1 rounded-hair px-2 py-2",
+                          !isSelected && atLimit ? "cursor-not-allowed" : "cursor-pointer",
+                        ].join(" ")}
+                      >
+                        {voteCount > PIP_CAP ? (
+                          <>
+                            <span className="block h-4 w-4 rounded-full border border-accent bg-accent" />
+                            <span className="font-mono text-mini tabular-nums text-accent">
+                              ×{voteCount}
+                            </span>
+                          </>
+                        ) : (
+                          // One empty ring at zero, otherwise one filled
+                          // disc per vote spent.
+                          Array.from({ length: Math.max(1, voteCount) }, (_, i) => (
+                            <span
+                              key={i}
+                              className={[
+                                "block h-4 w-4 rounded-full border transition-colors duration-150",
+                                voteCount > 0
+                                  ? "border-accent bg-accent"
+                                  : !isSelected && atLimit
+                                    ? "border-ghost-foreground"
+                                    : "border-muted-foreground",
+                              ].join(" ")}
+                            />
+                          ))
+                        )}
+                      </button>
+                      <span role="status" aria-live="polite" className="sr-only">
+                        {voteCount} {voteCount === 1 ? "vote" : "votes"} on {entry.title}
+                      </span>
+                      <span className="flex flex-col">
+                        <button
+                          type="button"
+                          onClick={() => addVote(entry.submission_id)}
+                          disabled={disabled}
+                          aria-label={`add a vote to ${entry.title}`}
+                          className={[
+                            "flex h-7 w-9 items-center justify-center rounded-hair transition-colors duration-150",
+                            disabled
+                              ? "cursor-not-allowed text-ghost-foreground"
+                              : "cursor-pointer text-muted-foreground hover:bg-popover hover:text-foreground",
+                          ].join(" ")}
+                        >
+                          <Caret direction="up" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeVote(entry.submission_id)}
+                          disabled={voteCount === 0}
+                          aria-label={`remove a vote from ${entry.title}`}
+                          className={[
+                            "flex h-7 w-9 items-center justify-center rounded-hair transition-colors duration-150",
+                            voteCount === 0
+                              ? "cursor-not-allowed text-ghost-foreground"
+                              : "cursor-pointer text-muted-foreground hover:bg-popover hover:text-foreground",
+                          ].join(" ")}
+                        >
+                          <Caret direction="down" />
+                        </button>
+                      </span>
+                    </span>
                   </div>
                   {entry.submitter_note ? (
                     <p className="mt-3 border-l-2 border-hairline pl-3 text-sm leading-[1.65] text-foreground">

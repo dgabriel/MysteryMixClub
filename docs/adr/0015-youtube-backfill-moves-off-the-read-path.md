@@ -7,6 +7,12 @@ Date: 2026-08-13
 Accepted. Extends ADR 0006 (the Postgres-backed playlist job queue) to a
 provider that is not playlist generation.
 
+**Constrained by ADR 0016.** The "a recorded miss is final, and a resolved id is
+kept" behaviour below is correct only *within* a 30-day window: YouTube API
+Services Developer Policies III.E.4(d) caps how long a cached id may be stored
+at all. Cached ids now expire and become re-resolvable. Read this ADR for why
+the read path stopped resolving; read 0016 for how long what it caches survives.
+
 ## Context
 
 `submissions.youtube_video_id` caches the exact YouTube video id used to build a

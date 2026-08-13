@@ -1,0 +1,24 @@
+# MysteryMixClub YouTube id retention sweep — staging (MysteryMixClub-7a7x, ADR 0016).
+# Runs `python -m app.jobs.expire_youtube_ids` once: clears every cached
+# submissions.youtube_video_id older than 30 days and rewrites its exact watch
+# URLs back to search deep links, as required by YouTube API Services Developer
+# Policies III.E.4(d). Driven by the paired .timer, not enabled directly.
+#
+# This is a compliance control, not an optimisation. If it stops running we drift
+# out of policy silently, so the timer below is Persistent=true.
+#   sudo cp scripts/mysterymixclub-expire-youtube-ids.service /etc/systemd/system/
+#   sudo cp scripts/mysterymixclub-expire-youtube-ids.timer   /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now mysterymixclub-expire-youtube-ids.timer
+[Unit]
+Description=MysteryMixClub YouTube id retention sweep (staging)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=oneshot
+User=mysterymixclub
+Group=mysterymixclub
+WorkingDirectory=/home/mysterymixclub/app/backend
+EnvironmentFile=/etc/mysterymixclub/staging.env
+ExecStart=/home/mysterymixclub/app/backend/.venv/bin/python -m app.jobs.expire_youtube_ids

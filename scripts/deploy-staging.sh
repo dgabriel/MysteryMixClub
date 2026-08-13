@@ -78,6 +78,15 @@ sudo cp "${REPO_ROOT}/scripts/mysterymixclub-advance-mixes.timer" /etc/systemd/s
 sudo systemctl daemon-reload
 sudo systemctl enable --now mysterymixclub-advance-mixes.timer
 
+echo "==> Installing/refreshing the YouTube id retention sweep (MysteryMixClub-7a7x, ADR 0016)"
+# Compliance control, not a feature: YouTube API policy III.E.4(d) caps storage
+# of cached video ids at 30 days. Installed the same way as the deadline job so
+# it can never be left un-armed after a deploy.
+sudo cp "${REPO_ROOT}/scripts/mysterymixclub-expire-youtube-ids.service" /etc/systemd/system/
+sudo cp "${REPO_ROOT}/scripts/mysterymixclub-expire-youtube-ids.timer" /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now mysterymixclub-expire-youtube-ids.timer
+
 echo "==> Installing/refreshing and restarting the playlist worker (MYS-258, ADR 0006)"
 # Persistent process (not timer-driven), so a `restart` — rather than the
 # deadline job's `enable --now` — both applies new code and starts it on the

@@ -183,8 +183,11 @@ mysterymixclub ALL=(root) NOPASSWD: /usr/bin/rm -f /etc/systemd/system/mysterymi
 mysterymixclub ALL=(root) NOPASSWD: /usr/bin/cp /home/mysterymixclub/app/scripts/mysterymixclub-advance-mixes.service /etc/systemd/system/
 mysterymixclub ALL=(root) NOPASSWD: /usr/bin/cp /home/mysterymixclub/app/scripts/mysterymixclub-advance-mixes.timer /etc/systemd/system/
 mysterymixclub ALL=(root) NOPASSWD: /usr/bin/cp /home/mysterymixclub/app/scripts/mysterymixclub-playlist-worker.service /etc/systemd/system/
+mysterymixclub ALL=(root) NOPASSWD: /usr/bin/cp /home/mysterymixclub/app/scripts/mysterymixclub-expire-youtube-ids.service /etc/systemd/system/
+mysterymixclub ALL=(root) NOPASSWD: /usr/bin/cp /home/mysterymixclub/app/scripts/mysterymixclub-expire-youtube-ids.timer /etc/systemd/system/
 mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl daemon-reload
 mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl enable --now mysterymixclub-advance-mixes.timer
+mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl enable --now mysterymixclub-expire-youtube-ids.timer
 mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl enable mysterymixclub-playlist-worker
 mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl restart mysterymixclub-playlist-worker
 EOF
@@ -207,6 +210,13 @@ chmod 440 /etc/sudoers.d/mysterymixclub-deploy
 > Postgres-backed playlist job queue) — see §7a. On a Droplet bootstrapped
 > before this change, add them to the existing sudoers file or the next deploy
 > will fail at the worker-refresh step.
+>
+> The three `expire-youtube-ids` lines were added for MysteryMixClub-7a7x
+> (ADR 0016, the 30-day YouTube id retention sweep) — see §7b. **Add them to
+> the live staging Droplet's sudoers file before merging that work to
+> `develop`**, or the deploy it triggers will fail at the retention-sweep step.
+> Deliberately not guarded with `|| true`: this installs a compliance control,
+> and a deploy that quietly skips it is worse than one that stops and says so.
 
 **Deploy via a self-hosted GitHub Actions runner living on the Droplet itself**
 (added MYS-224, replacing the `appleboy/ssh-action` approach below it used to
@@ -295,6 +305,44 @@ sudo systemctl disable --now mysterymixclub-advance-mixes.timer
 ```
 
 Re-enable with `sudo systemctl enable --now mysterymixclub-advance-mixes.timer`.
+
+---
+
+## YouTube id retention sweep (MysteryMixClub-7a7x, ADR 0016)
+
+**This one is a compliance control, not a feature.** YouTube API Services
+Developer Policies III.E.4(d) caps storage of Non-Authorized Data at 30 calendar
+days, and `submissions.youtube_video_id` is exactly that. The sweep clears every
+id past the window and rewrites its exact `watch?v=` links in `platform_links`
+back to search deep links. If it stops running, we drift out of policy silently.
+
+**Units** (installed from `scripts/`): `mysterymixclub-expire-youtube-ids.service`
+(`Type=oneshot`, same user/env/venv as the API) and
+`mysterymixclub-expire-youtube-ids.timer` (`OnCalendar=daily`,
+`Persistent=true` so a missed run fires on next boot rather than being skipped).
+
+```bash
+sudo cp /home/mysterymixclub/app/scripts/mysterymixclub-expire-youtube-ids.service /etc/systemd/system/
+sudo cp /home/mysterymixclub/app/scripts/mysterymixclub-expire-youtube-ids.timer   /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now mysterymixclub-expire-youtube-ids.timer
+```
+
+**Check it:**
+
+```bash
+systemctl list-timers mysterymixclub-expire-youtube-ids.timer
+sudo journalctl -u mysterymixclub-expire-youtube-ids.service -f
+sudo systemctl start mysterymixclub-expire-youtube-ids.service  # run once, on demand
+```
+
+Each run logs `expired N cached YouTube video id(s) past 30 days`. The sweep is
+idempotent, so an extra run is a no-op.
+
+**Do not disable this to save quota.** Expired ids re-resolve only when someone
+actually opens the mix, so the ongoing cost is already proportional to use. If
+quota pressure is the problem, the lever is the audit (see ADR 0016), not the
+retention window.
 
 ---
 

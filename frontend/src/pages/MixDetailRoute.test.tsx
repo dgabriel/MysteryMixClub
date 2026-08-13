@@ -1515,13 +1515,20 @@ describe("MixDetailRoute", () => {
       screen.queryAllByRole("button", { name: `remove a vote from ${title}` });
     const findPlusFor = (title: string) =>
       screen.findByRole("button", { name: `add a vote to ${title}` });
+    /** The ballot row for a song. Anchored on the row's own vote buttons rather
+     *  than its title, because the title also appears in the ballot summary
+     *  above the cast button — a `getByText` would be ambiguous. */
+    const rowFor = (title: string) => {
+      const btn =
+        queryPlusFor(title) ??
+        screen.queryAllByRole("button", { name: `remove a vote from ${title}` })[0];
+      return btn.closest("li") as HTMLElement;
+    };
     /** The current vote count for a song. The discs are aria-hidden graphics,
      *  so the count is read off the row's sr-only live region — the same text a
      *  screen reader gets ("2 votes on Debaser"). */
-    const countFor = (title: string) => {
-      const row = screen.getByText(title).closest("li") as HTMLElement;
-      return within(row).getByRole("status").textContent?.trim().split(" ")[0];
-    };
+    const countFor = (title: string) =>
+      within(rowFor(title)).getByRole("status").textContent?.trim().split(" ")[0];
 
     it("open YouTube affordance: renders a new-tab link to youtube_playlist_url with the N of M count (MYS-78)", async () => {
       setupVoting({
@@ -1801,34 +1808,51 @@ describe("MixDetailRoute", () => {
       expect(filledFor("Debaser")).toHaveLength(0);
     });
 
-    it("shows a dismissable hint explaining how to stack votes", async () => {
+    it("summarises the ballot above the cast button, and only once something is picked", async () => {
+      const user = userEvent.setup();
+      setupVoting({
+        entries: [
+          entry({ submission_id: "p1", title: "Debaser" }),
+          entry({ submission_id: "p2", title: "Hey" }),
+        ],
+        votesPerPlayer: 3,
+        myVotes: [],
+      });
+      renderMix();
+
+      // Nothing picked: no summary at all, rather than an empty heading.
+      await findPlusFor("Debaser");
+      expect(screen.queryByText("your votes")).not.toBeInTheDocument();
+
+      await user.click(plusFor("Debaser"));
+      await user.click(plusFor("Debaser"));
+      await user.click(plusFor("Hey"));
+
+      const summary = screen.getByText("your votes").closest("div") as HTMLElement;
+      const rows = within(summary).getAllByRole("listitem");
+      expect(rows).toHaveLength(2);
+      // Ordered by which song took a vote first, not by the multiset.
+      expect(rows[0]).toHaveTextContent("Debaser");
+      expect(rows[0]).toHaveTextContent("2 votes");
+      expect(rows[1]).toHaveTextContent("Hey");
+      expect(rows[1]).toHaveTextContent("1 vote");
+    });
+
+    it("the ballot summary drops a song when its last vote is taken back", async () => {
       const user = userEvent.setup();
       setupVoting({
         entries: [entry({ submission_id: "p1", title: "Debaser" })],
+        votesPerPlayer: 3,
         myVotes: [],
       });
       renderMix();
 
-      expect(await screen.findByText(/keep clicking its circle to stack/i)).toBeInTheDocument();
-
-      await user.click(screen.getByRole("button", { name: "dismiss this tip" }));
-      expect(screen.queryByText(/keep clicking its circle to stack/i)).not.toBeInTheDocument();
-      // Dismissal sticks, so it doesn't nag on the next mix.
-      expect(localStorage.getItem("mmc.dismissed.stackingHint")).toBe("1");
-    });
-
-    it("stays dismissed on a later visit", async () => {
-      localStorage.setItem("mmc.dismissed.stackingHint", "1");
-      setupVoting({
-        entries: [entry({ submission_id: "p1", title: "Debaser" })],
-        myVotes: [],
-      });
-      renderMix();
-
-      // The ballot renders; only the hint is gone.
       await findPlusFor("Debaser");
-      expect(screen.queryByText(/keep clicking its circle to stack/i)).not.toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: "dismiss this tip" })).not.toBeInTheDocument();
+      await user.click(plusFor("Debaser"));
+      expect(screen.getByText("your votes")).toBeInTheDocument();
+
+      await user.click(filledFor("Debaser")[0]);
+      expect(screen.queryByText("your votes")).not.toBeInTheDocument();
     });
 
     it("shows one amber disc per vote, and an empty ring when unvoted", async () => {
@@ -1841,7 +1865,7 @@ describe("MixDetailRoute", () => {
       renderMix();
 
       await findPlusFor("Debaser");
-      const row = () => screen.getByText("Debaser").closest("li") as HTMLElement;
+      const row = () => rowFor("Debaser");
       const discs = () => Array.from(row().querySelectorAll("span.rounded-full")) as HTMLElement[];
 
       // Unvoted: a single empty circle, no amber.
@@ -1875,8 +1899,10 @@ describe("MixDetailRoute", () => {
       for (let i = 0; i < 6; i++) await user.click(plusFor("Debaser"));
 
       expect(countFor("Debaser")).toBe("6");
-      expect(screen.getByText("×6")).toBeInTheDocument();
-      const row = screen.getByText("Debaser").closest("li") as HTMLElement;
+      // Scoped to the row: the ballot summary collapses past the cap too, so
+      // an unscoped query would match twice.
+      expect(within(rowFor("Debaser")).getByText("×6")).toBeInTheDocument();
+      const row = rowFor("Debaser");
       expect(row.querySelectorAll("span.rounded-full")).toHaveLength(1);
     });
 
@@ -2371,10 +2397,11 @@ describe("MixDetailRoute", () => {
       );
     }
 
-    /** The <li> that wraps a single playlist card, located by its song title. */
+    /** The <li> that wraps a single playlist card, located by its song title.
+     *  Takes the FIRST match: once votes are picked the title also appears in
+     *  the ballot summary, which renders after the list. */
     function cardFor(title: string): HTMLElement {
-      const heading = screen.getByText(title);
-      const li = heading.closest("li");
+      const li = screen.getAllByText(title)[0].closest("li");
       if (!li) throw new Error(`no card <li> found for "${title}"`);
       return li as HTMLElement;
     }
@@ -2544,18 +2571,19 @@ describe("MixDetailRoute", () => {
       expect(alert).toHaveTextContent(/notes are only allowed while voting is open/i);
     });
 
-    it("a votable (playing) card exposes the notes affordance without losing its vote stepper", async () => {
+    it("a votable (playing) card exposes the notes affordance without losing its vote control", async () => {
       const user = userEvent.setup();
       setupVoting({ entries: [entry({ submission_id: "p1", title: "Debaser" })] });
       mockGetNotes.mockResolvedValue([]);
       renderMix();
 
-      // the vote control still works (countFor lives in the voting block, so
-      // read the row's sr-only live region directly here)
-      const up = await screen.findByRole("button", { name: "add a vote to Debaser" });
-      const row = screen.getByText("Debaser").closest("li") as HTMLElement;
+      // The vote control still works. Anchored on the button rather than the
+      // title, which now also appears in the ballot summary (rowFor lives in
+      // the voting block, so the same trick is inlined here).
+      const empty = await screen.findByRole("button", { name: "add a vote to Debaser" });
+      const row = empty.closest("li") as HTMLElement;
       expect(within(row).getByRole("status")).toHaveTextContent("0 votes on Debaser");
-      await user.click(up);
+      await user.click(empty);
       expect(within(row).getByRole("status")).toHaveTextContent("1 vote on Debaser");
 
       // and the same card exposes a notes affordance

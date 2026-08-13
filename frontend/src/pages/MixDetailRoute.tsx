@@ -1284,101 +1284,6 @@ function SubmissionProgress({ submitted, total }: { submitted: number; total: nu
  *  allowance would otherwise push a row of discs through the side of the card. */
 const PIP_CAP = 5;
 
-const STACKING_HINT_KEY = "mmc.dismissed.stackingHint";
-
-/**
- * One-time explainer for weighted voting (ADR 0014).
- *
- * The ring teaches itself — an empty circle beside a song reads as "click to
- * vote" — but nothing on the card says a second click up puts a *second* vote
- * on the same track. A player who never tries it would reasonably conclude one
- * vote per song is still the rule, which is the whole feature missed. Hover
- * text was the first attempt and is not enough: there is no hover on a phone,
- * so it reached nobody on touch.
- *
- * Dismissable and persisted, because this is a fact you learn once. It is not
- * an error or a warning, so it stays on the neutral `ink` ramp rather than
- * taking amber — the same call HelpLink makes, and for the same reason: a help
- * affordance is never the screen's signal. The border is what separates it from
- * the page.
- *
- * localStorage rather than a user column: dismissing a tip is device-local
- * preference, not account state worth a migration and an endpoint. The tradeoff
- * is that it reappears on a new device, which for a one-line hint is the
- * cheaper failure.
- */
-function StackingHint() {
-  const [dismissed, setDismissed] = useState(() => {
-    try {
-      return localStorage.getItem(STACKING_HINT_KEY) === "1";
-    } catch {
-      // Private-mode Safari throws on access. A hint that always shows beats a
-      // ballot that won't render.
-      return false;
-    }
-  });
-
-  if (dismissed) return null;
-
-  function dismiss() {
-    setDismissed(true);
-    try {
-      localStorage.setItem(STACKING_HINT_KEY, "1");
-    } catch {
-      // Dismissed for this session only; nothing else to do.
-    }
-  }
-
-  return (
-    <div className="mt-4 flex items-start gap-3 rounded-tile border border-accent-hairline bg-ink-accent-surface px-4 py-3">
-      {/* The bulb is what types this block as a tip at a glance, before the
-          sentence is read. `ink-accent-deep`, not `ink-accent`: the tinted fill
-          costs the normal token ~0.3 and drops it under AA (see the token
-          notes). Amber earns its place here — the icon is marking the block,
-          which is the one thing ADR 0012 still requires. */}
-      <HintBulb />
-      {/* `ink`, not `ink-muted`. Partly because muted also fails AA on this
-          fill, and partly because the whole point of the block is to be read:
-          the first cut of this hint was too quiet to do its job. */}
-      <p className="flex-1 text-meta leading-[1.6] text-ink">
-        love a track? keep clicking its circle to stack more of your votes on it. click a filled
-        circle to take one back.
-      </p>
-      <button
-        type="button"
-        onClick={dismiss}
-        aria-label="dismiss this tip"
-        className="-mr-1 -mt-1 flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-hair font-mono text-sm text-ink-muted transition-colors duration-150 hover:bg-black/5 hover:text-ink"
-      >
-        ×
-      </button>
-    </div>
-  );
-}
-
-/** Tip marker for {@link StackingHint}. A bulb rather than another "?" circle:
- *  HelpLink already owns that shape for "what is this?", and two circled glyphs
- *  on one screen meaning different things is worse than one extra icon. */
-function HintBulb() {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      className="mt-0.5 h-4 w-4 shrink-0 text-ink-accent-deep"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <circle cx="8" cy="6" r="4" fill="none" stroke="currentColor" strokeWidth="1.5" />
-      <path
-        d="M6 11.5h4M6.75 14h2.5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
 function AlbumArt({
   url,
   alt,
@@ -1990,6 +1895,16 @@ function VotingSection({
 
   const atLimit = selected.length >= votesPerPlayer;
 
+  // One entry per song voted for, ordered by when it FIRST took a vote (Set
+  // preserves insertion order over the multiset), so the summary doesn't
+  // reshuffle under you as you stack. Titles come from `entries` because
+  // `selected` only carries ids.
+  const tally = Array.from(new Set(selected)).map((id) => ({
+    id,
+    title: entries.find((e) => e.submission_id === id)?.title ?? "",
+    count: selected.filter((x) => x === id).length,
+  }));
+
   // Vibing participants sit voting out — show the playlist, no controls.
   if (isVibingParticipant) {
     return (
@@ -2082,8 +1997,6 @@ function VotingSection({
           {selected.length} / {votesPerPlayer} used
         </span>
       </div>
-
-      <StackingHint />
 
       <ul className="mt-4 space-y-4">
         {entries.map((entry) => {
@@ -2332,6 +2245,52 @@ function VotingSection({
       </ul>
 
       <div className="mt-6 border-t border-ink-hairline pt-6">
+        {/* Running tally of what's about to be cast. The per-row circles say
+            how a single song stands; this says what the whole ballot adds up
+            to, which is the thing you actually commit. It matters more now
+            than it did under one-vote-per-song: spending is spread unevenly,
+            so "did I put two on the right one" is a real question, and the
+            songs are scattered down a long list where you cannot see your
+            choices together.
+
+            Only rendered once something is selected — an empty "your votes"
+            heading above a disabled button is noise.
+
+            Circles are `ink-accent`, NOT `accent`. This is the paper surface,
+            where `accent` measures 2.62:1 and a non-text graphic owes 3:1;
+            `ink-accent` is the AA-safe amber for this ramp (ADR 0013). Same
+            PIP_CAP collapse as the rows, for the same reason. */}
+        {tally.length > 0 ? (
+          <div className="mb-6">
+            <p className="font-mono uppercase tracking-mono-caps text-mini text-ink-muted">
+              your votes
+            </p>
+            <ul className="mt-3 space-y-2">
+              {tally.map(({ id, title, count }) => (
+                <li key={id} className="flex items-center justify-between gap-4">
+                  <span className="min-w-0 flex-1 truncate text-meta text-ink">{title}</span>
+                  <span className="flex shrink-0 items-center gap-1">
+                    {count > PIP_CAP ? (
+                      <>
+                        <span className="block h-3 w-3 rounded-full bg-ink-accent" />
+                        <span className="font-mono text-mini tabular-nums text-ink-accent">
+                          ×{count}
+                        </span>
+                      </>
+                    ) : (
+                      Array.from({ length: count }, (_, i) => (
+                        <span key={i} className="block h-3 w-3 rounded-full bg-ink-accent" />
+                      ))
+                    )}
+                    <span className="sr-only">
+                      {count} {count === 1 ? "vote" : "votes"}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         <Button
           type="button"
           onPaper

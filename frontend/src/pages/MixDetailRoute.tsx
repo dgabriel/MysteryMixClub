@@ -1279,6 +1279,29 @@ function SubmissionProgress({ submitted, total }: { submitted: number; total: nu
  * one is not exported and this ticket's scope is these four files. The sweep
  * ticket can hoist a single `AlbumArt` primitive.
  */
+/** Above this many votes on one song, the vote discs collapse to a single disc
+ *  plus a ×N. `votes_per_player` has no upper bound, so a club running a large
+ *  allowance would otherwise push a row of discs through the side of the card. */
+const PIP_CAP = 5;
+
+/** Spinner caret for the vote control. Drawn rather than typed: the unicode
+ *  triangles sit on their own baselines and would need per-glyph nudging to
+ *  centre inside a button, and this file has no icon set to borrow from. */
+function Caret({ direction }: { direction: "up" | "down" }) {
+  return (
+    <svg viewBox="0 0 10 6" className="h-1.5 w-2.5" aria-hidden="true" focusable="false">
+      <path
+        d={direction === "up" ? "M1 5L5 1L9 5" : "M1 1L5 5L9 1"}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function AlbumArt({
   url,
   alt,
@@ -1890,6 +1913,13 @@ function VotingSection({
     });
   }
 
+  /** Take every vote back off one song at once — what tapping a filled ring
+   *  does, mirroring the old toggle's "tap again to un-vote". */
+  function clearVotes(id: string) {
+    onSelectionChange();
+    setSelected((current) => current.filter((x) => x !== id));
+  }
+
   const atLimit = selected.length >= votesPerPlayer;
 
   // Vibing participants sit voting out — show the playlist, no controls.
@@ -2063,8 +2093,8 @@ function VotingSection({
                   user-driven rather than a property of the data, it is bounded
                   by `votes_per_player`, and the design system's own AlbumCard
                   marks exactly this "I picked this one" state in amber. The
-                  count beside the stepper carries the state too, so the border
-                  is never the sole identifier (WCAG 1.4.11). */}
+                  filled disc carries the state too, so the border is never the
+                  sole identifier (WCAG 1.4.11). */}
               <div
                 className={[
                   "rounded-tile border bg-card shadow-z2 transition-colors duration-150",
@@ -2072,11 +2102,9 @@ function VotingSection({
                 ].join(" ")}
               >
                 {/* The card top is a plain container now, not one big toggle
-                    button (ADR 0014). A stepper is two controls, and nesting
-                    buttons inside a button is invalid — so the explicit −/+
-                    pair below is the only interactive element, which is also a
-                    stronger affordance than the whole-card hit area it
-                    replaces. */}
+                    button (ADR 0014). The vote control is three buttons — the
+                    ring plus two carets — and nesting buttons inside a button
+                    is invalid, so the hit area moved onto the ring itself. */}
                 <div className="block w-full rounded-t-tile px-6 pt-5 pb-3 text-left">
                   <div className="flex items-start gap-4">
                     <AlbumArt
@@ -2095,64 +2123,130 @@ function VotingSection({
                         <h3 className="font-display text-sm font-bold uppercase leading-none text-foreground">
                           {entry.title}
                         </h3>
-                        {/* The vote stepper (ADR 0014). This was a single
-                            binary ring when a song could hold at most one vote;
-                            it is a quantity now, so the count itself is the
-                            state and the ring is gone.
+                        {/* The vote control (ADR 0014). The amber disc is still
+                            both the indicator AND the primary control — it
+                            survives weighted voting intact, and one vote looks
+                            and costs exactly what it did when one vote was all
+                            you could cast. A second vote adds a second disc
+                            rather than a digit, so quantity is read at a glance
+                            and the marker never becomes a number.
 
-                            The two glyph buttons are what say "this is a
-                            control" — they are `muted-foreground` at 6.01:1 on
-                            `card`, well clear of the 3:1 a non-text graphic
-                            owes, and each is a 36px target (the 24px AAA floor
-                            with room to spare on touch). A button that would do
-                            nothing — minus at zero, plus at the allowance —
-                            renders disabled at `ghost-foreground`, the ramp's
-                            disabled-glyph step; WCAG exempts inactive controls,
-                            and it reads as unavailable rather than merely dim.
+                            Unvoted is the empty ring at `muted-foreground`
+                            (6.01:1 on `card`, clear of the 3:1 a non-text
+                            graphic owes). Filled discs are `accent` — the row
+                            you spent votes on is the one thing on this card
+                            worth marking.
 
-                            The number is amber only once it is above zero, so
-                            the accent marks votes actually spent rather than
-                            painting an amber "0" onto every row in the list.
-                            State is never colour alone: the digit carries it
-                            (WCAG 1.4.11). */}
-                        <span className="flex shrink-0 items-center gap-1">
+                            Above PIP_CAP the discs collapse to one disc and a
+                            ×N, because `votes_per_player` has no upper bound
+                            and a club running ten votes would otherwise push a
+                            row of discs through the side of the card.
+
+                            The carets are a spinner: up adds, down removes.
+                            Each is a 28px-tall / 36px-wide target — clear of
+                            the 24px WCAG 2.2 AA minimum — and the pair stacks
+                            to exactly the 56px album-art height beside it. A
+                            caret that would do nothing (down at zero, up at the
+                            allowance) renders disabled at `ghost-foreground`,
+                            the ramp's disabled-glyph step; WCAG exempts
+                            inactive controls, and it reads as unavailable
+                            rather than merely dim.
+
+                            State is never colour alone (WCAG 1.4.11): the
+                            filled-vs-empty shape carries it visually, and the
+                            sr-only live region carries it to a screen reader,
+                            which is also why the discs are aria-hidden — an
+                            assistive user gets "2 votes", not two anonymous
+                            graphics. */}
+                        <span className="flex shrink-0 items-center gap-3">
+                          {/* The rings are the control, not just the readout:
+                              one tap on the empty ring casts a vote, and one
+                              tap on a filled one clears the song back to zero —
+                              the same two-tap on/off the binary toggle had, so
+                              the common case (vote for a song, change your
+                              mind) costs exactly what it used to. Stacking is
+                              the carets' job, deliberately kept off this
+                              gesture so the cheap path stays cheap. */}
                           <button
                             type="button"
-                            onClick={() => removeVote(entry.submission_id)}
-                            disabled={voteCount === 0}
-                            aria-label={`remove a vote from ${entry.title}`}
+                            aria-pressed={isSelected}
+                            aria-label={
+                              isSelected
+                                ? `clear your votes for ${entry.title}`
+                                : `vote for ${entry.title}`
+                            }
+                            disabled={!isSelected && atLimit}
+                            onClick={() =>
+                              isSelected
+                                ? clearVotes(entry.submission_id)
+                                : addVote(entry.submission_id)
+                            }
                             className={[
-                              "flex h-9 w-9 items-center justify-center rounded-hair font-mono text-sm transition-colors duration-150",
-                              voteCount === 0
-                                ? "cursor-not-allowed text-ghost-foreground"
-                                : "cursor-pointer text-muted-foreground hover:bg-popover hover:text-foreground",
+                              // px-2/py-2 puts a single ring in a 32x32 target,
+                              // clear of the 24x24 WCAG 2.2 AA minimum rather
+                              // than sitting exactly on it.
+                              "flex items-center gap-1 rounded-hair px-2 py-2",
+                              !isSelected && atLimit ? "cursor-not-allowed" : "cursor-pointer",
                             ].join(" ")}
                           >
-                            −
+                            {voteCount > PIP_CAP ? (
+                              <>
+                                <span className="block h-4 w-4 rounded-full border border-accent bg-accent" />
+                                <span className="font-mono text-mini tabular-nums text-accent">
+                                  ×{voteCount}
+                                </span>
+                              </>
+                            ) : (
+                              // One empty ring at zero, otherwise one filled
+                              // disc per vote spent.
+                              Array.from({ length: Math.max(1, voteCount) }, (_, i) => (
+                                <span
+                                  key={i}
+                                  className={[
+                                    "block h-4 w-4 rounded-full border transition-colors duration-150",
+                                    voteCount > 0
+                                      ? "border-accent bg-accent"
+                                      : !isSelected && atLimit
+                                        ? "border-ghost-foreground"
+                                        : "border-muted-foreground",
+                                  ].join(" ")}
+                                />
+                              ))
+                            )}
                           </button>
-                          <span
-                            aria-live="polite"
-                            className={[
-                              "min-w-[1.25rem] text-center font-mono text-sm tabular-nums",
-                              voteCount > 0 ? "text-accent" : "text-muted-foreground",
-                            ].join(" ")}
-                          >
-                            {voteCount}
+                          <span role="status" aria-live="polite" className="sr-only">
+                            {voteCount} {voteCount === 1 ? "vote" : "votes"} on {entry.title}
                           </span>
-                          <button
-                            type="button"
-                            onClick={() => addVote(entry.submission_id)}
-                            disabled={disabled}
-                            aria-label={`add a vote to ${entry.title}`}
-                            className={[
-                              "flex h-9 w-9 items-center justify-center rounded-hair font-mono text-sm transition-colors duration-150",
-                              disabled
-                                ? "cursor-not-allowed text-ghost-foreground"
-                                : "cursor-pointer text-muted-foreground hover:bg-popover hover:text-foreground",
-                            ].join(" ")}
-                          >
-                            +
-                          </button>
+                          <span className="flex flex-col">
+                            <button
+                              type="button"
+                              onClick={() => addVote(entry.submission_id)}
+                              disabled={disabled}
+                              aria-label={`add a vote to ${entry.title}`}
+                              className={[
+                                "flex h-7 w-9 items-center justify-center rounded-hair transition-colors duration-150",
+                                disabled
+                                  ? "cursor-not-allowed text-ghost-foreground"
+                                  : "cursor-pointer text-muted-foreground hover:bg-popover hover:text-foreground",
+                              ].join(" ")}
+                            >
+                              <Caret direction="up" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeVote(entry.submission_id)}
+                              disabled={voteCount === 0}
+                              aria-label={`remove a vote from ${entry.title}`}
+                              className={[
+                                "flex h-7 w-9 items-center justify-center rounded-hair transition-colors duration-150",
+                                voteCount === 0
+                                  ? "cursor-not-allowed text-ghost-foreground"
+                                  : "cursor-pointer text-muted-foreground hover:bg-popover hover:text-foreground",
+                              ].join(" ")}
+                            >
+                              <Caret direction="down" />
+                            </button>
+                          </span>
                         </span>
                       </div>
                       {entry.artist ? (

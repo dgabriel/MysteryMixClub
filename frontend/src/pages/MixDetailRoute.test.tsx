@@ -1508,11 +1508,12 @@ describe("MixDetailRoute", () => {
       screen.getByRole("button", { name: `remove a vote from ${title}` });
     const findPlusFor = (title: string) =>
       screen.findByRole("button", { name: `add a vote to ${title}` });
-    /** The stepper's current count for a song, read off the row itself. */
+    /** The current vote count for a song. The discs are aria-hidden graphics,
+     *  so the count is read off the row's sr-only live region — the same text a
+     *  screen reader gets ("2 votes on Debaser"). */
     const countFor = (title: string) => {
       const row = screen.getByText(title).closest("li") as HTMLElement;
-      const plus = within(row).getByRole("button", { name: `add a vote to ${title}` });
-      return (plus.previousElementSibling as HTMLElement).textContent;
+      return within(row).getByRole("status").textContent?.trim().split(" ")[0];
     };
 
     it("open YouTube affordance: renders a new-tab link to youtube_playlist_url with the N of M count (MYS-78)", async () => {
@@ -1739,6 +1740,99 @@ describe("MixDetailRoute", () => {
       await user.click(minusFor("Debaser"));
       expect(countFor("Debaser")).toBe("0");
       expect(screen.getByText("0 / 3 used")).toBeInTheDocument();
+    });
+
+    it("one tap on the empty ring casts a vote; one tap on a filled ring clears", async () => {
+      const user = userEvent.setup();
+      setupVoting({
+        entries: [entry({ submission_id: "p1", title: "Debaser" })],
+        votesPerPlayer: 3,
+        myVotes: [],
+      });
+      renderMix();
+
+      // The common case costs one tap, exactly as the old binary toggle did.
+      const ring = await screen.findByRole("button", { name: "vote for Debaser" });
+      expect(ring).toHaveAttribute("aria-pressed", "false");
+      await user.click(ring);
+      expect(countFor("Debaser")).toBe("1");
+      expect(screen.getByText("1 / 3 used")).toBeInTheDocument();
+
+      // Filled: the same control now clears the song back to zero.
+      const filled = screen.getByRole("button", { name: "clear your votes for Debaser" });
+      expect(filled).toHaveAttribute("aria-pressed", "true");
+      await user.click(filled);
+      expect(countFor("Debaser")).toBe("0");
+      expect(screen.getByText("0 / 3 used")).toBeInTheDocument();
+    });
+
+    it("tapping a stacked ring clears every vote on that song at once", async () => {
+      const user = userEvent.setup();
+      setupVoting({
+        entries: [entry({ submission_id: "p1", title: "Debaser" })],
+        votesPerPlayer: 3,
+        myVotes: [],
+      });
+      renderMix();
+
+      await findPlusFor("Debaser");
+      await user.click(plusFor("Debaser"));
+      await user.click(plusFor("Debaser"));
+      expect(countFor("Debaser")).toBe("2");
+
+      await user.click(screen.getByRole("button", { name: "clear your votes for Debaser" }));
+      expect(countFor("Debaser")).toBe("0");
+      // The whole allowance is handed back, not just one vote.
+      expect(screen.getByText("0 / 3 used")).toBeInTheDocument();
+    });
+
+    it("shows one amber disc per vote, and an empty ring when unvoted", async () => {
+      const user = userEvent.setup();
+      setupVoting({
+        entries: [entry({ submission_id: "p1", title: "Debaser" })],
+        votesPerPlayer: 3,
+        myVotes: [],
+      });
+      renderMix();
+
+      await findPlusFor("Debaser");
+      const row = () => screen.getByText("Debaser").closest("li") as HTMLElement;
+      const discs = () => Array.from(row().querySelectorAll("span.rounded-full")) as HTMLElement[];
+
+      // Unvoted: a single empty ring, no amber.
+      expect(discs()).toHaveLength(1);
+      expect(discs()[0].className).toContain("border-muted-foreground");
+      expect(discs()[0].className).not.toContain("bg-accent");
+
+      // One vote: still one disc, now filled amber — identical to the
+      // pre-weighted-voting marker.
+      await user.click(plusFor("Debaser"));
+      expect(discs()).toHaveLength(1);
+      expect(discs()[0].className).toContain("bg-accent");
+
+      // Two votes: a second disc rather than a digit.
+      await user.click(plusFor("Debaser"));
+      expect(discs()).toHaveLength(2);
+      expect(discs().every((d) => d.className.includes("bg-accent"))).toBe(true);
+    });
+
+    it("collapses to one disc and a ×N past the pip cap", async () => {
+      const user = userEvent.setup();
+      setupVoting({
+        entries: [entry({ submission_id: "p1", title: "Debaser" })],
+        // Above PIP_CAP (5), so a big allowance can't push discs off the card.
+        votesPerPlayer: 6,
+        myVotes: [],
+      });
+      renderMix();
+
+      await findPlusFor("Debaser");
+      for (let i = 0; i < 6; i++) await user.click(plusFor("Debaser"));
+
+      expect(countFor("Debaser")).toBe("6");
+      expect(screen.getByText("×6")).toBeInTheDocument();
+      const row = screen.getByText("Debaser").closest("li") as HTMLElement;
+      expect(row.querySelectorAll("span.rounded-full")).toHaveLength(1);
     });
 
     it("stacks several votes onto one song, up to the whole allowance (ADR 0014)", async () => {
@@ -2406,13 +2500,13 @@ describe("MixDetailRoute", () => {
       mockGetNotes.mockResolvedValue([]);
       renderMix();
 
-      // the vote stepper still works (countFor lives in the voting block, so
-      // read the count off the element beside the plus button directly)
-      const plus = await screen.findByRole("button", { name: "add a vote to Debaser" });
-      const count = plus.previousElementSibling as HTMLElement;
-      expect(count).toHaveTextContent("0");
-      await user.click(plus);
-      expect(count).toHaveTextContent("1");
+      // the vote control still works (countFor lives in the voting block, so
+      // read the row's sr-only live region directly here)
+      const up = await screen.findByRole("button", { name: "add a vote to Debaser" });
+      const row = screen.getByText("Debaser").closest("li") as HTMLElement;
+      expect(within(row).getByRole("status")).toHaveTextContent("0 votes on Debaser");
+      await user.click(up);
+      expect(within(row).getByRole("status")).toHaveTextContent("1 vote on Debaser");
 
       // and the same card exposes a notes affordance
       const card = cardFor("Debaser");

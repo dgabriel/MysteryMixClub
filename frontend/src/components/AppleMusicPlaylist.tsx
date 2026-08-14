@@ -29,7 +29,16 @@ import { authorizeAppleMusic } from "../services/musickit";
  * MYS-201/GH-232). Unlike Spotify's read-only link, this is only known once
  * this player has generated their own copy — `getApplePlaylistLink` (the
  * read-only check on mount) doesn't return it, only `createApplePlaylist`'s
- * result does — so the list stays empty until `handleGenerate` succeeds.
+ * result does. Spotify can recompute its gap on read from each submission's
+ * cached `spotify_track_uri`; Apple can't, because matching is per-user and
+ * per-storefront, so there is no shared cached column to read back.
+ *
+ * That makes "we don't know the gap" a real state, and it is tracked as one:
+ * `unmatched` is `null` until a generate result arrives, distinct from `[]`
+ * for a playlist measured and found complete. The status line must never
+ * collapse the two — reporting "all N songs" off an unmeasured playlist is
+ * what MysteryMixClub-sdfd was, and it contradicted the "songs that may not be
+ * on all playlists" list rendered directly beneath it on the same screen.
  *
  * **No Apple Music red anywhere.** Third-party brand values live in
  * `lib/platformBrand.ts`, not in the theme, and this component has never used
@@ -75,7 +84,12 @@ export function AppleMusicPlaylist({ mixId, entryCount }: { mixId: string; entry
   const [playlistUrl, setPlaylistUrl] = useState<string | null | undefined>(undefined);
   const [directPlaylistUrl, setDirectPlaylistUrl] = useState<string | null>(null);
   const [playlistName, setPlaylistName] = useState<string | null>(null);
-  const [unmatched, setUnmatched] = useState<UnmatchedTrack[]>([]);
+  // null = the gap is unknown on this render, [] = known and genuinely complete.
+  // The distinction is the whole fix for MysteryMixClub-sdfd: Apple's gap is only
+  // ever reported by `createApplePlaylist`, so on a plain page load we have a
+  // playlist link and no idea what is on it. Defaulting to [] made the status
+  // read "all N songs" — completeness asserted from absence of data.
+  const [unmatched, setUnmatched] = useState<UnmatchedTrack[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSignInModal, setShowSignInModal] = useState(false);
@@ -154,7 +168,8 @@ export function AppleMusicPlaylist({ mixId, entryCount }: { mixId: string; entry
   const opensExactPlaylist = !isMobile && !!directPlaylistUrl;
   const targetUrl = opensExactPlaylist ? directPlaylistUrl : playlistUrl;
 
-  const matched = entryCount !== undefined ? entryCount - unmatched.length : undefined;
+  const matched =
+    unmatched !== null && entryCount !== undefined ? entryCount - unmatched.length : undefined;
 
   return (
     <PlaylistRow
@@ -162,19 +177,26 @@ export function AppleMusicPlaylist({ mixId, entryCount }: { mixId: string; entry
       mark={<ServiceMark service="appleMusic" />}
       status={
         targetUrl
-          ? unmatched.length > 0
-            ? // A gap, phrased as a count when the total is known. When it is
-              // not, say how many are missing rather than falling back to "all
-              // songs" — which would be an outright lie in exactly the case the
-              // user most needs the truth.
-              matched !== undefined
-              ? `${matched} of ${entryCount} songs`
-              : `${unmatched.length} missing`
-            : entryCount !== undefined
-              ? // Phrased exactly as the YouTube row phrases it, so the three
-                // statuses are directly comparable rather than merely similar.
-                `all ${entryCount} songs`
-              : "all songs"
+          ? unmatched === null
+            ? // The playlist exists but this render never learned what is on it
+              // (the read endpoint returns only the link). Say what we can stand
+              // behind — it is in your library — rather than claiming a
+              // completeness we did not measure. Persisting the gap so a revisit
+              // can report it properly is MysteryMixClub-01u3.
+              "in your library"
+            : unmatched.length > 0
+              ? // A gap, phrased as a count when the total is known. When it is
+                // not, say how many are missing rather than falling back to "all
+                // songs" — which would be an outright lie in exactly the case the
+                // user most needs the truth.
+                matched !== undefined
+                ? `${matched} of ${entryCount} songs`
+                : `${unmatched.length} missing`
+              : entryCount !== undefined
+                ? // Phrased exactly as the YouTube row phrases it, so the three
+                  // statuses are directly comparable rather than merely similar.
+                  `all ${entryCount} songs`
+                : "all songs"
           : busy
             ? "building…"
             : // Apple is the one service with no shareable link — it builds into

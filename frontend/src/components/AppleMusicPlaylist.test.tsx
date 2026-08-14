@@ -286,4 +286,86 @@ describe("AppleMusicPlaylist", () => {
 
     expect(container).toBeEmptyDOMElement();
   });
+
+  // MysteryMixClub-sdfd. The read endpoint returns the link and nothing else, so
+  // a plain page load cannot know the gap. Claiming completeness there told
+  // live users all their songs were on a playlist that was missing three.
+  it("does not claim completeness for a playlist it never measured", async () => {
+    mockLink.mockResolvedValue({
+      playlist_url: "https://music.apple.com/library",
+      direct_playlist_url: "https://music.apple.com/library/playlist/p.ABC",
+      playlist_name: "Mix: Mix 1",
+    });
+
+    render(<AppleMusicPlaylist mixId="r1" entryCount={12} />);
+
+    expect(await screen.findByText(/in your library/i)).toBeInTheDocument();
+    expect(screen.queryByText(/all 12 songs/i)).not.toBeInTheDocument();
+    // Nor the count phrasing — we know nothing, not that nothing is missing.
+    expect(screen.queryByText(/of 12 songs/i)).not.toBeInTheDocument();
+  });
+
+  it("says all N songs only once a build reports the playlist complete", async () => {
+    mockCreate.mockResolvedValue({
+      playlist_url: "https://music.apple.com/library",
+      direct_playlist_url: "https://music.apple.com/library/playlist/p.NEW",
+      playlist_name: "Mix: Mix 1",
+      track_count: 12,
+      total_count: 12,
+      unmatched: [],
+    });
+
+    render(<AppleMusicPlaylist mixId="r1" entryCount={12} />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: /build this playlist in apple music/i }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: /continue to apple music/i }));
+
+    expect(await screen.findByText(/all 12 songs/i)).toBeInTheDocument();
+  });
+
+  it("reports the gap as a count when a build finds songs missing", async () => {
+    mockCreate.mockResolvedValue({
+      playlist_url: "https://music.apple.com/library",
+      direct_playlist_url: "https://music.apple.com/library/playlist/p.NEW",
+      playlist_name: "Mix: Mix 1",
+      track_count: 9,
+      total_count: 12,
+      unmatched: [
+        {
+          submission_id: "s1",
+          title: "One",
+          artist: "A",
+          reason: "source_only",
+          source: "bandcamp",
+          source_url: "https://a.bandcamp.com/track/one",
+        },
+        {
+          submission_id: "s2",
+          title: "Two",
+          artist: "B",
+          reason: "source_only",
+          source: "youtube",
+          source_url: "https://youtu.be/xyz",
+        },
+        {
+          submission_id: "s3",
+          title: "Three",
+          artist: "C",
+          reason: "no_catalog_match",
+          source: null,
+          source_url: null,
+        },
+      ],
+    });
+
+    render(<AppleMusicPlaylist mixId="r1" entryCount={12} />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: /build this playlist in apple music/i }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: /continue to apple music/i }));
+
+    expect(await screen.findByText(/9 of 12 songs/i)).toBeInTheDocument();
+    expect(screen.queryByText(/all 12 songs/i)).not.toBeInTheDocument();
+  });
 });

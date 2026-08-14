@@ -8,7 +8,7 @@ import {
   getAppleDeveloperToken,
   getApplePlaylistLink,
 } from "../services/api";
-import { authorizeAppleMusic } from "../services/musickit";
+import { AppleMusicError, authorizeAppleMusic, preloadAppleMusic } from "../services/musickit";
 
 vi.mock("../services/api", async () => {
   const actual = await vi.importActual<typeof import("../services/api")>("../services/api");
@@ -20,13 +20,21 @@ vi.mock("../services/api", async () => {
   };
 });
 
-// Stubbed so tests never load Apple's SDK or open a popup.
-vi.mock("../services/musickit", () => ({ authorizeAppleMusic: vi.fn() }));
+// Stubbed so tests never load Apple's SDK or open a sign-in window. Only the
+// two calls are stubbed — AppleMusicError comes through real, because the
+// component branches on `instanceof` and a fake class would never match.
+vi.mock("../services/musickit", async () => {
+  const actual = await vi.importActual<typeof import("../services/musickit")>(
+    "../services/musickit",
+  );
+  return { ...actual, authorizeAppleMusic: vi.fn(), preloadAppleMusic: vi.fn() };
+});
 
 const mockToken = vi.mocked(getAppleDeveloperToken);
 const mockLink = vi.mocked(getApplePlaylistLink);
 const mockCreate = vi.mocked(createApplePlaylist);
 const mockAuthorize = vi.mocked(authorizeAppleMusic);
+const mockPreload = vi.mocked(preloadAppleMusic);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -37,6 +45,7 @@ beforeEach(() => {
     playlist_name: null,
   });
   mockAuthorize.mockResolvedValue("mut-123");
+  mockPreload.mockResolvedValue({ authorize: vi.fn() });
 });
 
 describe("AppleMusicPlaylist", () => {
@@ -322,6 +331,61 @@ describe("AppleMusicPlaylist", () => {
     await userEvent.click(screen.getByRole("button", { name: /continue to apple music/i }));
 
     expect(await screen.findByText(/all 12 songs/i)).toBeInTheDocument();
+  });
+
+  // MysteryMixClub-ljl5. On mobile the sign-in window never opened and the row
+  // hung on "building…" forever: the SDK was loaded and configured *after* the
+  // tap, which cost the user activation Safari requires to open it.
+  it("warms the apple sdk while the interstitial is on screen, before the tap", async () => {
+    render(<AppleMusicPlaylist mixId="r1" />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /build this playlist in apple music/i }),
+    );
+
+    // Warmed by the interstitial itself, not by the button that commits.
+    await waitFor(() => expect(mockPreload).toHaveBeenCalledWith("dev-token"));
+    expect(mockAuthorize).not.toHaveBeenCalled();
+  });
+
+  it("does not warm the sdk before the user opens the interstitial", async () => {
+    render(<AppleMusicPlaylist mixId="r1" />);
+
+    await screen.findByRole("button", { name: /build this playlist in apple music/i });
+
+    // A member who never touches Apple never pays for the download.
+    expect(mockPreload).not.toHaveBeenCalled();
+  });
+
+  it("blames the blocker when apple's sdk cannot load, and stays retryable", async () => {
+    mockAuthorize.mockRejectedValue(new AppleMusicError("sdk_blocked", "blocked"));
+
+    render(<AppleMusicPlaylist mixId="r1" />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: /build this playlist in apple music/i }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: /continue to apple music/i }));
+
+    expect(await screen.findByText(/content or ad blocker may be blocking it/i)).toBeInTheDocument();
+    // Never stranded on "building…" — the whole point of the fix.
+    expect(
+      screen.getByRole("button", { name: /build this playlist in apple music/i }),
+    ).toBeEnabled();
+  });
+
+  it("offers sign-in advice when apple's authorize never completes", async () => {
+    mockAuthorize.mockRejectedValue(new AppleMusicError("authorize_failed", "timed out"));
+
+    render(<AppleMusicPlaylist mixId="r1" />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: /build this playlist in apple music/i }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: /continue to apple music/i }));
+
+    expect(await screen.findByText(/apple's sign-in didn't finish/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /build this playlist in apple music/i }),
+    ).toBeEnabled();
   });
 
   it("reports the gap as a count when a build finds songs missing", async () => {

@@ -100,8 +100,8 @@ describe("AppleMusicPlaylist", () => {
   });
 
   it("shows the personal link when one was already generated (no direct url)", async () => {
-    // No direct_playlist_url (e.g. a pre-MYS-214 row): falls back to the
-    // library link and "look for it by name" prompt on every platform.
+    // No direct_playlist_url — a pre-MYS-214 row that never got one recorded.
+    // Falls back to the bare library link and a "look for it by name" prompt.
     mockLink.mockResolvedValue({
       playlist_url: "https://music.apple.com/library",
       direct_playlist_url: null,
@@ -110,12 +110,10 @@ describe("AppleMusicPlaylist", () => {
 
     render(<AppleMusicPlaylist mixId="r1" />);
 
-    // Links the LIBRARY, never the playlist: iOS dead-ends on a library-playlist
-    // deep link with "Item Not Available" (MYS-190).
     const link = await screen.findByRole("link", { name: /open your apple music library/i });
     expect(link).toHaveAttribute("href", "https://music.apple.com/library");
-    // Apple exposes no deep link to a library playlist, so the member makes the
-    // last hop by hand and the title is how they find it (MYS-190).
+    // Apple exposes no deep link in this fallback case, so the member makes
+    // the last hop by hand and the title is how they find it (MYS-190).
     expect(screen.getByText(/find/i)).toBeInTheDocument();
     expect(screen.getByText(/Mix 1/)).toBeInTheDocument();
   });
@@ -136,9 +134,12 @@ describe("AppleMusicPlaylist", () => {
     expect(screen.getByText(/find it in your Apple Music playlists/i)).toBeInTheDocument();
   });
 
-  it("on desktop, links straight to the exact playlist (MYS-214)", async () => {
-    // jsdom's default user-agent has no mobile/iPad markers, so the component
-    // treats the test environment as desktop.
+  // MysteryMixClub-o3r8: MYS-190 routed mobile to the bare Library link on
+  // the unverified belief that iOS could not resolve a direct playlist link.
+  // A real iPhone proved the opposite — the bare link 404s, the direct one
+  // opens — so the link is now platform-agnostic. No user-agent branching
+  // left to test; these two prove desktop and mobile get the identical link.
+  it("links straight to the exact playlist when one exists", async () => {
     mockLink.mockResolvedValue({
       playlist_url: "https://music.apple.com/library",
       direct_playlist_url: "https://music.apple.com/library/playlist/p.ABC",
@@ -153,7 +154,7 @@ describe("AppleMusicPlaylist", () => {
     expect(screen.queryByText(/find it in your Apple Music playlists/i)).not.toBeInTheDocument();
   });
 
-  it("on mobile, ignores the direct link and prompts to find it by name", async () => {
+  it("gives a phone the same direct link as desktop (MysteryMixClub-o3r8)", async () => {
     const uaSpy = vi
       .spyOn(window.navigator, "userAgent", "get")
       .mockReturnValue(
@@ -167,58 +168,10 @@ describe("AppleMusicPlaylist", () => {
 
     render(<AppleMusicPlaylist mixId="r1" />);
 
-    const link = await screen.findByRole("link", { name: /open your apple music library/i });
-    expect(link).toHaveAttribute("href", "https://music.apple.com/library");
-    expect(screen.getByText(/find/i)).toBeInTheDocument();
-
-    uaSpy.mockRestore();
-  });
-
-  it('treats a multi-touch "Macintosh" as an iPad, not a real desktop', async () => {
-    // iPadOS Safari reports as "Macintosh" (Apple dropped the iPad UA marker
-    // around iOS 13 to unify with desktop Safari), so a touch-capable "Mac" is
-    // the standard tell for a real iPad rather than a desktop machine.
-    // jsdom's navigator has no maxTouchPoints property at all (unlike a real
-    // browser), so vi.spyOn (which requires an existing property) can't be
-    // used here — define it directly and remove it again after.
-    const uaSpy = vi
-      .spyOn(window.navigator, "userAgent", "get")
-      .mockReturnValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/605.1.15");
-    Object.defineProperty(window.navigator, "maxTouchPoints", { value: 5, configurable: true });
-    mockLink.mockResolvedValue({
-      playlist_url: "https://music.apple.com/library",
-      direct_playlist_url: "https://music.apple.com/library/playlist/p.ABC",
-      playlist_name: "Mix: Mix 1",
-    });
-
-    render(<AppleMusicPlaylist mixId="r1" />);
-
-    const link = await screen.findByRole("link", { name: /open your apple music library/i });
-    expect(link).toHaveAttribute("href", "https://music.apple.com/library");
-    expect(screen.getByText(/find/i)).toBeInTheDocument();
-
-    uaSpy.mockRestore();
-    delete (window.navigator as { maxTouchPoints?: number }).maxTouchPoints;
-  });
-
-  it("does not treat a non-touch Mac as an iPad", async () => {
-    const uaSpy = vi
-      .spyOn(window.navigator, "userAgent", "get")
-      .mockReturnValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/605.1.15");
-    Object.defineProperty(window.navigator, "maxTouchPoints", { value: 0, configurable: true });
-    mockLink.mockResolvedValue({
-      playlist_url: "https://music.apple.com/library",
-      direct_playlist_url: "https://music.apple.com/library/playlist/p.ABC",
-      playlist_name: "Mix: Mix 1",
-    });
-
-    render(<AppleMusicPlaylist mixId="r1" />);
-
     const link = await screen.findByRole("link", { name: /open playlist in apple music/i });
     expect(link).toHaveAttribute("href", "https://music.apple.com/library/playlist/p.ABC");
 
     uaSpy.mockRestore();
-    delete (window.navigator as { maxTouchPoints?: number }).maxTouchPoints;
   });
 
   it("authorizes then generates, and surfaces the resulting link", async () => {
@@ -239,15 +192,15 @@ describe("AppleMusicPlaylist", () => {
 
     await waitFor(() => expect(mockAuthorize).toHaveBeenCalledWith("dev-token"));
     expect(mockCreate).toHaveBeenCalledWith("r1", "mut-123");
-    // Desktop (jsdom default) gets the exact-playlist link straight away.
+    // The exact-playlist link comes back straight away.
     expect(
       await screen.findByRole("link", { name: /open playlist in apple music/i }),
     ).toHaveAttribute("href", "https://music.apple.com/library/playlist/p.NEW");
-    // No playlist name here, deliberately. On desktop the link opens the exact
-    // playlist, so naming it was pure confirmation; the row's status already
-    // reports what landed. The name survives only in the MOBILE case, where
-    // Apple exposes no deep link and the title is genuinely how you find it
-    // (MYS-214) — see the mobile test above.
+    // No playlist name here, deliberately: the link opens the exact playlist,
+    // so naming it was pure confirmation, and the row's status already reports
+    // what landed. The name earns its keep only in the no-direct-url fallback
+    // case, where Apple exposes no deep link and the title is genuinely how
+    // the member finds it (see "shows the personal link…" above).
     expect(screen.queryByText(/Mix 1/)).not.toBeInTheDocument();
   });
 

@@ -366,17 +366,20 @@ identically on-disk (`mysterymixclub-expire-youtube-ids.service`/`.timer`) but
 sourced from the `-prod`-suffixed repo files. Each deploy refreshes them and
 runs `enable --now`.
 
-> **⚠ One-time manual step before the next prod deploy.** This job adds three
-> new sudoers entries (two `cp`, one `enable --now`). The existing
-> `/etc/sudoers.d/mysterymixclub-deploy` on the live Droplet does **not** have
-> them, so `deploy-prod.sh` will **fail at the retention-sweep step** until they
-> are added. Copy the three `expire-youtube-ids` lines from §5 above into that
-> file by hand. Dawn applies this on the Droplet — Claude never SSHes into prod.
+> **Currently dark, and safe to deploy as-is.** The job is gated on
+> `YOUTUBE_RETENTION_SWEEP_ENABLED` (default `false`) and the deploy installs
+> its units best-effort (`|| true`), so **no sudoers change is required before
+> the next prod deploy** — without the grants the deploy succeeds and simply
+> leaves the sweep un-armed.
 
 This is a **compliance control**: YouTube API Services Developer Policies
-III.E.4(d) caps storage of cached video ids at 30 calendar days. If the timer
-stops, we drift out of policy silently, which is why it is `Persistent=true`
-and why it is installed by the deploy rather than left to bootstrap alone.
+III.E.4(d) caps storage of cached video ids at 30 calendar days. Until the flag
+is turned on, prod remains outside that policy — the gap is sequenced, not
+resolved. To close it: add the three `expire-youtube-ids` lines from §5 to
+`/etc/sudoers.d/mysterymixclub-deploy`, deploy, set
+`YOUTUBE_RETENTION_SWEEP_ENABLED=true` in `/etc/mysterymixclub/prod.env`, and
+follow the checks in `docs/feature-flags.md`. Dawn applies all of this on the
+Droplet — Claude never SSHes into prod.
 
 ```bash
 systemctl list-timers mysterymixclub-expire-youtube-ids.timer

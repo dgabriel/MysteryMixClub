@@ -7,6 +7,19 @@ Date: 2026-08-13
 Accepted. Constrains ADR 0015, which made never-refreshing an explicit property
 of the system.
 
+**Amended 2026-08-13: the sweep ships behind a flag, default off**
+(`YOUTUBE_RETENTION_SWEEP_ENABLED`, MysteryMixClub-l4cv). The original wiring
+made the deploy step unconditional, on the reasoning recorded below that a
+deploy silently skipping a compliance control is worse than one that stops.
+That reasoning undercounted the cost of stopping: `deploy-*.sh` run
+`set -euo pipefail`, so a missing sudoers grant aborts at that step and leaves
+the frontend unpublished and the playlist worker un-restarted while the backend
+has already migrated and restarted. A half-deployed environment is a worse
+outcome than a delayed compliance control, so Dawn reversed it. The deploy steps
+are now best-effort (`|| true`), the units are inert until an environment opts
+in, and **the policy gap below stays open until the flag is turned on** — see
+`docs/feature-flags.md` for the rollout steps.
+
 ## Context
 
 `submissions.youtube_video_id` caches the exact video id used to build a mix's

@@ -212,11 +212,12 @@ chmod 440 /etc/sudoers.d/mysterymixclub-deploy
 > will fail at the worker-refresh step.
 >
 > The three `expire-youtube-ids` lines were added for MysteryMixClub-7a7x
-> (ADR 0016, the 30-day YouTube id retention sweep) — see §7b. **Add them to
-> the live staging Droplet's sudoers file before merging that work to
-> `develop`**, or the deploy it triggers will fail at the retention-sweep step.
-> Deliberately not guarded with `|| true`: this installs a compliance control,
-> and a deploy that quietly skips it is worse than one that stops and says so.
+> (ADR 0016, the 30-day YouTube id retention sweep) — see §7b. These are
+> **optional**: the deploy guards those steps with `|| true`
+> (MysteryMixClub-l4cv), so a Droplet without the grants deploys cleanly and
+> simply leaves the sweep un-armed. Add them when you intend to turn the sweep
+> on; confirm with
+> `systemctl list-timers mysterymixclub-expire-youtube-ids.timer`.
 
 **Deploy via a self-hosted GitHub Actions runner living on the Droplet itself**
 (added MYS-224, replacing the `appleboy/ssh-action` approach below it used to
@@ -314,7 +315,13 @@ Re-enable with `sudo systemctl enable --now mysterymixclub-advance-mixes.timer`.
 Developer Policies III.E.4(d) caps storage of Non-Authorized Data at 30 calendar
 days, and `submissions.youtube_video_id` is exactly that. The sweep clears every
 id past the window and rewrites its exact `watch?v=` links in `platform_links`
-back to search deep links. If it stops running, we drift out of policy silently.
+back to search deep links.
+
+> **Currently dark.** The job is gated on `YOUTUBE_RETENTION_SWEEP_ENABLED`
+> (default `false`), so an armed timer exits immediately without touching a row.
+> The deploy installs the units best-effort (`|| true`) and cannot fail on them.
+> **Nothing is enforced until the flag is set** — see `docs/feature-flags.md`
+> for the rollout steps.
 
 **Units** (installed from `scripts/`): `mysterymixclub-expire-youtube-ids.service`
 (`Type=oneshot`, same user/env/venv as the API) and

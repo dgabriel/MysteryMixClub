@@ -11,6 +11,10 @@
 #   systemctl restart mysterymixclub-api (first-deploy fallback, MYS-259 — see below)
 #   cp scripts/mysterymixclub-advance-mixes-prod.{service,timer} /etc/systemd/system/mysterymixclub-advance-mixes.{service,timer}
 #   cp scripts/mysterymixclub-playlist-worker-prod.service /etc/systemd/system/mysterymixclub-playlist-worker.service
+# Optional (best-effort, `|| true` — a Droplet without these still deploys
+# cleanly, it just leaves the retention sweep un-armed):
+#   cp scripts/mysterymixclub-expire-youtube-ids-prod.{service,timer} /etc/systemd/system/mysterymixclub-expire-youtube-ids.{service,timer}
+#   systemctl enable --now mysterymixclub-expire-youtube-ids.timer
 #   systemctl daemon-reload
 #   systemctl enable --now mysterymixclub-advance-mixes.timer
 #   systemctl restart mysterymixclub-playlist-worker (MYS-258, ADR 0006 —
@@ -96,14 +100,19 @@ sudo cp "${REPO_ROOT}/scripts/mysterymixclub-advance-mixes-prod.timer" /etc/syst
 sudo systemctl daemon-reload
 sudo systemctl enable --now mysterymixclub-advance-mixes.timer
 
-echo "==> Installing/refreshing the YouTube id retention sweep (MysteryMixClub-7a7x, ADR 0016)"
-# Compliance control, not a feature: YouTube API policy III.E.4(d) caps storage
-# of cached video ids at 30 days. Installed the same way as the deadline job so
-# it can never be left un-armed after a deploy.
-sudo cp "${REPO_ROOT}/scripts/mysterymixclub-expire-youtube-ids-prod.service" /etc/systemd/system/mysterymixclub-expire-youtube-ids.service
-sudo cp "${REPO_ROOT}/scripts/mysterymixclub-expire-youtube-ids-prod.timer" /etc/systemd/system/mysterymixclub-expire-youtube-ids.timer
-sudo systemctl daemon-reload
-sudo systemctl enable --now mysterymixclub-expire-youtube-ids.timer
+echo "==> Installing/refreshing the YouTube id retention sweep (ADR 0016) [best-effort]"
+# The sweep ships DARK: the job is gated on YOUTUBE_RETENTION_SWEEP_ENABLED,
+# default off (MysteryMixClub-l4cv), so an armed timer is harmless until prod
+# opts in. Because it does nothing yet, it must never be able to break a deploy
+# — every command is `|| true`, matching the MYS-195 lines above. A Droplet
+# whose sudoers file predates this job therefore deploys cleanly and simply
+# leaves the sweep un-armed; add the grants (docs/prod-setup.md §6b) and the
+# next deploy picks it up. Verify with:
+#   systemctl list-timers mysterymixclub-expire-youtube-ids.timer
+sudo cp "${REPO_ROOT}/scripts/mysterymixclub-expire-youtube-ids-prod.service" /etc/systemd/system/mysterymixclub-expire-youtube-ids.service 2>/dev/null || true
+sudo cp "${REPO_ROOT}/scripts/mysterymixclub-expire-youtube-ids-prod.timer" /etc/systemd/system/mysterymixclub-expire-youtube-ids.timer 2>/dev/null || true
+sudo systemctl daemon-reload 2>/dev/null || true
+sudo systemctl enable --now mysterymixclub-expire-youtube-ids.timer 2>/dev/null || true
 
 echo "==> Installing/refreshing and restarting the playlist worker (MYS-258, ADR 0006)"
 # Persistent process (not timer-driven), so a `restart` — rather than the

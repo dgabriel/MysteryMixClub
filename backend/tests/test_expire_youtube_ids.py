@@ -13,6 +13,8 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
+from app.config import Settings
+from app.jobs import expire_youtube_ids
 from app.jobs.expire_youtube_ids import RETENTION_DAYS, expire_stale_youtube_ids
 from app.models.submission import Submission
 from app.services.youtube_backfill import has_pending
@@ -205,3 +207,70 @@ async def test_expires_across_many_rows_and_leaves_fresh_ones(db_session):
 async def test_retention_window_is_the_policy_number(db_session):
     # Lowering this is safe; raising it past 30 violates III.E.4(d).
     assert RETENTION_DAYS <= 30
+
+
+# --------------------------------------------------------------------------- #
+# Feature flag (MysteryMixClub-l4cv)
+# --------------------------------------------------------------------------- #
+#
+# The sweep ships dark so a missing sudoers grant can't abort a deploy at the
+# step that installs it. `_run` is the timer's entry point, so that is where the
+# flag has to bite — expire_stale_youtube_ids itself stays a pure function.
+
+
+def _settings(*, enabled: bool) -> Settings:
+    return Settings(youtube_retention_sweep_enabled=enabled)
+
+
+async def test_run_does_nothing_when_the_flag_is_off(db_session, monkeypatch, capsys):
+    organizer = await _seed_user(db_session, "o@example.com")
+    mix_ = await _seed_mix(db_session, organizer)
+    sub = await _add(db_session, mix_.id, organizer.id, age_days=RETENTION_DAYS + 400)
+
+    monkeypatch.setattr(expire_youtube_ids, "get_settings", lambda: _settings(enabled=False))
+
+    def _boom():  # pragma: no cover — asserts the DB is never opened
+        raise AssertionError("session opened with the flag off")
+
+    monkeypatch.setattr(expire_youtube_ids, "async_session_factory", _boom)
+
+    await expire_youtube_ids._run()
+
+    assert "disabled" in capsys.readouterr().out
+    await db_session.refresh(sub)
+    assert sub.youtube_video_id == "dQw4w9WgXcQ"  # untouched, well past the window
+
+
+async def test_run_sweeps_when_the_flag_is_on(db_session, monkeypatch, capsys):
+    organizer = await _seed_user(db_session, "o@example.com")
+    mix_ = await _seed_mix(db_session, organizer)
+    sub = await _add(db_session, mix_.id, organizer.id, age_days=RETENTION_DAYS + 1)
+
+    monkeypatch.setattr(expire_youtube_ids, "get_settings", lambda: _settings(enabled=True))
+
+    class _Factory:
+        """Hands the job the test's own session; commit is real, rollback is the
+        fixture's job (ADR 0005)."""
+
+        def __call__(self):
+            return self
+
+        async def __aenter__(self):
+            return db_session
+
+        async def __aexit__(self, *exc):
+            return False
+
+    monkeypatch.setattr(expire_youtube_ids, "async_session_factory", _Factory())
+
+    await expire_youtube_ids._run()
+
+    assert "expired 1 cached YouTube video id(s)" in capsys.readouterr().out
+    await db_session.refresh(sub)
+    assert sub.youtube_video_id is None
+
+
+def test_flag_defaults_off():
+    # Off is what makes the units safe to install everywhere. If this ever
+    # flips, every environment starts expiring on its next deploy.
+    assert Settings().youtube_retention_sweep_enabled is False

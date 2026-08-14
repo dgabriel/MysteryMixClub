@@ -35,6 +35,12 @@ API, so it is not API Data and is not subject to this window. Expiring it would
 also destroy the track's identity, since ``source_key`` is what a source-only
 submission has instead of an ISRC (MYS-201).
 
+**Ships dark.** Gated on ``YOUTUBE_RETENTION_SWEEP_ENABLED``, default off
+(MysteryMixClub-l4cv). With the flag unset the timer may fire and this exits
+without reading or writing a row, so the units are safe to install everywhere
+and each environment opts in when it's ready. Turning it on is an env change
+plus a job run — no redeploy. See ``docs/feature-flags.md``.
+
 Invoked by an external scheduler (systemd timer) as a standalone process, the
 same shape as ``app.jobs.purge_login_attempts``:
 
@@ -47,6 +53,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.db.session import async_session_factory
 from app.models.submission import Submission
 from app.services.song_links import youtube_search_deeplinks
@@ -95,6 +102,16 @@ async def expire_stale_youtube_ids(
 
 
 async def _run() -> None:
+    # The flag is checked here, at the entry point, rather than inside
+    # expire_stale_youtube_ids: one decision site (docs/feature-flags.md), and
+    # the sweep itself stays a pure function that tests can call directly
+    # without touching settings.
+    if not get_settings().youtube_retention_sweep_enabled:
+        print(
+            "youtube retention sweep is disabled "
+            "(YOUTUBE_RETENTION_SWEEP_ENABLED unset/false) — nothing to do"
+        )
+        return
     async with async_session_factory() as db:
         count = await expire_stale_youtube_ids(db)
     print(f"expired {count} cached YouTube video id(s) past {RETENTION_DAYS} days")

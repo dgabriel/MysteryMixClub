@@ -105,6 +105,54 @@ the email sends (or logs, in dev/without `RESEND_API_KEY`) with a working
 `/invite/:token` link. Set back to `false` and restart to confirm the login
 page reverts to the "email us" copy and `POST /waitlist` 404s.
 
+### `YOUTUBE_RETENTION_SWEEP_ENABLED` — 30-day YouTube id expiry
+
+| | |
+|---|---|
+| **Env var** | `YOUTUBE_RETENTION_SWEEP_ENABLED` (bool) |
+| **Companion** | none |
+| **Default** | `false` |
+| **Code** | `app/config.py`, checked in `app/jobs/expire_youtube_ids.py` `_run` (the job's entry point) |
+| **Introduced** | MysteryMixClub-l4cv, gating the sweep from MysteryMixClub-7a7x (ADR 0016) |
+| **Use in** | nowhere yet — ships dark. Turn on per environment when ready. |
+
+**What it does.** When `true`, the daily `mysterymixclub-expire-youtube-ids`
+timer clears every cached `submissions.youtube_video_id` older than 30 days and
+rewrites that row's exact `watch?v=<id>` entries in `platform_links` back to
+keyless search deep links. Expiry also resets the row to "never attempted", so
+the next time anyone opens that mix the existing backfill queue (ADR 0015)
+re-resolves a fresh id — a mix nobody opens simply stays cleared.
+
+**Why it exists as a flag.** The sweep is a compliance control for YouTube API
+Services Developer Policies III.E.4(d), which caps storage of Non-Authorized
+Data at 30 calendar days. It was originally wired as an unconditional deploy
+step; that made a missing sudoers grant abort the deploy midway (leaving the
+frontend unpublished). Gating it lets the units ship everywhere, harmlessly,
+and be switched on deliberately.
+
+**Fail-safe.** Off means the job exits before reading or writing a row, so an
+armed timer does nothing. There is no partial state: the sweep either runs in
+full or not at all.
+
+**Not on = not compliant.** Unlike the other flags here, leaving this off is a
+known policy gap rather than a neutral default. It is off because the rollout is
+sequenced, not because off is the correct end state.
+
+**How to turn it on.**
+1. Set `YOUTUBE_RETENTION_SWEEP_ENABLED=true` in that environment's env file
+   (`/etc/mysterymixclub/staging.env` or `prod.env`).
+2. Confirm the timer is armed:
+   `systemctl list-timers mysterymixclub-expire-youtube-ids.timer`. If it is
+   missing, the sudoers grants aren't in place — see `docs/staging-setup.md` §6
+   / `docs/prod-setup.md` §6b, then re-deploy.
+3. Dry-run it once by hand and read the count before trusting the timer:
+   `sudo systemctl start mysterymixclub-expire-youtube-ids.service` then
+   `sudo journalctl -u mysterymixclub-expire-youtube-ids.service -n 20`.
+   Expect `expired N cached YouTube video id(s) past 30 days`; with the flag
+   still off you'll see the "disabled" line instead.
+4. Expect a one-off backfill cost afterwards: mixes people open re-resolve
+   their tracks, one `search.list` call each against a 100/day bucket.
+
 ---
 
 ## Template for a new flag

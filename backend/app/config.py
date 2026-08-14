@@ -88,6 +88,15 @@ class Settings(BaseSettings):
     # copy. No companion config. See docs/feature-flags.md.
     waitlist_enabled: bool = Field(default=False)
 
+    # YouTube id retention sweep (MysteryMixClub-l4cv, ADR 0016). When on,
+    # app.jobs.expire_youtube_ids clears cached submissions.youtube_video_id
+    # values older than 30 days, as YouTube API Services Developer Policies
+    # III.E.4(d) requires. Ships OFF so the job is inert until an environment
+    # deliberately turns it on — with the flag off the timer may fire and the
+    # job simply exits without touching a row. No companion config. See
+    # docs/feature-flags.md.
+    youtube_retention_sweep_enabled: bool = Field(default=False)
+
     # Inbound mail forwarding (MYS-242): Resend Inbound receives every address
     # at mysterymixclub.com (MX on the apex, ADR 0003) and POSTs a webhook per
     # message; the route verifies it and relays the content on. The signing

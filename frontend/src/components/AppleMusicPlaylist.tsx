@@ -11,7 +11,7 @@ import {
   getApplePlaylistLink,
   type UnmatchedTrack,
 } from "../services/api";
-import { authorizeAppleMusic } from "../services/musickit";
+import { AppleMusicError, authorizeAppleMusic, preloadAppleMusic } from "../services/musickit";
 
 /**
  * Per-player Apple Music playlist for a mix (MYS-108).
@@ -127,16 +127,29 @@ export function AppleMusicPlaylist({ mixId, entryCount }: { mixId: string; entry
     };
   }, [mixId]);
 
+  // Warm Apple's SDK while the interstitial is on screen (MysteryMixClub-ljl5).
+  // Loading and configuring MusicKit is the slow half, and doing it *after* the
+  // tap cost the user activation that mobile Safari requires to open the
+  // sign-in window — so the window never opened and the row hung on "building…".
+  // The interstitial is two sentences the user has to read, which is exactly the
+  // head start this needs. Failure is swallowed here on purpose: they have not
+  // asked for anything yet, and handleGenerate reports it if they go on.
+  useEffect(() => {
+    if (!showSignInModal || !developerToken) return;
+    preloadAppleMusic(developerToken).catch(() => {});
+  }, [showSignInModal, developerToken]);
+
   async function handleGenerate() {
     if (!developerToken) return;
     setShowSignInModal(false);
     setBusy(true);
     setError(null);
     try {
-      // Apple's popup must open from the click, so authorize before any await
-      // on our own API. Called from the modal's own "continue" button, which
-      // is itself a fresh user gesture — the popup-blocker-safe requirement
-      // survives the extra step.
+      // Apple's sign-in window must open from the click, so authorize before any
+      // await on our own API. Called from the modal's own "continue" button,
+      // which is itself a fresh user gesture. The preload above is what makes
+      // that gesture survive: warm, authorizeAppleMusic reaches Apple's
+      // authorize() with nothing awaited in front of it.
       const musicUserToken = await authorizeAppleMusic(developerToken);
       const result = await createApplePlaylist(mixId, musicUserToken);
       setPlaylistUrl(result.playlist_url);
@@ -148,6 +161,13 @@ export function AppleMusicPlaylist({ mixId, entryCount }: { mixId: string; entry
         setError("apple music connection expired. try again.");
       } else if (err instanceof ApiError && err.status === 503) {
         setError("apple music isn't available right now.");
+      } else if (err instanceof AppleMusicError && err.kind === "sdk_blocked") {
+        // Almost always a content blocker or Private Relay eating Apple's
+        // script. Naming the likely cause is the difference between a dead end
+        // and something the user can actually go and fix.
+        setError("couldn't load apple music. a content or ad blocker may be blocking it.");
+      } else if (err instanceof AppleMusicError && err.kind === "authorize_failed") {
+        setError("apple's sign-in didn't finish. try again, and allow the window if asked.");
       } else {
         setError("couldn't build the playlist. try again.");
       }

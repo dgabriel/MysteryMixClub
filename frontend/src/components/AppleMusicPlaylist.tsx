@@ -60,24 +60,6 @@ import { AppleMusicError, authorizeAppleMusic, preloadAppleMusic } from "../serv
  *  so a disabled control can't pick up the hover color. */
 const NOTE_CLASS = "font-mono text-sm text-ink-muted";
 
-/**
- * True on a mobile OS with a native Apple Music app — where a direct
- * library-playlist link dead-ends with "Item Not Available" (MYS-190). The
- * desktop web player resolves that same link fine (MYS-214), so this is the
- * one thing that decides which URL {@link AppleMusicPlaylist} renders.
- *
- * iPadOS's Safari reports as "Macintosh" in its user-agent string (Apple
- * dropped the iPad identifier to unify with desktop Safari around iOS 13),
- * so a multi-touch "Mac" is treated as an iPad, not a real desktop.
- */
-function isAppleMobileOS(): boolean {
-  if (typeof navigator === "undefined") return false;
-  const ua = navigator.userAgent;
-  const isKnownMobile = /iPhone|iPad|iPod|Android/.test(ua);
-  const isIPadReportingAsMac = /Macintosh/.test(ua) && navigator.maxTouchPoints > 1;
-  return isKnownMobile || isIPadReportingAsMac;
-}
-
 export function AppleMusicPlaylist({ mixId, entryCount }: { mixId: string; entryCount?: number }) {
   // undefined = still loading, null = not configured / unavailable
   const [developerToken, setDeveloperToken] = useState<string | null | undefined>(undefined);
@@ -93,8 +75,6 @@ export function AppleMusicPlaylist({ mixId, entryCount }: { mixId: string; entry
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSignInModal, setShowSignInModal] = useState(false);
-  // Computed once — the OS doesn't change mid-session.
-  const [isMobile] = useState(isAppleMobileOS);
 
   useEffect(() => {
     let active = true;
@@ -181,12 +161,17 @@ export function AppleMusicPlaylist({ mixId, entryCount }: { mixId: string; entry
   if (developerToken === undefined || playlistUrl === undefined) return null;
   if (developerToken === null) return null;
 
-  // Desktop's web player resolves a direct playlist link; iOS/Android's native
-  // app dead-ends on the same URL with "Item Not Available" (MYS-190), so
-  // mobile gets the Library root instead and has to make the last hop itself —
-  // the playlist name is how they find it (MYS-214).
-  const opensExactPlaylist = !isMobile && !!directPlaylistUrl;
-  const targetUrl = opensExactPlaylist ? directPlaylistUrl : playlistUrl;
+  // MYS-190 shipped believing iOS could not resolve a direct library-playlist
+  // link ("Item Not Available") and routed every mobile OS to the bare Library
+  // link instead — but that claim was never verified on a physical device.
+  // MysteryMixClub-o3r8 found the opposite on a real iPhone: the bare
+  // `/library` link 404s on mobile (so does a storefront-prefixed variant),
+  // while the direct playlist link — already used on desktop since MYS-214 —
+  // opens correctly. So there is no platform split any more: prefer the direct
+  // link everywhere, and fall back to the bare Library link only when a row
+  // genuinely has no direct url recorded (pre-MYS-214 rows never got one).
+  const opensExactPlaylist = !!directPlaylistUrl;
+  const targetUrl = directPlaylistUrl ?? playlistUrl;
 
   const matched =
     unmatched !== null && entryCount !== undefined ? entryCount - unmatched.length : undefined;

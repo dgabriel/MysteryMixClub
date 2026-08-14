@@ -75,25 +75,27 @@ def pick_catalog_song(
     )
 
 
-# Apple Music's Library, as deep as any link can usefully go (MYS-190).
-#
-# iOS cannot deep-link to a library playlist: the Music app receives a
-# /library/playlist/{id} URL, fails to resolve it, and shows "Item Not
-# Available" even though the playlist is right there in the library (MYS-190).
-# A link that dead-ends reads as "we failed to make your playlist", so mobile
-# gets the Library root instead — which works in both the app and the web
-# player — plus the playlist name so the member knows what to look for.
+# Apple Music's Library — the fallback when no direct playlist link is on
+# record (MYS-190). Rows created before MYS-214 never got one, and this is
+# what they still link, plus the playlist name so the member knows what to
+# look for. MYS-190 originally routed every mobile OS here unconditionally, on
+# an unverified belief that a direct library-playlist link dead-ended on iOS
+# ("Item Not Available"); MysteryMixClub-o3r8 tested that on a real iPhone and
+# found the reverse — this bare /library path 404s on mobile while the direct
+# link below opens fine. So this is a genuine fallback now, not a platform
+# branch: see :func:`library_playlist_url`.
 LIBRARY_URL = "https://music.apple.com/library"
 
 
 def library_playlist_url(playlist_id: str) -> str:
-    """Direct link to one library playlist — desktop only (MYS-214).
+    """Direct link to one library playlist (MYS-214).
 
-    The desktop *web player* resolves this path even though Apple doesn't
-    document it as supported (it dead-ends in the native iOS app, MYS-190,
-    which is why mobile uses :data:`LIBRARY_URL` instead). Undocumented
-    behavior: if Apple changes this, desktop degrades to the same generic
-    Library link mobile already uses, not a regression from today's baseline.
+    Undocumented Apple behavior — this path isn't part of any published API —
+    so if Apple ever breaks it, callers should degrade to :data:`LIBRARY_URL`,
+    not treat the failure as this app's bug. It was believed desktop-only from
+    MYS-214 until MysteryMixClub-o3r8 confirmed it also resolves on a real
+    iPhone; :data:`LIBRARY_URL` is not a mobile-specific link, just the
+    fallback for a playlist with no direct url recorded.
     """
     return f"https://music.apple.com/library/playlist/{playlist_id}"
 

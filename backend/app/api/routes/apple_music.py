@@ -53,12 +53,13 @@ class DeveloperTokenResponse(WireModel):
 
 
 class ApplePlaylistLinkResponse(WireModel):
-    # Apple Music's Library, not the playlist — iOS can't deep-link to a library
-    # playlist (MYS-190). playlist_name is how the member finds it. The name is
-    # null for rows created before MYS-190 started recording it.
+    # Apple Music's Library — the fallback link when no direct url is on
+    # record. playlist_name is how the member finds it when this is all they
+    # have. The name is null for rows created before MYS-190 started
+    # recording it.
     playlist_url: str | None = None
-    # The exact playlist — desktop only (MYS-214); see library_playlist_url()'s
-    # docstring for why mobile can't use this.
+    # The exact playlist, on every platform (MYS-214, MysteryMixClub-o3r8); see
+    # library_playlist_url()'s docstring.
     direct_playlist_url: str | None = None
     playlist_name: str | None = None
 
@@ -88,7 +89,7 @@ class GeneratePlaylistRequest(WireModel):
 
 class GeneratePlaylistResponse(WireModel):
     playlist_url: str
-    # The exact playlist — desktop only (MYS-214).
+    # The exact playlist, on every platform (MYS-214, MysteryMixClub-o3r8).
     direct_playlist_url: str
     playlist_name: str
     track_count: int

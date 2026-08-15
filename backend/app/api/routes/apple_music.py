@@ -58,8 +58,9 @@ class ApplePlaylistLinkResponse(WireModel):
     # have. The name is null for rows created before MYS-190 started
     # recording it.
     playlist_url: str | None = None
-    # The exact playlist, on every platform (MYS-214, MysteryMixClub-o3r8); see
-    # library_playlist_url()'s docstring.
+    # The exact playlist — reliable on desktop only (MYS-214); mobile can't
+    # resolve it (MysteryMixClub-ap25), so the frontend ignores this field on
+    # mobile. See library_playlist_url()'s docstring.
     direct_playlist_url: str | None = None
     playlist_name: str | None = None
 
@@ -89,7 +90,9 @@ class GeneratePlaylistRequest(WireModel):
 
 class GeneratePlaylistResponse(WireModel):
     playlist_url: str
-    # The exact playlist, on every platform (MYS-214, MysteryMixClub-o3r8).
+    # The exact playlist — reliable on desktop only (MYS-214); mobile can't
+    # resolve it (MysteryMixClub-ap25), so the frontend ignores this field on
+    # mobile.
     direct_playlist_url: str
     playlist_name: str
     track_count: int

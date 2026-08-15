@@ -12,7 +12,6 @@ const ACTION_CLASS =
 export function PlaylistLink({
   href,
   label,
-  sameTab,
   children,
 }: {
   href: string;
@@ -25,21 +24,13 @@ export function PlaylistLink({
    *  indistinguishable to anyone tabbing through, which is a WCAG 2.4.4 failure
    *  the visual design does not have. */
   label: string;
-  /** Apple Music only (MysteryMixClub-ap25): a music.apple.com URL only hands
-   *  off to the native Music app via iOS Universal Links on a same-tab,
-   *  top-level navigation — `target="_blank"`/`window.open()` never triggers
-   *  that handoff, so the tap renders inside Safari's own web view instead,
-   *  which cannot see a private library item (no music.apple.com web session
-   *  exists there; MusicKit JS's authorize() never creates one). Every other
-   *  caller is a real public web link and keeps the default new-tab
-   *  behavior. */
-  sameTab?: boolean;
   children: ReactNode;
 }) {
   return (
     <a
       href={href}
-      {...(sameTab ? {} : { target: "_blank", rel: "noopener noreferrer" })}
+      target="_blank"
+      rel="noopener noreferrer"
       aria-label={label}
       className={ACTION_CLASS}
     >

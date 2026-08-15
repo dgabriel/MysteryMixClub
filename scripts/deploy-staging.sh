@@ -13,6 +13,10 @@
 #   systemctl daemon-reload
 #   systemctl enable --now mysterymixclub-advance-mixes.timer
 #   systemctl restart mysterymixclub-playlist-worker
+# Optional (best-effort, `|| true` — a Droplet without these still deploys
+# cleanly, it just leaves the retention sweep un-armed):
+#   cp scripts/mysterymixclub-expire-youtube-ids.{service,timer} /etc/systemd/system/
+#   systemctl enable --now mysterymixclub-expire-youtube-ids.timer
 # (the advance-rounds steps retire the pre-MYS-195 unit name; the advance-mixes
 # steps keep the MYS-145/162 deadline job's unit files and timer current; the
 # playlist-worker steps keep the MYS-258/ADR-0006 background worker current —
@@ -77,6 +81,20 @@ sudo cp "${REPO_ROOT}/scripts/mysterymixclub-advance-mixes.service" /etc/systemd
 sudo cp "${REPO_ROOT}/scripts/mysterymixclub-advance-mixes.timer" /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now mysterymixclub-advance-mixes.timer
+
+echo "==> Installing/refreshing the YouTube id retention sweep (ADR 0016) [best-effort]"
+# The sweep ships DARK: the job is gated on YOUTUBE_RETENTION_SWEEP_ENABLED,
+# default off (MysteryMixClub-l4cv), so an armed timer is harmless until an
+# environment opts in. Because it does nothing yet, it must never be able to
+# break a deploy — every command is `|| true`, matching the MYS-195 lines above.
+# A Droplet whose sudoers file predates this job therefore deploys cleanly and
+# simply leaves the sweep un-armed; add the grants (docs/staging-setup.md §6)
+# and the next deploy picks it up. Verify with:
+#   systemctl list-timers mysterymixclub-expire-youtube-ids.timer
+sudo cp "${REPO_ROOT}/scripts/mysterymixclub-expire-youtube-ids.service" /etc/systemd/system/ 2>/dev/null || true
+sudo cp "${REPO_ROOT}/scripts/mysterymixclub-expire-youtube-ids.timer" /etc/systemd/system/ 2>/dev/null || true
+sudo systemctl daemon-reload 2>/dev/null || true
+sudo systemctl enable --now mysterymixclub-expire-youtube-ids.timer 2>/dev/null || true
 
 echo "==> Installing/refreshing and restarting the playlist worker (MYS-258, ADR 0006)"
 # Persistent process (not timer-driven), so a `restart` — rather than the

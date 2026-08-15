@@ -36,6 +36,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.youtube_resolver import YouTubeLookup
 from app.auth.jwt import create_access_token
 from app.db.session import get_db
 from app.main import create_app
@@ -70,6 +71,11 @@ class _FakeAssembler:
 
 
 class _FakeYouTube:
+    async def resolve(self, title, artist=None):
+        """ADR 0015: these fakes always stand in for a reachable YouTube, so
+        every outcome is an answer. Delegates so each fake keeps one behaviour."""
+        return YouTubeLookup(video_id=await self.video_id_for(title, artist), answered=True)
+
     async def video_id_for(self, title, artist=None) -> str | None:
         return None
 
@@ -608,7 +614,9 @@ class _FakeLinkResolve:
 
 
 class _FakeResolveAssembler:
-    async def assemble(self, title, artist=None, isrc=None) -> dict[str, str]:
+    async def assemble(
+        self, title, artist=None, isrc=None, *, youtube_video_id=None, fuzzy=True
+    ) -> dict[str, str]:
         return _ASSEMBLED
 
 
@@ -624,6 +632,9 @@ def _build_songs_client(session_factory) -> AsyncClient:
     app.dependency_overrides[get_deezer_client] = lambda: _FakeDeezerSearch()
     app.dependency_overrides[get_link_resolver] = lambda: _FakeLinkResolve()
     app.dependency_overrides[get_link_assembler] = lambda: _FakeResolveAssembler()
+    # /songs/resolve resolves the video id itself now (MysteryMixClub-0rkm), so
+    # this override is what keeps these tests off the live YouTube Data API.
+    app.dependency_overrides[get_youtube_resolver] = lambda: _FakeYouTube()
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
 

@@ -267,8 +267,11 @@ mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl restart mysterymixclub-ap
 mysterymixclub ALL=(root) NOPASSWD: /usr/bin/cp /home/mysterymixclub/app/scripts/mysterymixclub-advance-mixes-prod.service /etc/systemd/system/mysterymixclub-advance-mixes.service
 mysterymixclub ALL=(root) NOPASSWD: /usr/bin/cp /home/mysterymixclub/app/scripts/mysterymixclub-advance-mixes-prod.timer /etc/systemd/system/mysterymixclub-advance-mixes.timer
 mysterymixclub ALL=(root) NOPASSWD: /usr/bin/cp /home/mysterymixclub/app/scripts/mysterymixclub-playlist-worker-prod.service /etc/systemd/system/mysterymixclub-playlist-worker.service
+mysterymixclub ALL=(root) NOPASSWD: /usr/bin/cp /home/mysterymixclub/app/scripts/mysterymixclub-expire-youtube-ids-prod.service /etc/systemd/system/mysterymixclub-expire-youtube-ids.service
+mysterymixclub ALL=(root) NOPASSWD: /usr/bin/cp /home/mysterymixclub/app/scripts/mysterymixclub-expire-youtube-ids-prod.timer /etc/systemd/system/mysterymixclub-expire-youtube-ids.timer
 mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl daemon-reload
 mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl enable --now mysterymixclub-advance-mixes.timer
+mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl enable --now mysterymixclub-expire-youtube-ids.timer
 mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl enable mysterymixclub-playlist-worker
 mysterymixclub ALL=(root) NOPASSWD: /usr/bin/systemctl restart mysterymixclub-playlist-worker
 EOF
@@ -353,6 +356,37 @@ refreshes the unit file and restarts it.
 systemctl status mysterymixclub-playlist-worker
 sudo journalctl -u mysterymixclub-playlist-worker -f
 ```
+
+---
+
+## 6b. The YouTube id retention sweep (MysteryMixClub-7a7x, ADR 0016)
+
+Same sweep as staging — see `staging-setup.md` §7b. On prod the units are named
+identically on-disk (`mysterymixclub-expire-youtube-ids.service`/`.timer`) but
+sourced from the `-prod`-suffixed repo files. Each deploy refreshes them and
+runs `enable --now`.
+
+> **Currently dark, and safe to deploy as-is.** The job is gated on
+> `YOUTUBE_RETENTION_SWEEP_ENABLED` (default `false`) and the deploy installs
+> its units best-effort (`|| true`), so **no sudoers change is required before
+> the next prod deploy** — without the grants the deploy succeeds and simply
+> leaves the sweep un-armed.
+
+This is a **compliance control**: YouTube API Services Developer Policies
+III.E.4(d) caps storage of cached video ids at 30 calendar days. Until the flag
+is turned on, prod remains outside that policy — the gap is sequenced, not
+resolved. To close it: add the three `expire-youtube-ids` lines from §5 to
+`/etc/sudoers.d/mysterymixclub-deploy`, deploy, set
+`YOUTUBE_RETENTION_SWEEP_ENABLED=true` in `/etc/mysterymixclub/prod.env`, and
+follow the checks in `docs/feature-flags.md`. Dawn applies all of this on the
+Droplet — Claude never SSHes into prod.
+
+```bash
+systemctl list-timers mysterymixclub-expire-youtube-ids.timer
+sudo journalctl -u mysterymixclub-expire-youtube-ids.service -f
+```
+
+Each run logs `expired N cached YouTube video id(s) past 30 days`.
 
 ---
 

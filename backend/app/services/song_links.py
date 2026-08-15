@@ -91,6 +91,19 @@ def _youtube_music_deeplink(q: str) -> str:
     return f"https://music.youtube.com/search?q={quote(q)}"
 
 
+def youtube_search_deeplinks(title: str, artist: str | None) -> dict[str, str]:
+    """The keyless ``{youtube, youtubeMusic}`` search links for a track.
+
+    Public because the retention sweep (``app.jobs.expire_youtube_ids``, ADR
+    0016) has to put these *back* when it expires a stored video id: an exact
+    ``watch?v=<id>`` URL in ``platform_links`` embeds the id, so clearing the
+    column alone would relocate the API Data rather than delete it. Built here
+    so the URL shapes stay defined in exactly one place.
+    """
+    q = _query(title, artist)
+    return {"youtube": _youtube_video_deeplink(q), "youtubeMusic": _youtube_music_deeplink(q)}
+
+
 def _deezer_deeplink(q: str) -> str:
     return f"https://www.deezer.com/search/{quote(q)}"
 

@@ -19,6 +19,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.youtube_resolver import YouTubeLookup
 from app.auth.jwt import create_access_token
 from app.db.session import get_db
 from app.main import create_app
@@ -43,7 +44,7 @@ class _FakeAssembler:
         self._links = _LINKS if links is None else links
 
     async def assemble(
-        self, title, artist=None, isrc=None, *, youtube_video_id=None
+        self, title, artist=None, isrc=None, *, youtube_video_id=None, fuzzy=True
     ) -> dict[str, str]:
         return self._links
 
@@ -53,6 +54,11 @@ class _FakeYouTube:
 
     def __init__(self, video_id: str | None = None):
         self._video_id = video_id
+
+    async def resolve(self, title, artist=None):
+        """ADR 0015: these fakes always stand in for a reachable YouTube, so
+        every outcome is an answer. Delegates so each fake keeps one behaviour."""
+        return YouTubeLookup(video_id=await self.video_id_for(title, artist), answered=True)
 
     async def video_id_for(self, title, artist=None) -> str | None:
         return self._video_id
@@ -633,6 +639,11 @@ class _BoomYouTube:
     """A YouTube resolver that fails if consulted — a source-only submission must
     never fuzzy-resolve a video id (that is the isrc/catalog path only)."""
 
+    async def resolve(self, title, artist=None):
+        """ADR 0015: these fakes always stand in for a reachable YouTube, so
+        every outcome is an answer. Delegates so each fake keeps one behaviour."""
+        return YouTubeLookup(video_id=await self.video_id_for(title, artist), answered=True)
+
     async def video_id_for(self, title, artist=None) -> str | None:  # pragma: no cover
         raise AssertionError("YouTube resolver must not be called for a source-only track")
 
@@ -922,3 +933,160 @@ async def test_concurrent_submit_at_cap_1_produces_exactly_one_submission(
         select(func.count()).select_from(Submission).where(Submission.mix_id == mix_id)
     )
     assert count == 1, "concurrent submissions must not exceed the cap"
+
+
+# --------------------------------------------------------------------------- #
+# Client-supplied youtube_video_id (MysteryMixClub-0rkm)
+# --------------------------------------------------------------------------- #
+#
+# POST /songs/resolve already resolves the id when the player picks the track.
+# Submit re-resolving it doubled the cost of every song against search.list's
+# dedicated 100-calls/day bucket, capping the platform at 50 songs/day.
+
+
+class _CountingYouTube:
+    """Records every lookup so a test can assert the resolver was never asked."""
+
+    def __init__(self, video_id: str | None = None):
+        self._video_id = video_id
+        self.calls: list[tuple[str, str | None]] = []
+
+    async def resolve(self, title, artist=None):
+        self.calls.append((title, artist))
+        return YouTubeLookup(video_id=self._video_id, answered=True)
+
+    async def video_id_for(self, title, artist=None) -> str | None:
+        self.calls.append((title, artist))
+        return self._video_id
+
+
+async def test_submit_with_video_id_makes_no_youtube_call(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    mix_id = mix_.id
+    youtube = _CountingYouTube(video_id="SHOULDNOTASK")
+
+    async with _build_client(session_factory, youtube=youtube) as client:
+        resp = await client.post(
+            _sub_url(mix_id),
+            json=_body(youtube_video_id="dQw4w9WgXcQ"),
+            headers=_auth(organizer.id),
+        )
+
+    assert resp.status_code == 201, resp.text
+    assert youtube.calls == []  # the whole point: zero upstream calls
+    db_session.expire_all()
+    stored = await db_session.scalar(select(Submission).where(Submission.mix_id == mix_id))
+    assert stored.youtube_video_id == "dQw4w9WgXcQ"
+
+
+async def test_passed_through_id_counts_as_an_answered_attempt(session_factory, db_session):
+    # ADR 0015 bookkeeping: a resolve DID happen, one request earlier. Leaving
+    # the row unstamped would queue a backfill job with nothing to find.
+    organizer = await _seed_user(db_session, "o@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    mix_id = mix_.id
+
+    async with _build_client(session_factory, youtube=_CountingYouTube()) as client:
+        resp = await client.post(
+            _sub_url(mix_id),
+            json=_body(youtube_video_id="dQw4w9WgXcQ"),
+            headers=_auth(organizer.id),
+        )
+    assert resp.status_code == 201, resp.text
+
+    db_session.expire_all()
+    stored = await db_session.scalar(select(Submission).where(Submission.mix_id == mix_id))
+    assert stored.youtube_lookup_attempted_at is not None
+
+
+async def test_submit_without_video_id_still_resolves(session_factory, db_session):
+    # Older clients (and the paste flow) omit it — behaviour must be unchanged.
+    organizer = await _seed_user(db_session, "o@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    mix_id = mix_.id
+    youtube = _CountingYouTube(video_id="RESOLVED123")
+
+    async with _build_client(session_factory, youtube=youtube) as client:
+        resp = await client.post(_sub_url(mix_id), json=_body(), headers=_auth(organizer.id))
+
+    assert resp.status_code == 201, resp.text
+    assert youtube.calls == [("bad guy", "Billie Eilish")]
+    db_session.expire_all()
+    stored = await db_session.scalar(select(Submission).where(Submission.mix_id == mix_id))
+    assert stored.youtube_video_id == "RESOLVED123"
+
+
+async def test_edit_with_video_id_makes_no_youtube_call(session_factory, db_session):
+    organizer = await _seed_user(db_session, "o@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    mix_id = mix_.id
+    async with _build_client(session_factory, youtube=_CountingYouTube("FIRST")) as client:
+        first = await client.post(_sub_url(mix_id), json=_body(), headers=_auth(organizer.id))
+        sid = first.json()["id"]
+
+    youtube = _CountingYouTube(video_id="SHOULDNOTASK")
+    async with _build_client(session_factory, youtube=youtube) as client:
+        edited = await client.patch(
+            f"{_sub_url(mix_id)}/{sid}",
+            json=_body(title="new pick", youtube_video_id="aBcDeFgHiJk"),
+            headers=_auth(organizer.id),
+        )
+
+    assert edited.status_code == 200, edited.text
+    assert youtube.calls == []
+    db_session.expire_all()
+    stored = await db_session.scalar(select(Submission).where(Submission.id == uuid.UUID(sid)))
+    assert stored.youtube_video_id == "aBcDeFgHiJk"
+
+
+@pytest.mark.parametrize(
+    "bad_id",
+    [
+        "too-short",
+        "waaaaaaaaaytoolong",
+        "has spaces!",
+        # The reason this is pattern-bound at all: the value lands straight in a
+        # watch?v= URL, so anything that could steer that link must be rejected.
+        "abc/../../xy",
+        "abcdefghijk&list=EVIL",
+    ],
+)
+async def test_submit_rejects_malformed_video_id(session_factory, db_session, bad_id):
+    organizer = await _seed_user(db_session, "o@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    mix_id = mix_.id
+    youtube = _CountingYouTube(video_id="X")
+
+    async with _build_client(session_factory, youtube=youtube) as client:
+        resp = await client.post(
+            _sub_url(mix_id), json=_body(youtube_video_id=bad_id), headers=_auth(organizer.id)
+        )
+
+    assert resp.status_code == 422, resp.text
+    assert youtube.calls == []
+
+
+async def test_source_only_ignores_a_supplied_video_id(session_factory, db_session):
+    # A source-only track derives its exact id from source_key; a client-supplied
+    # one must never override that (MYS-201: exact, never guessed).
+    organizer = await _seed_user(db_session, "o@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    mix_id = mix_.id
+
+    async with _build_client(session_factory, youtube=_BoomYouTube()) as client:
+        resp = await client.post(
+            _sub_url(mix_id),
+            json={
+                "source_key": "youtube:dQw4w9WgXcQ",
+                "title": "source pick",
+                "artist": "A",
+                "youtube_video_id": "aBcDeFgHiJk",
+            },
+            headers=_auth(organizer.id),
+        )
+
+    assert resp.status_code == 201, resp.text
+    db_session.expire_all()
+    stored = await db_session.scalar(select(Submission).where(Submission.mix_id == mix_id))
+    assert stored.youtube_video_id == "dQw4w9WgXcQ"  # from source_key, not the payload

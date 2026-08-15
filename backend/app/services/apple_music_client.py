@@ -75,25 +75,31 @@ def pick_catalog_song(
     )
 
 
-# Apple Music's Library, as deep as any link can usefully go (MYS-190).
-#
-# iOS cannot deep-link to a library playlist: the Music app receives a
-# /library/playlist/{id} URL, fails to resolve it, and shows "Item Not
-# Available" even though the playlist is right there in the library (MYS-190).
-# A link that dead-ends reads as "we failed to make your playlist", so mobile
-# gets the Library root instead — which works in both the app and the web
-# player — plus the playlist name so the member knows what to look for.
+# Apple Music's Library — the fallback when no direct playlist link is on
+# record (MYS-190). Rows created before MYS-214 never got one, and this is
+# what they still link, plus the playlist name so the member knows what to
+# look for. MysteryMixClub-o3r8 tested this bare /library path on a real
+# iPhone and found it 404s on mobile; it remains a real fallback for a
+# platform where :func:`library_playlist_url` does resolve (desktop) and a
+# playlist with no direct url recorded at all.
 LIBRARY_URL = "https://music.apple.com/library"
 
 
 def library_playlist_url(playlist_id: str) -> str:
-    """Direct link to one library playlist — desktop only (MYS-214).
+    """Direct link to one library playlist (MYS-214).
 
-    The desktop *web player* resolves this path even though Apple doesn't
-    document it as supported (it dead-ends in the native iOS app, MYS-190,
-    which is why mobile uses :data:`LIBRARY_URL` instead). Undocumented
-    behavior: if Apple changes this, desktop degrades to the same generic
-    Library link mobile already uses, not a regression from today's baseline.
+    Undocumented Apple behavior — this path isn't part of any published API —
+    so if Apple ever breaks it, callers should degrade to :data:`LIBRARY_URL`,
+    not treat the failure as this app's bug. Confirmed reliable on desktop's
+    web player since MYS-214. MysteryMixClub-o3r8 believed it also resolved on
+    a real iPhone, but that held on the tester's device only — a fresh
+    link-account-and-generate session, tested again in MysteryMixClub-ap25,
+    still gets "Item Not Available" on mobile, even opened via the native
+    Music app's own ``music://`` scheme (so it isn't a Safari/session/
+    navigation problem — the resource itself doesn't resolve for a mobile
+    client). The frontend (``AppleMusicPlaylist.tsx``) no longer shows this
+    link on mobile at all; it stays live for desktop and for any future
+    Apple-side fix that makes mobile resolution reliable.
     """
     return f"https://music.apple.com/library/playlist/{playlist_id}"
 

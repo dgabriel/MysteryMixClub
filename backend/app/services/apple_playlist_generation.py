@@ -52,11 +52,13 @@ class UnmatchedSubmission:
 
 @dataclass
 class GeneratedApplePlaylist:
-    # Apple Music's Library, not the playlist itself — iOS can't deep-link to a
-    # library playlist (MYS-190). `playlist_name` is what lets the member find it.
+    # Apple Music's Library — the fallback link, not the playlist itself.
+    # `playlist_name` is what lets the member find it when this is all they have.
     playlist_url: str
-    # The exact playlist — desktop only (MYS-214); undocumented Apple behavior,
-    # see library_playlist_url()'s docstring.
+    # The exact playlist — reliable on desktop only (MYS-214); mobile can't
+    # resolve it (MysteryMixClub-ap25), so the frontend doesn't render this on
+    # mobile. Undocumented Apple behavior, see library_playlist_url()'s
+    # docstring.
     direct_playlist_url: str
     playlist_name: str
     track_count: int

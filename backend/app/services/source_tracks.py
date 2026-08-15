@@ -26,6 +26,10 @@ Source = Literal["youtube", "bandcamp"]
 _YOUTUBE_ID = r"[A-Za-z0-9_-]{11}"
 _BANDCAMP_SLUG = r"[a-z0-9][a-z0-9-]*"
 SOURCE_KEY_PATTERN = rf"^(?:youtube:{_YOUTUBE_ID}|bandcamp:{_BANDCAMP_SLUG}/{_BANDCAMP_SLUG})$"
+# A bare video id on its own, for the client-supplied passthrough on submit
+# (MysteryMixClub-0rkm). Anchored and exact-length: the id lands directly in a
+# watch?v= URL, so anything looser would let a caller steer that link.
+VIDEO_ID_PATTERN = rf"^{_YOUTUBE_ID}$"
 
 _YOUTUBE_KEY = re.compile(rf"^youtube:({_YOUTUBE_ID})$")
 _BANDCAMP_KEY = re.compile(rf"^bandcamp:({_BANDCAMP_SLUG})/({_BANDCAMP_SLUG})$")

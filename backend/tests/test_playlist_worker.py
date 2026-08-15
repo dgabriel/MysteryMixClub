@@ -42,8 +42,10 @@ from app.jobs.playlist_worker import (
     run_worker,
 )
 from app.models.playlist_job import PlaylistJob
+from app.models.submission import Submission
 from app.services.playlist_jobs import enqueue_playlist_job
 from app.services.spotify_client import SpotifyAuthError
+from app.services.youtube_resolver import YouTubeLookup
 from tests.conftest import TEST_ASYNC_DATABASE_URL
 from tests.test_spotify_routes import (
     _SHARED_ACCOUNT_ID,
@@ -53,6 +55,28 @@ from tests.test_spotify_routes import (
     _seed_shared_account,
     _seed_user,
 )
+
+
+class _NoopYouTube:
+    """Stand-in resolver for the Spotify-provider tests, which never reach the
+    youtube branch. Raises rather than returning empty so a test that *does*
+    reach it fails loudly instead of silently passing on an empty backfill."""
+
+    async def resolve(self, title: str, artist: str | None = None) -> YouTubeLookup:
+        raise AssertionError("youtube resolver called from a spotify-provider job")
+
+
+class _StubYouTube:
+    """Resolves by title, recording calls so tests can assert exactly which
+    submissions were looked up (and that memoized misses aren't re-asked)."""
+
+    def __init__(self, by_title: dict[str, str] | None = None) -> None:
+        self._by_title = by_title or {}
+        self.calls: list[str] = []
+
+    async def resolve(self, title: str, artist: str | None = None) -> YouTubeLookup:
+        self.calls.append(title)
+        return YouTubeLookup(video_id=self._by_title.get(title), answered=True)
 
 
 async def _seed_queued_job(db_session, mix_id: uuid.UUID, provider: str = "spotify") -> None:
@@ -309,7 +333,7 @@ async def test_stuck_running_job_is_reclaimed_and_actually_reprocessed(
 
     fake = FakeSpotifyClient()
     settings = Settings(spotify_playlist_account_user_id=str(_SHARED_ACCOUNT_ID))
-    await _run_job(job, settings, fake)
+    await _run_job(job, settings, fake, _NoopYouTube())
 
     real_db_session.expire_all()  # see the earlier reclaim test for why
     row = await real_db_session.get(PlaylistJob, stuck_id)
@@ -380,7 +404,7 @@ async def test_run_job_unconfigured_completes_as_noop(
         job = await _claim_one_job(db)
     fake = FakeSpotifyClient()
 
-    await _run_job(job, Settings(), fake)
+    await _run_job(job, Settings(), fake, _NoopYouTube())
 
     row = await real_db_session.get(PlaylistJob, job.id)
     assert row.status == "complete"
@@ -412,7 +436,7 @@ async def test_run_job_success_generates_and_completes(
     fake = FakeSpotifyClient()
     settings = Settings(spotify_playlist_account_user_id=str(_SHARED_ACCOUNT_ID))
 
-    await _run_job(job, settings, fake)
+    await _run_job(job, settings, fake, _NoopYouTube())
 
     row = await real_db_session.get(PlaylistJob, job.id)
     assert row.status == "complete"
@@ -442,7 +466,7 @@ async def test_run_job_spotify_failure_marks_failed_with_error(
         job = await _claim_one_job(db)
     settings = Settings(spotify_playlist_account_user_id=str(_SHARED_ACCOUNT_ID))
 
-    await _run_job(job, settings, _RejectingClient())
+    await _run_job(job, settings, _RejectingClient(), _NoopYouTube())
 
     row = await real_db_session.get(PlaylistJob, job.id)
     assert row.status == "failed"
@@ -473,7 +497,7 @@ async def test_run_job_missing_mix_marks_failed(patch_worker_session, monkeypatc
         id=uuid.uuid4(), mix_id=uuid.uuid4(), provider="spotify", status="running"
     )
 
-    await _run_job(fake_job, Settings(), FakeSpotifyClient())
+    await _run_job(fake_job, Settings(), FakeSpotifyClient(), _NoopYouTube())
 
     assert len(calls) == 1
     job_id, status_, error = calls[0]
@@ -500,7 +524,7 @@ async def test_drain_queue_processes_every_queued_job(
     await _seed_queued_job(real_db_session, mix_a.id)
     await _seed_queued_job(real_db_session, mix_b.id)
 
-    processed = await _drain_queue(Settings(), FakeSpotifyClient())
+    processed = await _drain_queue(Settings(), FakeSpotifyClient(), _NoopYouTube())
     assert processed == 2
 
     rows = await real_db_session.scalars(
@@ -561,3 +585,66 @@ async def test_worker_processes_job_via_notify_promptly(
     finally:
         stop_event.set()
         await asyncio.wait_for(worker_task, timeout=5.0)
+
+
+# --------------------------------------------------------------------------- #
+# youtube provider (ADR 0015)
+# --------------------------------------------------------------------------- #
+
+
+async def test_youtube_job_backfills_and_completes(
+    real_session_factory, real_db_session, monkeypatch
+):
+    """A queued youtube job resolves the mix's pending ids and completes.
+
+    This is the work the playlist GETs used to do inline, one serial ~0.74s
+    call per unresolved submission, on every single read.
+    """
+    from app.config import Settings
+
+    monkeypatch.setattr("app.jobs.playlist_worker.async_session_factory", real_session_factory)
+
+    organizer = await _seed_user(real_db_session, "o@example.com")
+    mix_ = await _seed_mix(real_db_session, organizer)
+    await _add_submission(real_db_session, mix_.id, organizer.id, isrc="I0", title="found")
+    await _add_submission(real_db_session, mix_.id, organizer.id, isrc="I1", title="lost")
+    await _seed_queued_job(real_db_session, mix_.id, provider="youtube")
+
+    youtube = _StubYouTube({"found": "VID"})
+    processed = await _drain_queue(Settings(), FakeSpotifyClient(), youtube)
+
+    assert processed == 1
+    assert sorted(youtube.calls) == ["found", "lost"]
+
+    job = await real_db_session.scalar(select(PlaylistJob).where(PlaylistJob.provider == "youtube"))
+    assert job.status == "complete"
+
+    subs = list(
+        await real_db_session.scalars(select(Submission).where(Submission.mix_id == mix_.id))
+    )
+    by_title = {s.title: s for s in subs}
+    assert by_title["found"].youtube_video_id == "VID"
+    assert by_title["lost"].youtube_video_id is None
+    # Both stamped — the miss included. That is what stops the retry loop.
+    assert all(s.youtube_lookup_attempted_at is not None for s in subs)
+
+
+async def test_youtube_job_completes_rather_than_failing_when_nothing_matches(
+    real_session_factory, real_db_session, monkeypatch
+):
+    # An unmatched track is a recorded outcome, not a job failure — otherwise a
+    # mix of obscure songs would leave permanently "failed" rows in the queue.
+    from app.config import Settings
+
+    monkeypatch.setattr("app.jobs.playlist_worker.async_session_factory", real_session_factory)
+
+    organizer = await _seed_user(real_db_session, "o@example.com")
+    mix_ = await _seed_mix(real_db_session, organizer)
+    await _add_submission(real_db_session, mix_.id, organizer.id, isrc="I", title="obscure")
+    await _seed_queued_job(real_db_session, mix_.id, provider="youtube")
+
+    await _drain_queue(Settings(), FakeSpotifyClient(), _StubYouTube({}))
+
+    job = await real_db_session.scalar(select(PlaylistJob).where(PlaylistJob.provider == "youtube"))
+    assert job.status == "complete"
+    assert job.error is None

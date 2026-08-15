@@ -183,3 +183,60 @@ async def test_non_json_body_returns_none():
         await _resolver(lambda r: httpx.Response(200, text="not json")).video_id_for("x", None)
         is None
     )
+
+
+# --------------------------------------------------------------------------- #
+# resolve(): answered vs unanswered (ADR 0015)
+# --------------------------------------------------------------------------- #
+#
+# video_id_for() flattens every failure to None, which is fine for callers that
+# just want a link. The backfill needs the distinction: it records an answered
+# miss permanently, so mistaking "quota exhausted" for "no such song" writes off
+# a resolvable track for good.
+
+
+async def test_resolve_reports_a_hit_as_answered():
+    result = await _resolver(lambda r: httpx.Response(200, json=SEARCH_PAYLOAD)).resolve(
+        "American Pie", "Don McLean"
+    )
+    assert result.video_id == "PRpiBpDy7MQ"
+    assert result.answered is True
+
+
+async def test_resolve_reports_empty_results_as_answered():
+    # YouTube replied and genuinely has nothing — a real verdict on the track.
+    result = await _resolver(lambda r: httpx.Response(200, json={"items": []})).resolve("nothing")
+    assert result.video_id is None
+    assert result.answered is True
+
+
+async def test_resolve_reports_quota_403_as_unanswered():
+    # The case that actually bit: quota spent, so nothing was learned about the
+    # track and it must stay eligible for a retry.
+    result = await _resolver(lambda r: httpx.Response(403, json={"error": {"code": 403}})).resolve(
+        "Debaser", "Pixies"
+    )
+    assert result.video_id is None
+    assert result.answered is False
+
+
+async def test_resolve_reports_timeout_as_unanswered():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("too slow", request=request)
+
+    result = await _resolver(handler).resolve("American Pie", "Don McLean")
+    assert result.answered is False
+
+
+async def test_resolve_reports_missing_api_key_as_unanswered():
+    # An unconfigured deployment must not stamp every submission it sees.
+    result = await _resolver(
+        lambda r: httpx.Response(200, json=SEARCH_PAYLOAD), api_key=""
+    ).resolve("American Pie", "Don McLean")
+    assert result.video_id is None
+    assert result.answered is False
+
+
+async def test_resolve_reports_unparseable_body_as_unanswered():
+    result = await _resolver(lambda r: httpx.Response(200, content=b"not json")).resolve("x")
+    assert result.answered is False

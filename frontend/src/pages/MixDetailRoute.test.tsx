@@ -497,13 +497,14 @@ describe("MixDetailRoute", () => {
 
   describe("multi-song submissions (MYS-142)", () => {
     /** A resolved-song stub for the composer's link-resolve step. */
-    function resolved(isrc: string, title: string) {
+    function resolved(isrc: string, title: string, youtube_video_id: string | null = null) {
       return {
         title,
         artist: "Band",
         isrc,
         album: null,
         thumbnail_url: null,
+        youtube_video_id,
         platforms: {},
       } as Awaited<ReturnType<typeof resolveSong>>;
     }
@@ -644,6 +645,47 @@ describe("MixDetailRoute", () => {
       expect(await screen.findByText("Song Two")).toBeInTheDocument();
       // the original stays — multi-song, not a replace
       expect(screen.getByText("Song One")).toBeInTheDocument();
+    });
+
+    it("forwards the resolved youtube id so submit doesn't re-resolve it", async () => {
+      // MysteryMixClub-0rkm: /songs/resolve already paid for this lookup. Dropping
+      // the id here is what made every song cost two search.list calls instead of
+      // one, against a bucket of only 100 per day.
+      const user = userEvent.setup();
+      mockGetMine.mockResolvedValue([]);
+      mockResolveSong.mockResolvedValue(resolved("I2", "Song Two", "dQw4w9WgXcQ"));
+      mockSubmitSong.mockResolvedValue(mine({ id: "s2", title: "Song Two" }));
+      renderMix();
+
+      await screen.findByRole("heading", { name: /submit a song/i });
+      await composeAndSubmit(user);
+
+      expect(mockSubmitSong).toHaveBeenCalledWith(
+        "r1",
+        expect.objectContaining({ isrc: "I2", youtube_video_id: "dQw4w9WgXcQ" }),
+      );
+    });
+
+    it("omits the youtube id for a source-only pick", async () => {
+      // The server derives the exact id from source_key; a guessed one must never
+      // override it (MYS-201).
+      const user = userEvent.setup();
+      mockGetMine.mockResolvedValue([]);
+      mockResolveSong.mockResolvedValue({
+        ...resolved("", "Source Pick", "dQw4w9WgXcQ"),
+        isrc: null,
+        source: "bandcamp",
+        source_key: "bandcamp:artist/track",
+      } as Awaited<ReturnType<typeof resolveSong>>);
+      mockSubmitSong.mockResolvedValue(mine({ id: "s3", title: "Source Pick" }));
+      renderMix();
+
+      await screen.findByRole("heading", { name: /submit a song/i });
+      await composeAndSubmit(user);
+
+      const payload = mockSubmitSong.mock.calls[0][1];
+      expect(payload).toEqual(expect.objectContaining({ source_key: "bandcamp:artist/track" }));
+      expect(payload).not.toHaveProperty("youtube_video_id");
     });
 
     it("change song edits the existing submission in place via editSubmission", async () => {
@@ -2053,8 +2095,12 @@ describe("MixDetailRoute", () => {
       renderMix();
 
       // Every song is a votable toggle now — vibing is private during voting.
-      expect(await screen.findByRole("button", { name: "add a vote to Debaser" })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "add a vote to Ambient Drift" })).toBeInTheDocument();
+      expect(
+        await screen.findByRole("button", { name: "add a vote to Debaser" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "add a vote to Ambient Drift" }),
+      ).toBeInTheDocument();
       // No separate "just vibing" section or "along for the ride" copy.
       expect(screen.queryByRole("heading", { name: /just vibing/i })).not.toBeInTheDocument();
       expect(screen.queryByText(/along for the ride/i)).not.toBeInTheDocument();
@@ -2071,7 +2117,9 @@ describe("MixDetailRoute", () => {
       expect(await screen.findByText(/you sit voting out/i)).toBeInTheDocument();
       // no vote controls
       expect(screen.queryByRole("button", { name: /cast votes/i })).not.toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: "add a vote to Debaser" })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "add a vote to Debaser" }),
+      ).not.toBeInTheDocument();
       // playlist still visible
       expect(screen.getByText("Debaser")).toBeInTheDocument();
     });
@@ -2095,7 +2143,9 @@ describe("MixDetailRoute", () => {
       expect(await screen.findByText(/you sit voting out/i)).toBeInTheDocument();
       // no vote controls
       expect(screen.queryByRole("button", { name: /cast votes/i })).not.toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: "add a vote to Debaser" })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "add a vote to Debaser" }),
+      ).not.toBeInTheDocument();
       // playlist still visible
       expect(screen.getByText("Debaser")).toBeInTheDocument();
     });
@@ -2116,7 +2166,9 @@ describe("MixDetailRoute", () => {
       renderMix();
 
       // The song is a votable toggle and there's no sit-out message.
-      expect(await screen.findByRole("button", { name: "add a vote to Debaser" })).toBeInTheDocument();
+      expect(
+        await screen.findByRole("button", { name: "add a vote to Debaser" }),
+      ).toBeInTheDocument();
       expect(screen.queryByText(/you sit voting out/i)).not.toBeInTheDocument();
     });
 
@@ -2417,7 +2469,9 @@ describe("MixDetailRoute", () => {
 
       // It's a votable toggle like any other, and the old vibing-only
       // "can't vote on this one — leave a note instead" hint is gone entirely.
-      expect(await screen.findByRole("button", { name: "add a vote to Ambient Drift" })).toBeInTheDocument();
+      expect(
+        await screen.findByRole("button", { name: "add a vote to Ambient Drift" }),
+      ).toBeInTheDocument();
       expect(screen.queryByText(/can't vote on this one/i)).not.toBeInTheDocument();
     });
 

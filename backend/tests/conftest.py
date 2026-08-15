@@ -45,6 +45,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from httpx import ASGITransport, AsyncClient
 
+from app.services.youtube_resolver import YouTubeLookup
 from app.config import Settings, get_settings
 from app.db.base import Base
 from app.db.session import get_db
@@ -239,6 +240,11 @@ class _OfflineYouTubeResolver:
     """Default resolver for the shared client fixture: never hits the real
     YouTube Data API. Tests that need resolution behaviour override this with
     their own fake; everyone else gets a safe no-op (always None)."""
+
+    async def resolve(self, title, artist=None):
+        """ADR 0015: these fakes always stand in for a reachable YouTube, so
+        every outcome is an answer. Delegates so each fake keeps one behaviour."""
+        return YouTubeLookup(video_id=await self.video_id_for(title, artist), answered=True)
 
     async def video_id_for(self, title: str, artist: str | None = None) -> str | None:
         return None

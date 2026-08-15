@@ -11,7 +11,7 @@ import {
   getApplePlaylistLink,
   type UnmatchedTrack,
 } from "../services/api";
-import { authorizeAppleMusic } from "../services/musickit";
+import { AppleMusicError, authorizeAppleMusic, preloadAppleMusic } from "../services/musickit";
 
 /**
  * Per-player Apple Music playlist for a mix (MYS-108).
@@ -29,7 +29,16 @@ import { authorizeAppleMusic } from "../services/musickit";
  * MYS-201/GH-232). Unlike Spotify's read-only link, this is only known once
  * this player has generated their own copy — `getApplePlaylistLink` (the
  * read-only check on mount) doesn't return it, only `createApplePlaylist`'s
- * result does — so the list stays empty until `handleGenerate` succeeds.
+ * result does. Spotify can recompute its gap on read from each submission's
+ * cached `spotify_track_uri`; Apple can't, because matching is per-user and
+ * per-storefront, so there is no shared cached column to read back.
+ *
+ * That makes "we don't know the gap" a real state, and it is tracked as one:
+ * `unmatched` is `null` until a generate result arrives, distinct from `[]`
+ * for a playlist measured and found complete. The status line must never
+ * collapse the two — reporting "all N songs" off an unmeasured playlist is
+ * what MysteryMixClub-sdfd was, and it contradicted the "songs that may not be
+ * on all playlists" list rendered directly beneath it on the same screen.
  *
  * **No Apple Music red anywhere.** Third-party brand values live in
  * `lib/platformBrand.ts`, not in the theme, and this component has never used
@@ -51,11 +60,21 @@ import { authorizeAppleMusic } from "../services/musickit";
  *  so a disabled control can't pick up the hover color. */
 const NOTE_CLASS = "font-mono text-sm text-ink-muted";
 
+// Apple Music's own home page — a generic, always-resolvable destination for
+// mobile (MysteryMixClub-ap25). Deliberately not a specific resource: MYS-190's
+// `/library` and MYS-214/o3r8's `/library/playlist/{id}` were both tried on
+// mobile and both failed — the bare library link 404s, and the direct
+// playlist link shows "Item Not Available" even opened via the native Music
+// app's own `music://` scheme (so it's not a Safari-session or Universal
+// Links problem; the specific library resource just doesn't resolve for a
+// mobile client). Desktop's web player resolves the direct link fine and is
+// unaffected by any of this — see `opensExactPlaylist` below.
+const APPLE_MUSIC_HOME_URL = "https://music.apple.com";
+
 /**
- * True on a mobile OS with a native Apple Music app — where a direct
- * library-playlist link dead-ends with "Item Not Available" (MYS-190). The
- * desktop web player resolves that same link fine (MYS-214), so this is the
- * one thing that decides which URL {@link AppleMusicPlaylist} renders.
+ * True on a mobile OS with a native Apple Music app, where the direct
+ * library-playlist link cannot be trusted (MysteryMixClub-ap25 — see
+ * `APPLE_MUSIC_HOME_URL` above).
  *
  * iPadOS's Safari reports as "Macintosh" in its user-agent string (Apple
  * dropped the iPad identifier to unify with desktop Safari around iOS 13),
@@ -70,17 +89,22 @@ function isAppleMobileOS(): boolean {
 }
 
 export function AppleMusicPlaylist({ mixId, entryCount }: { mixId: string; entryCount?: number }) {
+  // Computed once — the OS doesn't change mid-session.
+  const [isMobile] = useState(isAppleMobileOS);
   // undefined = still loading, null = not configured / unavailable
   const [developerToken, setDeveloperToken] = useState<string | null | undefined>(undefined);
   const [playlistUrl, setPlaylistUrl] = useState<string | null | undefined>(undefined);
   const [directPlaylistUrl, setDirectPlaylistUrl] = useState<string | null>(null);
   const [playlistName, setPlaylistName] = useState<string | null>(null);
-  const [unmatched, setUnmatched] = useState<UnmatchedTrack[]>([]);
+  // null = the gap is unknown on this render, [] = known and genuinely complete.
+  // The distinction is the whole fix for MysteryMixClub-sdfd: Apple's gap is only
+  // ever reported by `createApplePlaylist`, so on a plain page load we have a
+  // playlist link and no idea what is on it. Defaulting to [] made the status
+  // read "all N songs" — completeness asserted from absence of data.
+  const [unmatched, setUnmatched] = useState<UnmatchedTrack[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSignInModal, setShowSignInModal] = useState(false);
-  // Computed once — the OS doesn't change mid-session.
-  const [isMobile] = useState(isAppleMobileOS);
 
   useEffect(() => {
     let active = true;
@@ -113,16 +137,29 @@ export function AppleMusicPlaylist({ mixId, entryCount }: { mixId: string; entry
     };
   }, [mixId]);
 
+  // Warm Apple's SDK while the interstitial is on screen (MysteryMixClub-ljl5).
+  // Loading and configuring MusicKit is the slow half, and doing it *after* the
+  // tap cost the user activation that mobile Safari requires to open the
+  // sign-in window — so the window never opened and the row hung on "building…".
+  // The interstitial is two sentences the user has to read, which is exactly the
+  // head start this needs. Failure is swallowed here on purpose: they have not
+  // asked for anything yet, and handleGenerate reports it if they go on.
+  useEffect(() => {
+    if (!showSignInModal || !developerToken) return;
+    preloadAppleMusic(developerToken).catch(() => {});
+  }, [showSignInModal, developerToken]);
+
   async function handleGenerate() {
     if (!developerToken) return;
     setShowSignInModal(false);
     setBusy(true);
     setError(null);
     try {
-      // Apple's popup must open from the click, so authorize before any await
-      // on our own API. Called from the modal's own "continue" button, which
-      // is itself a fresh user gesture — the popup-blocker-safe requirement
-      // survives the extra step.
+      // Apple's sign-in window must open from the click, so authorize before any
+      // await on our own API. Called from the modal's own "continue" button,
+      // which is itself a fresh user gesture. The preload above is what makes
+      // that gesture survive: warm, authorizeAppleMusic reaches Apple's
+      // authorize() with nothing awaited in front of it.
       const musicUserToken = await authorizeAppleMusic(developerToken);
       const result = await createApplePlaylist(mixId, musicUserToken);
       setPlaylistUrl(result.playlist_url);
@@ -134,6 +171,13 @@ export function AppleMusicPlaylist({ mixId, entryCount }: { mixId: string; entry
         setError("apple music connection expired. try again.");
       } else if (err instanceof ApiError && err.status === 503) {
         setError("apple music isn't available right now.");
+      } else if (err instanceof AppleMusicError && err.kind === "sdk_blocked") {
+        // Almost always a content blocker or Private Relay eating Apple's
+        // script. Naming the likely cause is the difference between a dead end
+        // and something the user can actually go and fix.
+        setError("couldn't load apple music. a content or ad blocker may be blocking it.");
+      } else if (err instanceof AppleMusicError && err.kind === "authorize_failed") {
+        setError("apple's sign-in didn't finish. try again, and allow the window if asked.");
       } else {
         setError("couldn't build the playlist. try again.");
       }
@@ -147,14 +191,34 @@ export function AppleMusicPlaylist({ mixId, entryCount }: { mixId: string; entry
   if (developerToken === undefined || playlistUrl === undefined) return null;
   if (developerToken === null) return null;
 
-  // Desktop's web player resolves a direct playlist link; iOS/Android's native
-  // app dead-ends on the same URL with "Item Not Available" (MYS-190), so
-  // mobile gets the Library root instead and has to make the last hop itself —
-  // the playlist name is how they find it (MYS-214).
+  // MYS-190, MYS-214, and MysteryMixClub-o3r8 each tried a different mobile
+  // link (bare `/library`, then the direct playlist link) and each was
+  // believed fixed on the strength of one on-device test that didn't hold up
+  // on a fresh link-account-and-generate session. MysteryMixClub-ap25 settled
+  // it: on mobile, always send the member to Apple Music's own home page and
+  // tell them the playlist's name so they can find it themselves. Desktop is
+  // unaffected — its web player has resolved the direct playlist link
+  // reliably since MYS-214, and nothing here changes that path.
   const opensExactPlaylist = !isMobile && !!directPlaylistUrl;
-  const targetUrl = opensExactPlaylist ? directPlaylistUrl : playlistUrl;
+  const hasPlaylist = playlistUrl != null;
+  const targetUrl = !hasPlaylist
+    ? null
+    : isMobile
+      ? APPLE_MUSIC_HOME_URL
+      : (directPlaylistUrl ?? playlistUrl);
+  const actionLabel = opensExactPlaylist
+    ? "open playlist in apple music"
+    : isMobile
+      ? "open the apple music app"
+      : "open your apple music library";
+  const actionText = opensExactPlaylist
+    ? "open playlist"
+    : isMobile
+      ? "open apple music"
+      : "open library";
 
-  const matched = entryCount !== undefined ? entryCount - unmatched.length : undefined;
+  const matched =
+    unmatched !== null && entryCount !== undefined ? entryCount - unmatched.length : undefined;
 
   return (
     <PlaylistRow
@@ -162,19 +226,26 @@ export function AppleMusicPlaylist({ mixId, entryCount }: { mixId: string; entry
       mark={<ServiceMark service="appleMusic" />}
       status={
         targetUrl
-          ? unmatched.length > 0
-            ? // A gap, phrased as a count when the total is known. When it is
-              // not, say how many are missing rather than falling back to "all
-              // songs" — which would be an outright lie in exactly the case the
-              // user most needs the truth.
-              matched !== undefined
-              ? `${matched} of ${entryCount} songs`
-              : `${unmatched.length} missing`
-            : entryCount !== undefined
-              ? // Phrased exactly as the YouTube row phrases it, so the three
-                // statuses are directly comparable rather than merely similar.
-                `all ${entryCount} songs`
-              : "all songs"
+          ? unmatched === null
+            ? // The playlist exists but this render never learned what is on it
+              // (the read endpoint returns only the link). Say what we can stand
+              // behind — it is in your library — rather than claiming a
+              // completeness we did not measure. Persisting the gap so a revisit
+              // can report it properly is MysteryMixClub-01u3.
+              "in your library"
+            : unmatched.length > 0
+              ? // A gap, phrased as a count when the total is known. When it is
+                // not, say how many are missing rather than falling back to "all
+                // songs" — which would be an outright lie in exactly the case the
+                // user most needs the truth.
+                matched !== undefined
+                ? `${matched} of ${entryCount} songs`
+                : `${unmatched.length} missing`
+              : entryCount !== undefined
+                ? // Phrased exactly as the YouTube row phrases it, so the three
+                  // statuses are directly comparable rather than merely similar.
+                  `all ${entryCount} songs`
+                : "all songs"
           : busy
             ? "building…"
             : // Apple is the one service with no shareable link — it builds into
@@ -185,14 +256,9 @@ export function AppleMusicPlaylist({ mixId, entryCount }: { mixId: string; entry
       }
       action={
         targetUrl ? (
-          <PlaylistLink
-            href={targetUrl}
-            label={
-              opensExactPlaylist ? "open playlist in apple music" : "open your apple music library"
-            }
-          >
+          <PlaylistLink href={targetUrl} label={actionLabel}>
             <MusicNoteIcon />
-            {opensExactPlaylist ? "open playlist" : "open library"}
+            {actionText}
           </PlaylistLink>
         ) : (
           <PlaylistButton
@@ -211,10 +277,10 @@ export function AppleMusicPlaylist({ mixId, entryCount }: { mixId: string; entry
         <p className={NOTE_CLASS}>
           {playlistName ? (
             <>
-              find <span className="text-ink">“{playlistName}”</span> in your playlists
+              find <span className="text-ink">“{playlistName}”</span> in your library
             </>
           ) : (
-            "find it in your Apple Music playlists"
+            "find it in your Apple Music library"
           )}
         </p>
       ) : null}

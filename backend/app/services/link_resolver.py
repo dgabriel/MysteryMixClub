@@ -80,6 +80,13 @@ class ResolvedSong(BaseModel):
     # Keys are a subset of {"spotify", "appleMusic", "deezer", "youtube",
     # "youtubeMusic", "bandcamp"}.
     platforms: dict[str, str]
+    # The exact YouTube video id behind the `youtube` link above, when one was
+    # resolved. Echoed back on submit so the server doesn't spend a second
+    # search.list call re-resolving the song the client just picked
+    # (MysteryMixClub-0rkm) — search.list has its own 100-calls/day bucket, so
+    # halving calls per song doubles the ceiling. None when nothing resolved
+    # (the youtube link is then a search deep link, not a watch URL).
+    youtube_video_id: str | None = None
 
 
 class SongIdentity(BaseModel):

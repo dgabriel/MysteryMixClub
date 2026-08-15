@@ -1,0 +1,17 @@
+# MysteryMixClub YouTube id retention timer — production (MysteryMixClub-7a7x, ADR 0016).
+# Fires mysterymixclub-expire-youtube-ids.service daily. Daily is ample for a
+# 30-day window and keeps the refresh cost spread thin; the sweep is idempotent,
+# so an extra run is a no-op.
+# Persistent=true so a missed run (reboot / downtime) fires once on the next
+# boot rather than being skipped — a compliance window must not slip because the
+# box was off.
+# Install: see mysterymixclub-expire-youtube-ids-prod.service header.
+[Unit]
+Description=Run the MysteryMixClub YouTube id retention sweep daily (production)
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target

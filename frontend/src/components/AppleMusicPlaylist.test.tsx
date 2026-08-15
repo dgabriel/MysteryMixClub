@@ -8,7 +8,7 @@ import {
   getAppleDeveloperToken,
   getApplePlaylistLink,
 } from "../services/api";
-import { authorizeAppleMusic } from "../services/musickit";
+import { AppleMusicError, authorizeAppleMusic, preloadAppleMusic } from "../services/musickit";
 
 vi.mock("../services/api", async () => {
   const actual = await vi.importActual<typeof import("../services/api")>("../services/api");
@@ -20,13 +20,21 @@ vi.mock("../services/api", async () => {
   };
 });
 
-// Stubbed so tests never load Apple's SDK or open a popup.
-vi.mock("../services/musickit", () => ({ authorizeAppleMusic: vi.fn() }));
+// Stubbed so tests never load Apple's SDK or open a sign-in window. Only the
+// two calls are stubbed — AppleMusicError comes through real, because the
+// component branches on `instanceof` and a fake class would never match.
+vi.mock("../services/musickit", async () => {
+  const actual = await vi.importActual<typeof import("../services/musickit")>(
+    "../services/musickit",
+  );
+  return { ...actual, authorizeAppleMusic: vi.fn(), preloadAppleMusic: vi.fn() };
+});
 
 const mockToken = vi.mocked(getAppleDeveloperToken);
 const mockLink = vi.mocked(getApplePlaylistLink);
 const mockCreate = vi.mocked(createApplePlaylist);
 const mockAuthorize = vi.mocked(authorizeAppleMusic);
+const mockPreload = vi.mocked(preloadAppleMusic);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -37,6 +45,7 @@ beforeEach(() => {
     playlist_name: null,
   });
   mockAuthorize.mockResolvedValue("mut-123");
+  mockPreload.mockResolvedValue({ authorize: vi.fn() });
 });
 
 describe("AppleMusicPlaylist", () => {
@@ -91,8 +100,8 @@ describe("AppleMusicPlaylist", () => {
   });
 
   it("shows the personal link when one was already generated (no direct url)", async () => {
-    // No direct_playlist_url (e.g. a pre-MYS-214 row): falls back to the
-    // library link and "look for it by name" prompt on every platform.
+    // No direct_playlist_url — a pre-MYS-214 row that never got one recorded.
+    // Falls back to the bare library link and a "look for it by name" prompt.
     mockLink.mockResolvedValue({
       playlist_url: "https://music.apple.com/library",
       direct_playlist_url: null,
@@ -101,12 +110,10 @@ describe("AppleMusicPlaylist", () => {
 
     render(<AppleMusicPlaylist mixId="r1" />);
 
-    // Links the LIBRARY, never the playlist: iOS dead-ends on a library-playlist
-    // deep link with "Item Not Available" (MYS-190).
     const link = await screen.findByRole("link", { name: /open your apple music library/i });
     expect(link).toHaveAttribute("href", "https://music.apple.com/library");
-    // Apple exposes no deep link to a library playlist, so the member makes the
-    // last hop by hand and the title is how they find it (MYS-190).
+    // Apple exposes no deep link in this fallback case, so the member makes
+    // the last hop by hand and the title is how they find it (MYS-190).
     expect(screen.getByText(/find/i)).toBeInTheDocument();
     expect(screen.getByText(/Mix 1/)).toBeInTheDocument();
   });
@@ -124,9 +131,16 @@ describe("AppleMusicPlaylist", () => {
     expect(
       await screen.findByRole("link", { name: /open your apple music library/i }),
     ).toHaveAttribute("href", "https://music.apple.com/library");
-    expect(screen.getByText(/find it in your Apple Music playlists/i)).toBeInTheDocument();
+    expect(screen.getByText(/find it in your Apple Music library/i)).toBeInTheDocument();
   });
 
+  // MysteryMixClub-ap25: MYS-190's bare `/library` link and MYS-214/o3r8's
+  // direct playlist link were each believed fixed and each failed on a fresh
+  // mobile session — the direct link even fails opened via the native Music
+  // app's own `music://` scheme, ruling out Safari/session/navigation as the
+  // cause. Desktop's web player has resolved the direct link reliably since
+  // MYS-214 and is left alone; mobile now always gets Apple Music's home page
+  // and finds the playlist by name.
   it("on desktop, links straight to the exact playlist (MYS-214)", async () => {
     // jsdom's default user-agent has no mobile/iPad markers, so the component
     // treats the test environment as desktop.
@@ -141,10 +155,10 @@ describe("AppleMusicPlaylist", () => {
     const link = await screen.findByRole("link", { name: /open playlist in apple music/i });
     expect(link).toHaveAttribute("href", "https://music.apple.com/library/playlist/p.ABC");
     // No "find it yourself" prompt needed — the link goes straight there.
-    expect(screen.queryByText(/find it in your Apple Music playlists/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/find it in your Apple Music library/i)).not.toBeInTheDocument();
   });
 
-  it("on mobile, ignores the direct link and prompts to find it by name", async () => {
+  it("on mobile, ignores the direct link and sends the member to apple music's home page", async () => {
     const uaSpy = vi
       .spyOn(window.navigator, "userAgent", "get")
       .mockReturnValue(
@@ -158,9 +172,10 @@ describe("AppleMusicPlaylist", () => {
 
     render(<AppleMusicPlaylist mixId="r1" />);
 
-    const link = await screen.findByRole("link", { name: /open your apple music library/i });
-    expect(link).toHaveAttribute("href", "https://music.apple.com/library");
+    const link = await screen.findByRole("link", { name: /open the apple music app/i });
+    expect(link).toHaveAttribute("href", "https://music.apple.com");
     expect(screen.getByText(/find/i)).toBeInTheDocument();
+    expect(screen.getByText(/Mix 1/)).toBeInTheDocument();
 
     uaSpy.mockRestore();
   });
@@ -184,8 +199,8 @@ describe("AppleMusicPlaylist", () => {
 
     render(<AppleMusicPlaylist mixId="r1" />);
 
-    const link = await screen.findByRole("link", { name: /open your apple music library/i });
-    expect(link).toHaveAttribute("href", "https://music.apple.com/library");
+    const link = await screen.findByRole("link", { name: /open the apple music app/i });
+    expect(link).toHaveAttribute("href", "https://music.apple.com");
     expect(screen.getByText(/find/i)).toBeInTheDocument();
 
     uaSpy.mockRestore();
@@ -230,15 +245,15 @@ describe("AppleMusicPlaylist", () => {
 
     await waitFor(() => expect(mockAuthorize).toHaveBeenCalledWith("dev-token"));
     expect(mockCreate).toHaveBeenCalledWith("r1", "mut-123");
-    // Desktop (jsdom default) gets the exact-playlist link straight away.
+    // The exact-playlist link comes back straight away.
     expect(
       await screen.findByRole("link", { name: /open playlist in apple music/i }),
     ).toHaveAttribute("href", "https://music.apple.com/library/playlist/p.NEW");
-    // No playlist name here, deliberately. On desktop the link opens the exact
-    // playlist, so naming it was pure confirmation; the row's status already
-    // reports what landed. The name survives only in the MOBILE case, where
-    // Apple exposes no deep link and the title is genuinely how you find it
-    // (MYS-214) — see the mobile test above.
+    // No playlist name here, deliberately: the link opens the exact playlist,
+    // so naming it was pure confirmation, and the row's status already reports
+    // what landed. The name earns its keep only in the no-direct-url fallback
+    // case, where Apple exposes no deep link and the title is genuinely how
+    // the member finds it (see "shows the personal link…" above).
     expect(screen.queryByText(/Mix 1/)).not.toBeInTheDocument();
   });
 
@@ -285,5 +300,142 @@ describe("AppleMusicPlaylist", () => {
     const { container } = render(<AppleMusicPlaylist mixId="r1" />);
 
     expect(container).toBeEmptyDOMElement();
+  });
+
+  // MysteryMixClub-sdfd. The read endpoint returns the link and nothing else, so
+  // a plain page load cannot know the gap. Claiming completeness there told
+  // live users all their songs were on a playlist that was missing three.
+  it("does not claim completeness for a playlist it never measured", async () => {
+    mockLink.mockResolvedValue({
+      playlist_url: "https://music.apple.com/library",
+      direct_playlist_url: "https://music.apple.com/library/playlist/p.ABC",
+      playlist_name: "Mix: Mix 1",
+    });
+
+    render(<AppleMusicPlaylist mixId="r1" entryCount={12} />);
+
+    expect(await screen.findByText(/in your library/i)).toBeInTheDocument();
+    expect(screen.queryByText(/all 12 songs/i)).not.toBeInTheDocument();
+    // Nor the count phrasing — we know nothing, not that nothing is missing.
+    expect(screen.queryByText(/of 12 songs/i)).not.toBeInTheDocument();
+  });
+
+  it("says all N songs only once a build reports the playlist complete", async () => {
+    mockCreate.mockResolvedValue({
+      playlist_url: "https://music.apple.com/library",
+      direct_playlist_url: "https://music.apple.com/library/playlist/p.NEW",
+      playlist_name: "Mix: Mix 1",
+      track_count: 12,
+      total_count: 12,
+      unmatched: [],
+    });
+
+    render(<AppleMusicPlaylist mixId="r1" entryCount={12} />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: /build this playlist in apple music/i }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: /continue to apple music/i }));
+
+    expect(await screen.findByText(/all 12 songs/i)).toBeInTheDocument();
+  });
+
+  // MysteryMixClub-ljl5. On mobile the sign-in window never opened and the row
+  // hung on "building…" forever: the SDK was loaded and configured *after* the
+  // tap, which cost the user activation Safari requires to open it.
+  it("warms the apple sdk while the interstitial is on screen, before the tap", async () => {
+    render(<AppleMusicPlaylist mixId="r1" />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /build this playlist in apple music/i }),
+    );
+
+    // Warmed by the interstitial itself, not by the button that commits.
+    await waitFor(() => expect(mockPreload).toHaveBeenCalledWith("dev-token"));
+    expect(mockAuthorize).not.toHaveBeenCalled();
+  });
+
+  it("does not warm the sdk before the user opens the interstitial", async () => {
+    render(<AppleMusicPlaylist mixId="r1" />);
+
+    await screen.findByRole("button", { name: /build this playlist in apple music/i });
+
+    // A member who never touches Apple never pays for the download.
+    expect(mockPreload).not.toHaveBeenCalled();
+  });
+
+  it("blames the blocker when apple's sdk cannot load, and stays retryable", async () => {
+    mockAuthorize.mockRejectedValue(new AppleMusicError("sdk_blocked", "blocked"));
+
+    render(<AppleMusicPlaylist mixId="r1" />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: /build this playlist in apple music/i }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: /continue to apple music/i }));
+
+    expect(await screen.findByText(/content or ad blocker may be blocking it/i)).toBeInTheDocument();
+    // Never stranded on "building…" — the whole point of the fix.
+    expect(
+      screen.getByRole("button", { name: /build this playlist in apple music/i }),
+    ).toBeEnabled();
+  });
+
+  it("offers sign-in advice when apple's authorize never completes", async () => {
+    mockAuthorize.mockRejectedValue(new AppleMusicError("authorize_failed", "timed out"));
+
+    render(<AppleMusicPlaylist mixId="r1" />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: /build this playlist in apple music/i }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: /continue to apple music/i }));
+
+    expect(await screen.findByText(/apple's sign-in didn't finish/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /build this playlist in apple music/i }),
+    ).toBeEnabled();
+  });
+
+  it("reports the gap as a count when a build finds songs missing", async () => {
+    mockCreate.mockResolvedValue({
+      playlist_url: "https://music.apple.com/library",
+      direct_playlist_url: "https://music.apple.com/library/playlist/p.NEW",
+      playlist_name: "Mix: Mix 1",
+      track_count: 9,
+      total_count: 12,
+      unmatched: [
+        {
+          submission_id: "s1",
+          title: "One",
+          artist: "A",
+          reason: "source_only",
+          source: "bandcamp",
+          source_url: "https://a.bandcamp.com/track/one",
+        },
+        {
+          submission_id: "s2",
+          title: "Two",
+          artist: "B",
+          reason: "source_only",
+          source: "youtube",
+          source_url: "https://youtu.be/xyz",
+        },
+        {
+          submission_id: "s3",
+          title: "Three",
+          artist: "C",
+          reason: "no_catalog_match",
+          source: null,
+          source_url: null,
+        },
+      ],
+    });
+
+    render(<AppleMusicPlaylist mixId="r1" entryCount={12} />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: /build this playlist in apple music/i }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: /continue to apple music/i }));
+
+    expect(await screen.findByText(/9 of 12 songs/i)).toBeInTheDocument();
+    expect(screen.queryByText(/all 12 songs/i)).not.toBeInTheDocument();
   });
 });

@@ -24,6 +24,7 @@ const SONG: ResolvedSong = {
   source_key: null,
   source_url: null,
   bandcamp_track_id: null,
+  youtube_video_id: null,
   platforms: {
     spotify: "https://open.spotify.com/track/2",
     youtube: "https://youtube.com/watch?v=z",

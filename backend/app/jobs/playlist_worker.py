@@ -24,10 +24,12 @@ one runs continuously (``Type=simple``, ``Restart=on-failure`` — see
   ``get_shared_connection``, see ``_generate_for_job`` below) — no sync/async
   bridge needed, this codebase is already fully async.
 
-Only ``provider == "spotify"`` jobs are dequeued in Slice 1. ``"apple"`` is a
-valid schema value (see ``app.models.playlist_job``'s module docstring) but no
-call site enqueues one yet, so none should ever appear in the queue today;
-skip is a defensive no-op if one somehow does, not a normal outcome.
+Two providers are dequeued today: ``"spotify"`` (playlist generation, Slice 1)
+and ``"youtube"`` (per-submission video-id backfill, ADR 0015 — enqueued by the
+playlist read paths in place of the serial in-request lookups they used to do).
+``"apple"`` is a valid schema value (see ``app.models.playlist_job``'s module
+docstring) but no call site enqueues one yet, so none should ever appear in the
+queue today; skip is a defensive no-op if one somehow does, not a normal outcome.
 
 **Stale ``running`` reclaim** (review finding on the initial Slice 1 PR): a
 worker crash between claiming a job (``status="running"``) and recording its
@@ -103,6 +105,8 @@ from app.services.spotify_playlist_generation import (
     playlist_account_user_id,
 )
 from app.services.spotify_token_crypto import SpotifyTokenCryptoError
+from app.services.youtube_backfill import backfill_mix
+from app.services.youtube_resolver import YouTubeResolver, get_youtube_resolver
 
 logger = logging.getLogger("app.jobs.playlist_worker")
 
@@ -110,7 +114,7 @@ logger = logging.getLogger("app.jobs.playlist_worker")
 # job's actual volume (a handful of mixes closing per week), not a tight loop.
 POLL_INTERVAL_SECONDS = 30
 # Providers this worker actually dequeues today — see module docstring.
-_HANDLED_PROVIDERS = ("spotify",)
+_HANDLED_PROVIDERS = ("spotify", "youtube")
 # A `running` job older than this is presumed crashed, not just slow — actual
 # generation is a handful of sequential HTTP calls (seconds), so 10 minutes is
 # generous headroom, not a tight deadline (see module docstring's "stale
@@ -218,13 +222,45 @@ async def _generate_for_job(
         return "complete", None
 
 
-async def _run_job(job: PlaylistJob, settings: Settings, client: SpotifyClient) -> None:
+async def _backfill_youtube_for_job(
+    mix_id: uuid.UUID, youtube: YouTubeResolver
+) -> tuple[str, str | None]:
+    """Resolve a mix's missing ``youtube_video_id`` values (ADR 0015), in its
+    own session, reporting the outcome as data like ``_generate_for_job``.
+
+    Always ``complete``: resolution is best-effort by contract, so an unmatched
+    track is a recorded miss, not a job failure. Only an actual exception (a DB
+    problem) reaches ``_run_job``'s handler.
+
+    A track YouTube refused to answer for is left pending rather than recorded,
+    so it comes back on the next job — the queue is the retry mechanism, which
+    is why this still completes rather than failing when the quota is spent.
+    """
+    async with async_session_factory() as db:
+        result = await backfill_mix(db, mix_id, youtube)
+        logger.info(
+            "playlist_worker: youtube backfill for mix %s resolved %d, unmatched %d, "
+            "left pending %d",
+            mix_id,
+            result.hits,
+            result.misses,
+            result.unreachable,
+        )
+        return "complete", None
+
+
+async def _run_job(
+    job: PlaylistJob, settings: Settings, client: SpotifyClient, youtube: YouTubeResolver
+) -> None:
     """Execute one claimed job. Never raises — a bad job must not crash the
     worker loop; every outcome (including an unreachable mix/club) ends in a
     recorded ``complete``/``failed`` status."""
     job_id, mix_id = job.id, job.mix_id
     try:
-        job_status, error = await _generate_for_job(mix_id, settings, client)
+        if job.provider == "youtube":
+            job_status, error = await _backfill_youtube_for_job(mix_id, youtube)
+        else:
+            job_status, error = await _generate_for_job(mix_id, settings, client)
         await _mark_job(job_id, job_status, error)
     except (SpotifyTokenCryptoError, SpotifyAuthError, SpotifyApiError) as exc:
         logger.exception("playlist_worker: job %s failed", job_id)
@@ -234,7 +270,7 @@ async def _run_job(job: PlaylistJob, settings: Settings, client: SpotifyClient) 
         await _mark_job(job_id, "failed", str(exc)[:_MAX_ERROR_LENGTH])
 
 
-async def _drain_queue(settings: Settings, client: SpotifyClient) -> int:
+async def _drain_queue(settings: Settings, client: SpotifyClient, youtube: YouTubeResolver) -> int:
     """Claim and run jobs one at a time until the queue (of handled
     providers) is empty. Returns how many jobs were processed, for logging."""
     processed = 0
@@ -243,7 +279,7 @@ async def _drain_queue(settings: Settings, client: SpotifyClient) -> int:
             job = await _claim_one_job(db)
         if job is None:
             return processed
-        await _run_job(job, settings, client)
+        await _run_job(job, settings, client, youtube)
         processed += 1
 
 
@@ -269,6 +305,7 @@ async def run_worker(
     *,
     settings: Settings | None = None,
     client: SpotifyClient | None = None,
+    youtube: YouTubeResolver | None = None,
     stop_event: asyncio.Event | None = None,
 ) -> None:
     """The worker's main loop: LISTEN + poll-fallback + drain, until
@@ -277,6 +314,7 @@ async def run_worker(
     ``stop_event`` — set it after the first drain to exercise exactly one pass."""
     settings = settings or get_settings()
     client = client or get_spotify_client()
+    youtube = youtube or get_youtube_resolver()
     stop_event = stop_event or asyncio.Event()
 
     wake = asyncio.Event()
@@ -302,7 +340,7 @@ async def run_worker(
                     reclaimed,
                     STALE_RUNNING_TIMEOUT_MINUTES,
                 )
-            processed = await _drain_queue(settings, client)
+            processed = await _drain_queue(settings, client, youtube)
             if processed:
                 logger.info("playlist_worker: processed %d job(s)", processed)
             await _wait_for_wake_or_stop(wake, stop_event, POLL_INTERVAL_SECONDS)

@@ -34,6 +34,7 @@ from app.services.link_resolver import (
     get_link_resolver,
 )
 from app.services.song_links import get_link_assembler
+from app.services.youtube_resolver import get_youtube_resolver
 
 RESOLVE_URL = "/api/v1/songs/resolve"
 SEARCH_URL = "/api/v1/songs/search"
@@ -94,7 +95,22 @@ def _auth_header(user_id: uuid.UUID) -> dict[str, str]:
     return {"Authorization": f"Bearer {create_access_token(user_id)}"}
 
 
-def _build_client(session_factory, *, resolver=None, deezer=None, assembler=None) -> AsyncClient:
+class _FakeYouTube:
+    """Records lookups so tests can assert /songs/resolve makes exactly one, and
+    that a source-only paste makes none (MysteryMixClub-0rkm)."""
+
+    def __init__(self, video_id: str | None = None):
+        self._video_id = video_id
+        self.calls: list[tuple[str, str | None]] = []
+
+    async def video_id_for(self, title, artist=None) -> str | None:
+        self.calls.append((title, artist))
+        return self._video_id
+
+
+def _build_client(
+    session_factory, *, resolver=None, deezer=None, assembler=None, youtube=None
+) -> AsyncClient:
     app = create_app()
 
     async def override_db() -> AsyncGenerator[AsyncSession, None]:
@@ -108,6 +124,10 @@ def _build_client(session_factory, *, resolver=None, deezer=None, assembler=None
         app.dependency_overrides[get_deezer_client] = lambda: deezer
     if assembler is not None:
         app.dependency_overrides[get_link_assembler] = lambda: assembler
+    # Always overridden, never optional: /songs/resolve resolves the video id
+    # itself now, so without this the suite would make live YouTube Data API
+    # calls against whatever key happens to be in the ambient .env.
+    app.dependency_overrides[get_youtube_resolver] = lambda: youtube or _FakeYouTube()
 
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
@@ -381,3 +401,45 @@ async def test_search_maps_service_errors(session_factory, db_session, error, ex
     async with _build_client(session_factory, deezer=_FakeDeezer(error=error)) as client:
         resp = await client.get(SEARCH_URL, params={"q": "x"}, headers=_auth_header(user.id))
     assert resp.status_code == expected
+
+
+# --------------------------------------------------------------------------- #
+# youtube_video_id passthrough (MysteryMixClub-0rkm)
+# --------------------------------------------------------------------------- #
+
+
+async def test_resolve_returns_the_resolved_video_id(session_factory, db_session):
+    """The id must come back so submit can reuse it instead of re-resolving.
+
+    Without this, one song costs two search.list calls against a dedicated
+    100-calls/day bucket — halving the platform's ceiling for no benefit.
+    """
+    user = await _seed_user(db_session)
+    youtube = _FakeYouTube(video_id="dQw4w9WgXcQ")
+
+    async with _build_client(
+        session_factory, assembler=_FakeAssembler(_ASSEMBLED), youtube=youtube
+    ) as client:
+        resp = await client.post(
+            RESOLVE_URL,
+            json={"title": "bad guy", "artist": "Billie Eilish", "isrc": "USUM71900764"},
+            headers=_auth_header(user.id),
+        )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["youtube_video_id"] == "dQw4w9WgXcQ"
+    assert youtube.calls == [("bad guy", "Billie Eilish")]  # resolved exactly once
+
+
+async def test_resolve_returns_null_video_id_when_nothing_matches(session_factory, db_session):
+    user = await _seed_user(db_session)
+
+    async with _build_client(
+        session_factory, assembler=_FakeAssembler(_ASSEMBLED), youtube=_FakeYouTube(None)
+    ) as client:
+        resp = await client.post(
+            RESOLVE_URL, json={"title": "bad guy"}, headers=_auth_header(user.id)
+        )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["youtube_video_id"] is None

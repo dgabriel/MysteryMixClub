@@ -78,12 +78,10 @@ def pick_catalog_song(
 # Apple Music's Library — the fallback when no direct playlist link is on
 # record (MYS-190). Rows created before MYS-214 never got one, and this is
 # what they still link, plus the playlist name so the member knows what to
-# look for. MYS-190 originally routed every mobile OS here unconditionally, on
-# an unverified belief that a direct library-playlist link dead-ended on iOS
-# ("Item Not Available"); MysteryMixClub-o3r8 tested that on a real iPhone and
-# found the reverse — this bare /library path 404s on mobile while the direct
-# link below opens fine. So this is a genuine fallback now, not a platform
-# branch: see :func:`library_playlist_url`.
+# look for. MysteryMixClub-o3r8 tested this bare /library path on a real
+# iPhone and found it 404s on mobile; it remains a real fallback for a
+# platform where :func:`library_playlist_url` does resolve (desktop) and a
+# playlist with no direct url recorded at all.
 LIBRARY_URL = "https://music.apple.com/library"
 
 
@@ -92,10 +90,16 @@ def library_playlist_url(playlist_id: str) -> str:
 
     Undocumented Apple behavior — this path isn't part of any published API —
     so if Apple ever breaks it, callers should degrade to :data:`LIBRARY_URL`,
-    not treat the failure as this app's bug. It was believed desktop-only from
-    MYS-214 until MysteryMixClub-o3r8 confirmed it also resolves on a real
-    iPhone; :data:`LIBRARY_URL` is not a mobile-specific link, just the
-    fallback for a playlist with no direct url recorded.
+    not treat the failure as this app's bug. Confirmed reliable on desktop's
+    web player since MYS-214. MysteryMixClub-o3r8 believed it also resolved on
+    a real iPhone, but that held on the tester's device only — a fresh
+    link-account-and-generate session, tested again in MysteryMixClub-ap25,
+    still gets "Item Not Available" on mobile, even opened via the native
+    Music app's own ``music://`` scheme (so it isn't a Safari/session/
+    navigation problem — the resource itself doesn't resolve for a mobile
+    client). The frontend (``AppleMusicPlaylist.tsx``) no longer shows this
+    link on mobile at all; it stays live for desktop and for any future
+    Apple-side fix that makes mobile resolution reliable.
     """
     return f"https://music.apple.com/library/playlist/{playlist_id}"
 

@@ -60,7 +60,37 @@ import { AppleMusicError, authorizeAppleMusic, preloadAppleMusic } from "../serv
  *  so a disabled control can't pick up the hover color. */
 const NOTE_CLASS = "font-mono text-sm text-ink-muted";
 
+// Apple Music's own home page — a generic, always-resolvable destination for
+// mobile (MysteryMixClub-ap25). Deliberately not a specific resource: MYS-190's
+// `/library` and MYS-214/o3r8's `/library/playlist/{id}` were both tried on
+// mobile and both failed — the bare library link 404s, and the direct
+// playlist link shows "Item Not Available" even opened via the native Music
+// app's own `music://` scheme (so it's not a Safari-session or Universal
+// Links problem; the specific library resource just doesn't resolve for a
+// mobile client). Desktop's web player resolves the direct link fine and is
+// unaffected by any of this — see `opensExactPlaylist` below.
+const APPLE_MUSIC_HOME_URL = "https://music.apple.com";
+
+/**
+ * True on a mobile OS with a native Apple Music app, where the direct
+ * library-playlist link cannot be trusted (MysteryMixClub-ap25 — see
+ * `APPLE_MUSIC_HOME_URL` above).
+ *
+ * iPadOS's Safari reports as "Macintosh" in its user-agent string (Apple
+ * dropped the iPad identifier to unify with desktop Safari around iOS 13),
+ * so a multi-touch "Mac" is treated as an iPad, not a real desktop.
+ */
+function isAppleMobileOS(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent;
+  const isKnownMobile = /iPhone|iPad|iPod|Android/.test(ua);
+  const isIPadReportingAsMac = /Macintosh/.test(ua) && navigator.maxTouchPoints > 1;
+  return isKnownMobile || isIPadReportingAsMac;
+}
+
 export function AppleMusicPlaylist({ mixId, entryCount }: { mixId: string; entryCount?: number }) {
+  // Computed once — the OS doesn't change mid-session.
+  const [isMobile] = useState(isAppleMobileOS);
   // undefined = still loading, null = not configured / unavailable
   const [developerToken, setDeveloperToken] = useState<string | null | undefined>(undefined);
   const [playlistUrl, setPlaylistUrl] = useState<string | null | undefined>(undefined);
@@ -161,26 +191,31 @@ export function AppleMusicPlaylist({ mixId, entryCount }: { mixId: string; entry
   if (developerToken === undefined || playlistUrl === undefined) return null;
   if (developerToken === null) return null;
 
-  // MYS-190 shipped believing iOS could not resolve a direct library-playlist
-  // link ("Item Not Available") and routed every mobile OS to the bare Library
-  // link instead — but that claim was never verified on a physical device.
-  // MysteryMixClub-o3r8 found the opposite on a real iPhone: the bare
-  // `/library` link 404s on mobile (so does a storefront-prefixed variant),
-  // while the direct playlist link — already used on desktop since MYS-214 —
-  // opens correctly. So there is no platform split any more: prefer the direct
-  // link everywhere, and fall back to the bare Library link only when a row
-  // genuinely has no direct url recorded (pre-MYS-214 rows never got one).
-  //
-  // o3r8's "opens correctly" held on its test device but not on a fresh
-  // link+generate session (MysteryMixClub-ap25): the link is
-  // `target="_blank"`, and iOS never hands a `target="_blank"` navigation off
-  // to the native Music app via Universal Links, so it renders inside
-  // Safari's own web view — which has no music.apple.com session, since
-  // MusicKit JS auth never creates one. `PlaylistLink`'s `sameTab` prop below
-  // is the actual fix; this comment block still explains why a direct link is
-  // used at all.
-  const opensExactPlaylist = !!directPlaylistUrl;
-  const targetUrl = directPlaylistUrl ?? playlistUrl;
+  // MYS-190, MYS-214, and MysteryMixClub-o3r8 each tried a different mobile
+  // link (bare `/library`, then the direct playlist link) and each was
+  // believed fixed on the strength of one on-device test that didn't hold up
+  // on a fresh link-account-and-generate session. MysteryMixClub-ap25 settled
+  // it: on mobile, always send the member to Apple Music's own home page and
+  // tell them the playlist's name so they can find it themselves. Desktop is
+  // unaffected — its web player has resolved the direct playlist link
+  // reliably since MYS-214, and nothing here changes that path.
+  const opensExactPlaylist = !isMobile && !!directPlaylistUrl;
+  const hasPlaylist = playlistUrl != null;
+  const targetUrl = !hasPlaylist
+    ? null
+    : isMobile
+      ? APPLE_MUSIC_HOME_URL
+      : (directPlaylistUrl ?? playlistUrl);
+  const actionLabel = opensExactPlaylist
+    ? "open playlist in apple music"
+    : isMobile
+      ? "open the apple music app"
+      : "open your apple music library";
+  const actionText = opensExactPlaylist
+    ? "open playlist"
+    : isMobile
+      ? "open apple music"
+      : "open library";
 
   const matched =
     unmatched !== null && entryCount !== undefined ? entryCount - unmatched.length : undefined;
@@ -221,15 +256,9 @@ export function AppleMusicPlaylist({ mixId, entryCount }: { mixId: string; entry
       }
       action={
         targetUrl ? (
-          <PlaylistLink
-            href={targetUrl}
-            label={
-              opensExactPlaylist ? "open playlist in apple music" : "open your apple music library"
-            }
-            sameTab
-          >
+          <PlaylistLink href={targetUrl} label={actionLabel}>
             <MusicNoteIcon />
-            {opensExactPlaylist ? "open playlist" : "open library"}
+            {actionText}
           </PlaylistLink>
         ) : (
           <PlaylistButton
@@ -248,10 +277,10 @@ export function AppleMusicPlaylist({ mixId, entryCount }: { mixId: string; entry
         <p className={NOTE_CLASS}>
           {playlistName ? (
             <>
-              find <span className="text-ink">“{playlistName}”</span> in your playlists
+              find <span className="text-ink">“{playlistName}”</span> in your library
             </>
           ) : (
-            "find it in your Apple Music playlists"
+            "find it in your Apple Music library"
           )}
         </p>
       ) : null}

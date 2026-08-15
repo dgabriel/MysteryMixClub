@@ -170,6 +170,15 @@ export function AppleMusicPlaylist({ mixId, entryCount }: { mixId: string; entry
   // opens correctly. So there is no platform split any more: prefer the direct
   // link everywhere, and fall back to the bare Library link only when a row
   // genuinely has no direct url recorded (pre-MYS-214 rows never got one).
+  //
+  // o3r8's "opens correctly" held on its test device but not on a fresh
+  // link+generate session (MysteryMixClub-ap25): the link is
+  // `target="_blank"`, and iOS never hands a `target="_blank"` navigation off
+  // to the native Music app via Universal Links, so it renders inside
+  // Safari's own web view — which has no music.apple.com session, since
+  // MusicKit JS auth never creates one. `PlaylistLink`'s `sameTab` prop below
+  // is the actual fix; this comment block still explains why a direct link is
+  // used at all.
   const opensExactPlaylist = !!directPlaylistUrl;
   const targetUrl = directPlaylistUrl ?? playlistUrl;
 
@@ -217,6 +226,7 @@ export function AppleMusicPlaylist({ mixId, entryCount }: { mixId: string; entry
             label={
               opensExactPlaylist ? "open playlist in apple music" : "open your apple music library"
             }
+            sameTab
           >
             <MusicNoteIcon />
             {opensExactPlaylist ? "open playlist" : "open library"}

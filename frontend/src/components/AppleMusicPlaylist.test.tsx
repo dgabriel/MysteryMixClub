@@ -112,6 +112,9 @@ describe("AppleMusicPlaylist", () => {
 
     const link = await screen.findByRole("link", { name: /open your apple music library/i });
     expect(link).toHaveAttribute("href", "https://music.apple.com/library");
+    // Same-tab navigation (MysteryMixClub-ap25): target="_blank" suppresses
+    // iOS's Universal Links handoff to the native Music app.
+    expect(link).not.toHaveAttribute("target");
     // Apple exposes no deep link in this fallback case, so the member makes
     // the last hop by hand and the title is how they find it (MYS-190).
     expect(screen.getByText(/find/i)).toBeInTheDocument();
@@ -150,6 +153,11 @@ describe("AppleMusicPlaylist", () => {
 
     const link = await screen.findByRole("link", { name: /open playlist in apple music/i });
     expect(link).toHaveAttribute("href", "https://music.apple.com/library/playlist/p.ABC");
+    // Same-tab navigation (MysteryMixClub-ap25): target="_blank" suppresses
+    // iOS's Universal Links handoff to the native Music app, which is what
+    // actually has a session for this private library item — Safari doesn't.
+    expect(link).not.toHaveAttribute("target");
+    expect(link).not.toHaveAttribute("rel");
     // No "find it yourself" prompt needed — the link goes straight there.
     expect(screen.queryByText(/find it in your Apple Music playlists/i)).not.toBeInTheDocument();
   });

@@ -145,3 +145,46 @@ jobs:
           pip install pip-audit
           pip-audit --skip-editable
         continue-on-error: true
+
+  flaught:
+    name: Flaught (adversarial review)
+    runs-on: ubuntu-latest
+    # ADR 0017: artifact-only for now (no PR comments, no pull-requests:write —
+    # this job stays inside the workflow's contents:read grant), non-blocking
+    # while the tool proves itself out on this repo. Exit code 1 (findings
+    # above the severity gate) and exit code 2 (config/LLM error, e.g. a
+    # missing secret on a fork PR) both just fail this one step, never the
+    # merge check.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so `origin/<base_ref>` resolves for the diff below —
+          # a shallow clone only has the PR's own commits.
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Flaught
+        run: npm install -g @flaught/core
+
+      - name: Adversarial review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          flaught review \
+            --base "origin/${{ github.base_ref }}" \
+            --pr-description "${{ github.event.pull_request.title }}" \
+            --output flaught-findings.json \
+            --quiet
+        continue-on-error: true
+
+      - name: Upload findings artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flaught-findings
+          path: flaught-findings.json
+          if-no-files-found: ignore

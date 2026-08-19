@@ -41,15 +41,20 @@ Three scoping questions had to be settled up front (2026-08-18):
 New `flaught` job in `.github/workflows/ci.yml`, sibling to `frontend` and
 `backend`, triggered by the same `pull_request` → `main`/`develop` event:
 
-- Installs `@flaught/core` fresh in the job (`npm install -g`), same ad hoc
-  pattern as `pip-audit` — not a pinned `package.json` dependency.
+- Installs `@flaught/core` fresh in the job (`npm install -g @flaught/core@<pinned version>`,
+  not a `package.json` dependency) — pinned to an exact version (Flaught
+  finding F-001) rather than floating on `latest`, so a newly published
+  version can't start running in CI unreviewed.
 - Checks out with `fetch-depth: 0` so `origin/<base_ref>` resolves for the
   diff (a shallow checkout only has the PR's own commits).
 - Runs `flaught review --base origin/${{ github.base_ref }} --pr-description
   "${{ github.event.pull_request.title }}" --output flaught-findings.json
   --quiet`, then uploads `flaught-findings.json` via
-  `actions/upload-artifact@v4` (`if: always()`, matching the
-  `backend-coverage` artifact's pattern).
+  `actions/upload-artifact@v7` (`if: always()`, matching the
+  `backend-coverage` artifact's pattern). Action versions across this repo's
+  workflows are tracked in `ci.yml`/`deploy-prod.yml` directly, not
+  duplicated here — see MysteryMixClub-la89 for the Node 20 → 24 /
+  actions-major-version bump this PR also carried.
 - Reads an LLM provider API key from a new GitHub Actions secret — the
   secret name matches whatever `llm.api_key_env` says in the committed
   `.advreview.yml` at repo root, which is also where the provider and model

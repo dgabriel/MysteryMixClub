@@ -172,7 +172,7 @@ jobs:
 
       - name: Adversarial review
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
         run: |
           flaught review \
             --base "origin/${{ github.base_ref }}" \

@@ -2,8 +2,12 @@
 # See https://github.com/flaught/core for full documentation
 #
 # Landed via ADR 0017 (MysteryMixClub-j8ij): artifact-only (no PR comments,
-# no pull-requests:write), full LLM pass via Anthropic, non-blocking
-# (continue-on-error) in .github/workflows/ci.yml until proven out.
+# no pull-requests:write), full LLM pass, non-blocking (continue-on-error)
+# in .github/workflows/ci.yml until proven out.
+#
+# Provider swapped to Ollama Cloud for evaluation — see the bead for
+# context; ADR 0017's text still says "via Anthropic" and hasn't been
+# updated to match yet.
 
 version: 1
 
@@ -15,9 +19,10 @@ stack:
 
 # ── LLM provider ───────────────────────────────────────────
 llm:
-  provider: anthropic
-  model: claude-sonnet-5
-  api_key_env: ANTHROPIC_API_KEY
+  provider: ollama
+  model: glm-5.2:cloud       # Ollama Cloud — hosted, no local server needed
+  base_url: https://ollama.com
+  api_key_env: OLLAMA_API_KEY
   temperature: 0.2
   max_tokens: 4096
   timeout_seconds: 120

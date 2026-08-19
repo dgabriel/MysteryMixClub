@@ -1,0 +1,87 @@
+# Flaught adversarial review configuration
+# See https://github.com/flaught/core for full documentation
+#
+# Landed via ADR 0017 (MysteryMixClub-j8ij): artifact-only (no PR comments,
+# no pull-requests:write), full LLM pass, non-blocking (continue-on-error)
+# in .github/workflows/ci.yml until proven out. LLM provider is under
+# active evaluation — see llm: below for the current choice.
+
+version: 1
+
+# ── Stack declaration ──────────────────────────────────────
+stack:
+  languages: [python, typescript]
+  frameworks: [fastapi, react]
+  runtime: mixed
+
+# ── LLM provider ───────────────────────────────────────────
+# Ollama Cloud, via the openai-compatible provider rather than `provider:
+# ollama` — Flaught's native ollama adapter (dist/llm/provider.js) hardcodes
+# no auth at all (built for a local `ollama serve`, which needs none) and
+# silently ignores api_key_env, so it can't reach an authenticated host like
+# Ollama Cloud. Ollama's OpenAI-compatible layer lives at https://ollama.com/v1
+# and does accept Bearer auth (https://docs.ollama.com/api/openai-compatibility),
+# which is what the openai-compatible adapter sends.
+llm:
+  provider: openai
+  model: qwen3.5:cloud       # Ollama Cloud — hosted, no local server needed
+  base_url: https://ollama.com/v1
+  api_key_env: OLLAMA_API_KEY
+  temperature: 0.2
+  max_tokens: 4096
+  timeout_seconds: 120
+
+# ── Deterministic tools ────────────────────────────────────
+# tools:
+#   semgrep:
+#     enabled: true
+#     # config: path/to/semgrep-rules.yml
+#   linter:
+#     enabled: true
+#     # command: eslint  # override auto-detected linter
+#   vuln_scanner:
+#     enabled: true
+#     # command: npm audit  # override auto-detected scanner
+
+# ── Test inversion ──────────────────────────────────────────
+# test_inversion:
+#   enabled: true
+#   # command: pytest  # override auto-detected test command
+
+# ── Scope-creep detection ─────────────────────────────────
+# scope_creep:
+#   enabled: true
+#   intent_source: pr_description  # pr_description | linked_issue | both
+
+# ── Lighthouse (optional, degrades cleanly) ─────────────────
+# lighthouse:
+#   enabled: false
+#   # preview_url: https://deploy-preview-42.example.com
+
+# ── Noise budget ───────────────────────────────────────────
+# noise_budget:
+#   critical: 5
+#   high: 10
+#   medium: 15
+#   low: 20
+#   info: 25
+
+# ── Severity gate ──────────────────────────────────────────
+# severity_gate:
+#   fail_on: high  # none | critical | high | medium
+
+# ── Dismissals ───────────────────────────────────────────────
+# Findings matching an entry in the dismissal store (see `flaught dismiss`)
+# are auto-marked dismissed on every subsequent run and excluded from the
+# severity gate.
+# dismissals:
+#   enabled: true
+#   path: .flaught-dismissals.json
+
+# ── Exclusions ─────────────────────────────────────────────
+exclude:
+  paths:
+    - "node_modules/**"
+    - "backend/.venv/**"
+    - "frontend/dist/**"
+    - "**/*.min.js"

@@ -24,7 +24,7 @@ stack:
 # which is what the openai-compatible adapter sends.
 llm:
   provider: openai
-  model: glm-5.2:cloud       # Ollama Cloud — hosted, no local server needed
+  model: qwen3.5:cloud       # Ollama Cloud — hosted, no local server needed
   base_url: https://ollama.com/v1
   api_key_env: OLLAMA_API_KEY
   temperature: 0.2

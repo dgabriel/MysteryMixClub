@@ -3,11 +3,8 @@
 #
 # Landed via ADR 0017 (MysteryMixClub-j8ij): artifact-only (no PR comments,
 # no pull-requests:write), full LLM pass, non-blocking (continue-on-error)
-# in .github/workflows/ci.yml until proven out.
-#
-# Provider swapped to Ollama Cloud for evaluation — see the bead for
-# context; ADR 0017's text still says "via Anthropic" and hasn't been
-# updated to match yet.
+# in .github/workflows/ci.yml until proven out. LLM provider is under
+# active evaluation — see llm: below for the current choice.
 
 version: 1
 

@@ -196,7 +196,8 @@ no longer referenced (safe to delete from the `staging` environment's
 secrets, or just leave them unused).
 
 `ci.yml`'s `flaught` job (ADR 0017) is the one workflow that does need a
-secret: `ANTHROPIC_API_KEY`, for the LLM adversarial-review pass. This is a
+secret: the LLM provider's API key (name set by `.advreview.yml`'s
+`llm.api_key_env`), for the LLM adversarial-review pass. This is a
 workflow-only secret — it never reaches a running app, so it does **not** go
 through the Droplet env-file routine below, only GitHub → Settings → Secrets
 and variables → Actions.

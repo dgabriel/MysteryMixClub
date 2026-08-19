@@ -30,7 +30,7 @@ Three scoping questions had to be settled up front (2026-08-18):
   #1/#3). Decided: artifact-only for now — no permissions change.
 - **Deterministic-only vs. full LLM pass.** `--no-llm` needs no secret and
   no vendor call, but skips the adversarial pass that's the actual point of
-  the tool. Decided: full LLM pass via Anthropic, accepting the new secret.
+  the tool. Decided: full LLM pass, accepting the new secret.
 - **Blocking vs. non-blocking.** Decided: non-blocking (`continue-on-error:
   true`), matching the existing `npm audit` / `pip-audit` pattern in
   `ci.yml` — surface findings without letting a new, unproven tool gate
@@ -50,9 +50,11 @@ New `flaught` job in `.github/workflows/ci.yml`, sibling to `frontend` and
   --quiet`, then uploads `flaught-findings.json` via
   `actions/upload-artifact@v4` (`if: always()`, matching the
   `backend-coverage` artifact's pattern).
-- Reads `ANTHROPIC_API_KEY` from a new GitHub Actions secret. Provider is
-  configured in a committed `.advreview.yml` at repo root: `provider:
-  anthropic`, `model: claude-sonnet-5`, `api_key_env: ANTHROPIC_API_KEY`.
+- Reads an LLM provider API key from a new GitHub Actions secret — the
+  secret name matches whatever `llm.api_key_env` says in the committed
+  `.advreview.yml` at repo root, which is also where the provider and model
+  are configured (see that file for the current values; provider is
+  swappable there with no workflow change beyond the secret name).
   Stack is declared explicitly (`fastapi` + `react`, `runtime: mixed`)
   rather than left to auto-detection, since the repo genuinely mixes both.
 - `continue-on-error: true` on the review step — exit code 1 (findings above
@@ -63,9 +65,10 @@ New `flaught` job in `.github/workflows/ci.yml`, sibling to `frontend` and
 
 ## Consequences
 
-- **A new secret to provision.** `ANTHROPIC_API_KEY` must be added under
-  GitHub → Settings → Secrets and variables → Actions before the job does
-  anything beyond fail step 3 harmlessly. This is a workflow-only secret —
+- **A new secret to provision.** The LLM provider's API key (name set by
+  `.advreview.yml`'s `llm.api_key_env`) must be added under GitHub →
+  Settings → Secrets and variables → Actions before the job does anything
+  beyond fail step 3 harmlessly. This is a workflow-only secret —
   it does not go through the Droplet `staging.env`/`prod.env` routine in
   `docs/ci-cd.md`, since neither running app ever reads it.
 - **A per-PR LLM API cost**, ongoing, scaling with PR volume and diff size —

@@ -25,10 +25,10 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "24"
           cache: npm
@@ -81,7 +81,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # ADR 0005: same fsync/synchronous_commit relaxation as docker-compose's
       # mmc-postgres, applied here via ALTER SYSTEM + reload since the GH
@@ -97,7 +97,7 @@ jobs:
           PGPASSWORD=mmc psql -h localhost -U mmc -d mysterymixclub_test -c "SELECT pg_reload_conf();"
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
@@ -131,7 +131,7 @@ jobs:
 
       - name: Upload coverage artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-coverage
           path: backend/coverage.xml
@@ -156,14 +156,14 @@ jobs:
     # missing secret on a fork PR) both just fail this one step, never the
     # merge check.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Full history so `origin/<base_ref>` resolves for the diff below —
           # a shallow clone only has the PR's own commits.
           fetch-depth: 0
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "24"
 
@@ -183,7 +183,7 @@ jobs:
 
       - name: Upload findings artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: flaught-findings
           path: flaught-findings.json

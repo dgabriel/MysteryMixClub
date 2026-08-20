@@ -117,7 +117,7 @@ same self-managed Droplets as the API:
 
 | File                              | On                        | Does                                                        |
 |-----------------------------------|---------------------------|-------------------------------------------------------------|
-| `.github/workflows/ci.yml`        | PR → `main` or `develop`  | Frontend lint/typecheck/test; backend ruff/mypy/pytest+cov; Flaught adversarial review (ADR 0017, non-blocking) |
+| `.github/workflows/ci.yml`        | PR → `main` or `develop`  | Frontend lint/typecheck/test; backend ruff/mypy/pytest+cov; Flaught adversarial review (ADR 0018, blocking, posts a PR comment) |
 | `.github/workflows/deploy-staging.yml` | push → `develop`     | Runs on a self-hosted runner living on the staging Droplet → `scripts/deploy-staging.sh` |
 | `.github/workflows/deploy-prod.yml`    | push → `main`        | `build-frontend` job (hosted runner, ungated): builds the SPA, uploads it as an artifact. `deploy` job: `environment: production` approval gate → self-hosted runner on the prod Droplet → downloads the artifact → `scripts/deploy-prod.sh` (MYS-259) |
 
@@ -195,12 +195,14 @@ table above). `DIGITALOCEAN_ACCESS_TOKEN` is only needed locally for
 no longer referenced (safe to delete from the `staging` environment's
 secrets, or just leave them unused).
 
-`ci.yml`'s `flaught` job (ADR 0017) is the one workflow that does need a
-secret: the LLM provider's API key (name set by `.advreview.yml`'s
-`llm.api_key_env`), for the LLM adversarial-review pass. This is a
-workflow-only secret — it never reaches a running app, so it does **not** go
-through the Droplet env-file routine below, only GitHub → Settings → Secrets
-and variables → Actions.
+`ci.yml`'s `flaught` job (ADR 0017, blocking + PR comments per ADR 0018) is
+the one workflow that does need a secret: the LLM provider's API key (name
+set by `.advreview.yml`'s `llm.api_key_env`), for the LLM adversarial-review
+pass. This is a workflow-only secret — it never reaches a running app, so it
+does **not** go through the Droplet env-file routine below, only GitHub →
+Settings → Secrets and variables → Actions. That same job is also the only
+one in `ci.yml` with `pull-requests: write` (job-scoped, ADR 0018) — every
+other job stays on the workflow-level `contents: read` grant.
 
 ### App runtime secrets (Droplet env files)
 

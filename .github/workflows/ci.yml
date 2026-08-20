@@ -8,7 +8,10 @@ on:
 
 # Least-privilege GITHUB_TOKEN (code scanning #1/#3): every step here only
 # checks out code, runs lint/test, and uploads a coverage artifact -- none of
-# it needs anything beyond reading the repo.
+# it needs anything beyond reading the repo. The one exception is the
+# `flaught` job, which grants itself `pull-requests: write` at the job level
+# (ADR 0018) to post its findings as a PR comment -- every other job stays on
+# this workflow-level `contents: read` grant.
 permissions:
   contents: read
 
@@ -149,12 +152,17 @@ jobs:
   flaught:
     name: Flaught (adversarial review)
     runs-on: ubuntu-latest
-    # ADR 0017: artifact-only for now (no PR comments, no pull-requests:write —
-    # this job stays inside the workflow's contents:read grant), non-blocking
-    # while the tool proves itself out on this repo. Exit code 1 (findings
-    # above the severity gate) and exit code 2 (config/LLM error, e.g. a
-    # missing secret on a fork PR) both just fail this one step, never the
-    # merge check.
+    # ADR 0018 (supersedes the corresponding scoping calls in ADR 0017):
+    # blocking now that the tool has proven out artifact-only — exit code 1
+    # (findings at/above severity_gate.fail_on, default "high") or exit code
+    # 2 (config/LLM error, e.g. a missing secret) fails this job and the PR's
+    # merge check along with it. Findings also get posted to the PR itself as
+    # a comment, which is the one job in this workflow that needs
+    # `pull-requests: write` (see the note on the workflow-level `permissions:`
+    # block above).
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -176,13 +184,17 @@ jobs:
       - name: Adversarial review
         env:
           OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+        # Redirect (not pipe) stdout to a file: this keeps flaught's own exit
+        # code as the step's exit code, with no dependency on `pipefail`
+        # being set. `--quiet` still emits the final markdown report on
+        # stdout (just not the progress lines) — that's what becomes the PR
+        # comment body below, so the comment matches what a local run prints.
         run: |
           flaught review \
             --base "origin/${{ github.base_ref }}" \
             --pr-description "${{ github.event.pull_request.title }}" \
             --output flaught-findings.json \
-            --quiet
-        continue-on-error: true
+            --quiet > flaught-report.md
 
       - name: Upload findings artifact
         if: always()
@@ -191,3 +203,19 @@ jobs:
           name: flaught-findings
           path: flaught-findings.json
           if-no-files-found: ignore
+
+      - name: Post findings to PR
+        # Best-effort: a real finding failing the step above is the actual
+        # gate. Failing to leave a comment (e.g. a fork PR, where GITHUB_TOKEN
+        # is forced read-only regardless of this job's `permissions:` block)
+        # shouldn't itself add a second, more confusing red X.
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -s flaught-report.md ]; then
+            gh pr comment "${{ github.event.pull_request.number }}" \
+              --body-file flaught-report.md \
+              --edit-last --create-if-none
+          fi

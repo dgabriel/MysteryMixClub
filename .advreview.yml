@@ -1,9 +1,10 @@
 # Flaught adversarial review configuration
 # See https://github.com/flaught/core for full documentation
 #
-# Landed via ADR 0017 (MysteryMixClub-j8ij): artifact-only (no PR comments,
-# no pull-requests:write), full LLM pass, non-blocking (continue-on-error)
-# in .github/workflows/ci.yml until proven out. LLM provider is under
+# Landed via ADR 0017 (MysteryMixClub-j8ij) as artifact-only, full LLM pass,
+# non-blocking. ADR 0018 (MysteryMixClub-tq2a) moved it to blocking with
+# findings posted as a PR comment, once artifact-only had proven the tool
+# out — see .github/workflows/ci.yml's `flaught` job. LLM provider is under
 # active evaluation — see llm: below for the current choice.
 
 version: 1

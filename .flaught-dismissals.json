@@ -33,6 +33,28 @@
         "file": "docs/adr/0018-flaught-pr-comments-and-blocking.md"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:33719195bbd52806",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-08-21T21:00:02.734Z",
+      "reason": "Deliberate, documented tradeoff — job-scoped (not workflow-wide) pull-requests: write, exact scope and rationale spelled out in ADR 0018's Consequences section.",
+      "context": {
+        "title": "Job-level permission escalation to pull-requests: write",
+        "file": ".github/workflows/ci.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:0764129365012fe6",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-08-21T21:15:18.562Z",
+      "reason": "Addressed with docs/security/secret-rotation-policy.md -- rotation cadence (annual + trigger-based), process for both GitHub Actions and Droplet env secrets, and a current-secrets table now exist.",
+      "context": {
+        "title": "LLM API key stored as a repository secret without rotation policy",
+        "file": ".github/workflows/ci.yml"
+      },
+      "expires_at": null
     }
   ]
 }

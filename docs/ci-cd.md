@@ -204,6 +204,9 @@ Settings → Secrets and variables → Actions. That same job is also the only
 one in `ci.yml` with `pull-requests: write` (job-scoped, ADR 0018) — every
 other job stays on the workflow-level `contents: read` grant.
 
+Rotation cadence and process for every secret in this file (GitHub Actions
+and Droplet env alike) — `docs/security/secret-rotation-policy.md`.
+
 ### App runtime secrets (Droplet env files)
 
 Both environments are self-managed Droplets now, so runtime app config is set

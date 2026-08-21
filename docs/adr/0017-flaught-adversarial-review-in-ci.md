@@ -1,6 +1,8 @@
 # ADR 0017: Add Flaught adversarial code review as a CI job
 
-**Status:** Accepted
+**Status:** Superseded by ADR 0018 (rolled back entirely — the artifact-only
+scoping decisions below are still real history, they're just no longer in
+effect; see ADR 0018 for why)
 **Date:** 2026-08-18
 
 ## Context

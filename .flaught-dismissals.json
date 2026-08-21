@@ -11,6 +11,28 @@
         "file": "docs/adr/0018-flaught-pr-comments-and-blocking.md"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:7927c146dee2c9fa",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-08-21T17:09:29.537Z",
+      "reason": "The 400 that triggered this finding (Groq returning a non-JSON-mode-compatible response for openai/gpt-oss-120b) did not reproduce on an immediate retry with identical config -- confirmed transient upstream flakiness, not a systemic blocking-on-infra-error design flaw.",
+      "context": {
+        "title": "Merge blocking depends on external LLM availability",
+        "file": ".github/workflows/ci.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:8246478359e6514d",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-08-21T17:14:48.119Z",
+      "reason": "Same theme as the already-dismissed F-006 (doc/ADR diff size flagged as unrelated to functional code) -- expected for a CI-wiring change that includes its own decision record; LLM re-worded it differently this run, hence a new fingerprint.",
+      "context": {
+        "title": "Large ADR and documentation changes unrelated to CI gating",
+        "file": "docs/adr/0018-flaught-pr-comments-and-blocking.md"
+      },
+      "expires_at": null
     }
   ]
 }

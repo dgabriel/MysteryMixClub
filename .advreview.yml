@@ -76,8 +76,11 @@ tools:
 #   info: 25
 
 # ── Severity gate ──────────────────────────────────────────
-# severity_gate:
-#   fail_on: high  # none | critical | high | medium
+# Explicit rather than relying on the schema default (Flaught finding F-004,
+# PR #269) -- this was the same "high" value already in effect, but only
+# visible by reading the ADR, not this file.
+severity_gate:
+  fail_on: high
 
 # ── Dismissals ───────────────────────────────────────────────
 # Findings matching an entry in the dismissal store (see `flaught dismiss`)

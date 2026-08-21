@@ -179,7 +179,7 @@ jobs:
         # Pinned (Flaught finding F-001): an unpinned global install lets a
         # newly published version run in CI with zero review. Bump
         # deliberately.
-        run: npm install -g @flaught/core@0.6.1
+        run: npm install -g @flaught/core@0.7.1
 
       - name: Adversarial review
         env:

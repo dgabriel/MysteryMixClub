@@ -152,14 +152,16 @@ jobs:
   flaught:
     name: Flaught (adversarial review)
     runs-on: ubuntu-latest
-    # ADR 0018 (supersedes the corresponding scoping calls in ADR 0017):
-    # blocking now that the tool has proven out artifact-only — exit code 1
-    # (findings at/above severity_gate.fail_on, default "high") or exit code
-    # 2 (config/LLM error, e.g. a missing secret) fails this job and the PR's
-    # merge check along with it. Findings also get posted to the PR itself as
-    # a comment, which is the one job in this workflow that needs
-    # `pull-requests: write` (see the note on the workflow-level `permissions:`
-    # block above).
+    # ADR 0018 (supersedes the corresponding scoping calls in ADR 0017),
+    # partially superseded by ADR 0019: blocking now that the tool has
+    # proven out artifact-only — exit code 1 (findings at/above
+    # severity_gate.fail_on, default "high") fails this job and the PR's
+    # merge check along with it. Exit code 2 (config/LLM error, e.g. a Groq
+    # outage or a missing secret) only warns — a tool/infra fault isn't
+    # evidence of a real code problem (ADR 0019, Flaught findings F-002/F-003).
+    # Findings also get posted to the PR itself as a comment, which is the
+    # one job in this workflow that needs `pull-requests: write` (see the
+    # note on the workflow-level `permissions:` block above).
     permissions:
       contents: read
       pull-requests: write
@@ -182,6 +184,7 @@ jobs:
         run: npm install -g @flaught/core@0.7.1
 
       - name: Adversarial review
+        id: review
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           # Flaught finding (semgrep yaml.github-actions.security.run-shell-injection,
@@ -198,12 +201,21 @@ jobs:
         # being set. `--quiet` still emits the final markdown report on
         # stdout (just not the progress lines) — that's what becomes the PR
         # comment body below, so the comment matches what a local run prints.
+        #
+        # ADR 0019: `set +e` + capture the exit code into $GITHUB_OUTPUT
+        # instead of letting the step fail directly — exit code 1 (real
+        # findings) and exit code 2 (tool/LLM/infra error) need different
+        # handling, decided in the two steps below, not by this step's own
+        # pass/fail.
         run: |
+          set +e
           flaught review \
             --base "origin/${{ github.base_ref }}" \
             --pr-description "$PR_TITLE" \
             --output flaught-findings.json \
             --quiet > flaught-report.md
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          exit 0
 
       - name: Upload findings artifact
         if: always()
@@ -228,3 +240,19 @@ jobs:
               --body-file flaught-report.md \
               --edit-last --create-if-none
           fi
+
+      - name: Check severity gate
+        # ADR 0019: exit code 1 means real findings at/above
+        # severity_gate.fail_on — this is the actual merge gate.
+        if: steps.review.outputs.exit_code == '1'
+        run: |
+          echo "::error::Flaught found findings that exceed the severity gate threshold"
+          exit 1
+
+      - name: Check for errors
+        # ADR 0019 (Flaught findings F-002/F-003): exit code 2 is a
+        # config/API/LLM error, e.g. a Groq outage — not evidence of a real
+        # code problem, so it warns instead of blocking merge.
+        if: steps.review.outputs.exit_code == '2'
+        run: |
+          echo "::warning::Flaught encountered an error (config, API, or runtime) and could not complete the review. This does NOT block merge — an LLM/infra outage is not evidence of a real code problem. Check the workflow logs and consider re-running."

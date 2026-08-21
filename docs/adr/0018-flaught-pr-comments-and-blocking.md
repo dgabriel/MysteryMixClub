@@ -1,6 +1,8 @@
 # ADR 0018: Make Flaught's CI review post PR comments and block merge
 
-**Status:** Accepted
+**Status:** Accepted; partially superseded by ADR 0019 (blocking on exit
+code 2 specifically — the exit-code-1 severity gate and the PR-comment
+change below are still in effect as decided here)
 **Date:** 2026-08-20
 
 ## Context
@@ -75,6 +77,10 @@ from ADR 0017 (full LLM pass, not `--no-llm`) stands as-is.
   every PR until fixed, not just this one silently-skipped step. Acceptable
   for a same-org private repo with no fork-PR traffic today; would need
   revisiting if that ever changes.
+  **Superseded by ADR 0019:** in practice this meant a Groq outage blocked
+  every open PR, with no signal distinguishing "the code has a real
+  problem" from "the LLM provider is down." Exit code 2 now warns instead
+  of blocking; exit code 1 (real findings) still blocks as decided here.
 - **Findings are visible on the PR without opening Actions**, closing the
   exact gap ADR 0017 flagged as a risk ("findings... easy to never look
   at").

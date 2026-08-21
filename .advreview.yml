@@ -16,18 +16,16 @@ stack:
   runtime: mixed
 
 # ── LLM provider ───────────────────────────────────────────
-# Ollama Cloud, via the openai-compatible provider rather than `provider:
-# ollama` — Flaught's native ollama adapter (dist/llm/provider.js) hardcodes
-# no auth at all (built for a local `ollama serve`, which needs none) and
-# silently ignores api_key_env, so it can't reach an authenticated host like
-# Ollama Cloud. Ollama's OpenAI-compatible layer lives at https://ollama.com/v1
-# and does accept Bearer auth (https://docs.ollama.com/api/openai-compatibility),
-# which is what the openai-compatible adapter sends.
+# Groq — a first-class provider in Flaught's own createProvider() (unlike the
+# earlier Ollama Cloud setup, which had to route through the openai-compatible
+# adapter to work around a bug in Flaught's native ollama adapter). base_url
+# is left unset so it falls through to Flaught's own Groq default
+# (https://api.groq.com/openai/v1). Model is openai/gpt-oss-120b — one of the
+# two models Flaught's own error-hint text names as known-good on Groq.
 llm:
-  provider: openai
-  model: qwen3.5:cloud       # Ollama Cloud — hosted, no local server needed
-  base_url: https://ollama.com/v1
-  api_key_env: OLLAMA_API_KEY
+  provider: groq
+  model: openai/gpt-oss-120b
+  api_key_env: GROQ_API_KEY
   temperature: 0.2
   max_tokens: 4096
   timeout_seconds: 120

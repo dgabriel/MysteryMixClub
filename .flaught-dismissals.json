@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "dismissals": [
+    {
+      "fingerprint": "sha256:09ab6e96e88b256d",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-08-21T16:50:22.519Z",
+      "reason": "Doc/ADR diff size is expected for a CI-wiring change that includes its own decision record; not something to trim.",
+      "context": {
+        "title": "Extensive ADR and documentation changes unrelated to functional code",
+        "file": "docs/adr/0018-flaught-pr-comments-and-blocking.md"
+      },
+      "expires_at": null
+    }
+  ]
+}

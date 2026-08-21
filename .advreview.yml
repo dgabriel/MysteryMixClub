@@ -31,16 +31,26 @@ llm:
   timeout_seconds: 120
 
 # ── Deterministic tools ────────────────────────────────────
-# tools:
+# vuln_scanner.command overrides Flaught's auto-detected `npm audit --json`,
+# which runs against the *repo-root* package.json (husky/lint-staged/
+# commitlint only — no prod deps at all there) and was flagging dev-only
+# transitive advisories (fast-uri, js-yaml, pulled in via eslint) as
+# blocking findings. The `frontend` CI job's own "Dependency audit (prod
+# deps)" step already deliberately excludes dev deps for the same reason
+# (see its comment in ci.yml, MYS-47) — this brings vuln_scanner in line
+# with that existing convention instead of contradicting it. `--json` is
+# required (Flaught parses the JSON report; without it there's nothing to
+# parse).
+tools:
 #   semgrep:
 #     enabled: true
 #     # config: path/to/semgrep-rules.yml
 #   linter:
 #     enabled: true
 #     # command: eslint  # override auto-detected linter
-#   vuln_scanner:
-#     enabled: true
-#     # command: npm audit  # override auto-detected scanner
+  vuln_scanner:
+    enabled: true
+    command: npm audit --omit=dev --json
 
 # ── Test inversion ──────────────────────────────────────────
 # test_inversion:

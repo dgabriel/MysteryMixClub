@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router";
 import { JoinClubRoute } from "./JoinClubRoute";
 import { ApiError, acceptInvite, getInvitePreview } from "../services/api";
 import type { InvitePreview, Club } from "../services/api";

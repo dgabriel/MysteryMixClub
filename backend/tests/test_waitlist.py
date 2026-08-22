@@ -11,25 +11,13 @@ test_admin_waitlist.py.
 """
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
-from app.api.routes import waitlist as waitlist_routes
 from app.models.waitlist_entry import WaitlistEntry
+from app.models.waitlist_join_attempt import WaitlistJoinAttempt
 
 ENABLED_URL = "/api/v1/waitlist/enabled"
 JOIN_URL = "/api/v1/waitlist"
-
-
-@pytest.fixture(autouse=True)
-def _reset_join_rate_limit():
-    """The per-IP rate limiter (MYS-215) is a module-level dict so it works
-    across requests within one process — which also means it persists across
-    tests unless reset. All requests from this suite's ASGI test client share
-    one synthetic IP, so without this every test would draw from the same
-    budget."""
-    waitlist_routes._join_attempts.clear()
-    yield
-    waitlist_routes._join_attempts.clear()
 
 
 async def test_enabled_reflects_flag_off_by_default(client):
@@ -92,3 +80,30 @@ class TestWaitlistWhenEnabled:
 
         sixth = await client.post(JOIN_URL, json={"email": "person5@example.com"})
         assert sixth.status_code == 429, sixth.text
+
+    async def test_join_rate_limit_is_db_backed_not_process_local(self, client, db_session):
+        # The regression this guards against (MysteryMixClub-dicr): the
+        # original in-memory dict was only correct under a single worker
+        # process, and silently became N x too permissive under multi-worker
+        # gunicorn (MYS-259) since each worker had its own copy. A row landing
+        # in the database (not just an in-process counter) is what makes the
+        # limit shared across workers.
+        resp = await client.post(JOIN_URL, json={"email": "counted@example.com"})
+        assert resp.status_code == 201, resp.text
+
+        count = await db_session.scalar(select(func.count()).select_from(WaitlistJoinAttempt))
+        assert count == 1
+
+    async def test_join_rate_limit_rejection_is_not_itself_recorded(self, client, db_session):
+        # Mirrors OAuthCallbackAttempt's behavior: the request that trips the
+        # limit doesn't add a 6th row, so a sustained attacker's row count
+        # stays bounded at the limit rather than growing unboundedly.
+        for i in range(5):
+            resp = await client.post(JOIN_URL, json={"email": f"person{i}@example.com"})
+            assert resp.status_code == 201, resp.text
+
+        rejected = await client.post(JOIN_URL, json={"email": "person5@example.com"})
+        assert rejected.status_code == 429, rejected.text
+
+        count = await db_session.scalar(select(func.count()).select_from(WaitlistJoinAttempt))
+        assert count == 5

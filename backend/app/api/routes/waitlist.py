@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import EmailStr
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,19 +20,22 @@ from app.api.wire import WireModel
 from app.config import Settings, get_settings
 from app.db.session import get_db
 from app.models.waitlist_entry import WaitlistEntry
+from app.models.waitlist_join_attempt import WaitlistJoinAttempt
 
 router = APIRouter(prefix="/waitlist", tags=["waitlist"])
 
 # Per-IP throttle on the public join endpoint — it's unauthenticated and each
 # request can target a different email, so the per-email cap /auth/request
 # uses (counting rows for that address) doesn't apply here; this stops both
-# junk-row spam and using the 409 as an enumeration probe. In-memory only:
-# resets on restart/redeploy, and only works because staging/prod both run a
-# single process (no --workers flag / instance_count: 1) — fine for a
-# temporary pre-launch endpoint, not a pattern to copy for something durable.
+# junk-row spam and using the 409 as an enumeration probe. DB-backed
+# (MysteryMixClub-dicr) via WaitlistJoinAttempt, same row-per-hit/counted-
+# window shape as OAuthCallbackAttempt in auth.py — a module-level in-memory
+# dict was correct only under a single worker process, and that precondition
+# broke when prod moved to multi-worker gunicorn (MYS-259): each worker kept
+# its own copy of the bucket, so the effective limit became N x intended and
+# reset on every worker restart/deploy.
 _JOIN_RATE_LIMIT_MAX = 5
 _JOIN_RATE_LIMIT_WINDOW = timedelta(hours=1)
-_join_attempts: dict[str, list[datetime]] = {}
 
 
 def _client_ip(request: Request) -> str:
@@ -48,16 +51,22 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-def _check_join_rate_limit(ip: str, now: datetime) -> None:
-    attempts = [t for t in _join_attempts.get(ip, ()) if t > now - _JOIN_RATE_LIMIT_WINDOW]
-    if len(attempts) >= _JOIN_RATE_LIMIT_MAX:
-        _join_attempts[ip] = attempts
+async def _check_join_rate_limit(db: AsyncSession, ip: str, now: datetime) -> None:
+    recent_attempts = await db.scalar(
+        select(func.count())
+        .select_from(WaitlistJoinAttempt)
+        .where(
+            WaitlistJoinAttempt.ip == ip,
+            WaitlistJoinAttempt.created_at > now - _JOIN_RATE_LIMIT_WINDOW,
+        )
+    )
+    if (recent_attempts or 0) >= _JOIN_RATE_LIMIT_MAX:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="too many requests. try again later.",
         )
-    attempts.append(now)
-    _join_attempts[ip] = attempts
+    db.add(WaitlistJoinAttempt(ip=ip, created_at=now))
+    await db.commit()
 
 
 class WaitlistStatusResponse(WireModel):
@@ -100,7 +109,7 @@ async def join_waitlist(
     if not settings.waitlist_enabled:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
 
-    _check_join_rate_limit(_client_ip(request), datetime.now(timezone.utc))
+    await _check_join_rate_limit(db, _client_ip(request), datetime.now(timezone.utc))
 
     email = payload.email.lower()
     existing = await db.scalar(select(WaitlistEntry).where(WaitlistEntry.email == email))

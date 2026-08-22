@@ -112,28 +112,6 @@
       "expires_at": null
     },
     {
-      "fingerprint": "sha256:82b294c6a7aad387",
-      "dismissed_by": "dgabriel@mac.mynetworksettings.com",
-      "dismissed_at": "2026-08-21T23:02:06.464Z",
-      "reason": "Real finding, deferred: curl | bash for Node.js install in droplet provisioning. Tracked in MysteryMixClub-uqvr.",
-      "context": {
-        "title": "bash.curl.security.curl-pipe-bash.curl-pipe-bash",
-        "file": "scripts/bootstrap-droplet-prod.sh"
-      },
-      "expires_at": null
-    },
-    {
-      "fingerprint": "sha256:176a4807e0c37cb3",
-      "dismissed_by": "dgabriel@mac.mynetworksettings.com",
-      "dismissed_at": "2026-08-21T23:02:06.597Z",
-      "reason": "Real finding, deferred: curl | bash for Node.js install in droplet provisioning. Tracked in MysteryMixClub-uqvr.",
-      "context": {
-        "title": "bash.curl.security.curl-pipe-bash.curl-pipe-bash",
-        "file": "scripts/bootstrap-droplet.sh"
-      },
-      "expires_at": null
-    },
-    {
       "fingerprint": "sha256:ee7fc8be867c95ce",
       "dismissed_by": "dgabriel@mac.mynetworksettings.com",
       "dismissed_at": "2026-08-21T23:02:06.734Z",

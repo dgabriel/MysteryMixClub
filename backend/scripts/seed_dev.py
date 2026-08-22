@@ -92,27 +92,39 @@ CAST = [
 ]
 
 # Real catalogue metadata, resolved once against Deezer (the app's own provider,
-# so the ISRCs and covers are exactly what a real submission carries) and iTunes
-# (for the Apple Music deep link). Baked in as constants rather than fetched at
-# seed time so seeding stays offline, fast and deterministic. Reissue markers
-# like "(2004 Remaster)" were stripped from titles; "(Naive Melody)" is genuine.
+# so the ISRCs and covers are exactly what a real submission carries), iTunes
+# (for the Apple Music deep link), and YouTube (for youtube_video_id). Baked in
+# as constants rather than fetched at seed time so seeding stays offline, fast
+# and deterministic. Reissue markers like "(2004 Remaster)" were stripped from
+# titles; "(Naive Melody)" is genuine.
 #
 # `links` mirrors the keys production stores in submissions.platform_links
-# (app/services/song_links.py): exact URLs for Deezer and Apple Music, keyless
-# search deeplinks for the rest, which is the same fallback the assembler uses.
+# (app/services/song_links.py): exact URLs for Deezer, Apple Music, and YouTube
+# (watch?v=<youtube_video_id>, matching what SongLinkAssembler produces once a
+# submission is resolved), keyless search deeplinks for the rest (Spotify has
+# no keyless exact-link path at all — see technical-design.md §8).
+#
+# youtube_video_id is baked in here specifically because it's the one field
+# that DIDN'T get this treatment historically: every seeded submission landed
+# with it NULL, so the backfill worker resolved all ~200 of them against the
+# live YouTube Data API on every reseed — two full days of that key's 100/day
+# search.list quota to reseed once (MysteryMixClub-t2ai). Setting it (plus
+# youtube_lookup_attempted_at, in make_submission below) marks every catalogue
+# submission as already resolved, so a fresh seed leaves nothing pending.
 SONGS: list[dict[str, object]] = [
     {
         "title": "Dreams",
         "artist": "Fleetwood Mac",
         "album": "Rumours",
         "isrc": "USWB10400046",
+        "youtube_video_id": "Y3ywicffOj4",
         "art": "https://cdn-images.dzcdn.net/images/cover/9732751ce91d786dcf30069853697078/500x500-000000-80-0-0.jpg",
         "links": {
             "spotify": "https://open.spotify.com/search/Dreams%20%282004%20Remaster%29%20Fleetwood%20Mac",
             "appleMusic": "https://music.apple.com/us/album/dreams/202271826?i=202272624&uo=4",
             "deezer": "https://www.deezer.com/track/63480987",
-            "youtube": "https://www.youtube.com/results?search_query=Dreams%20%282004%20Remaster%29%20Fleetwood%20Mac",
-            "youtubeMusic": "https://music.youtube.com/search?q=Dreams%20%282004%20Remaster%29%20Fleetwood%20Mac",
+            "youtube": "https://www.youtube.com/watch?v=Y3ywicffOj4",
+            "youtubeMusic": "https://music.youtube.com/watch?v=Y3ywicffOj4",
         },
     },
     {
@@ -120,13 +132,14 @@ SONGS: list[dict[str, object]] = [
         "artist": "R.E.M.",
         "album": "Monster",
         "isrc": "USC4R1901438",
+        "youtube_video_id": "j4iuG7StmPc",
         "art": "https://cdn-images.dzcdn.net/images/cover/048a11a44a2fe965430c4f0a89a9f49e/500x500-000000-80-0-0.jpg",
         "links": {
             "spotify": "https://open.spotify.com/search/Strange%20Currencies%20%28Remastered%202013%29%20R.E.M.",
             "appleMusic": "https://music.apple.com/us/album/strange-currencies-remastered/1484709966?i=1484709990&uo=4",
             "deezer": "https://www.deezer.com/track/788658472",
-            "youtube": "https://www.youtube.com/results?search_query=Strange%20Currencies%20%28Remastered%202013%29%20R.E.M.",
-            "youtubeMusic": "https://music.youtube.com/search?q=Strange%20Currencies%20%28Remastered%202013%29%20R.E.M.",
+            "youtube": "https://www.youtube.com/watch?v=j4iuG7StmPc",
+            "youtubeMusic": "https://music.youtube.com/watch?v=j4iuG7StmPc",
         },
     },
     {
@@ -134,13 +147,14 @@ SONGS: list[dict[str, object]] = [
         "artist": "Massive Attack",
         "album": "Mezzanine",
         "isrc": "GBAAA9800322",
+        "youtube_video_id": "u7K72X4eo_s",
         "art": "https://cdn-images.dzcdn.net/images/cover/85abbdc3ed4a7b94ace97f868fe70f63/500x500-000000-80-0-0.jpg",
         "links": {
             "spotify": "https://open.spotify.com/search/Teardrop%20Massive%20Attack",
             "appleMusic": "https://music.apple.com/us/album/teardrop/724466069?i=724466700&uo=4",
             "deezer": "https://www.deezer.com/track/3129748",
-            "youtube": "https://www.youtube.com/results?search_query=Teardrop%20Massive%20Attack",
-            "youtubeMusic": "https://music.youtube.com/search?q=Teardrop%20Massive%20Attack",
+            "youtube": "https://www.youtube.com/watch?v=u7K72X4eo_s",
+            "youtubeMusic": "https://music.youtube.com/watch?v=u7K72X4eo_s",
         },
     },
     {
@@ -148,13 +162,14 @@ SONGS: list[dict[str, object]] = [
         "artist": "Toto",
         "album": "Toto IV",
         "isrc": "USSM19801941",
+        "youtube_video_id": "FTQbiNvZqaY",
         "art": "https://cdn-images.dzcdn.net/images/cover/153332e88a14255a8c3d5959a5a21882/500x500-000000-80-0-0.jpg",
         "links": {
             "spotify": "https://open.spotify.com/search/Africa%20Toto",
             "appleMusic": "https://music.apple.com/us/album/africa/185716551?i=185717604&uo=4",
             "deezer": "https://www.deezer.com/track/1079668",
-            "youtube": "https://www.youtube.com/results?search_query=Africa%20Toto",
-            "youtubeMusic": "https://music.youtube.com/search?q=Africa%20Toto",
+            "youtube": "https://www.youtube.com/watch?v=FTQbiNvZqaY",
+            "youtubeMusic": "https://music.youtube.com/watch?v=FTQbiNvZqaY",
         },
     },
     {
@@ -162,13 +177,14 @@ SONGS: list[dict[str, object]] = [
         "artist": "Kate Bush",
         "album": "The Kick Inside",
         "isrc": "GBAYE7700223",
+        "youtube_video_id": "uVz2i-w2vz8",
         "art": "https://cdn-images.dzcdn.net/images/cover/4cf15986426e5e453e38edf60bc1b6ba/500x500-000000-80-0-0.jpg",
         "links": {
             "spotify": "https://open.spotify.com/search/Wuthering%20Heights%20Kate%20Bush",
             "appleMusic": "https://music.apple.com/us/album/wuthering-heights/1675380115?i=1675380129&uo=4",
             "deezer": "https://www.deezer.com/track/2173947547",
-            "youtube": "https://www.youtube.com/results?search_query=Wuthering%20Heights%20Kate%20Bush",
-            "youtubeMusic": "https://music.youtube.com/search?q=Wuthering%20Heights%20Kate%20Bush",
+            "youtube": "https://www.youtube.com/watch?v=uVz2i-w2vz8",
+            "youtubeMusic": "https://music.youtube.com/watch?v=uVz2i-w2vz8",
         },
     },
     {
@@ -176,13 +192,14 @@ SONGS: list[dict[str, object]] = [
         "artist": "Biz Markie",
         "album": "Biz's Baddest Beats: The Best of Biz Markie",
         "isrc": "USRH10902676",
+        "youtube_video_id": "9aofoBrFNdg",
         "art": "https://cdn-images.dzcdn.net/images/cover/59d14483d167ceb8465cb1ef1ccad0d0/500x500-000000-80-0-0.jpg",
         "links": {
             "spotify": "https://open.spotify.com/search/Just%20a%20Friend%20Biz%20Markie",
             "appleMusic": "https://music.apple.com/us/album/just-a-friend/316484158?i=316484656&uo=4",
             "deezer": "https://www.deezer.com/track/6627454",
-            "youtube": "https://www.youtube.com/results?search_query=Just%20a%20Friend%20Biz%20Markie",
-            "youtubeMusic": "https://music.youtube.com/search?q=Just%20a%20Friend%20Biz%20Markie",
+            "youtube": "https://www.youtube.com/watch?v=9aofoBrFNdg",
+            "youtubeMusic": "https://music.youtube.com/watch?v=9aofoBrFNdg",
         },
     },
     {
@@ -190,13 +207,14 @@ SONGS: list[dict[str, object]] = [
         "artist": "Radiohead",
         "album": "Amnesiac",
         "isrc": "GBAYE0001578",
+        "youtube_video_id": "3M_Gg1xAHE4",
         "art": "https://cdn-images.dzcdn.net/images/cover/d611b9ef9d7ce87a74c697d74be5ae15/500x500-000000-80-0-0.jpg",
         "links": {
             "spotify": "https://open.spotify.com/search/Pyramid%20Song%20Radiohead",
             "appleMusic": "https://music.apple.com/us/album/pyramid-song/1097864180?i=1097864572&uo=4",
             "deezer": "https://www.deezer.com/track/138540337",
-            "youtube": "https://www.youtube.com/results?search_query=Pyramid%20Song%20Radiohead",
-            "youtubeMusic": "https://music.youtube.com/search?q=Pyramid%20Song%20Radiohead",
+            "youtube": "https://www.youtube.com/watch?v=3M_Gg1xAHE4",
+            "youtubeMusic": "https://music.youtube.com/watch?v=3M_Gg1xAHE4",
         },
     },
     {
@@ -204,13 +222,14 @@ SONGS: list[dict[str, object]] = [
         "artist": "Childish Gambino",
         "album": '"Awaken, My Love!"',
         "isrc": "USYAH1600107",
+        "youtube_video_id": "aMi2vCN9j_g",
         "art": "https://cdn-images.dzcdn.net/images/cover/57ae3715e73c0486616bab8c2d6c6159/500x500-000000-80-0-0.jpg",
         "links": {
             "spotify": "https://open.spotify.com/search/Redbone%20Childish%20Gambino",
             "appleMusic": "https://music.apple.com/us/album/redbone-mixed/1738095441?i=1738095468&uo=4",
             "deezer": "https://www.deezer.com/track/3025966451",
-            "youtube": "https://www.youtube.com/results?search_query=Redbone%20Childish%20Gambino",
-            "youtubeMusic": "https://music.youtube.com/search?q=Redbone%20Childish%20Gambino",
+            "youtube": "https://www.youtube.com/watch?v=aMi2vCN9j_g",
+            "youtubeMusic": "https://music.youtube.com/watch?v=aMi2vCN9j_g",
         },
     },
     {
@@ -218,13 +237,14 @@ SONGS: list[dict[str, object]] = [
         "artist": "Television",
         "album": "Marquee Moon",
         "isrc": "USEE10181884",
+        "youtube_video_id": "jlbunmCbTBA",
         "art": "https://cdn-images.dzcdn.net/images/cover/ee22cb01343143b8d78c63e2aa53c2b3/500x500-000000-80-0-0.jpg",
         "links": {
             "spotify": "https://open.spotify.com/search/Marquee%20Moon%20Television",
             "appleMusic": "https://music.apple.com/us/album/marquee-moon/1049069472?i=1049069476&uo=4",
             "deezer": "https://www.deezer.com/track/718312",
-            "youtube": "https://www.youtube.com/results?search_query=Marquee%20Moon%20Television",
-            "youtubeMusic": "https://music.youtube.com/search?q=Marquee%20Moon%20Television",
+            "youtube": "https://www.youtube.com/watch?v=jlbunmCbTBA",
+            "youtubeMusic": "https://music.youtube.com/watch?v=jlbunmCbTBA",
         },
     },
     {
@@ -232,13 +252,14 @@ SONGS: list[dict[str, object]] = [
         "artist": "Talking Heads",
         "album": "Speaking in Tongues",
         "isrc": "USWB10502911",
+        "youtube_video_id": "Fb2q141rMNE",
         "art": "https://cdn-images.dzcdn.net/images/cover/70db13b9aec041ca74d0ec2b815846e9/500x500-000000-80-0-0.jpg",
         "links": {
             "spotify": "https://open.spotify.com/search/This%20Must%20Be%20the%20Place%20%28Naive%20Melody%29%20%282005%20Remaster%29%20Talking%20Heads",
             "appleMusic": "https://music.apple.com/us/album/this-must-be-the-place-naive-melody/20833651?i=20833681&uo=4",
             "deezer": "https://www.deezer.com/track/3614317",
-            "youtube": "https://www.youtube.com/results?search_query=This%20Must%20Be%20the%20Place%20%28Naive%20Melody%29%20%282005%20Remaster%29%20Talking%20Heads",
-            "youtubeMusic": "https://music.youtube.com/search?q=This%20Must%20Be%20the%20Place%20%28Naive%20Melody%29%20%282005%20Remaster%29%20Talking%20Heads",
+            "youtube": "https://www.youtube.com/watch?v=Fb2q141rMNE",
+            "youtubeMusic": "https://music.youtube.com/watch?v=Fb2q141rMNE",
         },
     },
     {
@@ -246,13 +267,14 @@ SONGS: list[dict[str, object]] = [
         "artist": "Solange",
         "album": "A Seat at the Table",
         "isrc": "USSM11607807",
+        "youtube_video_id": "S0qrinhNnOM",
         "art": "https://cdn-images.dzcdn.net/images/cover/36b361c2c916b333a0b7c6f949c32099/500x500-000000-80-0-0.jpg",
         "links": {
             "spotify": "https://open.spotify.com/search/Cranes%20in%20the%20Sky%20Solange",
             "appleMusic": "https://music.apple.com/us/album/cranes-in-the-sky/1159507212?i=1159507287&uo=4",
             "deezer": "https://www.deezer.com/track/133103636",
-            "youtube": "https://www.youtube.com/results?search_query=Cranes%20in%20the%20Sky%20Solange",
-            "youtubeMusic": "https://music.youtube.com/search?q=Cranes%20in%20the%20Sky%20Solange",
+            "youtube": "https://www.youtube.com/watch?v=S0qrinhNnOM",
+            "youtubeMusic": "https://music.youtube.com/watch?v=S0qrinhNnOM",
         },
     },
     {
@@ -260,13 +282,14 @@ SONGS: list[dict[str, object]] = [
         "artist": "Pixies",
         "album": "Death to the Pixies",
         "isrc": "GBAFL9700091",
+        "youtube_video_id": "PVyS9JwtFoQ",
         "art": "https://cdn-images.dzcdn.net/images/cover/f2ea8050f0540c5f08316832cf9ec2cb/500x500-000000-80-0-0.jpg",
         "links": {
             "spotify": "https://open.spotify.com/search/Debaser%20Pixies",
             "appleMusic": "https://music.apple.com/us/album/debaser/7060469?i=7060439&uo=4",
             "deezer": "https://www.deezer.com/track/936881",
-            "youtube": "https://www.youtube.com/results?search_query=Debaser%20Pixies",
-            "youtubeMusic": "https://music.youtube.com/search?q=Debaser%20Pixies",
+            "youtube": "https://www.youtube.com/watch?v=PVyS9JwtFoQ",
+            "youtubeMusic": "https://music.youtube.com/watch?v=PVyS9JwtFoQ",
         },
     },
     {
@@ -274,13 +297,14 @@ SONGS: list[dict[str, object]] = [
         "artist": "Kavinsky",
         "album": "Nightcall",
         "isrc": "FRS710900410",
+        "youtube_video_id": "ZVS6Q_lbKQ0",
         "art": "https://cdn-images.dzcdn.net/images/cover/7f9ecda862091716e4e8f74a7e115f93/500x500-000000-80-0-0.jpg",
         "links": {
             "spotify": "https://open.spotify.com/search/Nightcall%20Kavinsky",
             "appleMusic": "https://music.apple.com/us/album/nightcall/1442447952?i=1442447970&uo=4",
             "deezer": "https://www.deezer.com/track/62496771",
-            "youtube": "https://www.youtube.com/results?search_query=Nightcall%20Kavinsky",
-            "youtubeMusic": "https://music.youtube.com/search?q=Nightcall%20Kavinsky",
+            "youtube": "https://www.youtube.com/watch?v=ZVS6Q_lbKQ0",
+            "youtubeMusic": "https://music.youtube.com/watch?v=ZVS6Q_lbKQ0",
         },
     },
     {
@@ -288,13 +312,14 @@ SONGS: list[dict[str, object]] = [
         "artist": "Kendrick Lamar",
         "album": "To Pimp A Butterfly",
         "isrc": "USUM71502498",
+        "youtube_video_id": "Z-48u_uWMHY",
         "art": "https://cdn-images.dzcdn.net/images/cover/00dd0da365a94b1829302d6b7fec70e6/500x500-000000-80-0-0.jpg",
         "links": {
             "spotify": "https://open.spotify.com/search/Alright%20Kendrick%20Lamar",
             "appleMusic": "https://music.apple.com/us/album/alright/1440871877?i=1440871886&uo=4",
             "deezer": "https://www.deezer.com/track/97206068",
-            "youtube": "https://www.youtube.com/results?search_query=Alright%20Kendrick%20Lamar",
-            "youtubeMusic": "https://music.youtube.com/search?q=Alright%20Kendrick%20Lamar",
+            "youtube": "https://www.youtube.com/watch?v=Z-48u_uWMHY",
+            "youtubeMusic": "https://music.youtube.com/watch?v=Z-48u_uWMHY",
         },
     },
     {
@@ -302,13 +327,14 @@ SONGS: list[dict[str, object]] = [
         "artist": "Erik Satie",
         "album": "Gymnop\u00e9dies",
         "isrc": "TCABB1109123",
+        "youtube_video_id": "cic1RNHXa-k",
         "art": "https://cdn-images.dzcdn.net/images/cover/29e7eed1c4a83283ca354f6541fd56f6/500x500-000000-80-0-0.jpg",
         "links": {
             "spotify": "https://open.spotify.com/search/Gymnop%C3%A9die%20No.%201%20Erik%20Satie",
             "appleMusic": "https://music.apple.com/us/album/gymnop%C3%A9die-no-1-erik-satie/1607396597?i=1607396598&uo=4",
             "deezer": "https://www.deezer.com/track/75009998",
-            "youtube": "https://www.youtube.com/results?search_query=Gymnop%C3%A9die%20No.%201%20Erik%20Satie",
-            "youtubeMusic": "https://music.youtube.com/search?q=Gymnop%C3%A9die%20No.%201%20Erik%20Satie",
+            "youtube": "https://www.youtube.com/watch?v=cic1RNHXa-k",
+            "youtubeMusic": "https://music.youtube.com/watch?v=cic1RNHXa-k",
         },
     },
     {
@@ -316,13 +342,14 @@ SONGS: list[dict[str, object]] = [
         "artist": "Radiohead",
         "album": "Kid A",
         "isrc": "GBAYE0800814",
+        "youtube_video_id": "EcSvMFm2ABE",
         "art": "https://cdn-images.dzcdn.net/images/cover/e5925065cdb1cefbc3bd75af4a1f1801/500x500-000000-80-0-0.jpg",
         "links": {
             "spotify": "https://open.spotify.com/search/Motion%20Picture%20Soundtrack%20Radiohead",
             "appleMusic": "https://music.apple.com/us/album/motion-picture-soundtrack/1581785974?i=1581786358&uo=4",
             "deezer": "https://www.deezer.com/track/138547605",
-            "youtube": "https://www.youtube.com/results?search_query=Motion%20Picture%20Soundtrack%20Radiohead",
-            "youtubeMusic": "https://music.youtube.com/search?q=Motion%20Picture%20Soundtrack%20Radiohead",
+            "youtube": "https://www.youtube.com/watch?v=EcSvMFm2ABE",
+            "youtubeMusic": "https://music.youtube.com/watch?v=EcSvMFm2ABE",
         },
     },
     {
@@ -330,13 +357,14 @@ SONGS: list[dict[str, object]] = [
         "artist": "Kate Bush",
         "album": "Hounds Of Love",
         "isrc": "GBCNR8500005",
+        "youtube_video_id": "lelN3xUltqU",
         "art": "https://cdn-images.dzcdn.net/images/cover/22fedaf5d2b0ac8977b93bc1db7a4a2a/500x500-000000-80-0-0.jpg",
         "links": {
             "spotify": "https://open.spotify.com/search/Hounds%20Of%20Love%20Kate%20Bush",
             "appleMusic": "https://music.apple.com/us/album/hounds-of-love-2018-remaster/1675560565?i=1675560828&uo=4",
             "deezer": "https://www.deezer.com/track/2173954697",
-            "youtube": "https://www.youtube.com/results?search_query=Hounds%20Of%20Love%20Kate%20Bush",
-            "youtubeMusic": "https://music.youtube.com/search?q=Hounds%20Of%20Love%20Kate%20Bush",
+            "youtube": "https://www.youtube.com/watch?v=lelN3xUltqU",
+            "youtubeMusic": "https://music.youtube.com/watch?v=lelN3xUltqU",
         },
     },
     {
@@ -344,13 +372,14 @@ SONGS: list[dict[str, object]] = [
         "artist": "The London Suede",
         "album": "Coming up",
         "isrc": "GBL2J1000002",
+        "youtube_video_id": "POOHnFD-pec",
         "art": "https://cdn-images.dzcdn.net/images/cover/e51052405a379a72e08366036b39c175/500x500-000000-80-0-0.jpg",
         "links": {
             "spotify": "https://open.spotify.com/search/Beautiful%20Ones%20%28Remastered%29%20The%20London%20Suede",
             "appleMusic": "https://music.apple.com/us/album/beautiful-ones/1535272783?i=1535273597&uo=4",
             "deezer": "https://www.deezer.com/track/1206873902",
-            "youtube": "https://www.youtube.com/results?search_query=Beautiful%20Ones%20%28Remastered%29%20The%20London%20Suede",
-            "youtubeMusic": "https://music.youtube.com/search?q=Beautiful%20Ones%20%28Remastered%29%20The%20London%20Suede",
+            "youtube": "https://www.youtube.com/watch?v=POOHnFD-pec",
+            "youtubeMusic": "https://music.youtube.com/watch?v=POOHnFD-pec",
         },
     },
     {
@@ -358,13 +387,14 @@ SONGS: list[dict[str, object]] = [
         "artist": "DNA",
         "album": "RetroSpective: The Best Of Suzanne Vega",
         "isrc": "USAM19104302",
+        "youtube_video_id": "NB1VdkCdIug",
         "art": "https://cdn-images.dzcdn.net/images/cover/e66c8802b4e32613ade556425b07ede8/500x500-000000-80-0-0.jpg",
         "links": {
             "spotify": "https://open.spotify.com/search/Tom%27s%20Diner%20%287%22%20Version%29%20DNA",
             "appleMusic": "https://music.apple.com/us/album/toms-diner-7-a/1443836067?i=1443836345&uo=4",
             "deezer": "https://www.deezer.com/track/549263622",
-            "youtube": "https://www.youtube.com/results?search_query=Tom%27s%20Diner%20%287%22%20Version%29%20DNA",
-            "youtubeMusic": "https://music.youtube.com/search?q=Tom%27s%20Diner%20%287%22%20Version%29%20DNA",
+            "youtube": "https://www.youtube.com/watch?v=NB1VdkCdIug",
+            "youtubeMusic": "https://music.youtube.com/watch?v=NB1VdkCdIug",
         },
     },
     {
@@ -372,13 +402,14 @@ SONGS: list[dict[str, object]] = [
         "artist": "Boards Of Canada",
         "album": "Music Has The Right To Children",
         "isrc": "GBBPW9800019",
+        "youtube_video_id": "SM4tQcUt_mQ",
         "art": "https://cdn-images.dzcdn.net/images/cover/c3c2e2a739ed501d01791b16a3fd9ad3/500x500-000000-80-0-0.jpg",
         "links": {
             "spotify": "https://open.spotify.com/search/Roygbiv%20Boards%20Of%20Canada",
             "appleMusic": "https://music.apple.com/us/album/roygbiv/281116024?i=281116081&uo=4",
             "deezer": "https://www.deezer.com/track/29373661",
-            "youtube": "https://www.youtube.com/results?search_query=Roygbiv%20Boards%20Of%20Canada",
-            "youtubeMusic": "https://music.youtube.com/search?q=Roygbiv%20Boards%20Of%20Canada",
+            "youtube": "https://www.youtube.com/watch?v=SM4tQcUt_mQ",
+            "youtubeMusic": "https://music.youtube.com/watch?v=SM4tQcUt_mQ",
         },
     },
     {
@@ -386,13 +417,14 @@ SONGS: list[dict[str, object]] = [
         "artist": "The Meters",
         "album": "Funkify Your Life: The Meters Anthology",
         "isrc": "USRH10125719",
+        "youtube_video_id": "Nd3yDoOyvbY",
         "art": "https://cdn-images.dzcdn.net/images/cover/1f323efaf631f075f8e0b1c9279993d6/500x500-000000-80-0-0.jpg",
         "links": {
             "spotify": "https://open.spotify.com/search/Cissy%20Strut%20The%20Meters",
             "appleMusic": "https://music.apple.com/us/album/cissy-strut/59401239?i=59401193&uo=4",
             "deezer": "https://www.deezer.com/track/671183",
-            "youtube": "https://www.youtube.com/results?search_query=Cissy%20Strut%20The%20Meters",
-            "youtubeMusic": "https://music.youtube.com/search?q=Cissy%20Strut%20The%20Meters",
+            "youtube": "https://www.youtube.com/watch?v=Nd3yDoOyvbY",
+            "youtubeMusic": "https://music.youtube.com/watch?v=Nd3yDoOyvbY",
         },
     },
     {
@@ -400,13 +432,14 @@ SONGS: list[dict[str, object]] = [
         "artist": "Radiohead",
         "album": "The Bends",
         "isrc": "GBAYE9400056",
+        "youtube_video_id": "n5h0qHwNrHk",
         "art": "https://cdn-images.dzcdn.net/images/cover/0d2ccaf5f7b35af57f3d9c8f4504a6e6/500x500-000000-80-0-0.jpg",
         "links": {
             "spotify": "https://open.spotify.com/search/Fake%20Plastic%20Trees%20Radiohead",
             "appleMusic": "https://music.apple.com/us/album/fake-plastic-trees/1097862703?i=1097862845&uo=4",
             "deezer": "https://www.deezer.com/track/138544263",
-            "youtube": "https://www.youtube.com/results?search_query=Fake%20Plastic%20Trees%20Radiohead",
-            "youtubeMusic": "https://music.youtube.com/search?q=Fake%20Plastic%20Trees%20Radiohead",
+            "youtube": "https://www.youtube.com/watch?v=n5h0qHwNrHk",
+            "youtubeMusic": "https://music.youtube.com/watch?v=n5h0qHwNrHk",
         },
     },
     {
@@ -414,13 +447,14 @@ SONGS: list[dict[str, object]] = [
         "artist": "Beastie Boys",
         "album": "Solid Gold Hits",
         "isrc": "USCA20501226",
+        "youtube_video_id": "z5rRZdiu1UE",
         "art": "https://cdn-images.dzcdn.net/images/cover/fa78eb123d50cb183e6089746364a66b/500x500-000000-80-0-0.jpg",
         "links": {
             "spotify": "https://open.spotify.com/search/Sabotage%20Beastie%20Boys",
             "appleMusic": "https://music.apple.com/us/album/sabotage/724971392?i=724971921&uo=4",
             "deezer": "https://www.deezer.com/track/3119536",
-            "youtube": "https://www.youtube.com/results?search_query=Sabotage%20Beastie%20Boys",
-            "youtubeMusic": "https://music.youtube.com/search?q=Sabotage%20Beastie%20Boys",
+            "youtube": "https://www.youtube.com/watch?v=z5rRZdiu1UE",
+            "youtubeMusic": "https://music.youtube.com/watch?v=z5rRZdiu1UE",
         },
     },
     {
@@ -428,13 +462,14 @@ SONGS: list[dict[str, object]] = [
         "artist": "my bloody valentine",
         "album": "Amateur",
         "isrc": "USMTD9509802",
+        "youtube_video_id": "nwfCoKNI5hs",
         "art": "https://cdn-images.dzcdn.net/images/cover/765eceaeb557875a0c5b72e26a00f2f9/500x500-000000-80-0-0.jpg",
         "links": {
             "spotify": "https://open.spotify.com/search/Only%20Shallow%20my%20bloody%20valentine",
             "appleMusic": "https://music.apple.com/us/album/only-shallow/1589230434?i=1589230439&uo=4",
             "deezer": "https://www.deezer.com/track/949559",
-            "youtube": "https://www.youtube.com/results?search_query=Only%20Shallow%20my%20bloody%20valentine",
-            "youtubeMusic": "https://music.youtube.com/search?q=Only%20Shallow%20my%20bloody%20valentine",
+            "youtube": "https://www.youtube.com/watch?v=nwfCoKNI5hs",
+            "youtubeMusic": "https://music.youtube.com/watch?v=nwfCoKNI5hs",
         },
     },
     {
@@ -442,13 +477,14 @@ SONGS: list[dict[str, object]] = [
         "artist": "PJ Harvey",
         "album": "Rid Of Me",
         "isrc": "GBAAN9300092",
+        "youtube_video_id": "8PlaNe3mXl8",
         "art": "https://cdn-images.dzcdn.net/images/cover/6da6a70f9cdd019953ef2c9a524b6a34/500x500-000000-80-0-0.jpg",
         "links": {
             "spotify": "https://open.spotify.com/search/Rid%20Of%20Me%20PJ%20Harvey",
             "appleMusic": "https://music.apple.com/us/album/rid-of-me/1440923277?i=1440923286&uo=4",
             "deezer": "https://www.deezer.com/track/1161109",
-            "youtube": "https://www.youtube.com/results?search_query=Rid%20Of%20Me%20PJ%20Harvey",
-            "youtubeMusic": "https://music.youtube.com/search?q=Rid%20Of%20Me%20PJ%20Harvey",
+            "youtube": "https://www.youtube.com/watch?v=8PlaNe3mXl8",
+            "youtubeMusic": "https://music.youtube.com/watch?v=8PlaNe3mXl8",
         },
     },
     {
@@ -456,13 +492,14 @@ SONGS: list[dict[str, object]] = [
         "artist": "Depeche Mode",
         "album": "The Singles 86-98",
         "isrc": "GBAJH9800146",
+        "youtube_video_id": "aGSKrC7dGcY",
         "art": "https://cdn-images.dzcdn.net/images/cover/e73716d037ee24f1331a8c0332526590/500x500-000000-80-0-0.jpg",
         "links": {
             "spotify": "https://open.spotify.com/search/Enjoy%20the%20Silence%20Depeche%20Mode",
             "appleMusic": "https://music.apple.com/us/album/enjoy-the-silence/1612543823?i=1612544004&uo=4",
             "deezer": "https://www.deezer.com/track/68515055",
-            "youtube": "https://www.youtube.com/results?search_query=Enjoy%20the%20Silence%20Depeche%20Mode",
-            "youtubeMusic": "https://music.youtube.com/search?q=Enjoy%20the%20Silence%20Depeche%20Mode",
+            "youtube": "https://www.youtube.com/watch?v=aGSKrC7dGcY",
+            "youtubeMusic": "https://music.youtube.com/watch?v=aGSKrC7dGcY",
         },
     },
     {
@@ -470,13 +507,14 @@ SONGS: list[dict[str, object]] = [
         "artist": "New Order",
         "album": "Singles",
         "isrc": "GBAAP1500062",
+        "youtube_video_id": "VXLTVvuAfso",
         "art": "https://cdn-images.dzcdn.net/images/cover/197e425f52b7841c402437f34594a7bb/500x500-000000-80-0-0.jpg",
         "links": {
             "spotify": "https://open.spotify.com/search/Ceremony%20%28Version%201%3B%202016%20Remaster%29%20New%20Order",
             "appleMusic": "https://music.apple.com/us/album/ceremony/1530256325?i=1530256507&uo=4",
             "deezer": "https://www.deezer.com/track/131744032",
-            "youtube": "https://www.youtube.com/results?search_query=Ceremony%20%28Version%201%3B%202016%20Remaster%29%20New%20Order",
-            "youtubeMusic": "https://music.youtube.com/search?q=Ceremony%20%28Version%201%3B%202016%20Remaster%29%20New%20Order",
+            "youtube": "https://www.youtube.com/watch?v=VXLTVvuAfso",
+            "youtubeMusic": "https://music.youtube.com/watch?v=VXLTVvuAfso",
         },
     },
     {
@@ -484,13 +522,14 @@ SONGS: list[dict[str, object]] = [
         "artist": "Radiohead",
         "album": "Kid A",
         "isrc": "GBAYE0000817",
+        "youtube_video_id": "q-Nymir3q34",
         "art": "https://cdn-images.dzcdn.net/images/cover/e5925065cdb1cefbc3bd75af4a1f1801/500x500-000000-80-0-0.jpg",
         "links": {
             "spotify": "https://open.spotify.com/search/Idioteque%20Radiohead",
             "appleMusic": "https://music.apple.com/us/album/idioteque-live-in-oxford/1097873905?i=1097874664&uo=4",
             "deezer": "https://www.deezer.com/track/138547601",
-            "youtube": "https://www.youtube.com/results?search_query=Idioteque%20Radiohead",
-            "youtubeMusic": "https://music.youtube.com/search?q=Idioteque%20Radiohead",
+            "youtube": "https://www.youtube.com/watch?v=q-Nymir3q34",
+            "youtubeMusic": "https://music.youtube.com/watch?v=q-Nymir3q34",
         },
     },
     {
@@ -498,13 +537,14 @@ SONGS: list[dict[str, object]] = [
         "artist": "New Order",
         "album": "Brotherhood (Collector's Edition)",
         "isrc": "GBCRL0800398",
+        "youtube_video_id": "tkOr12AQpnU",
         "art": "https://cdn-images.dzcdn.net/images/cover/de9f344c076cf9c44d6f5a7572cdd5cd/500x500-000000-80-0-0.jpg",
         "links": {
             "spotify": "https://open.spotify.com/search/Bizarre%20Love%20Triangle%20New%20Order",
             "appleMusic": "https://music.apple.com/us/album/bizarre-love-triangle/1040972118?i=1040972132&uo=4",
             "deezer": "https://www.deezer.com/track/2481156",
-            "youtube": "https://www.youtube.com/results?search_query=Bizarre%20Love%20Triangle%20New%20Order",
-            "youtubeMusic": "https://music.youtube.com/search?q=Bizarre%20Love%20Triangle%20New%20Order",
+            "youtube": "https://www.youtube.com/watch?v=tkOr12AQpnU",
+            "youtubeMusic": "https://music.youtube.com/watch?v=tkOr12AQpnU",
         },
     },
     {
@@ -512,13 +552,14 @@ SONGS: list[dict[str, object]] = [
         "artist": "The Cure",
         "album": "Seventeen Seconds",
         "isrc": "USEE10500788",
+        "youtube_video_id": "xik-y0xlpZ0",
         "art": "https://cdn-images.dzcdn.net/images/cover/95f889f95eaf12538f46a55b65d63801/500x500-000000-80-0-0.jpg",
         "links": {
             "spotify": "https://open.spotify.com/search/A%20Forest%20%282006%20Remaster%29%20The%20Cure",
             "appleMusic": "https://music.apple.com/us/album/a-forest/65619601?i=65619482&uo=4",
             "deezer": "https://www.deezer.com/track/14639134",
-            "youtube": "https://www.youtube.com/results?search_query=A%20Forest%20%282006%20Remaster%29%20The%20Cure",
-            "youtubeMusic": "https://music.youtube.com/search?q=A%20Forest%20%282006%20Remaster%29%20The%20Cure",
+            "youtube": "https://www.youtube.com/watch?v=xik-y0xlpZ0",
+            "youtubeMusic": "https://music.youtube.com/watch?v=xik-y0xlpZ0",
         },
     },
 ]
@@ -638,6 +679,11 @@ def make_submission(mix: Mix, user: User, song: dict[str, object], **kwargs) -> 
     rather than a wireframe; without them every row is a grey box with no
     listen affordance, because PlatformLinks renders nothing when the dict is
     empty.
+
+    youtube_video_id/youtube_lookup_attempted_at are stamped as already
+    resolved (MysteryMixClub-t2ai) so pending_submissions_stmt's three-way
+    AND (video_id NULL, attempted_at NULL, source_key NULL) excludes every
+    seeded catalogue submission from the backfill worker's live-API pass.
     """
     return Submission(
         mix_id=mix.id,
@@ -648,6 +694,8 @@ def make_submission(mix: Mix, user: User, song: dict[str, object], **kwargs) -> 
         album=song["album"],
         album_art_url=song["art"],
         platform_links=song["links"],
+        youtube_video_id=song["youtube_video_id"],
+        youtube_lookup_attempted_at=NOW,
         **kwargs,
     )
 

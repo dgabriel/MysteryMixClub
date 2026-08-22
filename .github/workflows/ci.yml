@@ -145,3 +145,96 @@ jobs:
           pip install pip-audit
           pip-audit --skip-editable
         continue-on-error: true
+
+  flaught:
+    name: Adversarial review (Flaught)
+    runs-on: ubuntu-latest
+    # Scoped to just this job (ADR 0020) -- the workflow-level permissions
+    # block above stays contents: read for frontend/backend. Only this job's
+    # PR-comment step needs write access.
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24"
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.11"
+
+      - name: Install Flaught
+        run: npm install -g @flaught/core
+
+      - name: Install Semgrep
+        run: pip install semgrep
+
+      # Flaught's linter/vuln-scanner auto-detection looks for eslint/npm
+      # audit and ruff/pip-audit from wherever it's invoked (repo root here).
+      # This repo's root package.json has no test/lint scripts -- the real
+      # toolchains live in frontend/ and backend/ -- so without these two
+      # installs, both tools would silently find nothing and skip (ADR 0020).
+      - name: Install frontend dependencies (for eslint / npm audit)
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install backend dependencies (for ruff / pip-audit)
+        working-directory: backend
+        run: pip install -e ".[dev]"
+
+      # Non-blocking for this first CI landing (ADR 0020, same precedent as
+      # ADR 0017's original artifact-only choice): no step below ever exits
+      # 1, so this job always reports success regardless of findings.
+      # Findings surface via the PR comment and the uploaded JSON artifact.
+      - name: Run adversarial review
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          PR_BASE_REF: ${{ github.base_ref }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          flaught review \
+            --base "origin/${PR_BASE_REF}" \
+            --head HEAD \
+            --output findings.json \
+            --pr-description "${PR_TITLE}" \
+            --quiet
+        continue-on-error: true
+
+      - name: Upload findings
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: flaught-findings
+          path: findings.json
+          if-no-files-found: ignore
+
+      # Re-runs --no-llm to render the comment body without a second LLM call
+      # per PR (the first run's --output only writes the JSON artifact) --
+      # same tradeoff Flaught's own docs make: the posted comment reflects
+      # deterministic/test-inversion/scope-creep findings only, not the LLM
+      # pass; the uploaded findings.json artifact is the source of truth for
+      # LLM findings.
+      - name: Comment on PR
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_BASE_REF: ${{ github.base_ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if [ -f findings.json ]; then
+            BODY=$(flaught review \
+              --base "origin/${PR_BASE_REF}" \
+              --head HEAD \
+              --no-llm \
+              --pr-description "${PR_TITLE}" \
+              --quiet 2>/dev/null)
+            echo "$BODY" | gh pr comment "${PR_NUMBER}" --body-file -
+          fi

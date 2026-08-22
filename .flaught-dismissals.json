@@ -112,17 +112,6 @@
       "expires_at": null
     },
     {
-      "fingerprint": "sha256:ee7fc8be867c95ce",
-      "dismissed_by": "dgabriel@mac.mynetworksettings.com",
-      "dismissed_at": "2026-08-21T23:02:06.734Z",
-      "reason": "Real finding, deferred: no explicit ssl_protocols directive in prod nginx config. Tracked in MysteryMixClub-d8hz.",
-      "context": {
-        "title": "generic.nginx.security.missing-ssl-version.missing-ssl-version",
-        "file": "scripts/nginx-mysterymixclub-prod.conf"
-      },
-      "expires_at": null
-    },
-    {
       "fingerprint": "sha256:ba05e19554f7387d",
       "dismissed_by": "dgabriel@mac.mynetworksettings.com",
       "dismissed_at": "2026-08-21T23:02:06.870Z",

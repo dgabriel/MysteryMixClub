@@ -889,6 +889,42 @@ async def test_bandcamp_no_catalog_match_returns_source_identity():
     assert song.artist == "Cool Band"
 
 
+async def test_bandcamp_no_by_separator_falls_back_to_slug_display_artist():
+    # og:title has no ", by " separator: artist_name is None, so without a
+    # display fallback the track would be unsubmittable (min_length=1 on the
+    # submission schema) -- the exact defect from MysteryMixClub-ifxy.
+    handler = _router(
+        search=_EMPTY_SEARCH,
+        bandcamp=_bandcamp_ok('<meta property="og:title" content="Untitled Track">'),
+    )
+    song = await _resolver(handler).resolve("https://cool-band.bandcamp.com/track/untitled")
+    assert song.isrc is None
+    assert song.source == "bandcamp"
+    assert song.source_key == "bandcamp:cool-band/untitled"
+    assert song.title == "Untitled Track"
+    # The artist subdomain, de-slugified, is the display artist of last resort.
+    assert song.artist == "Cool Band"
+
+
+async def test_bandcamp_slug_display_artist_is_display_only_not_a_search_term():
+    # Regression guard: the slug supplies a *display* artist only after catalog
+    # matching has already failed -- it must never enter the Deezer query, or a
+    # slug like "some-official-label" would turn today's catalog hits into misses.
+    seen: dict[str, str] = {}
+
+    def search_miss(request: httpx.Request) -> httpx.Response:
+        seen.update(dict(request.url.params))
+        return httpx.Response(200, json={"data": [], "total": 0})
+
+    handler = _router(
+        search=search_miss,
+        bandcamp=_bandcamp_ok('<meta property="og:title" content="Untitled Track">'),
+    )
+    song = await _resolver(handler).resolve("https://cool-band.bandcamp.com/track/untitled")
+    assert seen["q"] == "Untitled Track"  # slug absent from the query
+    assert song.artist == "Cool Band"  # but present for display
+
+
 async def test_bandcamp_apex_host_no_match_cannot_form_key_is_not_found():
     # bandcamp.com (no artist subdomain) can't reconstruct an {artist}/{track}
     # key, so a genuine miss there is simply not-found, never a bad guess.

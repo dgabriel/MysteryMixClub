@@ -1,5 +1,9 @@
 import { Suspense, lazy, type ReactNode } from "react";
-import { Navigate, RouterProvider, createBrowserRouter, useParams } from "react-router-dom";
+import { Navigate, createBrowserRouter, useParams } from "react-router";
+// RouterProvider depends on react-dom, so v7 requires it from the deep DOM
+// entry point in a real browser context (react-router/dom) -- the top-level
+// package export is for non-DOM contexts like tests instead.
+import { RouterProvider } from "react-router/dom";
 import { AuthProvider } from "./hooks/useAuth";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { LoginRoute } from "./pages/LoginRoute";

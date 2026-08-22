@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Outlet, useLocation, useOutletContext } from "react-router-dom";
+import { Outlet, useLocation, useOutletContext } from "react-router";
 import { TopNav } from "./TopNav";
 
 /** A contextual back target for the shared nav (e.g. mix → its club). */

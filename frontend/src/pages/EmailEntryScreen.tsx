@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { Badge } from "../components/Badge";
 import { Button } from "../components/Button";
 import { ContactEmail } from "../components/ContactEmail";

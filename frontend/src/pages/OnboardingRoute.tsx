@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router";
 import { OnboardingScreen } from "./OnboardingScreen";
 import { VerifyScreen } from "./VerifyScreen";
 import { acceptTerms } from "../services/api";

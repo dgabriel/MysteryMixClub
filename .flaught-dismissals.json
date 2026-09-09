@@ -286,6 +286,105 @@
         "file": ".advreview.yml"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:c86eaac93c2dd0e6f8eaac6796e18842",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T20:39:42.572Z",
+      "reason": "False positive, verified -- onPaper IS defined in DeadlineModeToggleProps (frontend/src/components/DeadlineModeToggle.tsx) and this file passes tsc -b clean. Confidence 0.05; note llm.min_confidence: 0.5 (set in PR #285) evidently did NOT filter this -- dropped_below_min_confidence reports 0 despite this and 4 other findings scoring 0.05. Worth a closer look separately; not chasing it further in this PR.",
+      "context": {
+        "title": "TypeScript prop mismatch: onPaper not defined in DeadlineModeToggleProps",
+        "file": "frontend/src/components/DeadlineModeToggle.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:32f0c8b38d12a333c1646737cba4865e",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T20:39:42.706Z",
+      "reason": "Deliberate, matching established precedent -- role=\"group\" (not tablist/tab) is the same choice EmailEntryScreen's own sign-in-method toggle already makes, and for the same documented reason: tablist/tab promises WAI-ARIA APG arrow-key roving-tabIndex navigation that isn't implemented, so a labelled group of pressed-state buttons promises only what it delivers. Confidence 0.05.",
+      "context": {
+        "title": "ARIA role misuse: role=\"group\" without proper keyboard navigation",
+        "file": "frontend/src/components/DeadlineModeToggle.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:58a1cac449e6c0e9faf95fb76313401e",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T20:39:42.843Z",
+      "reason": "False positive, verified -- onPaper is read directly in tabClass's conditional (border-ink-accent/text-ink vs border-accent/text-foreground) and passed through to the border-ink-hairline/border-hairline container class. Not unused. Confidence 0.05.",
+      "context": {
+        "title": "Unused onPaper prop in DeadlineModeToggle component",
+        "file": "frontend/src/components/DeadlineModeToggle.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:e0f993a45c390d907eb1b177628ba854",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T20:39:42.980Z",
+      "reason": "Same false positive as F-0004 (duplicate LLM finding, different fingerprint). Confidence 0.05.",
+      "context": {
+        "title": "Dead code: onPaper prop passed to component but not utilized",
+        "file": "frontend/src/pages/ClubHomeScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:048cac7293153f2791987592b837cb1f",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T20:39:43.114Z",
+      "reason": "Same false positive as F-0004 (duplicate LLM finding, different fingerprint). Confidence 0.05.",
+      "context": {
+        "title": "Dead code: onPaper prop passed to component but not utilized",
+        "file": "frontend/src/pages/CreateClubScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:519cb2a60048f5fcdde8d366e6ce56c5",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T20:46:51.564Z",
+      "reason": "Already reasoned through in prior PRs -- every dismissal carries a full audit trail (fingerprint, dismisser, timestamp, reason), so the file's growth is legible history, not silent suppression. Confidence 0.46.",
+      "context": {
+        "title": "Large bulk addition to .flaught-dismissals.json may suppress future findings",
+        "file": ".flaught-dismissals.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:2a69fd3eacbd62bfedfffcab67b91caa",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T20:46:51.696Z",
+      "reason": "Real, fair gap -- verified neither CreateClubScreen.test.tsx nor ClubHomeRoute.test.tsx exercises the toggle in page context. Filed as MysteryMixClub-uqqw rather than expanded here: backfilling full page-level integration coverage for the whole weekly-anchor feature is bigger than this visibility fix's scope (the gap predates this PR, from the original MysteryMixClub-z845 feature PR).",
+      "context": {
+        "title": "Missing integration tests for pages that embed DeadlineModeToggle",
+        "file": "frontend/src/pages/ClubHomeScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:801cc056967631d60a83fdcd505eb42b",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T20:46:51.834Z",
+      "reason": "Not actionable without contradicting this codebase's established architecture -- every component in this repo (Button, TextField, DeadlineChip, DeadlineWindowField, DeadlineAnchorField, ...) uses inline Tailwind utility classes directly, per the style guide. This isn't a property of the new component, it's the whole app's deliberate convention.",
+      "context": {
+        "title": "Component tightly coupled to Tailwind utility classes makes styling brittle",
+        "file": "frontend/src/components/DeadlineModeToggle.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:d55e386e5265034cecb156871c97165b",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T20:46:51.970Z",
+      "reason": "Low confidence (0.1); onPaper already matches the exact naming convention used by every other component with a light/dark-surface variant in this codebase (TextField, Button, DeadlineWindowField, DeadlineAnchorField, DeadlineChip, ...).",
+      "context": {
+        "title": "Prop name \"onPaper\" is ambiguous and may confuse future contributors",
+        "file": "frontend/src/components/DeadlineModeToggle.tsx"
+      },
+      "expires_at": null
     }
   ]
 }

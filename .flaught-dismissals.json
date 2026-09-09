@@ -110,6 +110,105 @@
         "file": "js-yaml"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:cea121449bf526884d046c6f99bd0e2d",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:03:13.224Z",
+      "reason": "Verified: both underlying findings (unpinned GitHub Actions in ci.yml/deploy-prod.yml) no longer exist in the current codebase -- all 9 third-party actions are SHA-pinned, confirmed via grep and MysteryMixClub-2nz5 (closed, PR #273). Removing their stale dismissal entries is correct cleanup, not a security regression.",
+      "context": {
+        "title": "Removal of real security dismissals for unpinned GitHub Actions",
+        "file": ".flaught-dismissals.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:b41ac14a4c19608cb96f81852a8ba081",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:03:13.356Z",
+      "reason": "Reasoned accept: dependency_sanity's npm-registry queries are for packages already committed in package.json/package-lock.json/pyproject.toml -- already public within the repo. The same names/versions already leave the environment via the ordinary npm ci / pip install steps in this same job and the frontend/backend CI jobs; dependency_sanity's queries are the same class of request against the same already-installed set, not a new exposure surface.",
+      "context": {
+        "title": "Enabling dependency_sanity introduces external network calls that may leak internal dependency versions",
+        "file": ".advreview.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:d6cfb843dcb63da148f77ae11691c6fb",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:03:13.489Z",
+      "reason": "Reasoned accept: migration verified by exact-prefix matching against freshly-generated full fingerprints, not blind reuse -- SHA-256 truncated to 64 bits (16 hex chars) has negligible collision probability for this repo's finding count (~20-30), and each match was cross-checked against the actual current finding it now maps to before being written back.",
+      "context": {
+        "title": "Fingerprint migration may cause mismatched dismissals, silently ignoring future findings",
+        "file": ".flaught-dismissals.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:e41dde81fa98a110d45f8f75f7f50ea6",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:03:13.624Z",
+      "reason": "Speculative, no evidence yet -- zero test_weakening findings have been produced by any run so far. ADR 0023 already documents 'expect first-contact findings' as the general risk of turning on a new tool; will address concretely if it actually produces a false positive, not preemptively.",
+      "context": {
+        "title": "test_weakening tool may generate noisy false positives, leading to test suite degradation",
+        "file": ".advreview.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:ee9f169f2a028f2c604b84b30caca9ad",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:03:13.761Z",
+      "reason": "Speculative CI-latency concern, already covered in ADR 0023's Revisit if: dependency_sanity's npm-registry calls proving flaky enough in CI is the trigger to disable or throttle it. Will act on it if it materializes as real timeouts, not preemptively.",
+      "context": {
+        "title": "Dependency_sanity adds network latency to CI, risking timeouts",
+        "file": ".advreview.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:73c21fa37f8f07f68a066ad50b74b0ae",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:03:13.896Z",
+      "reason": "Deferred intentionally, not overlooked -- ADR 0023 explicitly notes llm.min_confidence as optional tuning, not required for this bump. 0 is the documented upstream default; revisit once there's a real false-positive rate to tune against.",
+      "context": {
+        "title": "Flaught LLM min_confidence defaults to 0, enabling noisy or speculative findings",
+        "file": ".advreview.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:814cf5786c7382446d33e5b38bd08239",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:03:14.031Z",
+      "reason": "Fixed at the config level, not just this instance -- .advreview.yml's scope_creep.exclude_paths now includes docs/adr/** (this same PR), exactly the case this finding describes.",
+      "context": {
+        "title": "Addition of ADR documentation file exceeds PR's stated intent",
+        "file": "docs/adr/0023-flaught-bump-to-0-10-0.md"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:c3a0bc9acced64a3df8fc84a06305fd1",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:03:14.167Z",
+      "reason": "False positive / no second pin exists to diverge from -- ci.yml's npm install -g @flaught/core@0.10.0 is the only place a Flaught version is pinned anywhere in this repo; .advreview.yml declares no version.",
+      "context": {
+        "title": "Hard‑coded Flaught version in CI may diverge from repo pin, causing inconsistency",
+        "file": ".github/workflows/ci.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:8c5a746b70aa470550e41d581d2904d6",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:03:14.304Z",
+      "reason": "Fixed at the config level -- .advreview.yml's tools:/test_inversion:/scope_creep:/noise_budget:/severity_gate: blocks are now all explicit (this same PR), closing the exact confusion this finding describes.",
+      "context": {
+        "title": "Commented‑out default tool block in .advreview.yml may cause future confusion",
+        "file": ".advreview.yml"
+      },
+      "expires_at": null
     }
   ]
 }

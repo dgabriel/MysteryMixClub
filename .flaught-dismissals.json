@@ -209,6 +209,39 @@
         "file": ".advreview.yml"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:db18f36d7cb07b027227dc4df32bf50f",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:09:57.230Z",
+      "reason": "Same underlying issue as the already-tracked semgrep finding on backend/app/services/email.py:74/79 (python-logger-credential-disclosure), just independently found by the LLM pass with a different fingerprint. Real finding, already deferred and tracked in MysteryMixClub-xywe (redact the token before logging) -- not new, not specific to this PR's diff.",
+      "context": {
+        "title": "Credential leak: ConsoleEmailSender logs full password-reset token",
+        "file": ".flaught-dismissals.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:81196bc200412127b659856fd1c40f0d",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:09:57.367Z",
+      "reason": "Same point as the previously-dismissed F-0006 (llm.min_confidence defaults to 0), reworded by a non-deterministic LLM pass into a new fingerprint. ADR 0023 already notes this as optional tuning, not required for this bump.",
+      "context": {
+        "title": "Missing explicit llm.min_confidence configuration defaults to 0, increasing noise",
+        "file": ".advreview.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:623f7991fa83e1bb87f6db07ededd420",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:09:57.507Z",
+      "reason": "Not unrelated -- the CI workflow changes in this PR (tools:/test_inversion:/scope_creep:/noise_budget:/severity_gate: made explicit in .advreview.yml) are the same 'stop relying on implicit schema defaults' principle this bump already applies to dismissals:/tools:, documented in ADR 0023 and this branch's own commit history. Bundled deliberately, not scope creep.",
+      "context": {
+        "title": "Unrelated change to CI workflow unrelated to Flaught bump",
+        "file": ".github/workflows/ci.yml"
+      },
+      "expires_at": null
     }
   ]
 }

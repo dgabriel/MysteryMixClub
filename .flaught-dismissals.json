@@ -2,7 +2,7 @@
   "version": 1,
   "dismissals": [
     {
-      "fingerprint": "sha256:f6abdb452f0211bb",
+      "fingerprint": "sha256:f6abdb452f0211bbdd8c6f59e09ec7e8",
       "dismissed_by": "dgabriel@mac.mynetworksettings.com",
       "dismissed_at": "2026-08-21T22:59:45.895Z",
       "reason": "False positive: NOTIFY_CHANNEL is a hardcoded module constant (playlist_jobs.py:23), not user input -- not injectable.",
@@ -13,7 +13,7 @@
       "expires_at": null
     },
     {
-      "fingerprint": "sha256:c21e4f6170a3a8e3",
+      "fingerprint": "sha256:c21e4f6170a3a8e38edcaf176e574741",
       "dismissed_by": "dgabriel@mac.mynetworksettings.com",
       "dismissed_at": "2026-08-21T22:59:57.884Z",
       "reason": "False positive: identifiers (constraint/index names) built from hardcoded tuples defined in the same migration file (_CONSTRAINTS/_INDEXES), standard Alembic rename pattern -- not injectable. Covers all 4 raw-query findings in this migration (lines 128, 130, 135, 137).",
@@ -24,29 +24,7 @@
       "expires_at": null
     },
     {
-      "fingerprint": "sha256:5979d10babee4f62",
-      "dismissed_by": "dgabriel@mac.mynetworksettings.com",
-      "dismissed_at": "2026-08-21T23:00:02.796Z",
-      "reason": "Real finding, deferred: unpinned third-party GitHub Action. Tracked in MysteryMixClub-2nz5 (pin all actions in ci.yml/deploy-prod.yml to commit SHAs).",
-      "context": {
-        "title": "yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag",
-        "file": ".github/workflows/ci.yml"
-      },
-      "expires_at": null
-    },
-    {
-      "fingerprint": "sha256:8187bbf7cebc234d",
-      "dismissed_by": "dgabriel@mac.mynetworksettings.com",
-      "dismissed_at": "2026-08-21T23:00:03.327Z",
-      "reason": "Real finding, deferred: unpinned third-party GitHub Action. Tracked in MysteryMixClub-2nz5 (pin all actions in ci.yml/deploy-prod.yml to commit SHAs).",
-      "context": {
-        "title": "yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag",
-        "file": ".github/workflows/deploy-prod.yml"
-      },
-      "expires_at": null
-    },
-    {
-      "fingerprint": "sha256:ceb871e9174ae393",
+      "fingerprint": "sha256:ceb871e9174ae3935f63ad6a3f5f5198",
       "dismissed_by": "dgabriel@mac.mynetworksettings.com",
       "dismissed_at": "2026-08-21T23:00:03.460Z",
       "reason": "Real finding, deferred: ConsoleEmailSender logs the full password-reset link/token. Tracked in MysteryMixClub-xywe (redact the token before logging).",
@@ -57,7 +35,7 @@
       "expires_at": null
     },
     {
-      "fingerprint": "sha256:70912bc759102385",
+      "fingerprint": "sha256:70912bc75910238548ee7c19b7fdb0a3",
       "dismissed_by": "dgabriel@mac.mynetworksettings.com",
       "dismissed_at": "2026-08-21T23:02:05.378Z",
       "reason": "False positive: _CHECK is a hardcoded module constant (\"ck_submissions_isrc_or_source\"), not user input -- standard Alembic constraint-rename pattern, not injectable.",
@@ -68,7 +46,7 @@
       "expires_at": null
     },
     {
-      "fingerprint": "sha256:130f2c0bb688becb",
+      "fingerprint": "sha256:130f2c0bb688becbab9cbc0ec7bfc825",
       "dismissed_by": "dgabriel@mac.mynetworksettings.com",
       "dismissed_at": "2026-08-21T23:02:05.519Z",
       "reason": "False positive, same underlying line as D-0021 (formatted-sql-query variant of the same rule family): _CHECK is a hardcoded module constant, not injectable.",
@@ -79,7 +57,7 @@
       "expires_at": null
     },
     {
-      "fingerprint": "sha256:f2d45fe03f227e2a",
+      "fingerprint": "sha256:f2d45fe03f227e2a5ae5b4d94ea9bd55",
       "dismissed_by": "dgabriel@mac.mynetworksettings.com",
       "dismissed_at": "2026-08-21T23:02:05.653Z",
       "reason": "False positive: rows/cols come from this offline reporting script's own bd-issue/git-log data (build_shipped_table.py), not external or attacker-controlled input -- not injectable, and not reachable by the running app.",
@@ -90,7 +68,7 @@
       "expires_at": null
     },
     {
-      "fingerprint": "sha256:cf63d9040022f90d",
+      "fingerprint": "sha256:cf63d9040022f90d0f81d4af4b9831ed",
       "dismissed_by": "dgabriel@mac.mynetworksettings.com",
       "dismissed_at": "2026-08-21T23:02:05.794Z",
       "reason": "False positive, same line as D-0025 (formatted-sql-query variant): local offline reporting script, not attacker-reachable.",
@@ -101,7 +79,7 @@
       "expires_at": null
     },
     {
-      "fingerprint": "sha256:338e0ca124f21931",
+      "fingerprint": "sha256:338e0ca124f2193102b93e4c55a276bb",
       "dismissed_by": "dgabriel@mac.mynetworksettings.com",
       "dismissed_at": "2026-08-21T23:02:06.331Z",
       "reason": "False positive, formatted-sql-query variant of the already-dismissed raw-query finding on this line: identifier from a hardcoded tuple in the same migration file, standard Alembic rename pattern.",
@@ -112,7 +90,7 @@
       "expires_at": null
     },
     {
-      "fingerprint": "sha256:ba05e19554f7387d",
+      "fingerprint": "sha256:ba05e19554f7387d953225c06ed97458",
       "dismissed_by": "dgabriel@mac.mynetworksettings.com",
       "dismissed_at": "2026-08-21T23:02:06.870Z",
       "reason": "Already tracked: fast-uri transitive-dependency advisories are covered by the existing MysteryMixClub-io0j Dependabot cleanup issue (same GHSA IDs), deferred until the redesign lands per that issue.",
@@ -123,13 +101,189 @@
       "expires_at": null
     },
     {
-      "fingerprint": "sha256:2067685138aa04de",
+      "fingerprint": "sha256:2067685138aa04deabf9e7ec456b05e0",
       "dismissed_by": "dgabriel@mac.mynetworksettings.com",
       "dismissed_at": "2026-08-21T23:02:41.015Z",
       "reason": "Already tracked: js-yaml transitive-dependency advisory (GHSA-52cp-r559-cp3m) is covered by the existing MysteryMixClub-io0j Dependabot cleanup issue, deferred until the redesign lands per that issue.",
       "context": {
         "title": "js-yaml: js-yaml: YAML merge-key chains can force quadratic CPU consumption",
         "file": "js-yaml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:cea121449bf526884d046c6f99bd0e2d",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:03:13.224Z",
+      "reason": "Verified: both underlying findings (unpinned GitHub Actions in ci.yml/deploy-prod.yml) no longer exist in the current codebase -- all 9 third-party actions are SHA-pinned, confirmed via grep and MysteryMixClub-2nz5 (closed, PR #273). Removing their stale dismissal entries is correct cleanup, not a security regression.",
+      "context": {
+        "title": "Removal of real security dismissals for unpinned GitHub Actions",
+        "file": ".flaught-dismissals.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:b41ac14a4c19608cb96f81852a8ba081",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:03:13.356Z",
+      "reason": "Reasoned accept: dependency_sanity's npm-registry queries are for packages already committed in package.json/package-lock.json/pyproject.toml -- already public within the repo. The same names/versions already leave the environment via the ordinary npm ci / pip install steps in this same job and the frontend/backend CI jobs; dependency_sanity's queries are the same class of request against the same already-installed set, not a new exposure surface.",
+      "context": {
+        "title": "Enabling dependency_sanity introduces external network calls that may leak internal dependency versions",
+        "file": ".advreview.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:d6cfb843dcb63da148f77ae11691c6fb",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:03:13.489Z",
+      "reason": "Reasoned accept: migration verified by exact-prefix matching against freshly-generated full fingerprints, not blind reuse -- SHA-256 truncated to 64 bits (16 hex chars) has negligible collision probability for this repo's finding count (~20-30), and each match was cross-checked against the actual current finding it now maps to before being written back.",
+      "context": {
+        "title": "Fingerprint migration may cause mismatched dismissals, silently ignoring future findings",
+        "file": ".flaught-dismissals.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:e41dde81fa98a110d45f8f75f7f50ea6",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:03:13.624Z",
+      "reason": "Speculative, no evidence yet -- zero test_weakening findings have been produced by any run so far. ADR 0023 already documents 'expect first-contact findings' as the general risk of turning on a new tool; will address concretely if it actually produces a false positive, not preemptively.",
+      "context": {
+        "title": "test_weakening tool may generate noisy false positives, leading to test suite degradation",
+        "file": ".advreview.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:73c21fa37f8f07f68a066ad50b74b0ae",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:03:13.896Z",
+      "reason": "Deferred intentionally, not overlooked -- ADR 0023 explicitly notes llm.min_confidence as optional tuning, not required for this bump. 0 is the documented upstream default; revisit once there's a real false-positive rate to tune against.",
+      "context": {
+        "title": "Flaught LLM min_confidence defaults to 0, enabling noisy or speculative findings",
+        "file": ".advreview.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:814cf5786c7382446d33e5b38bd08239",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:03:14.031Z",
+      "reason": "Fixed at the config level, not just this instance -- .advreview.yml's scope_creep.exclude_paths now includes docs/adr/** (this same PR), exactly the case this finding describes.",
+      "context": {
+        "title": "Addition of ADR documentation file exceeds PR's stated intent",
+        "file": "docs/adr/0023-flaught-bump-to-0-10-0.md"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:c3a0bc9acced64a3df8fc84a06305fd1",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:03:14.167Z",
+      "reason": "False positive / no second pin exists to diverge from -- ci.yml's npm install -g @flaught/core@0.10.0 is the only place a Flaught version is pinned anywhere in this repo; .advreview.yml declares no version.",
+      "context": {
+        "title": "Hard‑coded Flaught version in CI may diverge from repo pin, causing inconsistency",
+        "file": ".github/workflows/ci.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:8c5a746b70aa470550e41d581d2904d6",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:03:14.304Z",
+      "reason": "Fixed at the config level -- .advreview.yml's tools:/test_inversion:/scope_creep:/noise_budget:/severity_gate: blocks are now all explicit (this same PR), closing the exact confusion this finding describes.",
+      "context": {
+        "title": "Commented‑out default tool block in .advreview.yml may cause future confusion",
+        "file": ".advreview.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:db18f36d7cb07b027227dc4df32bf50f",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:09:57.230Z",
+      "reason": "Same underlying issue as the already-tracked semgrep finding on backend/app/services/email.py:74/79 (python-logger-credential-disclosure), just independently found by the LLM pass with a different fingerprint. Real finding, already deferred and tracked in MysteryMixClub-xywe (redact the token before logging) -- not new, not specific to this PR's diff.",
+      "context": {
+        "title": "Credential leak: ConsoleEmailSender logs full password-reset token",
+        "file": ".flaught-dismissals.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:81196bc200412127b659856fd1c40f0d",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:09:57.367Z",
+      "reason": "Same point as the previously-dismissed F-0006 (llm.min_confidence defaults to 0), reworded by a non-deterministic LLM pass into a new fingerprint. ADR 0023 already notes this as optional tuning, not required for this bump.",
+      "context": {
+        "title": "Missing explicit llm.min_confidence configuration defaults to 0, increasing noise",
+        "file": ".advreview.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:623f7991fa83e1bb87f6db07ededd420",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:09:57.507Z",
+      "reason": "Not unrelated -- the CI workflow changes in this PR (tools:/test_inversion:/scope_creep:/noise_budget:/severity_gate: made explicit in .advreview.yml) are the same 'stop relying on implicit schema defaults' principle this bump already applies to dismissals:/tools:, documented in ADR 0023 and this branch's own commit history. Bundled deliberately, not scope creep.",
+      "context": {
+        "title": "Unrelated change to CI workflow unrelated to Flaught bump",
+        "file": ".github/workflows/ci.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:e08ecf535b4b6a50715143b0cf82d041",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:16:57.764Z",
+      "reason": "Low confidence (0.1) and factually off -- npm verifies tarball integrity against the registry-provided hash automatically on every install (has since npm5), this isn't an unverified download. Superseded going forward by llm.min_confidence: 0.5 (this same PR).",
+      "context": {
+        "title": "Unverified npm install of Flaught core",
+        "file": ".github/workflows/ci.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:11b997bf6d8ae8f4024ef25d0681e4b8",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:16:57.896Z",
+      "reason": "Same fingerprint-migration concern already reasoned through twice (exact-prefix matching against freshly-generated hashes, negligible collision risk). Low confidence (0.44). Superseded going forward by llm.min_confidence: 0.5.",
+      "context": {
+        "title": "Dismissal fingerprint migration may hide critical findings",
+        "file": ".flaught-dismissals.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:8b39301507b5f6867dd48c4458453afd",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:16:58.028Z",
+      "reason": "Same dependency_sanity concern already reasoned through (already-public package info, same exposure class as routine npm ci/pip install). Low confidence (0.1). Superseded going forward by llm.min_confidence: 0.5.",
+      "context": {
+        "title": "dependency_sanity may expose internal dependency versions",
+        "file": ".advreview.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:ee9f169f2a028f2c604b84b30caca9ad",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:16:58.161Z",
+      "reason": "Same CI-latency concern already covered in ADR 0023's Revisit if. Low confidence (0.405). Superseded going forward by llm.min_confidence: 0.5.",
+      "context": {
+        "title": "dependency_sanity adds network latency risking CI timeouts",
+        "file": ".advreview.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:c9988aa91ddbb33f57f8c18793496d43",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:16:58.293Z",
+      "reason": "False positive, same as prior rounds' version-pin findings -- ci.yml's npm install -g @flaught/core@0.10.0 is the only pin anywhere in this repo, .advreview.yml was never meant to duplicate it. Low confidence (0.365). Superseded going forward by llm.min_confidence: 0.5.",
+      "context": {
+        "title": "Missing Flaught version pin in .advreview.yml creates config drift",
+        "file": ".advreview.yml"
       },
       "expires_at": null
     }

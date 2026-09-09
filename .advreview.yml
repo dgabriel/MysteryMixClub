@@ -20,34 +20,58 @@ llm:
   temperature: 0.2
   max_tokens: 4096
   timeout_seconds: 120     # timeout for LLM API calls
+  # Empirically justified, not speculative (ADR 0023): PR #285 (this bump)
+  # spent 3 CI rounds dismissing the same handful of concerns reworded by a
+  # non-deterministic LLM pass every run -- every one of them scored 0.1-0.44
+  # confidence. 0.5 filters that whole cluster while still admitting anything
+  # the model is actually confident about.
+  min_confidence: 0.5
 
 # ── Deterministic tools ────────────────────────────────────
-# tools:
-#   semgrep:
-#     enabled: true
-#     # config: path/to/semgrep-rules.yml
-#   linter:
-#     enabled: true
-#     # command: eslint  # override auto-detected linter
-#   vuln_scanner:
-#     enabled: true
-#     # command: npm audit  # override auto-detected scanner
+# Explicit, not left to schema default (ADR 0023, same lesson as ADR 0022's
+# dismissals: block) -- 0.10.0 added test_weakening and dependency_sanity,
+# ON by default, so a commented-out block here would silently accept
+# whatever Flaught ships as default next time too. Reviewed and kept on:
+# test_weakening fits this repo's existing test-rigor conventions (targeted
+# + full-suite pre-push discipline, ADR 0005 test isolation); dependency_sanity
+# defends against a real supply-chain risk class (typosquatting) worth the
+# npm-registry calls it makes during CI.
+tools:
+  semgrep:
+    enabled: true
+    # config: path/to/semgrep-rules.yml
+  linter:
+    enabled: true
+    # command: eslint  # override auto-detected linter -- see MysteryMixClub-ta06
+  vuln_scanner:
+    enabled: true
+    # command: npm audit  # override auto-detected scanner
+  test_weakening:
+    enabled: true
+  dependency_sanity:
+    enabled: true
 
 # ── Test inversion ──────────────────────────────────────────
-# test_inversion:
-#   enabled: true
-#   # command: pytest  # override auto-detected test command
-#   scope_to_blast_radius: true  # only flag tests in the diff's changed/blast-radius files
-#   skip_docs_only_diffs: true   # skip entirely when every changed file is documentation
+# Explicit (ADR 0023) -- was already running under the implicit default
+# (confirmed: local runs print "Running test inversion..." unprompted),
+# same implicit-default pattern as everything else fixed today.
+test_inversion:
+  enabled: true
+  # command: pytest  # override auto-detected test command
+  scope_to_blast_radius: true  # only flag tests in the diff's changed/blast-radius files
+  skip_docs_only_diffs: true   # skip entirely when every changed file is documentation
 
 # ── Scope-creep detection ─────────────────────────────────
-# scope_creep:
-#   enabled: true
-#   intent_source: pr_description  # pr_description | linked_issue | both
-#   # Paths that are never scored as scope creep (e.g. an ADR accompanying
-#   # the change it documents), regardless of the PR's stated intent.
-#   exclude_paths: []
-#   #   - "docs/adr/**"
+# Explicit (ADR 0023) -- also already running under the implicit default.
+# exclude_paths now actually uses the docs/adr/** exclusion the commented
+# template always suggested but never enabled: PR #285's own LLM pass
+# flagged its own accompanying ADR file as scope creep (F-0007), exactly
+# the case this exclusion exists for.
+scope_creep:
+  enabled: true
+  intent_source: pr_description  # pr_description | linked_issue | both
+  exclude_paths:
+    - "docs/adr/**"
 
 # ── Lighthouse (optional, degrades cleanly) ─────────────────
 # lighthouse:
@@ -55,16 +79,20 @@ llm:
 #   # preview_url: https://deploy-preview-42.example.com
 
 # ── Noise budget ───────────────────────────────────────────
-# noise_budget:
-#   critical: 5
-#   high: 10
-#   medium: 15
-#   low: 20
-#   info: 25
+# Explicit (ADR 0023), values unchanged from schema default -- just no
+# longer invisible now that undismissed findings over these thresholds
+# block merge (ADR 0022).
+noise_budget:
+  critical: 5
+  high: 10
+  medium: 15
+  low: 20
+  info: 25
 
 # ── Severity gate ──────────────────────────────────────────
-# severity_gate:
-#   fail_on: high  # none | critical | high | medium
+# Explicit (ADR 0023), value unchanged from schema default.
+severity_gate:
+  fail_on: high  # none | critical | high | medium
 
 # ── Dismissals ───────────────────────────────────────────────
 # Findings matching an entry in the dismissal store (see `flaught dismiss`)

@@ -1,6 +1,8 @@
 # ADR 0020: Wire Flaught's full review (deterministic + LLM) into CI
 
-**Status:** Accepted
+**Status:** Accepted (its "Gating" decision — non-blocking — superseded by
+ADR 0022, which makes the gate blocking; everything else here, including
+provider/permissions/monorepo-layout, still stands)
 **Date:** 2026-08-22
 
 ## Context

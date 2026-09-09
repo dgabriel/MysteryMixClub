@@ -70,9 +70,15 @@ llm:
 # Findings matching an entry in the dismissal store (see `flaught dismiss`)
 # are auto-marked dismissed on every subsequent run and excluded from the
 # severity gate.
-# dismissals:
-#   enabled: true
-#   path: .flaught-dismissals.json
+# Explicit, not left to schema default (ADR 0022) -- this repo already got
+# burned once by a commented-out block masking whether a tool/feature was
+# actually on (ADR 0018: the `tools:` block being commented out gave the
+# impression semgrep was disabled when it was on by default). Now that the
+# gate blocks merge, whether dismissals persist is not something to leave
+# implicit.
+dismissals:
+  enabled: true
+  path: .flaught-dismissals.json
 
 # ── Prompt templates ────────────────────────────────────────
 # Override or extend the LLM prompts by dropping files into .flaught-prompt/

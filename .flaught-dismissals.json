@@ -286,6 +286,61 @@
         "file": ".advreview.yml"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:c86eaac93c2dd0e6f8eaac6796e18842",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T20:39:42.572Z",
+      "reason": "False positive, verified -- onPaper IS defined in DeadlineModeToggleProps (frontend/src/components/DeadlineModeToggle.tsx) and this file passes tsc -b clean. Confidence 0.05; note llm.min_confidence: 0.5 (set in PR #285) evidently did NOT filter this -- dropped_below_min_confidence reports 0 despite this and 4 other findings scoring 0.05. Worth a closer look separately; not chasing it further in this PR.",
+      "context": {
+        "title": "TypeScript prop mismatch: onPaper not defined in DeadlineModeToggleProps",
+        "file": "frontend/src/components/DeadlineModeToggle.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:32f0c8b38d12a333c1646737cba4865e",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T20:39:42.706Z",
+      "reason": "Deliberate, matching established precedent -- role=\"group\" (not tablist/tab) is the same choice EmailEntryScreen's own sign-in-method toggle already makes, and for the same documented reason: tablist/tab promises WAI-ARIA APG arrow-key roving-tabIndex navigation that isn't implemented, so a labelled group of pressed-state buttons promises only what it delivers. Confidence 0.05.",
+      "context": {
+        "title": "ARIA role misuse: role=\"group\" without proper keyboard navigation",
+        "file": "frontend/src/components/DeadlineModeToggle.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:58a1cac449e6c0e9faf95fb76313401e",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T20:39:42.843Z",
+      "reason": "False positive, verified -- onPaper is read directly in tabClass's conditional (border-ink-accent/text-ink vs border-accent/text-foreground) and passed through to the border-ink-hairline/border-hairline container class. Not unused. Confidence 0.05.",
+      "context": {
+        "title": "Unused onPaper prop in DeadlineModeToggle component",
+        "file": "frontend/src/components/DeadlineModeToggle.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:e0f993a45c390d907eb1b177628ba854",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T20:39:42.980Z",
+      "reason": "Same false positive as F-0004 (duplicate LLM finding, different fingerprint). Confidence 0.05.",
+      "context": {
+        "title": "Dead code: onPaper prop passed to component but not utilized",
+        "file": "frontend/src/pages/ClubHomeScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:048cac7293153f2791987592b837cb1f",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T20:39:43.114Z",
+      "reason": "Same false positive as F-0004 (duplicate LLM finding, different fingerprint). Confidence 0.05.",
+      "context": {
+        "title": "Dead code: onPaper prop passed to component but not utilized",
+        "file": "frontend/src/pages/CreateClubScreen.tsx"
+      },
+      "expires_at": null
     }
   ]
 }

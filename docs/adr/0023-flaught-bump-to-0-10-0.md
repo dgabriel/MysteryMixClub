@@ -79,6 +79,17 @@ reviewed finding silently reappearing as new and undismissed — on a gate
 that now blocks merge (ADR 0022) — the exact failure mode "run it against
 real state first" exists to catch.
 
+**`llm.min_confidence` is now set to `0.5`, revising this ADR's own earlier
+"optional tuning, not required" framing.** Local `--no-llm` verification
+can't exercise the LLM pass at all (no local Groq key), so this PR's CI runs
+were the first real test of it under blocking mode — and it round-tripped
+three times, dismissing the same handful of concerns (dismissal-fingerprint
+risk, `dependency_sanity` exposure, a nonexistent second version pin)
+reworded fresh by a non-deterministic model every run. Every one of those
+findings scored 0.1–0.44 confidence. That's no longer speculative — it's
+the exact noise pattern the setting exists to filter, demonstrated in CI
+logs, not guessed at.
+
 ## Consequences
 
 - **`.flaught-dismissals.json`'s fingerprints are now full-length (schema

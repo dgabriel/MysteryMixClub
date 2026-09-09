@@ -20,6 +20,12 @@ llm:
   temperature: 0.2
   max_tokens: 4096
   timeout_seconds: 120     # timeout for LLM API calls
+  # Empirically justified, not speculative (ADR 0023): PR #285 (this bump)
+  # spent 3 CI rounds dismissing the same handful of concerns reworded by a
+  # non-deterministic LLM pass every run -- every one of them scored 0.1-0.44
+  # confidence. 0.5 filters that whole cluster while still admitting anything
+  # the model is actually confident about.
+  min_confidence: 0.5
 
 # ── Deterministic tools ────────────────────────────────────
 # Explicit, not left to schema default (ADR 0023, same lesson as ADR 0022's

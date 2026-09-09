@@ -156,17 +156,6 @@
       "expires_at": null
     },
     {
-      "fingerprint": "sha256:ee9f169f2a028f2c604b84b30caca9ad",
-      "dismissed_by": "dgabriel@gmail.com",
-      "dismissed_at": "2026-09-09T16:03:13.761Z",
-      "reason": "Speculative CI-latency concern, already covered in ADR 0023's Revisit if: dependency_sanity's npm-registry calls proving flaky enough in CI is the trigger to disable or throttle it. Will act on it if it materializes as real timeouts, not preemptively.",
-      "context": {
-        "title": "Dependency_sanity adds network latency to CI, risking timeouts",
-        "file": ".advreview.yml"
-      },
-      "expires_at": null
-    },
-    {
       "fingerprint": "sha256:73c21fa37f8f07f68a066ad50b74b0ae",
       "dismissed_by": "dgabriel@gmail.com",
       "dismissed_at": "2026-09-09T16:03:13.896Z",
@@ -240,6 +229,61 @@
       "context": {
         "title": "Unrelated change to CI workflow unrelated to Flaught bump",
         "file": ".github/workflows/ci.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:e08ecf535b4b6a50715143b0cf82d041",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:16:57.764Z",
+      "reason": "Low confidence (0.1) and factually off -- npm verifies tarball integrity against the registry-provided hash automatically on every install (has since npm5), this isn't an unverified download. Superseded going forward by llm.min_confidence: 0.5 (this same PR).",
+      "context": {
+        "title": "Unverified npm install of Flaught core",
+        "file": ".github/workflows/ci.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:11b997bf6d8ae8f4024ef25d0681e4b8",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:16:57.896Z",
+      "reason": "Same fingerprint-migration concern already reasoned through twice (exact-prefix matching against freshly-generated hashes, negligible collision risk). Low confidence (0.44). Superseded going forward by llm.min_confidence: 0.5.",
+      "context": {
+        "title": "Dismissal fingerprint migration may hide critical findings",
+        "file": ".flaught-dismissals.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:8b39301507b5f6867dd48c4458453afd",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:16:58.028Z",
+      "reason": "Same dependency_sanity concern already reasoned through (already-public package info, same exposure class as routine npm ci/pip install). Low confidence (0.1). Superseded going forward by llm.min_confidence: 0.5.",
+      "context": {
+        "title": "dependency_sanity may expose internal dependency versions",
+        "file": ".advreview.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:ee9f169f2a028f2c604b84b30caca9ad",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:16:58.161Z",
+      "reason": "Same CI-latency concern already covered in ADR 0023's Revisit if. Low confidence (0.405). Superseded going forward by llm.min_confidence: 0.5.",
+      "context": {
+        "title": "dependency_sanity adds network latency risking CI timeouts",
+        "file": ".advreview.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:c9988aa91ddbb33f57f8c18793496d43",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:16:58.293Z",
+      "reason": "False positive, same as prior rounds' version-pin findings -- ci.yml's npm install -g @flaught/core@0.10.0 is the only pin anywhere in this repo, .advreview.yml was never meant to duplicate it. Low confidence (0.365). Superseded going forward by llm.min_confidence: 0.5.",
+      "context": {
+        "title": "Missing Flaught version pin in .advreview.yml creates config drift",
+        "file": ".advreview.yml"
       },
       "expires_at": null
     }

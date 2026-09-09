@@ -1,5 +1,5 @@
-import { type FormEvent, useState } from "react";
-import type { LeaderboardEntry, Club, ClubMember, Mix, MixResults } from "../services/api";
+import { type FormEvent, useMemo, useState } from "react";
+import type { LeaderboardEntry, Club, ClubMember, Mix, MixResults, Weekday } from "../services/api";
 import { Button } from "../components/Button";
 import { Badge } from "../components/Badge";
 import { Card } from "../components/Card";
@@ -13,6 +13,7 @@ import { CrownIcon } from "../components/CrownIcon";
 import { Confetti } from "../components/Confetti";
 import { DeadlineChip } from "../components/DeadlineChip";
 import { DeadlineWindowField } from "../components/DeadlineWindowField";
+import { DeadlineAnchorField, TimezoneField } from "../components/DeadlineAnchorField";
 import { InviteShare } from "../components/InviteShare";
 import { UserAvatar } from "../components/avatars/UserAvatar";
 import { MIX_BADGE, MIX_ORDER, MIX_STATE_LABEL, mixGroup } from "../utils/mixState";
@@ -21,6 +22,12 @@ import {
   hoursToDaysAndHours,
   validateWindowHours,
 } from "../utils/deadlineWindow";
+import {
+  detectTimezone,
+  listTimezones,
+  toTimeInputValue,
+  validateAnchor,
+} from "../utils/deadlineAnchor";
 
 type ClubHomeScreenProps = {
   club: Club;
@@ -56,6 +63,12 @@ type ClubHomeScreenProps = {
     total_mixes?: number;
     submission_window_hours?: number;
     voting_window_hours?: number;
+    deadline_mode?: "duration" | "weekly_anchor";
+    timezone?: string;
+    submission_weekday?: Weekday;
+    submission_time?: string;
+    voting_weekday?: Weekday;
+    voting_time?: string;
   }) => void;
   updating: boolean;
   updateError?: string | null;
@@ -1001,6 +1014,23 @@ function OrganizerEdit({
   const [windowErrorField, setWindowErrorField] = useState<
     "submission_window" | "voting_window" | null
   >(null);
+  // Weekly-anchor deadline mode (ADR 0021) — an alternate to the days/hours
+  // window above, not a second set of fields sent alongside it.
+  const [deadlineMode, setDeadlineMode] = useState<"duration" | "weekly_anchor">(
+    club.deadline_mode,
+  );
+  const [timezone, setTimezone] = useState(club.timezone ?? detectTimezone());
+  const [submissionWeekday, setSubmissionWeekday] = useState<Weekday | "">(
+    club.submission_weekday ?? "",
+  );
+  const [submissionTime, setSubmissionTime] = useState(toTimeInputValue(club.submission_time));
+  const [votingWeekday, setVotingWeekday] = useState<Weekday | "">(club.voting_weekday ?? "");
+  const [votingTime, setVotingTime] = useState(toTimeInputValue(club.voting_time));
+  const [anchorError, setAnchorError] = useState<string | null>(null);
+  const [anchorErrorField, setAnchorErrorField] = useState<
+    "submission_anchor" | "voting_anchor" | null
+  >(null);
+  const timezoneOptions = useMemo(() => listTimezones(), []);
 
   function openForm() {
     setName(club.name);
@@ -1013,6 +1043,14 @@ function OrganizerEdit({
     setVotingWindowDays(String(votingWindow.days));
     setVotingWindowHours(String(votingWindow.hours));
     setWindowError(null);
+    setDeadlineMode(club.deadline_mode);
+    setTimezone(club.timezone ?? detectTimezone());
+    setSubmissionWeekday(club.submission_weekday ?? "");
+    setSubmissionTime(toTimeInputValue(club.submission_time));
+    setVotingWeekday(club.voting_weekday ?? "");
+    setVotingTime(toTimeInputValue(club.voting_time));
+    setAnchorError(null);
+    setAnchorErrorField(null);
     setOpen(true);
   }
 
@@ -1024,6 +1062,12 @@ function OrganizerEdit({
       total_mixes?: number;
       submission_window_hours?: number;
       voting_window_hours?: number;
+      deadline_mode?: "duration" | "weekly_anchor";
+      timezone?: string;
+      submission_weekday?: Weekday;
+      submission_time?: string;
+      voting_weekday?: Weekday;
+      voting_time?: string;
     } = {};
 
     const trimmedName = name.trim();
@@ -1040,30 +1084,74 @@ function OrganizerEdit({
       input.total_mixes = mixes;
     }
 
-    const submissionHours = daysAndHoursToTotal(
-      Number(submissionWindowDays),
-      Number(submissionWindowHours),
-    );
-    const votingHours = daysAndHoursToTotal(Number(votingWindowDays), Number(votingWindowHours));
-    const submissionWindowValidationError = validateWindowHours(submissionHours);
-    if (submissionWindowValidationError) {
-      setWindowError(`submission ${submissionWindowValidationError}`);
-      setWindowErrorField("submission_window");
-      return;
-    }
-    const votingWindowValidationError = validateWindowHours(votingHours);
-    if (votingWindowValidationError) {
-      setWindowError(`voting ${votingWindowValidationError}`);
-      setWindowErrorField("voting_window");
-      return;
-    }
-    setWindowError(null);
-    setWindowErrorField(null);
-    if (submissionHours !== club.submission_window_hours) {
-      input.submission_window_hours = submissionHours;
-    }
-    if (votingHours !== club.voting_window_hours) {
-      input.voting_window_hours = votingHours;
+    if (deadlineMode === "duration") {
+      const submissionHours = daysAndHoursToTotal(
+        Number(submissionWindowDays),
+        Number(submissionWindowHours),
+      );
+      const votingHours = daysAndHoursToTotal(Number(votingWindowDays), Number(votingWindowHours));
+      const submissionWindowValidationError = validateWindowHours(submissionHours);
+      if (submissionWindowValidationError) {
+        setWindowError(`submission ${submissionWindowValidationError}`);
+        setWindowErrorField("submission_window");
+        return;
+      }
+      const votingWindowValidationError = validateWindowHours(votingHours);
+      if (votingWindowValidationError) {
+        setWindowError(`voting ${votingWindowValidationError}`);
+        setWindowErrorField("voting_window");
+        return;
+      }
+      setWindowError(null);
+      setWindowErrorField(null);
+      if (submissionHours !== club.submission_window_hours) {
+        input.submission_window_hours = submissionHours;
+      }
+      if (votingHours !== club.voting_window_hours) {
+        input.voting_window_hours = votingHours;
+      }
+      if (deadlineMode !== club.deadline_mode) input.deadline_mode = "duration";
+    } else {
+      const submissionAnchorError = validateAnchor(submissionWeekday, submissionTime, "submission");
+      if (submissionAnchorError) {
+        setAnchorError(submissionAnchorError);
+        setAnchorErrorField("submission_anchor");
+        return;
+      }
+      const votingAnchorError = validateAnchor(votingWeekday, votingTime, "voting");
+      if (votingAnchorError) {
+        setAnchorError(votingAnchorError);
+        setAnchorErrorField("voting_anchor");
+        return;
+      }
+      setAnchorError(null);
+      setAnchorErrorField(null);
+
+      if (deadlineMode !== club.deadline_mode) {
+        // Switching INTO weekly_anchor requires the whole schedule together
+        // (ADR 0021) — the API rejects a partial switch.
+        input.deadline_mode = "weekly_anchor";
+        input.timezone = timezone;
+        input.submission_weekday = submissionWeekday as Weekday;
+        input.submission_time = submissionTime;
+        input.voting_weekday = votingWeekday as Weekday;
+        input.voting_time = votingTime;
+      } else {
+        // Already weekly_anchor: only send what actually changed.
+        if (timezone !== club.timezone) input.timezone = timezone;
+        if (submissionWeekday !== (club.submission_weekday ?? "")) {
+          input.submission_weekday = submissionWeekday as Weekday;
+        }
+        if (submissionTime !== toTimeInputValue(club.submission_time)) {
+          input.submission_time = submissionTime;
+        }
+        if (votingWeekday !== (club.voting_weekday ?? "")) {
+          input.voting_weekday = votingWeekday as Weekday;
+        }
+        if (votingTime !== toTimeInputValue(club.voting_time)) {
+          input.voting_time = votingTime;
+        }
+      }
     }
 
     onUpdateClub(input);
@@ -1114,28 +1202,91 @@ function OrganizerEdit({
         onChange={(e) => setTotalMixes(e.target.value)}
         disabled={updating}
       />
-      <DeadlineWindowField
-        onPaper
-        idPrefix="edit-submission-window"
-        label="submission window"
-        days={submissionWindowDays}
-        hours={submissionWindowHours}
-        onDaysChange={setSubmissionWindowDays}
-        onHoursChange={setSubmissionWindowHours}
-        disabled={updating}
-        error={windowErrorField === "submission_window" ? windowError : null}
-      />
-      <DeadlineWindowField
-        onPaper
-        idPrefix="edit-voting-window"
-        label="voting window"
-        days={votingWindowDays}
-        hours={votingWindowHours}
-        onDaysChange={setVotingWindowDays}
-        onHoursChange={setVotingWindowHours}
-        disabled={updating}
-        error={windowErrorField === "voting_window" ? windowError : null}
-      />
+      {/* Segmented-control toggle (style guide exception), same pattern as
+          AdminScreen's status filter and the create-club form. */}
+      <div className="flex gap-4">
+        {(
+          [
+            { value: "duration" as const, label: "flexible window" },
+            { value: "weekly_anchor" as const, label: "weekly schedule" },
+          ] as const
+        ).map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => setDeadlineMode(option.value)}
+            aria-pressed={deadlineMode === option.value}
+            className={[
+              "py-1.5 font-mono uppercase tracking-mono text-mini transition-colors duration-150",
+              deadlineMode === option.value
+                ? "text-ink underline underline-offset-[3px]"
+                : "text-ink-muted hover:text-ink-accent",
+            ].join(" ")}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+
+      {deadlineMode === "duration" ? (
+        <>
+          <DeadlineWindowField
+            onPaper
+            idPrefix="edit-submission-window"
+            label="submission window"
+            days={submissionWindowDays}
+            hours={submissionWindowHours}
+            onDaysChange={setSubmissionWindowDays}
+            onHoursChange={setSubmissionWindowHours}
+            disabled={updating}
+            error={windowErrorField === "submission_window" ? windowError : null}
+          />
+          <DeadlineWindowField
+            onPaper
+            idPrefix="edit-voting-window"
+            label="voting window"
+            days={votingWindowDays}
+            hours={votingWindowHours}
+            onDaysChange={setVotingWindowDays}
+            onHoursChange={setVotingWindowHours}
+            disabled={updating}
+            error={windowErrorField === "voting_window" ? windowError : null}
+          />
+        </>
+      ) : (
+        <>
+          <TimezoneField
+            onPaper
+            id="edit-club-timezone"
+            value={timezone}
+            options={timezoneOptions}
+            onChange={setTimezone}
+            disabled={updating}
+          />
+          <DeadlineAnchorField
+            onPaper
+            idPrefix="edit-submission-anchor"
+            label="submissions due"
+            weekday={submissionWeekday}
+            time={submissionTime}
+            onWeekdayChange={setSubmissionWeekday}
+            onTimeChange={setSubmissionTime}
+            disabled={updating}
+            error={anchorErrorField === "submission_anchor" ? anchorError : null}
+          />
+          <DeadlineAnchorField
+            onPaper
+            idPrefix="edit-voting-anchor"
+            label="votes due"
+            weekday={votingWeekday}
+            time={votingTime}
+            onWeekdayChange={setVotingWeekday}
+            onTimeChange={setVotingTime}
+            disabled={updating}
+            error={anchorErrorField === "voting_anchor" ? anchorError : null}
+          />
+        </>
+      )}
       <p className="text-meta leading-[1.6] text-ink-muted">
         this only applies going forward. a mystery mix already collecting submissions or votes keeps
         its current deadline. it takes effect the next time a mystery mix (or its next phase) opens.

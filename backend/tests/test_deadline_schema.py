@@ -19,13 +19,24 @@ migration ``c7d2e9f1a4b8_deadline_schema``.
 """
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 
 from app.auth.jwt import create_access_token
 from app.models.club import Club
 from app.models.user import User
+
+_WEEKDAY_NAMES = (
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+)
 
 CLUBS_URL = "/api/v1/clubs"
 
@@ -81,6 +92,29 @@ async def _patch_mix(client, mix_id, user_id, **body) -> dict:
     resp = await client.patch(f"/api/v1/mixes/{mix_id}", json=body, headers=_auth(user_id))
     assert resp.status_code == 200, resp.text
     return resp.json()
+
+
+def _assert_matches_weekly_anchor(
+    deadline_iso: str | None, tz_name: str, weekday_name: str, at_time
+) -> None:
+    """Assert a stamped deadline matches a weekly-anchor config (ADR 0021).
+
+    A live "now" isn't controllable in an integration test, so this checks the
+    invariants a correctly-computed anchor must satisfy — right weekday/time in
+    the configured zone, and within [24h, 7d+] of the moment it was stamped —
+    rather than an exact timestamp.
+    """
+    assert deadline_iso is not None, "expected a stamped deadline, got null"
+    deadline = datetime.fromisoformat(deadline_iso)
+    local = deadline.astimezone(ZoneInfo(tz_name))
+    assert _WEEKDAY_NAMES[local.weekday()] == weekday_name, (
+        f"expected {weekday_name}, got {_WEEKDAY_NAMES[local.weekday()]} ({deadline})"
+    )
+    assert local.time() == at_time
+    now = datetime.now(timezone.utc)
+    assert timedelta(hours=24) <= (deadline - now) <= timedelta(days=7, hours=1), (
+        f"deadline {deadline} is not within [24h, 7d] of now ({now})"
+    )
 
 
 def _assert_about_hours(deadline_iso: str | None, expected_hours: int) -> None:
@@ -394,3 +428,168 @@ async def test_next_mix_stamp_uses_club_window_not_default(client, db_session):
 
     r2 = await _mix_by_number(client, club_id, user.id, 2)
     _assert_about_hours(r2["submission_deadline"], 48)
+
+
+# ========================================================================== #
+# Weekly-anchor deadline mode (ADR 0021, MysteryMixClub-z845)
+# ========================================================================== #
+
+_WEEKLY_ANCHOR_FIELDS = {
+    "timezone": "America/New_York",
+    "submission_weekday": "tuesday",
+    "submission_time": "12:00:00",
+    "voting_weekday": "saturday",
+    "voting_time": "12:00:00",
+}
+
+
+async def test_create_defaults_to_duration_mode(client, db_session):
+    user = await _seed_user(db_session)
+    data = await _create_club(client, user.id)
+    assert data["deadline_mode"] == "duration"
+    assert data["timezone"] == "UTC"
+    assert data["submission_weekday"] is None
+    assert data["voting_weekday"] is None
+
+
+async def test_create_weekly_anchor_persists_full_schedule(client, db_session):
+    user = await _seed_user(db_session)
+    data = await _create_club(
+        client, user.id, deadline_mode="weekly_anchor", **_WEEKLY_ANCHOR_FIELDS
+    )
+    assert data["deadline_mode"] == "weekly_anchor"
+    assert data["timezone"] == "America/New_York"
+    assert data["submission_weekday"] == "tuesday"
+    assert data["submission_time"] == "12:00:00"
+    assert data["voting_weekday"] == "saturday"
+    assert data["voting_time"] == "12:00:00"
+
+    club_id = uuid.UUID(data["id"])
+    db_session.expire_all()
+    persisted = await db_session.scalar(select(Club).where(Club.id == club_id))
+    assert persisted.deadline_mode == "weekly_anchor"
+    assert persisted.timezone == "America/New_York"
+    assert persisted.submission_weekday == 1  # tuesday, Monday=0
+    assert persisted.voting_weekday == 5  # saturday
+
+
+async def test_create_weekly_anchor_missing_field_returns_422(client, db_session):
+    user = await _seed_user(db_session)
+    incomplete = dict(_WEEKLY_ANCHOR_FIELDS)
+    del incomplete["voting_time"]
+    resp = await client.post(
+        CLUBS_URL,
+        headers=_auth(user.id),
+        json={"name": "L", "deadline_mode": "weekly_anchor", **incomplete},
+    )
+    assert resp.status_code == 422, resp.text
+
+
+async def test_create_weekly_anchor_invalid_timezone_returns_422(client, db_session):
+    user = await _seed_user(db_session)
+    bad = dict(_WEEKLY_ANCHOR_FIELDS)
+    bad["timezone"] = "Nowhere/Fake"
+    resp = await client.post(
+        CLUBS_URL,
+        headers=_auth(user.id),
+        json={"name": "L", "deadline_mode": "weekly_anchor", **bad},
+    )
+    assert resp.status_code == 422, resp.text
+
+
+async def test_create_invalid_weekday_name_returns_422(client, db_session):
+    user = await _seed_user(db_session)
+    bad = dict(_WEEKLY_ANCHOR_FIELDS)
+    bad["submission_weekday"] = "funday"
+    resp = await client.post(
+        CLUBS_URL,
+        headers=_auth(user.id),
+        json={"name": "L", "deadline_mode": "weekly_anchor", **bad},
+    )
+    assert resp.status_code == 422, resp.text
+
+
+async def test_patch_switches_club_into_weekly_anchor_mode(client, db_session):
+    user = await _seed_user(db_session)
+    data = await _create_club(client, user.id)  # duration mode by default
+    resp = await client.patch(
+        f"{CLUBS_URL}/{data['id']}",
+        headers=_auth(user.id),
+        json={"deadline_mode": "weekly_anchor", **_WEEKLY_ANCHOR_FIELDS},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["deadline_mode"] == "weekly_anchor"
+    assert body["submission_weekday"] == "tuesday"
+
+
+async def test_patch_switch_to_weekly_anchor_without_full_schedule_returns_422(client, db_session):
+    user = await _seed_user(db_session)
+    data = await _create_club(client, user.id)
+    resp = await client.patch(
+        f"{CLUBS_URL}/{data['id']}",
+        headers=_auth(user.id),
+        json={"deadline_mode": "weekly_anchor", "timezone": "America/New_York"},
+    )
+    assert resp.status_code == 422, resp.text
+
+
+async def test_patch_a_single_field_once_already_in_weekly_anchor_mode(client, db_session):
+    # Once weekly_anchor is fully configured, adjusting just one piece (e.g. a
+    # time) doesn't require resupplying the whole schedule (ADR 0021).
+    user = await _seed_user(db_session)
+    data = await _create_club(
+        client, user.id, deadline_mode="weekly_anchor", **_WEEKLY_ANCHOR_FIELDS
+    )
+    resp = await client.patch(
+        f"{CLUBS_URL}/{data['id']}",
+        headers=_auth(user.id),
+        json={"submission_time": "18:30:00"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["submission_time"] == "18:30:00"
+    assert body["deadline_mode"] == "weekly_anchor"
+    # Untouched fields survive.
+    assert body["voting_weekday"] == "saturday"
+
+
+async def test_patch_explicit_null_deadline_mode_returns_422(client, db_session):
+    user = await _seed_user(db_session)
+    data = await _create_club(client, user.id)
+    resp = await client.patch(
+        f"{CLUBS_URL}/{data['id']}",
+        headers=_auth(user.id),
+        json={"deadline_mode": None},
+    )
+    assert resp.status_code == 422, resp.text
+
+
+async def test_patch_explicit_null_timezone_returns_422(client, db_session):
+    user = await _seed_user(db_session)
+    data = await _create_club(client, user.id)
+    resp = await client.patch(
+        f"{CLUBS_URL}/{data['id']}",
+        headers=_auth(user.id),
+        json={"timezone": None},
+    )
+    assert resp.status_code == 422, resp.text
+
+
+async def test_weekly_anchor_stamps_deadlines_matching_the_schedule(client, db_session):
+    user = await _seed_user(db_session)
+    data = await _create_club(
+        client, user.id, deadline_mode="weekly_anchor", **_WEEKLY_ANCHOR_FIELDS
+    )
+    club_id = data["id"]
+    r1 = await _mix_by_number(client, club_id, user.id, 1)
+
+    opened = await _patch_mix(client, r1["id"], user.id, state="open_submission")
+    _assert_matches_weekly_anchor(
+        opened["submission_deadline"], "America/New_York", "tuesday", time(12, 0)
+    )
+
+    voting = await _patch_mix(client, r1["id"], user.id, state="open_voting")
+    _assert_matches_weekly_anchor(
+        voting["voting_deadline"], "America/New_York", "saturday", time(12, 0)
+    )

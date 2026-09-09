@@ -19,6 +19,7 @@ import {
   type ClubMember,
   type Mix,
   type MixResults,
+  type Weekday,
 } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 import { usePolling } from "../hooks/usePolling";
@@ -220,6 +221,12 @@ export function ClubHomeRoute() {
     total_mixes?: number;
     submission_window_hours?: number;
     voting_window_hours?: number;
+    deadline_mode?: "duration" | "weekly_anchor";
+    timezone?: string;
+    submission_weekday?: Weekday;
+    submission_time?: string;
+    voting_weekday?: Weekday;
+    voting_time?: string;
   }) {
     if (!id) return;
     setUpdating(true);
@@ -306,6 +313,12 @@ export function ClubHomeRoute() {
     default_vibe_mode: false,
     submission_window_hours: 72,
     voting_window_hours: 72,
+    deadline_mode: "duration",
+    timezone: "UTC",
+    submission_weekday: null,
+    submission_time: null,
+    voting_weekday: null,
+    voting_time: null,
     created_at: "",
     completed_at: null,
     viewer_is_admin: null,

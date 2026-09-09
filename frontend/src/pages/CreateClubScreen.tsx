@@ -6,6 +6,7 @@ import { TextField } from "../components/TextField";
 import { HelpLink } from "../components/HelpLink";
 import { DeadlineWindowField } from "../components/DeadlineWindowField";
 import { DeadlineAnchorField, TimezoneField } from "../components/DeadlineAnchorField";
+import { DeadlineModeToggle } from "../components/DeadlineModeToggle";
 import { daysAndHoursToTotal, validateWindowHours } from "../utils/deadlineWindow";
 import { detectTimezone, listTimezones, validateAnchor } from "../utils/deadlineAnchor";
 import type { Weekday } from "../services/api";
@@ -377,32 +378,8 @@ export function CreateClubScreen({ onSubmit, submitting, error, onCancel }: Crea
             </div>
 
             <div className="space-y-6">
-              {/* Segmented-control toggle (style guide exception — hover goes
-                  amber on paper's `ink-accent`, the selected option is
-                  underlined `ink`), same pattern as AdminScreen's status filter. */}
-              <div className="flex gap-4">
-                {(
-                  [
-                    { value: "duration" as const, label: "flexible window" },
-                    { value: "weekly_anchor" as const, label: "weekly schedule" },
-                  ] as const
-                ).map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setDeadlineMode(option.value)}
-                    aria-pressed={deadlineMode === option.value}
-                    className={[
-                      "py-1.5 font-mono uppercase tracking-mono text-mini transition-colors duration-150",
-                      deadlineMode === option.value
-                        ? "text-ink underline underline-offset-[3px]"
-                        : "text-ink-muted hover:text-ink-accent",
-                    ].join(" ")}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
+              <DeadlineModeToggle onPaper value={deadlineMode} onChange={setDeadlineMode} />
+
 
               {deadlineMode === "duration" ? (
                 <>

@@ -14,6 +14,7 @@ import { Confetti } from "../components/Confetti";
 import { DeadlineChip } from "../components/DeadlineChip";
 import { DeadlineWindowField } from "../components/DeadlineWindowField";
 import { DeadlineAnchorField, TimezoneField } from "../components/DeadlineAnchorField";
+import { DeadlineModeToggle } from "../components/DeadlineModeToggle";
 import { InviteShare } from "../components/InviteShare";
 import { UserAvatar } from "../components/avatars/UserAvatar";
 import { MIX_BADGE, MIX_ORDER, MIX_STATE_LABEL, mixGroup } from "../utils/mixState";
@@ -1202,31 +1203,12 @@ function OrganizerEdit({
         onChange={(e) => setTotalMixes(e.target.value)}
         disabled={updating}
       />
-      {/* Segmented-control toggle (style guide exception), same pattern as
-          AdminScreen's status filter and the create-club form. */}
-      <div className="flex gap-4">
-        {(
-          [
-            { value: "duration" as const, label: "flexible window" },
-            { value: "weekly_anchor" as const, label: "weekly schedule" },
-          ] as const
-        ).map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            onClick={() => setDeadlineMode(option.value)}
-            aria-pressed={deadlineMode === option.value}
-            className={[
-              "py-1.5 font-mono uppercase tracking-mono text-mini transition-colors duration-150",
-              deadlineMode === option.value
-                ? "text-ink underline underline-offset-[3px]"
-                : "text-ink-muted hover:text-ink-accent",
-            ].join(" ")}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
+      <DeadlineModeToggle
+        onPaper
+        value={deadlineMode}
+        onChange={setDeadlineMode}
+        disabled={updating}
+      />
 
       {deadlineMode === "duration" ? (
         <>

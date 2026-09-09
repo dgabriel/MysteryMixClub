@@ -380,7 +380,6 @@ export function CreateClubScreen({ onSubmit, submitting, error, onCancel }: Crea
             <div className="space-y-6">
               <DeadlineModeToggle onPaper value={deadlineMode} onChange={setDeadlineMode} />
 
-
               {deadlineMode === "duration" ? (
                 <>
                   <DeadlineWindowField

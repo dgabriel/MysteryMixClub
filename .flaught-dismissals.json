@@ -385,6 +385,39 @@
         "file": "frontend/src/components/DeadlineModeToggle.tsx"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:d8ef517073846d78617e697ec6693ae1",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T21:04:02.120Z",
+      "reason": "Verified false -- CreateClubScreen.test.tsx (51 tests across it, ClubHomeRoute.test.tsx, and DeadlineModeToggle.test.tsx) passes clean after this change. Confidence 0.39.",
+      "context": {
+        "title": "Added explanatory paragraph may break existing UI tests",
+        "file": "frontend/src/pages/CreateClubScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:17ab281a9150dcfb0bb0844fcd58b04b",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T21:04:02.258Z",
+      "reason": "Same as F-0001 -- ClubHomeRoute.test.tsx passes clean after this change. Confidence 0.38.",
+      "context": {
+        "title": "Missing test adjustments for ClubHomeScreen UI change",
+        "file": "frontend/src/pages/ClubHomeScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:0dc3345303d9fb8e80b6b1038431bbd3",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T21:04:02.394Z",
+      "reason": "Fixed for real, not just dismissed -- moved the explanatory copy into DeadlineModeToggle itself (this same PR) so it ships with the control instead of being duplicated by each caller. Confidence 0.75, and it was right.",
+      "context": {
+        "title": "Duplicated explanatory text violates DRY principle",
+        "file": "frontend/src/pages/ClubHomeScreen.tsx"
+      },
+      "expires_at": null
     }
   ]
 }

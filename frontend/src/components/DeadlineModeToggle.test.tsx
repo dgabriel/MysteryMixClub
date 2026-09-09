@@ -68,4 +68,15 @@ describe("DeadlineModeToggle", () => {
     expect(active.className).toMatch(/border-ink-accent/);
     expect(active.className).toMatch(/text-ink\b/);
   });
+
+  // MysteryMixClub-edsf: the toggle ships with an explanation of what the
+  // choice does, rather than leaving callers to duplicate it (which is what
+  // happened the first time — flagged by Flaught's own review of PR #287).
+  it("explains what the two modes mean", () => {
+    render(<DeadlineModeToggle value="duration" onChange={vi.fn()} />);
+
+    expect(
+      screen.getByText(/flexible window counts days from whenever a phase opens/),
+    ).toBeInTheDocument();
+  });
 });

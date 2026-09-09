@@ -445,6 +445,18 @@ export async function exportMyData(): Promise<Record<string, unknown>> {
   return (await res.json()) as Record<string, unknown>;
 }
 
+/** A weekday name for weekly-anchor deadline mode (ADR 0021), matching the
+ *  API's wire spelling exactly (never an index — Monday=0 is a storage
+ *  detail the client never sees). */
+export type Weekday =
+  | "monday"
+  | "tuesday"
+  | "wednesday"
+  | "thursday"
+  | "friday"
+  | "saturday"
+  | "sunday";
+
 /** A club as returned by the backend (GET/POST /api/v1/clubs). */
 export type Club = {
   id: string;
@@ -462,9 +474,20 @@ export type Club = {
    *  own setting lives on their membership (getMyMembership), not here. */
   default_vibe_mode: boolean;
   /** Hour-granular deadline windows stamped onto each mix when it opens
-   *  (MYS-158/160). Bounds: 4–168 hours (1 week). */
+   *  (MYS-158/160). Bounds: 4–168 hours (1 week). Only used in "duration"
+   *  deadline_mode. */
   submission_window_hours: number;
   voting_window_hours: number;
+  /** Alternate deadline scheme (ADR 0021): "duration" (the window-hours
+   *  fields above) or "weekly_anchor" (a fixed weekday/time per phase, in
+   *  `timezone`, below). */
+  deadline_mode: "duration" | "weekly_anchor";
+  timezone: string;
+  submission_weekday: Weekday | null;
+  /** "HH:MM:SS" wall-clock time in `timezone`. */
+  submission_time: string | null;
+  voting_weekday: Weekday | null;
+  voting_time: string | null;
   created_at: string;
   completed_at: string | null;
   /** Whether *you* administer this club — the organizer or a promoted
@@ -533,6 +556,12 @@ export async function createClub(input: {
   default_vibe_mode?: boolean;
   submission_window_hours?: number;
   voting_window_hours?: number;
+  deadline_mode?: "duration" | "weekly_anchor";
+  timezone?: string;
+  submission_weekday?: Weekday;
+  submission_time?: string;
+  voting_weekday?: Weekday;
+  voting_time?: string;
 }): Promise<Club> {
   const res = await authenticatedRequest("/api/v1/clubs", {
     method: "POST",
@@ -593,6 +622,12 @@ export async function updateClub(
     default_vibe_mode?: boolean;
     submission_window_hours?: number;
     voting_window_hours?: number;
+    deadline_mode?: "duration" | "weekly_anchor";
+    timezone?: string;
+    submission_weekday?: Weekday;
+    submission_time?: string;
+    voting_weekday?: Weekday;
+    voting_time?: string;
   },
 ): Promise<Club> {
   const res = await authenticatedRequest(`/api/v1/clubs/${id}`, {

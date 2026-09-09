@@ -44,6 +44,7 @@ from app.models.club import Club
 from app.models.mix import Mix
 from app.models.submission import Submission
 from app.models.vote import Vote
+from app.services.deadline_scheduling import compute_phase_deadline
 from app.services.email import EmailSender, build_email_sender
 from app.services.notifications import (
     DeadlinePhase,
@@ -147,9 +148,9 @@ async def _process_mix(
     deadline = mix_.submission_deadline if is_submission else mix_.voting_deadline
     window_hours = club.submission_window_hours if is_submission else club.voting_window_hours
 
-    # Branch 1: no deadline yet — stamp it from the club window and stop.
+    # Branch 1: no deadline yet — stamp it from the club's deadline config and stop.
     if deadline is None:
-        stamped = now + timedelta(hours=window_hours)
+        stamped = compute_phase_deadline(club, "submission" if is_submission else "voting", now)
         if is_submission:
             mix_.submission_deadline = stamped
         else:

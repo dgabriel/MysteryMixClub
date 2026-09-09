@@ -1,10 +1,11 @@
 import secrets
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from typing import Annotated, Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import Field, StringConstraints, model_validator
+from pydantic import Field, StringConstraints, field_validator, model_validator
 
 from app.api.wire import WIRE_ALIASES, WireModel
 from sqlalchemy import and_, delete, func, select
@@ -29,6 +30,49 @@ router = APIRouter(prefix="/clubs", tags=["clubs"])
 ClubName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
 ClubDescription = Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000)]
 
+# Weekly-anchor deadline mode (ADR 0021, MysteryMixClub-z845). Wire/API spells
+# weekdays out as names; storage uses date.weekday() ints (Monday=0..Sunday=6)
+# on the Club model, converted at the boundary here.
+Weekday = Literal["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+_WEEKDAY_NAMES: tuple[Weekday, ...] = (
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+)
+_WEEKDAY_TO_INT = {name: i for i, name in enumerate(_WEEKDAY_NAMES)}
+
+
+def _weekday_to_int(value: Weekday | None) -> int | None:
+    return _WEEKDAY_TO_INT[value] if value is not None else None
+
+
+def _weekday_from_int(value: int | None) -> Weekday | None:
+    return _WEEKDAY_NAMES[value] if value is not None else None
+
+
+def _validate_timezone_name(tz: str) -> str:
+    try:
+        ZoneInfo(tz)
+    except ZoneInfoNotFoundError as exc:
+        raise ValueError(f"unknown timezone: {tz!r}") from exc
+    return tz
+
+
+# Fields that only mean something in weekly_anchor mode. Switching a club INTO
+# that mode must supply all five in the same request (ADR 0021) — no partially
+# configured weekly-anchor state.
+_WEEKLY_ANCHOR_FIELDS = (
+    "timezone",
+    "submission_weekday",
+    "submission_time",
+    "voting_weekday",
+    "voting_time",
+)
+
 
 class ClubCreate(WireModel):
     name: ClubName
@@ -45,9 +89,35 @@ class ClubCreate(WireModel):
     default_vibe_mode: bool = False
     # Deadline windows (in hours) for the club's mixes (MYS-159). Seed each
     # mix's submission/voting deadline when it opens; hour-granular, 4..168 (1
-    # week), default 72 (3 days).
+    # week), default 72 (3 days). Only used in "duration" deadline_mode.
     submission_window_hours: int = Field(default=72, ge=4, le=168)
     voting_window_hours: int = Field(default=72, ge=4, le=168)
+    # Alternate deadline scheme (ADR 0021): "duration" (the window-hours fields
+    # above) or "weekly_anchor" (a fixed weekday/time per phase, below).
+    deadline_mode: Literal["duration", "weekly_anchor"] = "duration"
+    timezone: str = "UTC"
+    submission_weekday: Weekday | None = None
+    submission_time: time | None = None
+    voting_weekday: Weekday | None = None
+    voting_time: time | None = None
+
+    @field_validator("timezone")
+    @classmethod
+    def _check_timezone(cls, v: str) -> str:
+        return _validate_timezone_name(v)
+
+    @model_validator(mode="after")
+    def _weekly_anchor_requires_full_schedule(self) -> "ClubCreate":
+        if self.deadline_mode == "weekly_anchor":
+            missing = [f for f in _WEEKLY_ANCHOR_FIELDS if getattr(self, f) is None]
+            if missing:
+                raise ValueError(
+                    "weekly_anchor mode requires "
+                    + ", ".join(_WEEKLY_ANCHOR_FIELDS)
+                    + "; missing: "
+                    + ", ".join(missing)
+                )
+        return self
 
 
 class ClubUpdate(WireModel):
@@ -64,6 +134,17 @@ class ClubUpdate(WireModel):
     # affects mixes opened after the change — deadlines already stamped stay put.
     submission_window_hours: int | None = Field(default=None, ge=4, le=168)
     voting_window_hours: int | None = Field(default=None, ge=4, le=168)
+    # Alternate deadline scheme (ADR 0021). Switching deadline_mode to
+    # "weekly_anchor" requires all of timezone/submission_weekday/
+    # submission_time/voting_weekday/voting_time in this SAME request — see
+    # _weekly_anchor_requires_full_schedule. Once already in weekly_anchor
+    # mode, any one of these may be patched alone without resupplying the rest.
+    deadline_mode: Literal["duration", "weekly_anchor"] | None = None
+    timezone: str | None = None
+    submission_weekday: Weekday | None = None
+    submission_time: time | None = None
+    voting_weekday: Weekday | None = None
+    voting_time: time | None = None
 
     # These all map to NOT NULL columns: allow omission (partial update) but reject
     # an explicitly provided null with a 422. description is nullable, so an
@@ -78,6 +159,8 @@ class ClubUpdate(WireModel):
                 "default_vibe_mode",
                 "submission_window_hours",
                 "voting_window_hours",
+                "deadline_mode",
+                "timezone",
             ):
                 # mode="before" sees the RAW wire dict, so a renamed field
                 # arrives under its alias (MYS-196) — check both spellings.
@@ -85,6 +168,27 @@ class ClubUpdate(WireModel):
                     if key in data and data[key] is None:
                         raise ValueError(f"{key} may not be null")
         return data
+
+    @field_validator("timezone")
+    @classmethod
+    def _check_timezone(cls, v: str | None) -> str | None:
+        return _validate_timezone_name(v) if v is not None else v
+
+    @model_validator(mode="after")
+    def _weekly_anchor_requires_full_schedule(self) -> "ClubUpdate":
+        # Only gates an explicit switch INTO weekly_anchor in this same
+        # request; omitting deadline_mode (staying in whatever mode the club
+        # is already in) never triggers this.
+        if self.deadline_mode == "weekly_anchor":
+            missing = [f for f in _WEEKLY_ANCHOR_FIELDS if getattr(self, f) is None]
+            if missing:
+                raise ValueError(
+                    "switching to weekly_anchor mode requires "
+                    + ", ".join(_WEEKLY_ANCHOR_FIELDS)
+                    + "; missing: "
+                    + ", ".join(missing)
+                )
+        return self
 
 
 # Number of random bytes for invite tokens, matching the magic-link idiom.
@@ -133,6 +237,13 @@ class ClubResponse(WireModel):
     # Deadline windows (in hours) for the club's mixes (MYS-159).
     submission_window_hours: int
     voting_window_hours: int
+    # Alternate deadline scheme (ADR 0021).
+    deadline_mode: str
+    timezone: str
+    submission_weekday: Weekday | None
+    submission_time: time | None
+    voting_weekday: Weekday | None
+    voting_time: time | None
     created_at: datetime
     completed_at: datetime | None
     # Whether the *caller* administers this club — the fixed organizer_id OR a
@@ -161,6 +272,12 @@ def _to_response(club: Club, *, viewer_is_admin: bool | None = None) -> ClubResp
         default_vibe_mode=club.default_vibe_mode,
         submission_window_hours=club.submission_window_hours,
         voting_window_hours=club.voting_window_hours,
+        deadline_mode=club.deadline_mode,
+        timezone=club.timezone,
+        submission_weekday=_weekday_from_int(club.submission_weekday),
+        submission_time=club.submission_time,
+        voting_weekday=_weekday_from_int(club.voting_weekday),
+        voting_time=club.voting_time,
         created_at=club.created_at,
         completed_at=club.completed_at,
     )
@@ -207,6 +324,12 @@ async def create_club(
         default_vibe_mode=payload.default_vibe_mode,
         submission_window_hours=payload.submission_window_hours,
         voting_window_hours=payload.voting_window_hours,
+        deadline_mode=payload.deadline_mode,
+        timezone=payload.timezone,
+        submission_weekday=_weekday_to_int(payload.submission_weekday),
+        submission_time=payload.submission_time,
+        voting_weekday=_weekday_to_int(payload.voting_weekday),
+        voting_time=payload.voting_time,
     )
     db.add(club)
     # Flush to populate club.id for the membership and mix rows below.
@@ -501,6 +624,12 @@ async def update_club(
     if new_total is not None and new_total != club.total_mixes:
         await _reconcile_mixes(club, new_total, db)
         club.total_mixes = new_total
+
+    # Weekday fields are wire strings ("tuesday") over an int-backed column —
+    # every other field in `updates` maps 1:1 onto its Club attribute.
+    for weekday_field in ("submission_weekday", "voting_weekday"):
+        if weekday_field in updates:
+            setattr(club, weekday_field, _weekday_to_int(updates.pop(weekday_field)))
 
     for field, value in updates.items():
         setattr(club, field, value)

@@ -1,8 +1,8 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, time
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func, text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Time, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -49,6 +49,26 @@ class Club(Base):
     voting_window_hours: Mapped[int] = mapped_column(
         Integer, nullable=False, default=72, server_default=text("72")
     )
+    # Alternate deadline scheme (ADR 0021): "duration" (default, the hour-window
+    # fields above) or "weekly_anchor" (a fixed weekday/time in `timezone` below,
+    # for both phases). See app.services.deadline_scheduling.compute_phase_deadline
+    # for the single place that branches on this.
+    deadline_mode: Mapped[str] = mapped_column(
+        String, nullable=False, default="duration", server_default=text("'duration'")
+    )
+    # IANA zone name (e.g. "America/New_York"). Only meaningful in weekly_anchor
+    # mode, but always populated (default UTC) so a mode switch never needs a
+    # separate backfill.
+    timezone: Mapped[str] = mapped_column(
+        String, nullable=False, default="UTC", server_default=text("'UTC'")
+    )
+    # weekday: Python's date.weekday() convention, Monday=0..Sunday=6. Nullable
+    # until the organizer configures weekly_anchor mode; the API requires all
+    # four of these plus `timezone` together when switching a club into it.
+    submission_weekday: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    submission_time: Mapped[Optional[time]] = mapped_column(Time, nullable=True)
+    voting_weekday: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    voting_time: Mapped[Optional[time]] = mapped_column(Time, nullable=True)
     # Admin-set default participation mode for the club (MYS-112). Seeds each
     # member's club_members.vibe_mode at join; per-mix overrides live on the
     # submission's participation_mode.

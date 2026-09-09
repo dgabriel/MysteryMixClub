@@ -41,6 +41,7 @@ from app.models.mix import Mix
 from app.models.note import Note
 from app.models.submission import Submission
 from app.models.user import User
+from app.services.deadline_scheduling import compute_phase_deadline
 from app.services.source_tracks import source_fields
 from app.services.playlist_jobs import enqueue_playlist_job
 from app.models.vote import Vote
@@ -249,8 +250,8 @@ async def advance_mix_state(
         # Stamp the submission deadline from the club window (MYS-159), unless the
         # organizer already set one explicitly at mix creation — don't clobber it.
         if mix_.submission_deadline is None:
-            mix_.submission_deadline = datetime.now(timezone.utc) + timedelta(
-                hours=club.submission_window_hours
+            mix_.submission_deadline = compute_phase_deadline(
+                club, "submission", datetime.now(timezone.utc)
             )
         club.current_mix = mix_.mix_number
         events.append((mix_, "submission_open"))
@@ -258,8 +259,8 @@ async def advance_mix_state(
         # Stamp the voting deadline from the club window (MYS-159), unless the
         # organizer already set one explicitly — don't clobber a manual value.
         if mix_.voting_deadline is None:
-            mix_.voting_deadline = datetime.now(timezone.utc) + timedelta(
-                hours=club.voting_window_hours
+            mix_.voting_deadline = compute_phase_deadline(
+                club, "voting", datetime.now(timezone.utc)
             )
         events.append((mix_, "voting_open"))
     elif new_state == "closed":
@@ -291,8 +292,8 @@ async def advance_mix_state(
                 # Same club window as the manual open (MYS-159): stamp the next
                 # mix's submission deadline unless it was set explicitly.
                 if next_mix.submission_deadline is None:
-                    next_mix.submission_deadline = datetime.now(timezone.utc) + timedelta(
-                        hours=club.submission_window_hours
+                    next_mix.submission_deadline = compute_phase_deadline(
+                        club, "submission", datetime.now(timezone.utc)
                     )
                 club.current_mix = next_mix.mix_number
                 events.append((next_mix, "submission_open"))
@@ -317,8 +318,8 @@ async def rollback_mix_to_submission(mix_: Mix, club: Club, db: AsyncSession) ->
     """
     mix_.state = "open_submission"
     mix_.submission_opened_at = func.now()
-    mix_.submission_deadline = datetime.now(timezone.utc) + timedelta(
-        hours=club.submission_window_hours
+    mix_.submission_deadline = compute_phase_deadline(
+        club, "submission", datetime.now(timezone.utc)
     )
     # Re-stamped when voting genuinely reopens; the no-clobber guard in
     # advance_mix_state requires this to be NULL.

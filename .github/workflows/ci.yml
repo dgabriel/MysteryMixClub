@@ -173,7 +173,7 @@ jobs:
       # Pinned to an exact version (ADR 0017) so a newly published version
       # can't start running in CI unreviewed.
       - name: Install Flaught
-        run: npm install -g @flaught/core@0.7.2
+        run: npm install -g @flaught/core@0.10.0
 
       - name: Install Semgrep
         run: pip install semgrep

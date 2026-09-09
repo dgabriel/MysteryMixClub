@@ -22,16 +22,28 @@ llm:
   timeout_seconds: 120     # timeout for LLM API calls
 
 # ── Deterministic tools ────────────────────────────────────
-# tools:
-#   semgrep:
-#     enabled: true
-#     # config: path/to/semgrep-rules.yml
-#   linter:
-#     enabled: true
-#     # command: eslint  # override auto-detected linter
-#   vuln_scanner:
-#     enabled: true
-#     # command: npm audit  # override auto-detected scanner
+# Explicit, not left to schema default (ADR 0023, same lesson as ADR 0022's
+# dismissals: block) -- 0.10.0 added test_weakening and dependency_sanity,
+# ON by default, so a commented-out block here would silently accept
+# whatever Flaught ships as default next time too. Reviewed and kept on:
+# test_weakening fits this repo's existing test-rigor conventions (targeted
+# + full-suite pre-push discipline, ADR 0005 test isolation); dependency_sanity
+# defends against a real supply-chain risk class (typosquatting) worth the
+# npm-registry calls it makes during CI.
+tools:
+  semgrep:
+    enabled: true
+    # config: path/to/semgrep-rules.yml
+  linter:
+    enabled: true
+    # command: eslint  # override auto-detected linter -- see MysteryMixClub-ta06
+  vuln_scanner:
+    enabled: true
+    # command: npm audit  # override auto-detected scanner
+  test_weakening:
+    enabled: true
+  dependency_sanity:
+    enabled: true
 
 # ── Test inversion ──────────────────────────────────────────
 # test_inversion:

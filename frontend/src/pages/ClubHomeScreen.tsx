@@ -1203,18 +1203,12 @@ function OrganizerEdit({
         onChange={(e) => setTotalMixes(e.target.value)}
         disabled={updating}
       />
-      <div>
-        <DeadlineModeToggle
-          onPaper
-          value={deadlineMode}
-          onChange={setDeadlineMode}
-          disabled={updating}
-        />
-        <p className="mt-2 text-meta leading-[1.6] text-ink-muted">
-          a flexible window counts days from whenever a phase opens. a weekly schedule locks
-          submissions and votes to the same day and time every week.
-        </p>
-      </div>
+      <DeadlineModeToggle
+        onPaper
+        value={deadlineMode}
+        onChange={setDeadlineMode}
+        disabled={updating}
+      />
 
       {deadlineMode === "duration" ? (
         <>

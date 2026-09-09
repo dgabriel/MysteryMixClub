@@ -40,26 +40,37 @@ export function DeadlineModeToggle({
     ].join(" ");
 
   return (
-    // Deliberately role="group", not "tablist"/"tab" — that WAI-ARIA pattern
-    // promises arrow-key roving-tabIndex navigation this doesn't implement,
-    // same reasoning as EmailEntryScreen's own toggle.
-    <div
-      role="group"
-      aria-label="deadline schedule"
-      className={`flex border-b ${onPaper ? "border-ink-hairline" : "border-hairline"}`}
-    >
-      {OPTIONS.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          aria-pressed={value === option.value}
-          onClick={() => onChange(option.value)}
-          disabled={disabled}
-          className={tabClass(value === option.value)}
-        >
-          {option.label}
-        </button>
-      ))}
+    <div>
+      {/* Deliberately role="group", not "tablist"/"tab" — that WAI-ARIA pattern
+          promises arrow-key roving-tabIndex navigation this doesn't implement,
+          same reasoning as EmailEntryScreen's own toggle. */}
+      <div
+        role="group"
+        aria-label="deadline schedule"
+        className={`flex border-b ${onPaper ? "border-ink-hairline" : "border-hairline"}`}
+      >
+        {OPTIONS.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            aria-pressed={value === option.value}
+            onClick={() => onChange(option.value)}
+            disabled={disabled}
+            className={tabClass(value === option.value)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      {/* Ships with the control rather than duplicated by each caller
+          (MysteryMixClub-edsf) — the labels alone don't say what the choice
+          does. */}
+      <p
+        className={`mt-2 text-meta leading-[1.6] ${onPaper ? "text-ink-muted" : "text-muted-foreground"}`}
+      >
+        a flexible window counts days from whenever a phase opens. a weekly schedule locks
+        submissions and votes to the same day and time every week.
+      </p>
     </div>
   );
 }

@@ -378,13 +378,7 @@ export function CreateClubScreen({ onSubmit, submitting, error, onCancel }: Crea
             </div>
 
             <div className="space-y-6">
-              <div>
-                <DeadlineModeToggle onPaper value={deadlineMode} onChange={setDeadlineMode} />
-                <p className="mt-2 text-meta leading-[1.6] text-ink-muted">
-                  a flexible window counts days from whenever a phase opens. a weekly schedule
-                  locks submissions and votes to the same day and time every week.
-                </p>
-              </div>
+              <DeadlineModeToggle onPaper value={deadlineMode} onChange={setDeadlineMode} />
 
               {deadlineMode === "duration" ? (
                 <>

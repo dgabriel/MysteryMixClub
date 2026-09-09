@@ -341,6 +341,50 @@
         "file": "frontend/src/pages/CreateClubScreen.tsx"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:519cb2a60048f5fcdde8d366e6ce56c5",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T20:46:51.564Z",
+      "reason": "Already reasoned through in prior PRs -- every dismissal carries a full audit trail (fingerprint, dismisser, timestamp, reason), so the file's growth is legible history, not silent suppression. Confidence 0.46.",
+      "context": {
+        "title": "Large bulk addition to .flaught-dismissals.json may suppress future findings",
+        "file": ".flaught-dismissals.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:2a69fd3eacbd62bfedfffcab67b91caa",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T20:46:51.696Z",
+      "reason": "Real, fair gap -- verified neither CreateClubScreen.test.tsx nor ClubHomeRoute.test.tsx exercises the toggle in page context. Filed as MysteryMixClub-uqqw rather than expanded here: backfilling full page-level integration coverage for the whole weekly-anchor feature is bigger than this visibility fix's scope (the gap predates this PR, from the original MysteryMixClub-z845 feature PR).",
+      "context": {
+        "title": "Missing integration tests for pages that embed DeadlineModeToggle",
+        "file": "frontend/src/pages/ClubHomeScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:801cc056967631d60a83fdcd505eb42b",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T20:46:51.834Z",
+      "reason": "Not actionable without contradicting this codebase's established architecture -- every component in this repo (Button, TextField, DeadlineChip, DeadlineWindowField, DeadlineAnchorField, ...) uses inline Tailwind utility classes directly, per the style guide. This isn't a property of the new component, it's the whole app's deliberate convention.",
+      "context": {
+        "title": "Component tightly coupled to Tailwind utility classes makes styling brittle",
+        "file": "frontend/src/components/DeadlineModeToggle.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:d55e386e5265034cecb156871c97165b",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T20:46:51.970Z",
+      "reason": "Low confidence (0.1); onPaper already matches the exact naming convention used by every other component with a light/dark-surface variant in this codebase (TextField, Button, DeadlineWindowField, DeadlineAnchorField, DeadlineChip, ...).",
+      "context": {
+        "title": "Prop name \"onPaper\" is ambiguous and may confuse future contributors",
+        "file": "frontend/src/components/DeadlineModeToggle.tsx"
+      },
+      "expires_at": null
     }
   ]
 }

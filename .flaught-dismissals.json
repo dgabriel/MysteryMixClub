@@ -418,6 +418,105 @@
         "file": "frontend/src/pages/ClubHomeScreen.tsx"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:92da4ae6512a677185e6ee254b87ae2e",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-10T02:08:44.651Z",
+      "reason": "False positive: vitest 4.1.9 -> 4.1.11 is a patch bump within the declared ^4.1.9 range in frontend/package.json, not a major version bump. Confirmed via package-lock.json diff.",
+      "context": {
+        "title": "Vitest major version bump may break test suite",
+        "file": "frontend/package-lock.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:46a58f0292ff44b10b53ac03815299f6",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-10T02:08:44.791Z",
+      "reason": "Same false premise as F-001: no major vitest bump occurred (4.1.9 -> 4.1.11, patch-level, within ^4.1.9). No test-suite-breaking upgrade to adjust for; full suite already passes.",
+      "context": {
+        "title": "No test adjustments for upgraded Vitest dependencies",
+        "file": "frontend/package-lock.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:6daffc534eb3f9d43590b00e4b7f8c2c",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-10T02:08:44.933Z",
+      "reason": "False positive: every changed package (vitest toolchain, browserslist toolchain, js-yaml, postcss-selector-parser, fast-uri) is a transitive devDependency. Confirmed via lockfile diff that frontend's 4 direct production deps (d3, react, react-dom, react-router) are untouched.",
+      "context": {
+        "title": "Lockfile updates include unrelated production dependencies",
+        "file": "frontend/package-lock.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:76e01cdccfe3117de7af0f459facc46c",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-10T02:08:45.072Z",
+      "reason": "False positive: repo has no .browserslistrc or browserslist config key, so there is no explicit browser-support target to broaden. This bump only refreshes caniuse-lite/browserslist's underlying data (the actual Dependabot alert), not any target config -- no bundle-size impact.",
+      "context": {
+        "title": "Updated browserslist may broaden supported browsers, inflating bundle size",
+        "file": "frontend/package-lock.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:5e6d317ab968f90d9b35b1a25b1fa421",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-10T02:08:45.210Z",
+      "reason": "Diff is 164 lines across 2 lockfiles for 17 patch/minor version bumps, zero packages added or removed -- a normal npm-audit-fix diff, not unreviewable. All bumped packages verified above to correspond to real open GitHub Dependabot alerts (fast-uri, js-yaml, browserslist, postcss-selector-parser).",
+      "context": {
+        "title": "Huge lockfile diff reduces reviewability and masks potential issues",
+        "file": "frontend/package-lock.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:ab60602a6312e3f0e48cea06f167ab5a",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-10T02:08:45.482Z",
+      "reason": "Real finding, out of scope for this dependency-only PR. Tracked separately in MysteryMixClub-feuy (filed when Flaught's linter tool first surfaced these 5 pre-existing eslint warnings, ADR 0025).",
+      "context": {
+        "title": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+        "file": "/home/runner/work/MysteryMixClub/MysteryMixClub/frontend/src/components/AuthedLayout.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:6645715e285a690d7849d69b663d861d",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-10T02:08:45.626Z",
+      "reason": "Real finding, out of scope for this dependency-only PR. Tracked separately in MysteryMixClub-feuy (filed when Flaught's linter tool first surfaced these 5 pre-existing eslint warnings, ADR 0025).",
+      "context": {
+        "title": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+        "file": "/home/runner/work/MysteryMixClub/MysteryMixClub/frontend/src/hooks/useAuth.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:b6f619d4783b7e4bf2feef696cc2a67f",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-10T02:08:45.764Z",
+      "reason": "Real finding, out of scope for this dependency-only PR. Tracked separately in MysteryMixClub-feuy (filed when Flaught's linter tool first surfaced these 5 pre-existing eslint warnings, ADR 0025).",
+      "context": {
+        "title": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\n/home/runner/work/MysteryMixClub/MysteryMixClub/frontend/src/pages/MixDetailRoute.tsx:286:10\n  284 |\n  285 |   useEffect(() => {\n> 286 |     void load();\n      |          ^^^^ Avoid calling setState() directly within an effect\n  287 |   }, [load]);\n  288 |\n  289 |   // Poll every 60s so state transitions (submission → voting → closed) and",
+        "file": "/home/runner/work/MysteryMixClub/MysteryMixClub/frontend/src/pages/MixDetailRoute.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:d1a1048a76a779d2c8b88d12fd5f80db",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-10T02:08:45.900Z",
+      "reason": "Real finding, out of scope for this dependency-only PR. Tracked separately in MysteryMixClub-feuy (filed when Flaught's linter tool first surfaced these 5 pre-existing eslint warnings, ADR 0025).",
+      "context": {
+        "title": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\n/home/runner/work/MysteryMixClub/MysteryMixClub/frontend/src/pages/VerifyRoute.tsx:51:7\n  49 |     const invite = searchParams.get(\"invite\");\n  50 |     if (!token) {\n> 51 |       setState(\"error\");\n     |       ^^^^^^^^ Avoid calling setState() directly within an effect\n  52 |       return;\n  53 |     }\n  54 |",
+        "file": "/home/runner/work/MysteryMixClub/MysteryMixClub/frontend/src/pages/VerifyRoute.tsx"
+      },
+      "expires_at": null
     }
   ]
 }

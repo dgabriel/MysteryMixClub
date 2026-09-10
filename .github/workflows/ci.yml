@@ -171,9 +171,9 @@ jobs:
           python-version: "3.11"
 
       # Pinned to an exact version (ADR 0017) so a newly published version
-      # can't start running in CI unreviewed.
+      # can't start running in CI unreviewed. 0.10.0 -> 0.12.0, ADR 0026.
       - name: Install Flaught
-        run: npm install -g @flaught/core@0.10.0
+        run: npm install -g @flaught/core@0.12.0
 
       - name: Install Semgrep
         run: pip install semgrep
@@ -199,6 +199,13 @@ jobs:
       # does NOT block, since that's an infra gap, not a review outcome. Fix
       # a real finding or dismiss it (`flaught dismiss <id> --reason ...`,
       # persisted to the git-tracked .flaught-dismissals.json) to unblock.
+      # --config-from-base (0.11.0, ADR 0026): loads .advreview.yml from the
+      # base ref via `git show` instead of the working tree, so a PR can't
+      # edit its own config (e.g. linter.command, a real shell string --
+      # ADR 0025) to inject commands into a job that holds CI secrets.
+      # Consequence: a PR that itself edits .advreview.yml is reviewed under
+      # the OLD (pre-PR) config until merged -- accepted tradeoff, security
+      # over self-referential convenience.
       - name: Run adversarial review
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
@@ -211,6 +218,7 @@ jobs:
             --head HEAD \
             --output findings.json \
             --pr-description "${PR_TITLE}" \
+            --config-from-base \
             --quiet
           code=$?
           set -e
@@ -229,26 +237,18 @@ jobs:
           path: findings.json
           if-no-files-found: ignore
 
-      # Re-runs --no-llm to render the comment body without a second LLM call
-      # per PR (the first run's --output only writes the JSON artifact) --
-      # same tradeoff Flaught's own docs make: the posted comment reflects
-      # deterministic/test-inversion/scope-creep findings only, not the LLM
-      # pass; the uploaded findings.json artifact is the source of truth for
-      # LLM findings.
+      # `flaught report --from` (0.12.0, ADR 0026, closes upstream
+      # flaught/core#75) renders the comment from the already-computed
+      # findings.json -- no second review run, no LLM call, and critically
+      # no longer drops LLM findings from the comment. Replaces the old
+      # `flaught review --no-llm` re-run, which silently produced a comment
+      # containing only deterministic/test-inversion/scope-creep findings.
       - name: Comment on PR
         if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_BASE_REF: ${{ github.base_ref }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           if [ -f findings.json ]; then
-            BODY=$(flaught review \
-              --base "origin/${PR_BASE_REF}" \
-              --head HEAD \
-              --no-llm \
-              --pr-description "${PR_TITLE}" \
-              --quiet 2>/dev/null)
-            echo "$BODY" | gh pr comment "${PR_NUMBER}" --body-file -
+            flaught report --from findings.json | gh pr comment "${PR_NUMBER}" --body-file -
           fi

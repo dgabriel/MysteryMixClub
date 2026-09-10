@@ -234,9 +234,26 @@ history first (see above), don't reach for `--squash` as the fast way out.
 
 ## Pre-flight before pushing (catch CI failures locally)
 
-- Pre-push runs frontend typecheck, `mypy`, and `pytest` in that order; let
-  it. Don't bypass. (Before 2026-07-31, `mypy` was CI-only and had to be run
-  by hand pre-push — the hook now covers it, closing that gap.)
+- **Pre-push is scoped to what the push actually changes** (MysteryMixClub-hh2l):
+  frontend typecheck runs only if `frontend/` changed, backend `mypy` + `pytest`
+  only if `backend/` changed, nothing at all for a docs-only or config-only push
+  (neither directory touched). A push spanning both runs both, in the same
+  order as before. Let whatever runs, run — don't bypass. (Before 2026-07-31,
+  `mypy` was CI-only and had to be run by hand pre-push — the hook now covers
+  it, closing that gap.)
+  - The diff range is `remote_sha..local_sha` when the remote ref already
+    exists (the normal case — pushing more commits to an already-open PR); a
+    brand-new branch's first push (no remote side yet) falls back to the
+    merge-base with `origin/develop`, then `origin/main`. If no usable range
+    can be found at all, or `git diff` itself errors against a range that was
+    found, the hook runs everything — an unknown diff is never treated as "no
+    changes."
+  - This only scopes the **local hook**. CI (`ci.yml`) still always runs both
+    the `frontend` and `backend` jobs regardless of diff size — skipping a job
+    outright based on changed paths risks a required status check in branch
+    protection never reporting for that push, which can leave a PR unable to
+    merge. That's a separate, unresolved decision, not silently folded into
+    this one.
 - **Hook PATH gotcha — fixed 2026-07-26.** The hooks (`.beads/hooks/pre-commit`,
   `.beads/hooks/pre-push`, and the `.husky/*` originals kept in sync) now export
   `backend/.venv/bin` onto `PATH` themselves before calling `ruff`/`pytest`, so

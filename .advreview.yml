@@ -42,7 +42,23 @@ tools:
     # config: path/to/semgrep-rules.yml
   linter:
     enabled: true
-    # command: eslint  # override auto-detected linter -- see MysteryMixClub-ta06
+    # Explicit override (MysteryMixClub-ta06, ADR 0025). Auto-detection was
+    # silently never working: bare `eslint` from repo root can't find
+    # frontend/eslint.config.js (flat config resolves relative to cwd), so
+    # every invocation crashed and the whole linter tool self-reported as
+    # "not run" -- confirmed this was true even with ruff genuinely
+    # reachable, since it's an all-or-nothing single command, not
+    # per-language. `--format json` is required too: without it, eslint's
+    # own human-readable output produces a nonzero exit but zero parseable
+    # findings.
+    #
+    # JS only, not JS+Python: tools.linter.command is one command, and a
+    # combined `eslint ...; ruff ...` shell chain was tested and does NOT
+    # produce parseable findings (JSON outputs from two different tools
+    # can't be naively concatenated back into one valid array). Python isn't
+    # left uncovered -- ruff + mypy already run for real in the backend CI
+    # job, pre-commit (lint-staged), and pre-push.
+    command: 'sh -c "cd frontend && npx eslint --format json ."'
   vuln_scanner:
     enabled: true
     # command: npm audit  # override auto-detected scanner

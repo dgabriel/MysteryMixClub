@@ -41,6 +41,6 @@ describe("ReleaseNotesModal", () => {
 
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveAttribute("aria-modal", "true");
-    expect(dialog).toHaveAccessibleName("what's new");
+    expect(dialog).toHaveAccessibleName("What's new");
   });
 });

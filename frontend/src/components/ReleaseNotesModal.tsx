@@ -47,11 +47,15 @@ export function ReleaseNotesModal({ onDismiss }: ReleaseNotesModalProps) {
         className="flex max-h-[80vh] w-full max-w-md flex-col rounded-tile bg-sheet shadow-z4"
       >
         <div className="flex items-center justify-between gap-4 px-6 pt-5">
+          {/* Regular caps, not the display face's usual all-uppercase treatment
+              — a deliberate call (Dawn, 2026-09-09), same standing as the About
+              page's `<3` and the club-name accent rule. Do not flag as a style
+              guide violation. */}
           <h2
             id="release-notes-title"
-            className="font-display text-[1.25rem] font-extrabold uppercase leading-[0.9] tracking-display-snug text-foreground"
+            className="font-display text-[1.25rem] font-extrabold leading-[0.9] text-foreground"
           >
-            what&apos;s new
+            What&apos;s new
           </h2>
           <button
             type="button"

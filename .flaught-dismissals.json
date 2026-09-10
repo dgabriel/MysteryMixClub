@@ -517,6 +517,72 @@
         "file": "/home/runner/work/MysteryMixClub/MysteryMixClub/frontend/src/pages/VerifyRoute.tsx"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:0880f97773446422d50c79eb95199589",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-10T02:20:01.003Z",
+      "reason": "Same as D-0001: cooldown: block present (default-days only, semver-major-days correctly omitted for this non-semver github-actions ecosystem), confirmed valid by GitHub's own dependabot.yml validator on this commit.",
+      "context": {
+        "title": "package_managers.dependabot.dependabot-missing-cooldown.dependabot-missing-cooldown",
+        "file": ".github/dependabot.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:1dd942b784998a0b5ba533579b2b83fc",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-10T02:20:01.140Z",
+      "reason": "Not unrelated scope creep: the dependabot.yml cooldown addition directly responds to Flaught's own D-0001..D-0005 findings surfaced on this same PR's first CI run. In-scope follow-up to this PR's own review feedback, not a separate concern.",
+      "context": {
+        "title": "Dependabot config changes unrelated to clearing alerts",
+        "file": ".github/dependabot.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:d14941e89c9c0e392ab5b99d5e87db5e",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-10T02:20:01.274Z",
+      "reason": "Stale: refers to the first (broken) commit's github-actions block, which was fixed in the very next commit on this PR. GitHub's own dependabot.yml validator now passes on the current commit -- semver-major-days was removed from that block, default-days alone remains, which is valid for github-actions.",
+      "context": {
+        "title": "Invalid cooldown key for github-actions block",
+        "file": ".github/dependabot.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:7be2aea0fd6700c900b3ec3c46577a81",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-10T02:20:01.411Z",
+      "reason": "False positive, same as the earlier F-001/F-002 on this PR's first review: vitest 4.1.9 -> 4.1.11 is a patch bump within the declared ^4.1.9 range, not requiring new tests. Full test suite (frontend + backend) already passes in CI.",
+      "context": {
+        "title": "Lack of tests for updated Vitest and related dev dependencies",
+        "file": "frontend/package-lock.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:a7515da9e30799e725518ba55a809420",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-10T02:20:01.545Z",
+      "reason": "False positive, same as the earlier F-004 on this PR's first review: repo has no .browserslistrc or browserslist config key to broaden -- this bump only refreshes caniuse-lite/browserslist's underlying data (the actual Dependabot alert being fixed), no bundle-size impact.",
+      "context": {
+        "title": "Browserslist data update may increase bundle size",
+        "file": "frontend/package-lock.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:725374b52aa324c09c6e79a730c21960",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-10T02:20:01.686Z",
+      "reason": "False positive, verified against GitHub's own docs (configuration-options-for-the-dependabot.yml-file#cooldown): 'This default cooldown does not apply to security updates.' Cooldown only delays routine version-refresh PRs; Dependabot security-alert PRs are processed independently and immediately regardless of cooldown config.",
+      "context": {
+        "title": "Cooldown default of 3 days could postpone urgent security updates",
+        "file": ".github/dependabot.yml"
+      },
+      "expires_at": null
     }
   ]
 }

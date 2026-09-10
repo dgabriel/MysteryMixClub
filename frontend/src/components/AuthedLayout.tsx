@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Outlet, useLocation, useOutletContext } from "react-router";
 import { TopNav } from "./TopNav";
+import { ReleaseNotesModal } from "./ReleaseNotesModal";
+import { hasUnseenRelease, markLatestReleaseSeen } from "../data/releaseNotes";
 
 /** A contextual back target for the shared nav (e.g. mix → its club). */
 type NavBack = { label: string; to: string };
@@ -27,6 +29,18 @@ export function AuthedLayout() {
   const setNavBackCb = useCallback((back: NavBack | null) => setNavBack(back), []);
   const contentRef = useRef<HTMLDivElement>(null);
   const { pathname } = useLocation();
+
+  // One-time-per-release auto-popup (MysteryMixClub, release-notes request).
+  // A lazy initializer, not an effect: this is a one-time read of where the
+  // viewer already is (localStorage vs. the newest release date), not a
+  // subscription to anything that changes after mount. Layout routes mount
+  // once for the lifetime of the authed session rather than per navigation,
+  // so this still only fires "once per app load," not "once per page."
+  const [showReleaseNotes, setShowReleaseNotes] = useState(() => hasUnseenRelease());
+  function dismissReleaseNotes() {
+    markLatestReleaseSeen();
+    setShowReleaseNotes(false);
+  }
 
   // Move focus to the new page's content on every client-side navigation, so
   // keyboard/AT users get a cue that the "page" changed instead of focus
@@ -66,6 +80,7 @@ export function AuthedLayout() {
       <div id="main-content" ref={contentRef} tabIndex={-1} className="flex flex-1 flex-col outline-none">
         <Outlet context={{ setNavBack: setNavBackCb } satisfies AuthedOutletContext} />
       </div>
+      {showReleaseNotes ? <ReleaseNotesModal onDismiss={dismissReleaseNotes} /> : null}
     </div>
   );
 }

@@ -3,6 +3,8 @@ import { useLocation, useNavigate } from "react-router";
 import { useAuth } from "../hooks/useAuth";
 import { ConcentricRings } from "./ConcentricRings";
 import { Badge } from "./Badge";
+import { ReleaseNotesModal } from "./ReleaseNotesModal";
+import { markLatestReleaseSeen } from "../data/releaseNotes";
 
 type TopNavProps = {
   /** Optional back affordance shown on the far left after the ring mark — used by
@@ -82,6 +84,21 @@ export function TopNav({ back }: TopNavProps) {
   const [loggingOut, setLoggingOut] = useState(false);
   const authed = status === "authenticated";
 
+  // Manual "what's new" open, independent of AuthedLayout's once-per-release
+  // auto-popup (TopNav also renders standalone on several public pages, so
+  // this can't assume that layout is an ancestor). Dismissing here also
+  // marks the release seen, so the auto-popup doesn't re-fire for it later.
+  const [showReleaseNotes, setShowReleaseNotes] = useState(false);
+  function dismissReleaseNotes() {
+    markLatestReleaseSeen();
+    setShowReleaseNotes(false);
+  }
+  const betaBadge = (
+    <button type="button" onClick={() => setShowReleaseNotes(true)} aria-label="what's new">
+      <Badge>beta</Badge>
+    </button>
+  );
+
   async function handleLogout() {
     setLoggingOut(true);
     try {
@@ -139,13 +156,14 @@ export function TopNav({ back }: TopNavProps) {
           >
             <ConcentricRings size={28} spinning accent wordmark />
           </button>
-          <Badge>beta</Badge>
+          {betaBadge}
         </div>
         <nav className="flex items-center gap-4">
           <button type="button" onClick={() => navigate("/login")} className={linkClass}>
             login
           </button>
         </nav>
+        {showReleaseNotes ? <ReleaseNotesModal onDismiss={dismissReleaseNotes} /> : null}
       </header>
     );
   }
@@ -180,7 +198,7 @@ export function TopNav({ back }: TopNavProps) {
         <span className="hidden font-display text-[1.2rem] font-extrabold uppercase leading-none tracking-display-snug text-foreground sm:block">
           mystery<span className="text-accent">mix</span>club
         </span>
-        <Badge>beta</Badge>
+        {betaBadge}
         {back ? (
           <button type="button" onClick={() => navigate(back.to)} className={iconLinkClass}>
             <BackIcon />
@@ -225,6 +243,7 @@ export function TopNav({ back }: TopNavProps) {
           {loggingOut ? "logging out…" : "logout"}
         </button>
       </nav>
+      {showReleaseNotes ? <ReleaseNotesModal onDismiss={dismissReleaseNotes} /> : null}
     </header>
   );
 }

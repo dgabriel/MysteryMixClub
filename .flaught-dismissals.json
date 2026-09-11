@@ -583,6 +583,61 @@
         "file": ".github/dependabot.yml"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:32307d7e0164149b1dcb9f1d76e905cb",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-11T00:01:41.158Z",
+      "reason": "Real class of concern in general (LLM-generated PR-comment content as an injection surface), but not exploitable here: this repo has no external/untrusted contributors -- all PRs are authored by Dawn or Claude Code, so there's no adversarial party who could craft a diff to manipulate the LLM's output. Skeptic pass independently reached the same conclusion (GitHub's own comment sanitization applies; risk not demonstrated from the code).",
+      "context": {
+        "title": "LLM-generated content rendered in PR comment may enable injection attacks",
+        "file": ".github/workflows/ci.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:0fe797d00c3dec5df0ff49b5da9b231f",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-11T00:01:41.298Z",
+      "reason": "Skeptic-refuted, and correctly so: --config-from-base's exact tradeoff (PR-specific .advreview.yml edits reviewed under stale config until merged) is the intended, explicitly documented behavior -- ADR 0026 accepts this tradeoff by design, security over self-referential convenience, matching this repo's existing dependency_sanity/dismissals posture from ADR 0023.",
+      "context": {
+        "title": "`--config-from-base` hides PR‑specific .advreview.yml changes, risking missed security tooling",
+        "file": ".github/workflows/ci.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:c8e4d7cfb7b612dea3ef1c5bf3b2f443",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-11T00:01:41.439Z",
+      "reason": "No new logic was written on our side to test -- this PR only adopts an already-tested upstream CLI command (flaught report --from, shipped with 6 tests including byte-identical-render verification in flaught/core#77). Verified locally before pushing: ran flaught review --config-from-base and flaught report --from against this branch's own diff, confirmed byte-identical output (documented in the PR's test plan).",
+      "context": {
+        "title": "No tests added for new Flaught comment rendering path",
+        "file": ".github/workflows/ci.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:2ad7927f7a0866976043911402e76ea2",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-11T00:01:41.581Z",
+      "reason": "Skeptic-refuted, and correctly so: this exit-code branching (1 blocks, other nonzero warns) is pre-existing, unchanged by this PR, and was a deliberate design decision from ADR 0017 to distinguish a real gate trip from a tool/config fault (e.g. no GROQ_API_KEY reachable on a fork PR) -- not a new gap introduced here.",
+      "context": {
+        "title": "Exit‑code handling masks tool‑faults, allowing silent CI degradation",
+        "file": ".github/workflows/ci.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:58ae012216d300b558921177aa1400d6",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-11T00:01:41.715Z",
+      "reason": "This is upstream's own new recommended default (0.11.0's flaught init now emits max_tokens: 8192), not an aggressive value we invented. max_tokens is a ceiling on output length, not a mandate to use it -- normal-size findings cost the same; only previously-truncated reasoning-heavy responses now complete, which is the documented fix for the exact Groq 400 this repo hit live on PR #291.",
+      "context": {
+        "title": "Increasing `max_tokens` to 8192 may cause provider‑level throttling or higher costs",
+        "file": ".advreview.yml"
+      },
+      "expires_at": null
     }
   ]
 }

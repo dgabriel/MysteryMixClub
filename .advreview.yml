@@ -18,7 +18,14 @@ llm:
   # base_url: null          # override for OpenAI-compatible endpoints, or an
                              # Anthropic Messages-API-compatible proxy/gateway
   temperature: 0.2
-  max_tokens: 4096
+  # 4096 -> 8192, reasoning_effort: low added (ADR 0026, matches 0.11.0's new
+  # flaught init default). Empirically justified: PR #291 hit a live Groq 400
+  # ("Refute (skeptic) pass failed... Bad request") on this exact
+  # provider/model -- 0.11.0's changelog attributes that failure mode to a
+  # reasoning model spending its token budget on chain-of-thought and never
+  # closing the JSON object at the old default.
+  max_tokens: 8192
+  reasoning_effort: low
   timeout_seconds: 120     # timeout for LLM API calls
   # Empirically justified, not speculative (ADR 0023): PR #285 (this bump)
   # spent 3 CI rounds dismissing the same handful of concerns reworded by a

@@ -864,6 +864,18 @@ export type Mix = {
    *  submitters). Shown as "X of Y voted" while voting is open. */
   voted_count: number;
   voting_eligible_count: number;
+  /** Who's still missing (MysteryMixClub-xfq5, ADR 0027): null until more than
+   *  half the relevant group has acted, then everyone who hasn't yet. Visible
+   *  to every club member, not just organizers. */
+  missing_submitters: MissingMember[] | null;
+  missing_voters: MissingMember[] | null;
+};
+
+/** A club member with no submission/vote yet in the current mix, surfaced
+ *  once more than half the club has already acted (MysteryMixClub-xfq5). */
+export type MissingMember = {
+  user_id: string;
+  display_name: string;
 };
 
 /** A song submitted to a mix (GET .../submissions, .../submissions/mine). */

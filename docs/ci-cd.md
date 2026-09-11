@@ -117,7 +117,7 @@ same self-managed Droplets as the API:
 
 | File                              | On                        | Does                                                        |
 |-----------------------------------|---------------------------|-------------------------------------------------------------|
-| `.github/workflows/ci.yml`        | PR → `main` or `develop`  | Frontend lint/typecheck/test; backend ruff/mypy/pytest+cov  |
+| `.github/workflows/ci.yml`        | PR → `main` or `develop`  | Frontend lint/typecheck/test; backend ruff/mypy/pytest+cov; Flaught adversarial review (ADR 0020) — non-blocking, PR comment + artifact only |
 | `.github/workflows/deploy-staging.yml` | push → `develop`     | Runs on a self-hosted runner living on the staging Droplet → `scripts/deploy-staging.sh` |
 | `.github/workflows/deploy-prod.yml`    | push → `main`        | `build-frontend` job (hosted runner, ungated): builds the SPA, uploads it as an artifact. `deploy` job: `environment: production` approval gate → self-hosted runner on the prod Droplet → downloads the artifact → `scripts/deploy-prod.sh` (MYS-259) |
 
@@ -165,6 +165,8 @@ GitHub → Settings → Branches → add rules:
 **`main`**
 - [ ] Require a pull request before merging (≥1 approval)
 - [ ] Require status checks to pass: `Frontend (lint · typecheck · test)`, `Backend (ruff · mypy · pytest)`
+      (deliberately **not** `Adversarial review (Flaught)` — that job is
+      non-blocking by design, ADR 0020; it always reports success)
 - [ ] Require branches to be up to date before merging
 - [ ] Require conversation resolution before merging
 - [ ] Do not allow bypassing the above settings
@@ -194,6 +196,14 @@ table above). `DIGITALOCEAN_ACCESS_TOKEN` is only needed locally for
 `STAGING_SSH_KEY` were used by the old SSH-based `deploy-staging.yml` and are
 no longer referenced (safe to delete from the `staging` environment's
 secrets, or just leave them unused).
+
+`ci.yml`'s `flaught` job (ADR 0020) reads `GROQ_API_KEY` for the LLM
+adversarial pass, matching `.advreview.yml`'s `provider: groq` default —
+deliberately not Anthropic, since Claude authors most of this repo's code
+and reviewing with the same model family it was written with defeats the
+point. `ANTHROPIC_API_KEY` and `OLLAMA_API_KEY` also exist as repo secrets
+(left over from ADR 0017, unused by any current workflow) — safe to remove
+if this repo never adds a second provider.
 
 ### App runtime secrets (Droplet env files)
 

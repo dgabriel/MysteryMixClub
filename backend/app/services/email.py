@@ -47,13 +47,36 @@ class EmailSender(Protocol):
 
 
 class ConsoleEmailSender:
-    """Development fallback: logs emails instead of sending them."""
+    """Development fallback: logs emails instead of sending them.
+
+    ``redact`` suppresses the raw link (and the sign-in/reset token it
+    carries) from the log line whenever this fallback is reached outside
+    local development — a misconfigured staging/prod deploy (RESEND_API_KEY
+    unset) would otherwise write live magic-link and password-reset tokens
+    to stdout/journald. The link is unreachable by design in that case (no
+    one is watching the console for it), so redacting costs nothing
+    functional; the full clickable link is still logged in local dev, where
+    reading it from the console *is* the intended delivery mechanism."""
+
+    def __init__(self, redact: bool = False) -> None:
+        self._redact = redact
 
     def send_magic_link(self, email: str, link: str) -> None:
-        logger.info("Magic link for %s: %s", email, link)
+        if self._redact:
+            logger.info(
+                "Magic link generated for %s (not delivered — no email provider configured)", email
+            )
+        else:
+            logger.info("Magic link for %s: %s", email, link)
 
     def send_password_reset(self, email: str, link: str) -> None:
-        logger.info("Password reset link for %s: %s", email, link)
+        if self._redact:
+            logger.info(
+                "Password reset link generated for %s (not delivered — no email provider configured)",
+                email,
+            )
+        else:
+            logger.info("Password reset link for %s: %s", email, link)
 
     def send(
         self, email: str, subject: str, html: str, headers: dict[str, str] | None = None
@@ -136,10 +159,11 @@ def build_email_sender(settings: Settings) -> EmailSender:
     ``EMAIL_REDIRECT_TO_TEST`` is on, the chosen sender is wrapped so every
     message is redirected to ``EMAIL_TEST_RECIPIENT`` — and if that's unset, email
     is suppressed (console) rather than risk reaching real recipients."""
+    redact = settings.environment != "development"
     base: EmailSender = (
         ResendEmailSender(settings.resend_api_key, settings.email_from)
         if settings.resend_api_key
-        else ConsoleEmailSender()
+        else ConsoleEmailSender(redact=redact)
     )
     if settings.email_redirect_to_test:
         if not settings.email_test_recipient:
@@ -147,7 +171,7 @@ def build_email_sender(settings: Settings) -> EmailSender:
                 "EMAIL_REDIRECT_TO_TEST is on but EMAIL_TEST_RECIPIENT is unset; "
                 "suppressing email to avoid reaching real recipients"
             )
-            return ConsoleEmailSender()
+            return ConsoleEmailSender(redact=redact)
         return RedirectingEmailSender(base, settings.email_test_recipient)
     return base
 

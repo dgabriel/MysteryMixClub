@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { Button } from "../components/Button";
 import { CheckmarkIcon } from "../components/CheckmarkIcon";
 import { FormError } from "../components/FormError";

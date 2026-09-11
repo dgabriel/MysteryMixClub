@@ -41,6 +41,7 @@ from app.models.mix import Mix
 from app.models.note import Note
 from app.models.submission import Submission
 from app.models.user import User
+from app.services.deadline_scheduling import compute_phase_deadline
 from app.services.source_tracks import source_fields
 from app.services.playlist_jobs import enqueue_playlist_job
 from app.models.vote import Vote
@@ -93,6 +94,12 @@ class MixUpdate(WireModel):
     state: Literal["pending", "open_submission", "open_voting", "closed"] | None = None
 
 
+class MissingMemberSummary(WireModel):
+    # Privacy-safe member shape, matching clubs.py's MemberResponse: no email.
+    user_id: str
+    display_name: str
+
+
 class MixResponse(WireModel):
     id: str
     league_id: str
@@ -121,6 +128,14 @@ class MixResponse(WireModel):
     # voted_count = distinct voters.
     voted_count: int = 0
     voting_eligible_count: int = 0
+    # Who's still missing (MysteryMixClub-xfq5, ADR 0027): null until more than
+    # half of the relevant denominator has acted, then the list of everyone who
+    # hasn't. Only populated by the single-mix GET -- a list endpoint computing
+    # this per row would be an unnecessary join per mix, and the club-home tile
+    # has no room to show names anyway. Visible to every club member, not just
+    # organizers (Dawn's call, 2026-09-11) -- a peer nudge, not an admin tool.
+    missing_submitters: list[MissingMemberSummary] | None = None
+    missing_voters: list[MissingMemberSummary] | None = None
 
 
 def _to_response(
@@ -132,6 +147,8 @@ def _to_response(
     *,
     viewer_submitted: bool = False,
     viewer_voted: bool = False,
+    missing_submitters: list[MissingMemberSummary] | None = None,
+    missing_voters: list[MissingMemberSummary] | None = None,
 ) -> MixResponse:
     return MixResponse(
         id=str(m.id),
@@ -151,6 +168,8 @@ def _to_response(
         voting_eligible_count=voting_eligible_count,
         viewer_submitted=viewer_submitted,
         viewer_voted=viewer_voted,
+        missing_submitters=missing_submitters,
+        missing_voters=missing_voters,
     )
 
 
@@ -213,6 +232,72 @@ async def _voting_eligible_count(mix_id: uuid.UUID, db: AsyncSession) -> int:
     ) or 0
 
 
+async def _missing_submitters(
+    mix_: Mix, member_count: int, submission_count: int, db: AsyncSession
+) -> list[MissingMemberSummary] | None:
+    """Active club members with no submission in this mix, revealed only once
+    more than half the club has already submitted (MysteryMixClub-xfq5, ADR
+    0027) -- a peer nudge for stragglers, not a running tally shown from zero.
+
+    Denominator matches the existing "X of Y submitted" display (_member_count
+    / _submission_count), not submission_quorum_met's stricter
+    active-at-submission-open set -- consistency with what's already on screen
+    matters more here than matching the auto-advance gate's exact membership
+    snapshot.
+    """
+    if mix_.state != "open_submission" or member_count == 0:
+        return None
+    if submission_count <= member_count / 2:
+        return None
+    submitted_ids = select(Submission.user_id).where(Submission.mix_id == mix_.id).distinct()
+    rows = (
+        await db.execute(
+            select(ClubMember.user_id, User.display_name)
+            .join(User, User.id == ClubMember.user_id)
+            .where(
+                ClubMember.club_id == mix_.club_id,
+                ClubMember.removed_at.is_(None),
+                ClubMember.user_id.not_in(submitted_ids),
+            )
+            .order_by(User.display_name)
+        )
+    ).all()
+    return [MissingMemberSummary(user_id=str(uid), display_name=name) for uid, name in rows]
+
+
+async def _missing_voters(
+    mix_: Mix, voting_eligible_count: int, voted_count: int, db: AsyncSession
+) -> list[MissingMemberSummary] | None:
+    """Playing submitters with no vote cast in this mix, revealed only once
+    more than half of eligible (playing) submitters have already voted
+    (MysteryMixClub-xfq5, ADR 0027). Same eligible set as voting_quorum_met
+    (playing submitters) -- vibing members are never "missing" a vote, they
+    were never expected to cast one.
+    """
+    if mix_.state != "open_voting" or voting_eligible_count == 0:
+        return None
+    if voted_count <= voting_eligible_count / 2:
+        return None
+    playing_ids = select(Submission.user_id).where(
+        Submission.mix_id == mix_.id, Submission.participation_mode == "playing"
+    )
+    voted_ids = select(Vote.voter_id).where(Vote.mix_id == mix_.id).distinct()
+    rows = (
+        await db.execute(
+            select(ClubMember.user_id, User.display_name)
+            .join(User, User.id == ClubMember.user_id)
+            .where(
+                ClubMember.club_id == mix_.club_id,
+                ClubMember.removed_at.is_(None),
+                ClubMember.user_id.in_(playing_ids),
+                ClubMember.user_id.not_in(voted_ids),
+            )
+            .order_by(User.display_name)
+        )
+    ).all()
+    return [MissingMemberSummary(user_id=str(uid), display_name=name) for uid, name in rows]
+
+
 async def _load_mix(mix_id: uuid.UUID, db: AsyncSession) -> Mix:
     mix_ = await db.scalar(select(Mix).where(Mix.id == mix_id))
     if mix_ is None:
@@ -249,8 +334,8 @@ async def advance_mix_state(
         # Stamp the submission deadline from the club window (MYS-159), unless the
         # organizer already set one explicitly at mix creation — don't clobber it.
         if mix_.submission_deadline is None:
-            mix_.submission_deadline = datetime.now(timezone.utc) + timedelta(
-                hours=club.submission_window_hours
+            mix_.submission_deadline = compute_phase_deadline(
+                club, "submission", datetime.now(timezone.utc)
             )
         club.current_mix = mix_.mix_number
         events.append((mix_, "submission_open"))
@@ -258,8 +343,8 @@ async def advance_mix_state(
         # Stamp the voting deadline from the club window (MYS-159), unless the
         # organizer already set one explicitly — don't clobber a manual value.
         if mix_.voting_deadline is None:
-            mix_.voting_deadline = datetime.now(timezone.utc) + timedelta(
-                hours=club.voting_window_hours
+            mix_.voting_deadline = compute_phase_deadline(
+                club, "voting", datetime.now(timezone.utc)
             )
         events.append((mix_, "voting_open"))
     elif new_state == "closed":
@@ -291,8 +376,8 @@ async def advance_mix_state(
                 # Same club window as the manual open (MYS-159): stamp the next
                 # mix's submission deadline unless it was set explicitly.
                 if next_mix.submission_deadline is None:
-                    next_mix.submission_deadline = datetime.now(timezone.utc) + timedelta(
-                        hours=club.submission_window_hours
+                    next_mix.submission_deadline = compute_phase_deadline(
+                        club, "submission", datetime.now(timezone.utc)
                     )
                 club.current_mix = next_mix.mix_number
                 events.append((next_mix, "submission_open"))
@@ -317,8 +402,8 @@ async def rollback_mix_to_submission(mix_: Mix, club: Club, db: AsyncSession) ->
     """
     mix_.state = "open_submission"
     mix_.submission_opened_at = func.now()
-    mix_.submission_deadline = datetime.now(timezone.utc) + timedelta(
-        hours=club.submission_window_hours
+    mix_.submission_deadline = compute_phase_deadline(
+        club, "submission", datetime.now(timezone.utc)
     )
     # Re-stamped when voting genuinely reopens; the no-clobber guard in
     # advance_mix_state requires this to be NULL.
@@ -557,14 +642,20 @@ async def get_mix(
 ) -> MixResponse:
     mix_ = await _load_mix(round_id, db)
     await _load_club_as_member(mix_.club_id, current_user, db)
+    submission_count = await _submission_count(round_id, db)
+    member_count = await _member_count(mix_.club_id, db)
+    voted_count = await _voted_count(round_id, db)
+    voting_eligible_count = await _voting_eligible_count(round_id, db)
     return _to_response(
         mix_,
-        await _submission_count(round_id, db),
-        await _member_count(mix_.club_id, db),
-        await _voted_count(round_id, db),
-        await _voting_eligible_count(round_id, db),
+        submission_count,
+        member_count,
+        voted_count,
+        voting_eligible_count,
         viewer_submitted=await _viewer_submitted(round_id, current_user.id, db),
         viewer_voted=await _viewer_voted(round_id, current_user.id, db),
+        missing_submitters=await _missing_submitters(mix_, member_count, submission_count, db),
+        missing_voters=await _missing_voters(mix_, voting_eligible_count, voted_count, db),
     )
 
 

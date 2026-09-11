@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 
 type HelpLinkProps = {
   /** Section id on the help page to deep-link to, e.g. "casual-mode". */

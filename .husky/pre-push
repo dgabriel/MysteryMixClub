@@ -3,19 +3,78 @@
 # python/pytest resolve via the backend venv on PATH — see docs/git-hygiene.md
 export PATH="$PWD/backend/.venv/bin:$PATH"
 
-# Skip checks when only deleting remote branches (local SHA is all zeros on deletions)
 zero_sha="0000000000000000000000000000000000000000"
 pushing_code=0
+has_fe=0
+has_be=0
+
+has_frontend_changes() {
+  printf '%s\n' "$1" | grep -q '^frontend/'
+}
+has_backend_changes() {
+  printf '%s\n' "$1" | grep -q '^backend/'
+}
+
+# Scope checks to what this push actually touches (MysteryMixClub-hh2l):
+# frontend typecheck only if frontend/ changed, backend mypy+pytest only if
+# backend/ changed, nothing at all for a docs-only or config-only push.
+# Unioned across every ref in this push -- normally just one, since
+# git-hygiene is one branch at a time, but handled generically regardless.
+#
+# `remote_sha..local_sha` is exactly the commits being pushed when the
+# remote ref already exists (the common case: pushing more commits to an
+# already-open PR). A brand-new branch's first push has no remote side to
+# diff against (remote_sha is the zero SHA), so fall back to the merge-base
+# with origin/develop, then origin/main -- every branch is based off one of
+# those (docs/git-hygiene.md). If no usable range can be found, or `git
+# diff` itself errors against the range we did find (e.g. a shallow clone
+# missing history), run everything: an unknown diff is not a safe place to
+# skip checks, and an *empty* $changed must mean "genuinely no files
+# changed," never "the diff command failed."
 while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
-  [ "$local_sha" != "$zero_sha" ] && pushing_code=1
+  [ "$local_sha" = "$zero_sha" ] && continue
+  pushing_code=1
+
+  range=""
+  if [ "$remote_sha" != "$zero_sha" ]; then
+    range="$remote_sha..$local_sha"
+  else
+    base=""
+    if git rev-parse --verify -q origin/develop >/dev/null 2>&1; then
+      base=$(git merge-base "$local_sha" origin/develop 2>/dev/null)
+    elif git rev-parse --verify -q origin/main >/dev/null 2>&1; then
+      base=$(git merge-base "$local_sha" origin/main 2>/dev/null)
+    fi
+    [ -n "$base" ] && range="$base..$local_sha"
+  fi
+
+  if [ -z "$range" ]; then
+    has_fe=1
+    has_be=1
+    continue
+  fi
+
+  changed=$(git diff --name-only "$range" 2>/dev/null)
+  if [ $? -ne 0 ]; then
+    has_fe=1
+    has_be=1
+    continue
+  fi
+
+  has_frontend_changes "$changed" && has_fe=1
+  has_backend_changes "$changed" && has_be=1
 done
+
 [ "$pushing_code" -eq 0 ] && exit 0
 
-# Frontend type safety
-npm --prefix frontend run typecheck
-
-# Backend type safety (requires the backend virtualenv to be active / deps installed)
-( cd backend && mypy app )
-
-# Backend test suite (requires the backend virtualenv to be active / deps installed)
-( cd backend && python -m pytest -q )
+if [ "$has_fe" -eq 0 ] && [ "$has_be" -eq 0 ]; then
+  echo "pre-push: no frontend/ or backend/ changes in this push -- skipping typecheck/mypy/pytest"
+else
+  if [ "$has_fe" -eq 1 ]; then
+    npm --prefix frontend run typecheck
+  fi
+  if [ "$has_be" -eq 1 ]; then
+    ( cd backend && mypy app )
+    ( cd backend && python -m pytest -q )
+  fi
+fi

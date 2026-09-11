@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router";
 import { Button } from "../components/Button";
 import { ConcentricRings } from "../components/ConcentricRings";
 import { FormError } from "../components/FormError";

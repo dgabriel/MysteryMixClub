@@ -5,6 +5,8 @@ wrapper rewrites the recipient (preserving subject/html/headers and the intended
 address in the subject), and the fail-safe when the flag is on with no recipient.
 """
 
+import logging
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 
 from app.config import Settings
@@ -14,6 +16,30 @@ from app.services.email import (
     ResendEmailSender,
     build_email_sender,
 )
+
+
+@contextmanager
+def _capture_email_log():
+    """Collect log messages from the email logger.
+
+    Not ``caplog``: ``app/main.py`` sets ``propagate = False`` on the ``app``
+    logger in development, so records never reach the root logger caplog
+    listens on (see test_auth_google.py's ``_capture_auth_warnings`` for the
+    same trap). Attaching to the logger itself is what actually observes them.
+    """
+    messages: list[str] = []
+
+    class _Collector(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            messages.append(record.getMessage())
+
+    logger = logging.getLogger("app.services.email")
+    handler = _Collector(level=logging.INFO)
+    logger.addHandler(handler)
+    try:
+        yield messages
+    finally:
+        logger.removeHandler(handler)
 
 
 @dataclass
@@ -116,3 +142,45 @@ def test_build_passes_email_from_to_resend(monkeypatch):
 
     assert isinstance(sender, ResendEmailSender)
     assert captured[0]["from"] == "onboarding@resend.dev"
+
+
+def test_console_sender_logs_full_link_by_default():
+    sender = ConsoleEmailSender()
+
+    with _capture_email_log() as messages:
+        sender.send_magic_link("u@x.com", "https://app/verify?token=secret-token")
+        sender.send_password_reset("u@x.com", "https://app/reset?token=secret-token")
+
+    text = "\n".join(messages)
+    assert "https://app/verify?token=secret-token" in text
+    assert "https://app/reset?token=secret-token" in text
+
+
+def test_console_sender_redacts_link_when_flagged():
+    sender = ConsoleEmailSender(redact=True)
+
+    with _capture_email_log() as messages:
+        sender.send_magic_link("u@x.com", "https://app/verify?token=secret-token")
+        sender.send_password_reset("u@x.com", "https://app/reset?token=secret-token")
+
+    text = "\n".join(messages)
+    assert "secret-token" not in text
+    assert "u@x.com" in text
+
+
+def test_build_redacts_console_fallback_outside_development():
+    # No resend_api_key -> falls back to ConsoleEmailSender. Outside
+    # development, that fallback must not log the raw token.
+    settings = Settings(environment="staging")
+    sender = build_email_sender(settings)
+
+    assert isinstance(sender, ConsoleEmailSender)
+    assert sender._redact is True
+
+
+def test_build_does_not_redact_console_fallback_in_development():
+    settings = Settings(environment="development")
+    sender = build_email_sender(settings)
+
+    assert isinstance(sender, ConsoleEmailSender)
+    assert sender._redact is False

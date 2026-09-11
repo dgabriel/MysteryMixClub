@@ -16,7 +16,8 @@ MissingGreenlet trap: primary keys are captured into locals before any
 """
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import select
@@ -65,6 +66,12 @@ async def _seed_club(
     submission_window_hours: int = 72,
     voting_window_hours: int = 72,
     songs_per_submission: int = 1,
+    deadline_mode: str = "duration",
+    timezone_name: str = "UTC",
+    submission_weekday: int | None = None,
+    submission_time: time | None = None,
+    voting_weekday: int | None = None,
+    voting_time: time | None = None,
 ) -> Club:
     club = Club(
         name="Deadline Club",
@@ -73,6 +80,12 @@ async def _seed_club(
         submission_window_hours=submission_window_hours,
         voting_window_hours=voting_window_hours,
         songs_per_submission=songs_per_submission,
+        deadline_mode=deadline_mode,
+        timezone=timezone_name,
+        submission_weekday=submission_weekday,
+        submission_time=submission_time,
+        voting_weekday=voting_weekday,
+        voting_time=voting_time,
     )
     db_session.add(club)
     await db_session.flush()
@@ -195,6 +208,59 @@ async def test_branch1_stamps_null_voting_deadline(run_job, db_session, email_sp
     r = await db_session.get(Mix, rid)
     assert r.voting_deadline is not None
     assert _approx(r.voting_deadline, now + timedelta(hours=48))
+
+
+async def test_branch1_stamps_weekly_anchor_submission_deadline(run_job, db_session, email_spy):
+    # now = 2026-09-08 10:00 UTC, a Tuesday; anchor is Thursday 09:00 UTC — the
+    # same fixture used in test_deadline_scheduling.py's next-occurrence tests.
+    now = datetime(2026, 9, 8, 10, 0, tzinfo=timezone.utc)
+    org = await _seed_user(db_session, "o@e.com")
+    club = await _seed_club(
+        db_session,
+        org,
+        deadline_mode="weekly_anchor",
+        timezone_name="UTC",
+        submission_weekday=3,  # thursday
+        submission_time=time(9, 0),
+    )
+    rnd = await _seed_mix(db_session, club.id, 1, state="open_submission")
+    rid = rnd.id
+
+    report = await run_job(now)
+    assert report.stamped == 1
+
+    db_session.expire_all()
+    r = await db_session.get(Mix, rid)
+    assert _approx(r.submission_deadline, datetime(2026, 9, 10, 9, 0, tzinfo=timezone.utc))
+
+
+async def test_branch1_stamps_weekly_anchor_voting_deadline_across_timezone(
+    run_job, db_session, email_spy
+):
+    # now = 2027-03-10 09:00 EST (pre-DST); anchor is Friday 09:00 the same
+    # week, still EST — verifies the club's own timezone (not UTC) drives the
+    # stamp, mirroring test_deadline_scheduling.py's tz-conversion coverage.
+    now = datetime(2027, 3, 10, 14, 0, tzinfo=timezone.utc)
+    org = await _seed_user(db_session, "o@e.com")
+    club = await _seed_club(
+        db_session,
+        org,
+        deadline_mode="weekly_anchor",
+        timezone_name="America/New_York",
+        voting_weekday=4,  # friday
+        voting_time=time(9, 0),
+    )
+    rnd = await _seed_mix(db_session, club.id, 1, state="open_voting")
+    rid = rnd.id
+
+    report = await run_job(now)
+    assert report.stamped == 1
+
+    db_session.expire_all()
+    r = await db_session.get(Mix, rid)
+    assert _approx(r.voting_deadline, datetime(2027, 3, 12, 14, 0, tzinfo=timezone.utc))
+    # Sanity: that instant really is 09:00 local, not 09:00 UTC.
+    assert r.voting_deadline.astimezone(ZoneInfo("America/New_York")).time() == time(9, 0)
 
 
 # ========================================================================== #

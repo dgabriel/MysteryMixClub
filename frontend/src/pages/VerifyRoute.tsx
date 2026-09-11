@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router";
 import { VerifyScreen } from "./VerifyScreen";
 import { ApiError, verifyToken } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
@@ -35,7 +35,13 @@ export function VerifyRoute() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { setAccessToken } = useAuth();
-  const [state, setState] = useState<"verifying" | "error">("verifying");
+  // A missing token is knowable synchronously from the URL at mount -- a lazy
+  // initializer reads it once, same pattern as AuthedLayout's release-notes
+  // popup, instead of setting it from inside the effect below (which is what
+  // react-hooks/set-state-in-effect was flagging here).
+  const [state, setState] = useState<"verifying" | "error">(() =>
+    searchParams.get("token") ? "verifying" : "error",
+  );
   const [copy, setCopy] = useState<{ heading?: string; message?: string }>({});
   const didRun = useRef(false);
 
@@ -47,10 +53,8 @@ export function VerifyRoute() {
 
     const token = searchParams.get("token");
     const invite = searchParams.get("invite");
-    if (!token) {
-      setState("error");
-      return;
-    }
+    // No token: `state` already initialized to "error" above, nothing to do.
+    if (!token) return;
 
     // The token is single-use, so we verify exactly once (guarded by didRun
     // above). The result must always be applied — we deliberately do NOT gate it

@@ -1,0 +1,158 @@
+# Flaught adversarial review configuration
+# See https://github.com/flaught/core for full documentation
+
+version: 1
+
+# ── Stack declaration ──────────────────────────────────────
+# Omit to auto-detect from repo contents (package.json, requirements.txt, etc.)
+# stack:
+#   languages: [python, typescript]
+#   frameworks: [fastapi, react]
+#   runtime: node  # node | python | mixed | auto
+
+# ── LLM provider ───────────────────────────────────────────
+llm:
+  provider: groq            # openai | groq | gemini | anthropic | ollama
+  model: groq/compound-mini # e.g. gpt-4o for openai, claude-sonnet-5 for anthropic
+  api_key_env: GROQ_API_KEY # e.g. OPENAI_API_KEY for openai, ANTHROPIC_API_KEY for anthropic
+  # base_url: null          # override for OpenAI-compatible endpoints, or an
+                             # Anthropic Messages-API-compatible proxy/gateway
+  temperature: 0.2
+  # 4096 -> 8192 (ADR 0026). Empirically justified: PR #291 hit a live Groq
+  # 400 ("Refute (skeptic) pass failed... Bad request") on this exact
+  # provider/model -- 0.11.0's changelog attributes that failure mode to a
+  # reasoning model spending its token budget on chain-of-thought and never
+  # closing the JSON object at the old default.
+  #
+  # reasoning_effort: low was ALSO added by ADR 0026, matching 0.11.0's new
+  # flaught init default -- and was wrong. groq/compound-mini rejects it
+  # outright ("`reasoning_effort` is not supported with this model", 400),
+  # which broke EVERY LLM review since PR #292 merged -- every run silently
+  # fell back to deterministic-only findings with no gate failure to flag it
+  # (noise_budget/severity_gate don't distinguish "LLM found nothing" from
+  # "LLM never ran"). Caught 2026-09-10 on PR #293's own review comment,
+  # reproduced live with `flaught review` locally. That default is meant for
+  # gpt-oss-family reasoning models specifically, not compound-mini -- ADR
+  # 0026 applied it without verifying against our actual model. Removed.
+  max_tokens: 8192
+  timeout_seconds: 120     # timeout for LLM API calls
+  # Empirically justified, not speculative (ADR 0023): PR #285 (this bump)
+  # spent 3 CI rounds dismissing the same handful of concerns reworded by a
+  # non-deterministic LLM pass every run -- every one of them scored 0.1-0.44
+  # confidence. 0.5 filters that whole cluster while still admitting anything
+  # the model is actually confident about.
+  min_confidence: 0.5
+
+# ── Deterministic tools ────────────────────────────────────
+# Explicit, not left to schema default (ADR 0023, same lesson as ADR 0022's
+# dismissals: block) -- 0.10.0 added test_weakening and dependency_sanity,
+# ON by default, so a commented-out block here would silently accept
+# whatever Flaught ships as default next time too. Reviewed and kept on:
+# test_weakening fits this repo's existing test-rigor conventions (targeted
+# + full-suite pre-push discipline, ADR 0005 test isolation); dependency_sanity
+# defends against a real supply-chain risk class (typosquatting) worth the
+# npm-registry calls it makes during CI.
+tools:
+  semgrep:
+    enabled: true
+    # config: path/to/semgrep-rules.yml
+  linter:
+    enabled: true
+    # Explicit override (MysteryMixClub-ta06, ADR 0025). Auto-detection was
+    # silently never working: bare `eslint` from repo root can't find
+    # frontend/eslint.config.js (flat config resolves relative to cwd), so
+    # every invocation crashed and the whole linter tool self-reported as
+    # "not run" -- confirmed this was true even with ruff genuinely
+    # reachable, since it's an all-or-nothing single command, not
+    # per-language. `--format json` is required too: without it, eslint's
+    # own human-readable output produces a nonzero exit but zero parseable
+    # findings.
+    #
+    # JS only, not JS+Python: tools.linter.command is one command, and a
+    # combined `eslint ...; ruff ...` shell chain was tested and does NOT
+    # produce parseable findings (JSON outputs from two different tools
+    # can't be naively concatenated back into one valid array). Python isn't
+    # left uncovered -- ruff + mypy already run for real in the backend CI
+    # job, pre-commit (lint-staged), and pre-push.
+    command: 'sh -c "cd frontend && npx eslint --format json ."'
+  vuln_scanner:
+    enabled: true
+    # command: npm audit  # override auto-detected scanner
+  test_weakening:
+    enabled: true
+  dependency_sanity:
+    enabled: true
+
+# ── Test inversion ──────────────────────────────────────────
+# Explicit (ADR 0023) -- was already running under the implicit default
+# (confirmed: local runs print "Running test inversion..." unprompted),
+# same implicit-default pattern as everything else fixed today.
+test_inversion:
+  enabled: true
+  # command: pytest  # override auto-detected test command
+  scope_to_blast_radius: true  # only flag tests in the diff's changed/blast-radius files
+  skip_docs_only_diffs: true   # skip entirely when every changed file is documentation
+
+# ── Scope-creep detection ─────────────────────────────────
+# Explicit (ADR 0023) -- also already running under the implicit default.
+# exclude_paths now actually uses the docs/adr/** exclusion the commented
+# template always suggested but never enabled: PR #285's own LLM pass
+# flagged its own accompanying ADR file as scope creep (F-0007), exactly
+# the case this exclusion exists for.
+scope_creep:
+  enabled: true
+  intent_source: pr_description  # pr_description | linked_issue | both
+  exclude_paths:
+    - "docs/adr/**"
+
+# ── Lighthouse (optional, degrades cleanly) ─────────────────
+# lighthouse:
+#   enabled: false
+#   # preview_url: https://deploy-preview-42.example.com
+
+# ── Noise budget ───────────────────────────────────────────
+# Explicit (ADR 0023), values unchanged from schema default -- just no
+# longer invisible now that undismissed findings over these thresholds
+# block merge (ADR 0022).
+noise_budget:
+  critical: 5
+  high: 10
+  medium: 15
+  low: 20
+  info: 25
+
+# ── Severity gate ──────────────────────────────────────────
+# Explicit (ADR 0023), value unchanged from schema default.
+severity_gate:
+  fail_on: high  # none | critical | high | medium
+
+# ── Dismissals ───────────────────────────────────────────────
+# Findings matching an entry in the dismissal store (see `flaught dismiss`)
+# are auto-marked dismissed on every subsequent run and excluded from the
+# severity gate.
+# Explicit, not left to schema default (ADR 0022) -- this repo already got
+# burned once by a commented-out block masking whether a tool/feature was
+# actually on (ADR 0018: the `tools:` block being commented out gave the
+# impression semgrep was disabled when it was on by default). Now that the
+# gate blocks merge, whether dismissals persist is not something to leave
+# implicit.
+dismissals:
+  enabled: true
+  path: .flaught-dismissals.json
+
+# ── Prompt templates ────────────────────────────────────────
+# Override or extend the LLM prompts by dropping files into .flaught-prompt/
+# See https://github.com/flaught/core for the full list of template files.
+# prompt:
+#   enabled: true
+#   path: .flaught-prompt
+
+# ── Exclusions ─────────────────────────────────────────────
+# exclude:
+#   paths:
+#     - "node_modules/**"
+#     - "vendor/**"
+#     - "**/*.min.js"
+#     - "**/*.min.css"
+#     - "**/*.generated.*"
+#   patterns: []

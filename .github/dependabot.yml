@@ -1,0 +1,52 @@
+version: 2
+
+# cooldown on every block below (MysteryMixClub-v3dy, Flaught D-0001..D-0005):
+# a short delay before Dependabot opens a PR for a newly published release,
+# so a yanked/compromised release has a window to be pulled before we'd ever
+# pick it up. Same supply-chain-defense reasoning as keeping Flaught's
+# dependency_sanity tool on (.advreview.yml). No YAML anchors here --
+# GitHub's dependabot.yml parser does not support them. Note:
+# semver-major-days is only valid for semver ecosystems (npm/pip), not
+# github-actions -- confirmed via Dependabot's own config-validation error
+# on a first attempt that included it everywhere.
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 3
+      semver-major-days: 7
+
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 3
+      semver-major-days: 7
+
+  - package-ecosystem: "npm"
+    directory: "/.claude/skills/run-mysterymixclub"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 3
+      semver-major-days: 7
+
+  - package-ecosystem: "pip"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 3
+      semver-major-days: 7
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # semver-major-days is npm/pip-only -- github-actions releases aren't
+    # reliably semver-tagged, so Dependabot rejects that key here.
+    cooldown:
+      default-days: 3

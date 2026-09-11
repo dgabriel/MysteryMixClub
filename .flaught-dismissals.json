@@ -1,0 +1,687 @@
+{
+  "version": 1,
+  "dismissals": [
+    {
+      "fingerprint": "sha256:f6abdb452f0211bbdd8c6f59e09ec7e8",
+      "dismissed_by": "dgabriel@mac.mynetworksettings.com",
+      "dismissed_at": "2026-08-21T22:59:45.895Z",
+      "reason": "False positive: NOTIFY_CHANNEL is a hardcoded module constant (playlist_jobs.py:23), not user input -- not injectable.",
+      "context": {
+        "title": "python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text",
+        "file": "backend/app/services/playlist_jobs.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:c21e4f6170a3a8e38edcaf176e574741",
+      "dismissed_by": "dgabriel@mac.mynetworksettings.com",
+      "dismissed_at": "2026-08-21T22:59:57.884Z",
+      "reason": "False positive: identifiers (constraint/index names) built from hardcoded tuples defined in the same migration file (_CONSTRAINTS/_INDEXES), standard Alembic rename pattern -- not injectable. Covers all 4 raw-query findings in this migration (lines 128, 130, 135, 137).",
+      "context": {
+        "title": "python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query",
+        "file": "backend/migrations/versions/c3d1a5b9e7f2_rename_league_round_to_club_mix.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:ceb871e9174ae3935f63ad6a3f5f5198",
+      "dismissed_by": "dgabriel@mac.mynetworksettings.com",
+      "dismissed_at": "2026-08-21T23:00:03.460Z",
+      "reason": "Real finding, deferred: ConsoleEmailSender logs the full password-reset link/token. Tracked in MysteryMixClub-xywe (redact the token before logging).",
+      "context": {
+        "title": "python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure",
+        "file": "backend/app/services/email.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:70912bc75910238548ee7c19b7fdb0a3",
+      "dismissed_by": "dgabriel@mac.mynetworksettings.com",
+      "dismissed_at": "2026-08-21T23:02:05.378Z",
+      "reason": "False positive: _CHECK is a hardcoded module constant (\"ck_submissions_isrc_or_source\"), not user input -- standard Alembic constraint-rename pattern, not injectable.",
+      "context": {
+        "title": "python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query",
+        "file": "backend/migrations/versions/f2a9c4b7e1d8_submissions_source_only.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:130f2c0bb688becbab9cbc0ec7bfc825",
+      "dismissed_by": "dgabriel@mac.mynetworksettings.com",
+      "dismissed_at": "2026-08-21T23:02:05.519Z",
+      "reason": "False positive, same underlying line as D-0021 (formatted-sql-query variant of the same rule family): _CHECK is a hardcoded module constant, not injectable.",
+      "context": {
+        "title": "python.lang.security.audit.formatted-sql-query.formatted-sql-query",
+        "file": "backend/migrations/versions/f2a9c4b7e1d8_submissions_source_only.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:f2d45fe03f227e2a5ae5b4d94ea9bd55",
+      "dismissed_by": "dgabriel@mac.mynetworksettings.com",
+      "dismissed_at": "2026-08-21T23:02:05.653Z",
+      "reason": "False positive: rows/cols come from this offline reporting script's own bd-issue/git-log data (build_shipped_table.py), not external or attacker-controlled input -- not injectable, and not reachable by the running app.",
+      "context": {
+        "title": "python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query",
+        "file": "scripts/instrumentation/build_shipped_table.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:cf63d9040022f90d0f81d4af4b9831ed",
+      "dismissed_by": "dgabriel@mac.mynetworksettings.com",
+      "dismissed_at": "2026-08-21T23:02:05.794Z",
+      "reason": "False positive, same line as D-0025 (formatted-sql-query variant): local offline reporting script, not attacker-reachable.",
+      "context": {
+        "title": "python.lang.security.audit.formatted-sql-query.formatted-sql-query",
+        "file": "scripts/instrumentation/build_shipped_table.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:338e0ca124f2193102b93e4c55a276bb",
+      "dismissed_by": "dgabriel@mac.mynetworksettings.com",
+      "dismissed_at": "2026-08-21T23:02:06.331Z",
+      "reason": "False positive, formatted-sql-query variant of the already-dismissed raw-query finding on this line: identifier from a hardcoded tuple in the same migration file, standard Alembic rename pattern.",
+      "context": {
+        "title": "python.lang.security.audit.formatted-sql-query.formatted-sql-query",
+        "file": "backend/migrations/versions/c3d1a5b9e7f2_rename_league_round_to_club_mix.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:ba05e19554f7387d953225c06ed97458",
+      "dismissed_by": "dgabriel@mac.mynetworksettings.com",
+      "dismissed_at": "2026-08-21T23:02:06.870Z",
+      "reason": "Already tracked: fast-uri transitive-dependency advisories are covered by the existing MysteryMixClub-io0j Dependabot cleanup issue (same GHSA IDs), deferred until the redesign lands per that issue.",
+      "context": {
+        "title": "fast-uri: fast-uri vulnerable to host confusion via literal backslash authority delimiter",
+        "file": "fast-uri"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:2067685138aa04deabf9e7ec456b05e0",
+      "dismissed_by": "dgabriel@mac.mynetworksettings.com",
+      "dismissed_at": "2026-08-21T23:02:41.015Z",
+      "reason": "Already tracked: js-yaml transitive-dependency advisory (GHSA-52cp-r559-cp3m) is covered by the existing MysteryMixClub-io0j Dependabot cleanup issue, deferred until the redesign lands per that issue.",
+      "context": {
+        "title": "js-yaml: js-yaml: YAML merge-key chains can force quadratic CPU consumption",
+        "file": "js-yaml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:cea121449bf526884d046c6f99bd0e2d",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:03:13.224Z",
+      "reason": "Verified: both underlying findings (unpinned GitHub Actions in ci.yml/deploy-prod.yml) no longer exist in the current codebase -- all 9 third-party actions are SHA-pinned, confirmed via grep and MysteryMixClub-2nz5 (closed, PR #273). Removing their stale dismissal entries is correct cleanup, not a security regression.",
+      "context": {
+        "title": "Removal of real security dismissals for unpinned GitHub Actions",
+        "file": ".flaught-dismissals.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:b41ac14a4c19608cb96f81852a8ba081",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:03:13.356Z",
+      "reason": "Reasoned accept: dependency_sanity's npm-registry queries are for packages already committed in package.json/package-lock.json/pyproject.toml -- already public within the repo. The same names/versions already leave the environment via the ordinary npm ci / pip install steps in this same job and the frontend/backend CI jobs; dependency_sanity's queries are the same class of request against the same already-installed set, not a new exposure surface.",
+      "context": {
+        "title": "Enabling dependency_sanity introduces external network calls that may leak internal dependency versions",
+        "file": ".advreview.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:d6cfb843dcb63da148f77ae11691c6fb",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:03:13.489Z",
+      "reason": "Reasoned accept: migration verified by exact-prefix matching against freshly-generated full fingerprints, not blind reuse -- SHA-256 truncated to 64 bits (16 hex chars) has negligible collision probability for this repo's finding count (~20-30), and each match was cross-checked against the actual current finding it now maps to before being written back.",
+      "context": {
+        "title": "Fingerprint migration may cause mismatched dismissals, silently ignoring future findings",
+        "file": ".flaught-dismissals.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:e41dde81fa98a110d45f8f75f7f50ea6",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:03:13.624Z",
+      "reason": "Speculative, no evidence yet -- zero test_weakening findings have been produced by any run so far. ADR 0023 already documents 'expect first-contact findings' as the general risk of turning on a new tool; will address concretely if it actually produces a false positive, not preemptively.",
+      "context": {
+        "title": "test_weakening tool may generate noisy false positives, leading to test suite degradation",
+        "file": ".advreview.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:73c21fa37f8f07f68a066ad50b74b0ae",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:03:13.896Z",
+      "reason": "Deferred intentionally, not overlooked -- ADR 0023 explicitly notes llm.min_confidence as optional tuning, not required for this bump. 0 is the documented upstream default; revisit once there's a real false-positive rate to tune against.",
+      "context": {
+        "title": "Flaught LLM min_confidence defaults to 0, enabling noisy or speculative findings",
+        "file": ".advreview.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:814cf5786c7382446d33e5b38bd08239",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:03:14.031Z",
+      "reason": "Fixed at the config level, not just this instance -- .advreview.yml's scope_creep.exclude_paths now includes docs/adr/** (this same PR), exactly the case this finding describes.",
+      "context": {
+        "title": "Addition of ADR documentation file exceeds PR's stated intent",
+        "file": "docs/adr/0023-flaught-bump-to-0-10-0.md"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:c3a0bc9acced64a3df8fc84a06305fd1",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:03:14.167Z",
+      "reason": "False positive / no second pin exists to diverge from -- ci.yml's npm install -g @flaught/core@0.10.0 is the only place a Flaught version is pinned anywhere in this repo; .advreview.yml declares no version.",
+      "context": {
+        "title": "Hard‑coded Flaught version in CI may diverge from repo pin, causing inconsistency",
+        "file": ".github/workflows/ci.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:8c5a746b70aa470550e41d581d2904d6",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:03:14.304Z",
+      "reason": "Fixed at the config level -- .advreview.yml's tools:/test_inversion:/scope_creep:/noise_budget:/severity_gate: blocks are now all explicit (this same PR), closing the exact confusion this finding describes.",
+      "context": {
+        "title": "Commented‑out default tool block in .advreview.yml may cause future confusion",
+        "file": ".advreview.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:db18f36d7cb07b027227dc4df32bf50f",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:09:57.230Z",
+      "reason": "Same underlying issue as the already-tracked semgrep finding on backend/app/services/email.py:74/79 (python-logger-credential-disclosure), just independently found by the LLM pass with a different fingerprint. Real finding, already deferred and tracked in MysteryMixClub-xywe (redact the token before logging) -- not new, not specific to this PR's diff.",
+      "context": {
+        "title": "Credential leak: ConsoleEmailSender logs full password-reset token",
+        "file": ".flaught-dismissals.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:81196bc200412127b659856fd1c40f0d",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:09:57.367Z",
+      "reason": "Same point as the previously-dismissed F-0006 (llm.min_confidence defaults to 0), reworded by a non-deterministic LLM pass into a new fingerprint. ADR 0023 already notes this as optional tuning, not required for this bump.",
+      "context": {
+        "title": "Missing explicit llm.min_confidence configuration defaults to 0, increasing noise",
+        "file": ".advreview.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:623f7991fa83e1bb87f6db07ededd420",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:09:57.507Z",
+      "reason": "Not unrelated -- the CI workflow changes in this PR (tools:/test_inversion:/scope_creep:/noise_budget:/severity_gate: made explicit in .advreview.yml) are the same 'stop relying on implicit schema defaults' principle this bump already applies to dismissals:/tools:, documented in ADR 0023 and this branch's own commit history. Bundled deliberately, not scope creep.",
+      "context": {
+        "title": "Unrelated change to CI workflow unrelated to Flaught bump",
+        "file": ".github/workflows/ci.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:e08ecf535b4b6a50715143b0cf82d041",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:16:57.764Z",
+      "reason": "Low confidence (0.1) and factually off -- npm verifies tarball integrity against the registry-provided hash automatically on every install (has since npm5), this isn't an unverified download. Superseded going forward by llm.min_confidence: 0.5 (this same PR).",
+      "context": {
+        "title": "Unverified npm install of Flaught core",
+        "file": ".github/workflows/ci.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:11b997bf6d8ae8f4024ef25d0681e4b8",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:16:57.896Z",
+      "reason": "Same fingerprint-migration concern already reasoned through twice (exact-prefix matching against freshly-generated hashes, negligible collision risk). Low confidence (0.44). Superseded going forward by llm.min_confidence: 0.5.",
+      "context": {
+        "title": "Dismissal fingerprint migration may hide critical findings",
+        "file": ".flaught-dismissals.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:8b39301507b5f6867dd48c4458453afd",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:16:58.028Z",
+      "reason": "Same dependency_sanity concern already reasoned through (already-public package info, same exposure class as routine npm ci/pip install). Low confidence (0.1). Superseded going forward by llm.min_confidence: 0.5.",
+      "context": {
+        "title": "dependency_sanity may expose internal dependency versions",
+        "file": ".advreview.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:ee9f169f2a028f2c604b84b30caca9ad",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:16:58.161Z",
+      "reason": "Same CI-latency concern already covered in ADR 0023's Revisit if. Low confidence (0.405). Superseded going forward by llm.min_confidence: 0.5.",
+      "context": {
+        "title": "dependency_sanity adds network latency risking CI timeouts",
+        "file": ".advreview.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:c9988aa91ddbb33f57f8c18793496d43",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T16:16:58.293Z",
+      "reason": "False positive, same as prior rounds' version-pin findings -- ci.yml's npm install -g @flaught/core@0.10.0 is the only pin anywhere in this repo, .advreview.yml was never meant to duplicate it. Low confidence (0.365). Superseded going forward by llm.min_confidence: 0.5.",
+      "context": {
+        "title": "Missing Flaught version pin in .advreview.yml creates config drift",
+        "file": ".advreview.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:c86eaac93c2dd0e6f8eaac6796e18842",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T20:39:42.572Z",
+      "reason": "False positive, verified -- onPaper IS defined in DeadlineModeToggleProps (frontend/src/components/DeadlineModeToggle.tsx) and this file passes tsc -b clean. Confidence 0.05; note llm.min_confidence: 0.5 (set in PR #285) evidently did NOT filter this -- dropped_below_min_confidence reports 0 despite this and 4 other findings scoring 0.05. Worth a closer look separately; not chasing it further in this PR.",
+      "context": {
+        "title": "TypeScript prop mismatch: onPaper not defined in DeadlineModeToggleProps",
+        "file": "frontend/src/components/DeadlineModeToggle.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:32f0c8b38d12a333c1646737cba4865e",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T20:39:42.706Z",
+      "reason": "Deliberate, matching established precedent -- role=\"group\" (not tablist/tab) is the same choice EmailEntryScreen's own sign-in-method toggle already makes, and for the same documented reason: tablist/tab promises WAI-ARIA APG arrow-key roving-tabIndex navigation that isn't implemented, so a labelled group of pressed-state buttons promises only what it delivers. Confidence 0.05.",
+      "context": {
+        "title": "ARIA role misuse: role=\"group\" without proper keyboard navigation",
+        "file": "frontend/src/components/DeadlineModeToggle.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:58a1cac449e6c0e9faf95fb76313401e",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T20:39:42.843Z",
+      "reason": "False positive, verified -- onPaper is read directly in tabClass's conditional (border-ink-accent/text-ink vs border-accent/text-foreground) and passed through to the border-ink-hairline/border-hairline container class. Not unused. Confidence 0.05.",
+      "context": {
+        "title": "Unused onPaper prop in DeadlineModeToggle component",
+        "file": "frontend/src/components/DeadlineModeToggle.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:e0f993a45c390d907eb1b177628ba854",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T20:39:42.980Z",
+      "reason": "Same false positive as F-0004 (duplicate LLM finding, different fingerprint). Confidence 0.05.",
+      "context": {
+        "title": "Dead code: onPaper prop passed to component but not utilized",
+        "file": "frontend/src/pages/ClubHomeScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:048cac7293153f2791987592b837cb1f",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T20:39:43.114Z",
+      "reason": "Same false positive as F-0004 (duplicate LLM finding, different fingerprint). Confidence 0.05.",
+      "context": {
+        "title": "Dead code: onPaper prop passed to component but not utilized",
+        "file": "frontend/src/pages/CreateClubScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:519cb2a60048f5fcdde8d366e6ce56c5",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T20:46:51.564Z",
+      "reason": "Already reasoned through in prior PRs -- every dismissal carries a full audit trail (fingerprint, dismisser, timestamp, reason), so the file's growth is legible history, not silent suppression. Confidence 0.46.",
+      "context": {
+        "title": "Large bulk addition to .flaught-dismissals.json may suppress future findings",
+        "file": ".flaught-dismissals.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:2a69fd3eacbd62bfedfffcab67b91caa",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T20:46:51.696Z",
+      "reason": "Real, fair gap -- verified neither CreateClubScreen.test.tsx nor ClubHomeRoute.test.tsx exercises the toggle in page context. Filed as MysteryMixClub-uqqw rather than expanded here: backfilling full page-level integration coverage for the whole weekly-anchor feature is bigger than this visibility fix's scope (the gap predates this PR, from the original MysteryMixClub-z845 feature PR).",
+      "context": {
+        "title": "Missing integration tests for pages that embed DeadlineModeToggle",
+        "file": "frontend/src/pages/ClubHomeScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:801cc056967631d60a83fdcd505eb42b",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T20:46:51.834Z",
+      "reason": "Not actionable without contradicting this codebase's established architecture -- every component in this repo (Button, TextField, DeadlineChip, DeadlineWindowField, DeadlineAnchorField, ...) uses inline Tailwind utility classes directly, per the style guide. This isn't a property of the new component, it's the whole app's deliberate convention.",
+      "context": {
+        "title": "Component tightly coupled to Tailwind utility classes makes styling brittle",
+        "file": "frontend/src/components/DeadlineModeToggle.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:d55e386e5265034cecb156871c97165b",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T20:46:51.970Z",
+      "reason": "Low confidence (0.1); onPaper already matches the exact naming convention used by every other component with a light/dark-surface variant in this codebase (TextField, Button, DeadlineWindowField, DeadlineAnchorField, DeadlineChip, ...).",
+      "context": {
+        "title": "Prop name \"onPaper\" is ambiguous and may confuse future contributors",
+        "file": "frontend/src/components/DeadlineModeToggle.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:d8ef517073846d78617e697ec6693ae1",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T21:04:02.120Z",
+      "reason": "Verified false -- CreateClubScreen.test.tsx (51 tests across it, ClubHomeRoute.test.tsx, and DeadlineModeToggle.test.tsx) passes clean after this change. Confidence 0.39.",
+      "context": {
+        "title": "Added explanatory paragraph may break existing UI tests",
+        "file": "frontend/src/pages/CreateClubScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:17ab281a9150dcfb0bb0844fcd58b04b",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T21:04:02.258Z",
+      "reason": "Same as F-0001 -- ClubHomeRoute.test.tsx passes clean after this change. Confidence 0.38.",
+      "context": {
+        "title": "Missing test adjustments for ClubHomeScreen UI change",
+        "file": "frontend/src/pages/ClubHomeScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:0dc3345303d9fb8e80b6b1038431bbd3",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-09T21:04:02.394Z",
+      "reason": "Fixed for real, not just dismissed -- moved the explanatory copy into DeadlineModeToggle itself (this same PR) so it ships with the control instead of being duplicated by each caller. Confidence 0.75, and it was right.",
+      "context": {
+        "title": "Duplicated explanatory text violates DRY principle",
+        "file": "frontend/src/pages/ClubHomeScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:92da4ae6512a677185e6ee254b87ae2e",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-10T02:08:44.651Z",
+      "reason": "False positive: vitest 4.1.9 -> 4.1.11 is a patch bump within the declared ^4.1.9 range in frontend/package.json, not a major version bump. Confirmed via package-lock.json diff.",
+      "context": {
+        "title": "Vitest major version bump may break test suite",
+        "file": "frontend/package-lock.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:46a58f0292ff44b10b53ac03815299f6",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-10T02:08:44.791Z",
+      "reason": "Same false premise as F-001: no major vitest bump occurred (4.1.9 -> 4.1.11, patch-level, within ^4.1.9). No test-suite-breaking upgrade to adjust for; full suite already passes.",
+      "context": {
+        "title": "No test adjustments for upgraded Vitest dependencies",
+        "file": "frontend/package-lock.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:6daffc534eb3f9d43590b00e4b7f8c2c",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-10T02:08:44.933Z",
+      "reason": "False positive: every changed package (vitest toolchain, browserslist toolchain, js-yaml, postcss-selector-parser, fast-uri) is a transitive devDependency. Confirmed via lockfile diff that frontend's 4 direct production deps (d3, react, react-dom, react-router) are untouched.",
+      "context": {
+        "title": "Lockfile updates include unrelated production dependencies",
+        "file": "frontend/package-lock.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:76e01cdccfe3117de7af0f459facc46c",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-10T02:08:45.072Z",
+      "reason": "False positive: repo has no .browserslistrc or browserslist config key, so there is no explicit browser-support target to broaden. This bump only refreshes caniuse-lite/browserslist's underlying data (the actual Dependabot alert), not any target config -- no bundle-size impact.",
+      "context": {
+        "title": "Updated browserslist may broaden supported browsers, inflating bundle size",
+        "file": "frontend/package-lock.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:5e6d317ab968f90d9b35b1a25b1fa421",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-10T02:08:45.210Z",
+      "reason": "Diff is 164 lines across 2 lockfiles for 17 patch/minor version bumps, zero packages added or removed -- a normal npm-audit-fix diff, not unreviewable. All bumped packages verified above to correspond to real open GitHub Dependabot alerts (fast-uri, js-yaml, browserslist, postcss-selector-parser).",
+      "context": {
+        "title": "Huge lockfile diff reduces reviewability and masks potential issues",
+        "file": "frontend/package-lock.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:ab60602a6312e3f0e48cea06f167ab5a",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-10T02:08:45.482Z",
+      "reason": "Real finding, out of scope for this dependency-only PR. Tracked separately in MysteryMixClub-feuy (filed when Flaught's linter tool first surfaced these 5 pre-existing eslint warnings, ADR 0025).",
+      "context": {
+        "title": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+        "file": "/home/runner/work/MysteryMixClub/MysteryMixClub/frontend/src/components/AuthedLayout.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:6645715e285a690d7849d69b663d861d",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-10T02:08:45.626Z",
+      "reason": "Real finding, out of scope for this dependency-only PR. Tracked separately in MysteryMixClub-feuy (filed when Flaught's linter tool first surfaced these 5 pre-existing eslint warnings, ADR 0025).",
+      "context": {
+        "title": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+        "file": "/home/runner/work/MysteryMixClub/MysteryMixClub/frontend/src/hooks/useAuth.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:b6f619d4783b7e4bf2feef696cc2a67f",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-10T02:08:45.764Z",
+      "reason": "Real finding, out of scope for this dependency-only PR. Tracked separately in MysteryMixClub-feuy (filed when Flaught's linter tool first surfaced these 5 pre-existing eslint warnings, ADR 0025).",
+      "context": {
+        "title": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\n/home/runner/work/MysteryMixClub/MysteryMixClub/frontend/src/pages/MixDetailRoute.tsx:286:10\n  284 |\n  285 |   useEffect(() => {\n> 286 |     void load();\n      |          ^^^^ Avoid calling setState() directly within an effect\n  287 |   }, [load]);\n  288 |\n  289 |   // Poll every 60s so state transitions (submission → voting → closed) and",
+        "file": "/home/runner/work/MysteryMixClub/MysteryMixClub/frontend/src/pages/MixDetailRoute.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:d1a1048a76a779d2c8b88d12fd5f80db",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-10T02:08:45.900Z",
+      "reason": "Real finding, out of scope for this dependency-only PR. Tracked separately in MysteryMixClub-feuy (filed when Flaught's linter tool first surfaced these 5 pre-existing eslint warnings, ADR 0025).",
+      "context": {
+        "title": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\n/home/runner/work/MysteryMixClub/MysteryMixClub/frontend/src/pages/VerifyRoute.tsx:51:7\n  49 |     const invite = searchParams.get(\"invite\");\n  50 |     if (!token) {\n> 51 |       setState(\"error\");\n     |       ^^^^^^^^ Avoid calling setState() directly within an effect\n  52 |       return;\n  53 |     }\n  54 |",
+        "file": "/home/runner/work/MysteryMixClub/MysteryMixClub/frontend/src/pages/VerifyRoute.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:0880f97773446422d50c79eb95199589",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-10T02:20:01.003Z",
+      "reason": "Same as D-0001: cooldown: block present (default-days only, semver-major-days correctly omitted for this non-semver github-actions ecosystem), confirmed valid by GitHub's own dependabot.yml validator on this commit.",
+      "context": {
+        "title": "package_managers.dependabot.dependabot-missing-cooldown.dependabot-missing-cooldown",
+        "file": ".github/dependabot.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:1dd942b784998a0b5ba533579b2b83fc",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-10T02:20:01.140Z",
+      "reason": "Not unrelated scope creep: the dependabot.yml cooldown addition directly responds to Flaught's own D-0001..D-0005 findings surfaced on this same PR's first CI run. In-scope follow-up to this PR's own review feedback, not a separate concern.",
+      "context": {
+        "title": "Dependabot config changes unrelated to clearing alerts",
+        "file": ".github/dependabot.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:d14941e89c9c0e392ab5b99d5e87db5e",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-10T02:20:01.274Z",
+      "reason": "Stale: refers to the first (broken) commit's github-actions block, which was fixed in the very next commit on this PR. GitHub's own dependabot.yml validator now passes on the current commit -- semver-major-days was removed from that block, default-days alone remains, which is valid for github-actions.",
+      "context": {
+        "title": "Invalid cooldown key for github-actions block",
+        "file": ".github/dependabot.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:7be2aea0fd6700c900b3ec3c46577a81",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-10T02:20:01.411Z",
+      "reason": "False positive, same as the earlier F-001/F-002 on this PR's first review: vitest 4.1.9 -> 4.1.11 is a patch bump within the declared ^4.1.9 range, not requiring new tests. Full test suite (frontend + backend) already passes in CI.",
+      "context": {
+        "title": "Lack of tests for updated Vitest and related dev dependencies",
+        "file": "frontend/package-lock.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:a7515da9e30799e725518ba55a809420",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-10T02:20:01.545Z",
+      "reason": "False positive, same as the earlier F-004 on this PR's first review: repo has no .browserslistrc or browserslist config key to broaden -- this bump only refreshes caniuse-lite/browserslist's underlying data (the actual Dependabot alert being fixed), no bundle-size impact.",
+      "context": {
+        "title": "Browserslist data update may increase bundle size",
+        "file": "frontend/package-lock.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:725374b52aa324c09c6e79a730c21960",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-10T02:20:01.686Z",
+      "reason": "False positive, verified against GitHub's own docs (configuration-options-for-the-dependabot.yml-file#cooldown): 'This default cooldown does not apply to security updates.' Cooldown only delays routine version-refresh PRs; Dependabot security-alert PRs are processed independently and immediately regardless of cooldown config.",
+      "context": {
+        "title": "Cooldown default of 3 days could postpone urgent security updates",
+        "file": ".github/dependabot.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:32307d7e0164149b1dcb9f1d76e905cb",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-11T00:01:41.158Z",
+      "reason": "Real class of concern in general (LLM-generated PR-comment content as an injection surface), but not exploitable here: this repo has no external/untrusted contributors -- all PRs are authored by Dawn or Claude Code, so there's no adversarial party who could craft a diff to manipulate the LLM's output. Skeptic pass independently reached the same conclusion (GitHub's own comment sanitization applies; risk not demonstrated from the code).",
+      "context": {
+        "title": "LLM-generated content rendered in PR comment may enable injection attacks",
+        "file": ".github/workflows/ci.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:0fe797d00c3dec5df0ff49b5da9b231f",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-11T00:01:41.298Z",
+      "reason": "Skeptic-refuted, and correctly so: --config-from-base's exact tradeoff (PR-specific .advreview.yml edits reviewed under stale config until merged) is the intended, explicitly documented behavior -- ADR 0026 accepts this tradeoff by design, security over self-referential convenience, matching this repo's existing dependency_sanity/dismissals posture from ADR 0023.",
+      "context": {
+        "title": "`--config-from-base` hides PR‑specific .advreview.yml changes, risking missed security tooling",
+        "file": ".github/workflows/ci.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:c8e4d7cfb7b612dea3ef1c5bf3b2f443",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-11T00:01:41.439Z",
+      "reason": "No new logic was written on our side to test -- this PR only adopts an already-tested upstream CLI command (flaught report --from, shipped with 6 tests including byte-identical-render verification in flaught/core#77). Verified locally before pushing: ran flaught review --config-from-base and flaught report --from against this branch's own diff, confirmed byte-identical output (documented in the PR's test plan).",
+      "context": {
+        "title": "No tests added for new Flaught comment rendering path",
+        "file": ".github/workflows/ci.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:2ad7927f7a0866976043911402e76ea2",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-11T00:01:41.581Z",
+      "reason": "Skeptic-refuted, and correctly so: this exit-code branching (1 blocks, other nonzero warns) is pre-existing, unchanged by this PR, and was a deliberate design decision from ADR 0017 to distinguish a real gate trip from a tool/config fault (e.g. no GROQ_API_KEY reachable on a fork PR) -- not a new gap introduced here.",
+      "context": {
+        "title": "Exit‑code handling masks tool‑faults, allowing silent CI degradation",
+        "file": ".github/workflows/ci.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:58ae012216d300b558921177aa1400d6",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-11T00:01:41.715Z",
+      "reason": "This is upstream's own new recommended default (0.11.0's flaught init now emits max_tokens: 8192), not an aggressive value we invented. max_tokens is a ceiling on output length, not a mandate to use it -- normal-size findings cost the same; only previously-truncated reasoning-heavy responses now complete, which is the documented fix for the exact Groq 400 this repo hit live on PR #291.",
+      "context": {
+        "title": "Increasing `max_tokens` to 8192 may cause provider‑level throttling or higher costs",
+        "file": ".advreview.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:dc1af341d5daf3c9ca58d66c03f2bf65",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-11T00:53:28.313Z",
+      "reason": "Real finding, out of scope for this PR. Tracked separately in MysteryMixClub-feuy since Flaught's linter tool first surfaced these 5 pre-existing eslint warnings (ADR 0025).",
+      "context": {
+        "title": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+        "file": "/Users/dgabriel/claudeProjects/MysteryMixClub/frontend/src/components/AuthedLayout.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:941b2d71b8b4452d93cfb5257e851dbf",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-11T00:53:28.448Z",
+      "reason": "Real finding, out of scope for this PR. Tracked separately in MysteryMixClub-feuy since Flaught's linter tool first surfaced these 5 pre-existing eslint warnings (ADR 0025).",
+      "context": {
+        "title": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+        "file": "/Users/dgabriel/claudeProjects/MysteryMixClub/frontend/src/hooks/useAuth.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:7fa3ef56c74d8ba48f7781cb8b6302ef",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-11T00:53:28.584Z",
+      "reason": "Real finding, out of scope for this PR. Tracked separately in MysteryMixClub-feuy since Flaught's linter tool first surfaced these 5 pre-existing eslint warnings (ADR 0025).",
+      "context": {
+        "title": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\n/Users/dgabriel/claudeProjects/MysteryMixClub/frontend/src/pages/MixDetailRoute.tsx:287:10\n  285 |\n  286 |   useEffect(() => {\n> 287 |     void load();\n      |          ^^^^ Avoid calling setState() directly within an effect\n  288 |   }, [load]);\n  289 |\n  290 |   // Poll every 60s so state transitions (submission → voting → closed) and",
+        "file": "/Users/dgabriel/claudeProjects/MysteryMixClub/frontend/src/pages/MixDetailRoute.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:a3c2359abc9f071a06db139d42793d17",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-11T00:53:28.718Z",
+      "reason": "Real finding, out of scope for this PR. Tracked separately in MysteryMixClub-feuy since Flaught's linter tool first surfaced these 5 pre-existing eslint warnings (ADR 0025).",
+      "context": {
+        "title": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\n/Users/dgabriel/claudeProjects/MysteryMixClub/frontend/src/pages/VerifyRoute.tsx:51:7\n  49 |     const invite = searchParams.get(\"invite\");\n  50 |     if (!token) {\n> 51 |       setState(\"error\");\n     |       ^^^^^^^^ Avoid calling setState() directly within an effect\n  52 |       return;\n  53 |     }\n  54 |",
+        "file": "/Users/dgabriel/claudeProjects/MysteryMixClub/frontend/src/pages/VerifyRoute.tsx"
+      },
+      "expires_at": null
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router";
 import { ProfileRoute } from "./ProfileRoute";
 import { AuthedLayout } from "../components/AuthedLayout";
 import {
@@ -80,6 +80,12 @@ function clubWith(overrides: Partial<Club> = {}): Club {
     default_vibe_mode: false,
     submission_window_hours: 72,
     voting_window_hours: 72,
+    deadline_mode: "duration",
+    timezone: "UTC",
+    submission_weekday: null,
+    submission_time: null,
+    voting_weekday: null,
+    voting_time: null,
     created_at: "2026-01-01T00:00:00Z",
     completed_at: "2026-02-01T00:00:00Z",
     viewer_is_admin: null,

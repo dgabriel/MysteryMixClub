@@ -1,11 +1,15 @@
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useMemo, useState } from "react";
 import { Button } from "../components/Button";
 import { PaperSurface } from "../components/PaperSurface";
 import { FormError } from "../components/FormError";
 import { TextField } from "../components/TextField";
 import { HelpLink } from "../components/HelpLink";
 import { DeadlineWindowField } from "../components/DeadlineWindowField";
+import { DeadlineAnchorField, TimezoneField } from "../components/DeadlineAnchorField";
+import { DeadlineModeToggle } from "../components/DeadlineModeToggle";
 import { daysAndHoursToTotal, validateWindowHours } from "../utils/deadlineWindow";
+import { detectTimezone, listTimezones, validateAnchor } from "../utils/deadlineAnchor";
+import type { Weekday } from "../services/api";
 
 type CreateClubInput = {
   name: string;
@@ -14,8 +18,14 @@ type CreateClubInput = {
   votes_per_player: number;
   songs_per_submission: number;
   default_vibe_mode: boolean;
-  submission_window_hours: number;
-  voting_window_hours: number;
+  submission_window_hours?: number;
+  voting_window_hours?: number;
+  deadline_mode?: "duration" | "weekly_anchor";
+  timezone?: string;
+  submission_weekday?: Weekday;
+  submission_time?: string;
+  voting_weekday?: Weekday;
+  voting_time?: string;
 };
 
 // Default window: 3 days 0 hours (72h) each, matching the API default.
@@ -35,7 +45,9 @@ type FieldName =
   | "votes"
   | "songs"
   | "submission_window"
-  | "voting_window";
+  | "voting_window"
+  | "submission_anchor"
+  | "voting_anchor";
 
 // Submit order, also the order fields are focused when several are invalid at once.
 const FIELD_ORDER: FieldName[] = [
@@ -46,6 +58,8 @@ const FIELD_ORDER: FieldName[] = [
   "songs",
   "submission_window",
   "voting_window",
+  "submission_anchor",
+  "voting_anchor",
 ];
 
 const FIELD_FOCUS_ID: Record<FieldName, string> = {
@@ -56,6 +70,8 @@ const FIELD_FOCUS_ID: Record<FieldName, string> = {
   songs: "club-songs-per-submission",
   submission_window: "submission-window-days",
   voting_window: "voting-window-days",
+  submission_anchor: "submission-anchor-weekday",
+  voting_anchor: "voting-anchor-weekday",
 };
 
 function validateName(value: string): string | null {
@@ -120,6 +136,15 @@ export function CreateClubScreen({ onSubmit, submitting, error, onCancel }: Crea
   const [submissionWindowHours, setSubmissionWindowHours] = useState(DEFAULT_WINDOW_HOURS);
   const [votingWindowDays, setVotingWindowDays] = useState(DEFAULT_WINDOW_DAYS);
   const [votingWindowHours, setVotingWindowHours] = useState(DEFAULT_WINDOW_HOURS);
+  // Weekly-anchor deadline mode (ADR 0021) — an alternate to the days/hours
+  // window above, not a second set of fields sent alongside it.
+  const [deadlineMode, setDeadlineMode] = useState<"duration" | "weekly_anchor">("duration");
+  const [timezone, setTimezone] = useState(detectTimezone);
+  const [submissionWeekday, setSubmissionWeekday] = useState<Weekday | "">("");
+  const [submissionTime, setSubmissionTime] = useState("");
+  const [votingWeekday, setVotingWeekday] = useState<Weekday | "">("");
+  const [votingTime, setVotingTime] = useState("");
+  const timezoneOptions = useMemo(() => listTimezones(), []);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldName, string | null>>>({});
   const [touched, setTouched] = useState<Partial<Record<FieldName, boolean>>>({});
 
@@ -137,14 +162,23 @@ export function CreateClubScreen({ onSubmit, submitting, error, onCancel }: Crea
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    const anchorMode = deadlineMode === "weekly_anchor";
     const errors: Record<FieldName, string | null> = {
       name: validateName(name),
       description: validateDescription(description),
       mixes: validateMixes(totalMixes),
       votes: validateVotes(votesPerPlayer),
       songs: validateSongs(songsPerSubmission),
-      submission_window: validateWindow(submissionWindowDays, submissionWindowHours, "submission"),
-      voting_window: validateWindow(votingWindowDays, votingWindowHours, "voting"),
+      submission_window: anchorMode
+        ? null
+        : validateWindow(submissionWindowDays, submissionWindowHours, "submission"),
+      voting_window: anchorMode
+        ? null
+        : validateWindow(votingWindowDays, votingWindowHours, "voting"),
+      submission_anchor: anchorMode
+        ? validateAnchor(submissionWeekday, submissionTime, "submission")
+        : null,
+      voting_anchor: anchorMode ? validateAnchor(votingWeekday, votingTime, "voting") : null,
     };
     setFieldErrors(errors);
     setTouched({
@@ -155,6 +189,8 @@ export function CreateClubScreen({ onSubmit, submitting, error, onCancel }: Crea
       songs: true,
       submission_window: true,
       voting_window: true,
+      submission_anchor: true,
+      voting_anchor: true,
     });
 
     const firstInvalid = FIELD_ORDER.find((field) => errors[field]);
@@ -164,7 +200,7 @@ export function CreateClubScreen({ onSubmit, submitting, error, onCancel }: Crea
     }
 
     const trimmedDescription = description.trim();
-    onSubmit({
+    const base = {
       name: name.trim(),
       ...(trimmedDescription ? { description: trimmedDescription } : {}),
       total_mixes: Number(totalMixes),
@@ -175,12 +211,30 @@ export function CreateClubScreen({ onSubmit, submitting, error, onCancel }: Crea
       // default until it returns. Members can still be switched
       // individually, and an organizer can change the club default later.
       default_vibe_mode: false,
-      submission_window_hours: daysAndHoursToTotal(
-        Number(submissionWindowDays),
-        Number(submissionWindowHours),
-      ),
-      voting_window_hours: daysAndHoursToTotal(Number(votingWindowDays), Number(votingWindowHours)),
-    });
+    };
+    if (anchorMode) {
+      onSubmit({
+        ...base,
+        deadline_mode: "weekly_anchor",
+        timezone,
+        submission_weekday: submissionWeekday as Weekday,
+        submission_time: submissionTime,
+        voting_weekday: votingWeekday as Weekday,
+        voting_time: votingTime,
+      });
+    } else {
+      onSubmit({
+        ...base,
+        submission_window_hours: daysAndHoursToTotal(
+          Number(submissionWindowDays),
+          Number(submissionWindowHours),
+        ),
+        voting_window_hours: daysAndHoursToTotal(
+          Number(votingWindowDays),
+          Number(votingWindowHours),
+        ),
+      });
+    }
   }
 
   return (
@@ -324,67 +378,145 @@ export function CreateClubScreen({ onSubmit, submitting, error, onCancel }: Crea
             </div>
 
             <div className="space-y-6">
-              <DeadlineWindowField
-                onPaper
-                idPrefix="submission-window"
-                label="submission window"
-                days={submissionWindowDays}
-                hours={submissionWindowHours}
-                onDaysChange={(value) => {
-                  setSubmissionWindowDays(value);
-                  revalidateIfTouched(
-                    "submission_window",
-                    validateWindow(value, submissionWindowHours, "submission"),
-                  );
-                }}
-                onHoursChange={(value) => {
-                  setSubmissionWindowHours(value);
-                  revalidateIfTouched(
-                    "submission_window",
-                    validateWindow(submissionWindowDays, value, "submission"),
-                  );
-                }}
-                onBlur={() =>
-                  markTouchedAndValidate(
-                    "submission_window",
-                    validateWindow(submissionWindowDays, submissionWindowHours, "submission"),
-                  )
-                }
-                disabled={submitting}
-                error={fieldErrors.submission_window}
-              />
-              <DeadlineWindowField
-                onPaper
-                idPrefix="voting-window"
-                label="voting window"
-                days={votingWindowDays}
-                hours={votingWindowHours}
-                onDaysChange={(value) => {
-                  setVotingWindowDays(value);
-                  revalidateIfTouched(
-                    "voting_window",
-                    validateWindow(value, votingWindowHours, "voting"),
-                  );
-                }}
-                onHoursChange={(value) => {
-                  setVotingWindowHours(value);
-                  revalidateIfTouched(
-                    "voting_window",
-                    validateWindow(votingWindowDays, value, "voting"),
-                  );
-                }}
-                onBlur={() =>
-                  markTouchedAndValidate(
-                    "voting_window",
-                    validateWindow(votingWindowDays, votingWindowHours, "voting"),
-                  )
-                }
-                disabled={submitting}
-                error={fieldErrors.voting_window}
-              />
-              <p className="text-meta leading-[1.6] text-ink-muted">
-                mystery mixes also close early if everyone finishes.
-              </p>
+              <DeadlineModeToggle onPaper value={deadlineMode} onChange={setDeadlineMode} />
+
+              {deadlineMode === "duration" ? (
+                <>
+                  <DeadlineWindowField
+                    onPaper
+                    idPrefix="submission-window"
+                    label="submission window"
+                    days={submissionWindowDays}
+                    hours={submissionWindowHours}
+                    onDaysChange={(value) => {
+                      setSubmissionWindowDays(value);
+                      revalidateIfTouched(
+                        "submission_window",
+                        validateWindow(value, submissionWindowHours, "submission"),
+                      );
+                    }}
+                    onHoursChange={(value) => {
+                      setSubmissionWindowHours(value);
+                      revalidateIfTouched(
+                        "submission_window",
+                        validateWindow(submissionWindowDays, value, "submission"),
+                      );
+                    }}
+                    onBlur={() =>
+                      markTouchedAndValidate(
+                        "submission_window",
+                        validateWindow(submissionWindowDays, submissionWindowHours, "submission"),
+                      )
+                    }
+                    disabled={submitting}
+                    error={fieldErrors.submission_window}
+                  />
+                  <DeadlineWindowField
+                    onPaper
+                    idPrefix="voting-window"
+                    label="voting window"
+                    days={votingWindowDays}
+                    hours={votingWindowHours}
+                    onDaysChange={(value) => {
+                      setVotingWindowDays(value);
+                      revalidateIfTouched(
+                        "voting_window",
+                        validateWindow(value, votingWindowHours, "voting"),
+                      );
+                    }}
+                    onHoursChange={(value) => {
+                      setVotingWindowHours(value);
+                      revalidateIfTouched(
+                        "voting_window",
+                        validateWindow(votingWindowDays, value, "voting"),
+                      );
+                    }}
+                    onBlur={() =>
+                      markTouchedAndValidate(
+                        "voting_window",
+                        validateWindow(votingWindowDays, votingWindowHours, "voting"),
+                      )
+                    }
+                    disabled={submitting}
+                    error={fieldErrors.voting_window}
+                  />
+                  <p className="text-meta leading-[1.6] text-ink-muted">
+                    mystery mixes also close early if everyone finishes.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <TimezoneField
+                    onPaper
+                    id="club-timezone"
+                    value={timezone}
+                    options={timezoneOptions}
+                    onChange={setTimezone}
+                    disabled={submitting}
+                  />
+                  <DeadlineAnchorField
+                    onPaper
+                    idPrefix="submission-anchor"
+                    label="submissions due"
+                    weekday={submissionWeekday}
+                    time={submissionTime}
+                    onWeekdayChange={(value) => {
+                      setSubmissionWeekday(value);
+                      revalidateIfTouched(
+                        "submission_anchor",
+                        validateAnchor(value, submissionTime, "submission"),
+                      );
+                    }}
+                    onTimeChange={(value) => {
+                      setSubmissionTime(value);
+                      revalidateIfTouched(
+                        "submission_anchor",
+                        validateAnchor(submissionWeekday, value, "submission"),
+                      );
+                    }}
+                    onBlur={() =>
+                      markTouchedAndValidate(
+                        "submission_anchor",
+                        validateAnchor(submissionWeekday, submissionTime, "submission"),
+                      )
+                    }
+                    disabled={submitting}
+                    error={fieldErrors.submission_anchor}
+                  />
+                  <DeadlineAnchorField
+                    onPaper
+                    idPrefix="voting-anchor"
+                    label="votes due"
+                    weekday={votingWeekday}
+                    time={votingTime}
+                    onWeekdayChange={(value) => {
+                      setVotingWeekday(value);
+                      revalidateIfTouched(
+                        "voting_anchor",
+                        validateAnchor(value, votingTime, "voting"),
+                      );
+                    }}
+                    onTimeChange={(value) => {
+                      setVotingTime(value);
+                      revalidateIfTouched(
+                        "voting_anchor",
+                        validateAnchor(votingWeekday, value, "voting"),
+                      );
+                    }}
+                    onBlur={() =>
+                      markTouchedAndValidate(
+                        "voting_anchor",
+                        validateAnchor(votingWeekday, votingTime, "voting"),
+                      )
+                    }
+                    disabled={submitting}
+                    error={fieldErrors.voting_anchor}
+                  />
+                  <p className="text-meta leading-[1.6] text-ink-muted">
+                    mystery mixes also close early if everyone finishes.
+                  </p>
+                </>
+              )}
             </div>
 
             {/* A failed create is a screen-level form error, not a field's — the

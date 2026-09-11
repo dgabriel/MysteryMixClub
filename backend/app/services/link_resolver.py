@@ -585,7 +585,16 @@ class LinkResolver:
             return identity.model_copy(update={"bandcamp_track_id": bandcamp_track_id})
         # No catalog match: fall back to a source-only identity keyed on the exact
         # Bandcamp track page (Bandcamp-only releases are the whole point here).
-        return self._bandcamp_source_identity(url, clean_title, artist_name, bandcamp_track_id)
+        #
+        # The artist subdomain is the display artist of last resort when og:title
+        # had no ", by " separator: with no other artist signal, a null artist
+        # made the track unsubmittable outright (the submission schema requires a
+        # non-empty artist). Applied *after* the Deezer lookup above and never
+        # passed into it — searching the catalog for a slug like "some-label"
+        # would turn today's catalog hits into misses, the same reason
+        # _resolve_youtube's channel-name fallback is display-only.
+        display_artist = artist_name or _bandcamp_slug_display_artist(url)
+        return self._bandcamp_source_identity(url, clean_title, display_artist, bandcamp_track_id)
 
     def _youtube_source_identity(
         self, url: str, title: str, artist: str | None, thumbnail_url: str | None
@@ -716,6 +725,19 @@ def _bandcamp_source_parts(url: str) -> tuple[str, str] | None:
     if not _BANDCAMP_SLUG_RE.match(artist_slug) or not _BANDCAMP_SLUG_RE.match(track_slug):
         return None
     return artist_slug, track_slug
+
+
+def _bandcamp_slug_display_artist(url: str) -> str | None:
+    """De-slugify the Bandcamp artist subdomain into a display name (e.g.
+    "some-band" -> "Some Band"), or None if ``url`` isn't a ``*.bandcamp.com``
+    track URL. Display only — see the fallback's use in ``_resolve_bandcamp``
+    for why it's never fed into catalog search."""
+    parts = _bandcamp_source_parts(url)
+    if parts is None:
+        return None
+    artist_slug, _track_slug = parts
+    words = [word for word in artist_slug.split("-") if word]
+    return " ".join(word.capitalize() for word in words) or None
 
 
 def build_link_resolver() -> LinkResolver:

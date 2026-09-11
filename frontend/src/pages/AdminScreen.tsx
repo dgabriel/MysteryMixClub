@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import type { AdminUser, SpotifyStatus, WaitlistEntry } from "../services/api";
 import { Badge } from "../components/Badge";
 import { Button } from "../components/Button";

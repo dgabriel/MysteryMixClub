@@ -56,11 +56,28 @@ apt-get install -y \
   python3-pip python3-venv \
   postgresql postgresql-contrib \
   certbot python3-certbot-nginx \
-  git curl ca-certificates
+  git curl ca-certificates gnupg
 
 if ! node --version 2>/dev/null | grep -q '^v20\.'; then
-  echo "==> Installing Node.js 20 (NodeSource)"
-  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+  echo "==> Installing Node.js 20 (NodeSource, manual repo setup)"
+  # Manual apt-repo setup instead of piping NodeSource's setup script straight
+  # to bash (arbitrary code execution on a fetch-time compromise/MITM of
+  # deb.nodesource.com) -- this only pipes into `gpg --dearmor`, which can at
+  # most install a bad signing key, and apt still verifies every package
+  # signature against it before installing anything. Per NodeSource's own
+  # manual-install guide:
+  # github.com/nodesource/distributions/wiki/Repository-Manual-Installation
+  mkdir -p /etc/apt/keyrings
+  curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+    | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+  cat >/etc/apt/sources.list.d/nodesource.sources <<'EOF'
+Types: deb
+URIs: https://deb.nodesource.com/node_20.x/
+Suites: nodistro
+Components: main
+Signed-By: /etc/apt/keyrings/nodesource.gpg
+EOF
+  apt-get update -y
   apt-get install -y nodejs
 fi
 

@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { CreateClubScreen } from "./CreateClubScreen";
-import { ApiError, createClub } from "../services/api";
+import { ApiError, createClub, type Weekday } from "../services/api";
 
 /**
  * Protected create-club route. Submits the form to the backend and, on
@@ -21,8 +21,14 @@ export function CreateClubRoute() {
     votes_per_player: number;
     songs_per_submission: number;
     default_vibe_mode: boolean;
-    submission_window_hours: number;
-    voting_window_hours: number;
+    submission_window_hours?: number;
+    voting_window_hours?: number;
+    deadline_mode?: "duration" | "weekly_anchor";
+    timezone?: string;
+    submission_weekday?: Weekday;
+    submission_time?: string;
+    voting_weekday?: Weekday;
+    voting_time?: string;
   }) {
     setSubmitting(true);
     setError(null);

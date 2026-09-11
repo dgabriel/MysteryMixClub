@@ -1,5 +1,5 @@
 import { type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
-import { useBlocker, useNavigate, useParams } from "react-router-dom";
+import { useBlocker, useNavigate, useParams } from "react-router";
 import {
   ApiError,
   addNote,
@@ -32,6 +32,7 @@ import {
   type ResultNote,
   type ResultSubmission,
   type Mix,
+  type MissingMember,
   type MixResults,
   type RevealPick,
   type MixState,
@@ -283,6 +284,14 @@ export function MixDetailRoute() {
   }, [id]);
 
   useEffect(() => {
+    // load()'s own first statements (setLoading(true), setError(null)) are
+    // what the rule is flagging -- but loading/error already default to
+    // true/null (see their useState calls above), so on this mount call
+    // those are no-op resets to their current value; React bails out of the
+    // re-render for an unchanged primitive, so there's no extra render here.
+    // Kept as a real effect (not a lazy initializer, unlike AuthedLayout's
+    // popup) because this is a genuine async fetch, not a one-time sync read.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load]);
 
@@ -724,6 +733,7 @@ export function MixDetailRoute() {
             ) : mix.state === "open_submission" ? (
               <>
                 <SubmissionProgress submitted={mix.submission_count} total={mix.member_count} />
+                <MissingMembers members={mix.missing_submitters} verb="submit" />
                 <SubmissionManager
                   submissions={mySubmissions}
                   cap={club?.songs_per_submission ?? 1}
@@ -749,6 +759,7 @@ export function MixDetailRoute() {
                 votingEligible={votingEligible}
                 votingActed={votingActed}
                 vibingCount={vibingCount}
+                missingVoters={mix.missing_voters}
                 votesPerPlayer={mix.votes_per_player}
                 myVotes={myVotes}
                 // A submitter's stance is their song's mode; a non-submitter falls
@@ -1255,6 +1266,30 @@ function SubmissionProgress({ submitted, total }: { submitted: number; total: nu
       className="mb-6 font-mono uppercase tracking-mono-caps text-mini text-ink-muted"
     >
       {submitted} of {total} submitted
+    </p>
+  );
+}
+
+/**
+ * Who's still missing (MysteryMixClub-xfq5, ADR 0027): a quiet nudge line
+ * naming every member who hasn't submitted/voted yet, once the mix's
+ * `missing_submitters`/`missing_voters` has crossed the more-than-half reveal
+ * threshold server-side. Null (not yet revealed) or an empty list (everyone
+ * already acted despite crossing the threshold) both render nothing -- same
+ * quiet-mono, never-accent treatment as the progress readout it sits under,
+ * since this is information, not an action or achievement.
+ */
+function MissingMembers({
+  members,
+  verb,
+}: {
+  members: MissingMember[] | null;
+  verb: "submit" | "vote";
+}) {
+  if (!members || members.length === 0) return null;
+  return (
+    <p className="mb-6 -mt-4 text-sm leading-[1.72] text-ink-muted">
+      waiting on {members.map((m) => m.display_name).join(", ")} to {verb}
     </p>
   );
 }
@@ -1828,6 +1863,7 @@ function VotingSection({
   votingEligible,
   votingActed,
   vibingCount,
+  missingVoters,
   votesPerPlayer,
   myVotes,
   isVibingParticipant,
@@ -1846,6 +1882,7 @@ function VotingSection({
   votingEligible: number;
   votingActed: number;
   vibingCount: number;
+  missingVoters: MissingMember[] | null;
   votesPerPlayer: number;
   myVotes: string[];
   isVibingParticipant: boolean;
@@ -1915,6 +1952,7 @@ function VotingSection({
     return (
       <>
         <VotingProgress acted={votingActed} eligible={votingEligible} vibing={vibingCount} />
+        <MissingMembers members={missingVoters} verb="vote" />
         <p className="text-sm leading-[1.72] text-ink-muted">
           you&apos;re in casual mode for this one, so you sit voting out. settle in and enjoy the
           mix.
@@ -1978,6 +2016,7 @@ function VotingSection({
   return (
     <>
       <VotingProgress acted={votingActed} eligible={votingEligible} vibing={vibingCount} />
+      <MissingMembers members={missingVoters} verb="vote" />
       <PlaylistsSection>
         <YouTubePlaylistRow
           youtubePlaylistUrl={youtubePlaylistUrl}

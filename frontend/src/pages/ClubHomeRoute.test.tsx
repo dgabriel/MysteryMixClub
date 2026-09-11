@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router";
 import { ClubHomeRoute } from "./ClubHomeRoute";
 import { AuthedLayout } from "../components/AuthedLayout";
 import {
@@ -75,6 +75,12 @@ function clubWith(overrides: Partial<Club> = {}): Club {
     default_vibe_mode: false,
     submission_window_hours: 72,
     voting_window_hours: 72,
+    deadline_mode: "duration",
+    timezone: "UTC",
+    submission_weekday: null,
+    submission_time: null,
+    voting_weekday: null,
+    voting_time: null,
     completed_at: null,
     viewer_is_admin: null,
     ...overrides,
@@ -155,6 +161,8 @@ function closedMix(overrides: Partial<Mix> = {}): Mix {
     viewer_voted: false,
     voted_count: 0,
     voting_eligible_count: 0,
+    missing_submitters: null,
+    missing_voters: null,
     ...overrides,
   };
 }

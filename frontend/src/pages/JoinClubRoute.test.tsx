@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router";
 import { JoinClubRoute } from "./JoinClubRoute";
 import { ApiError, acceptInvite, getInvitePreview } from "../services/api";
 import type { InvitePreview, Club } from "../services/api";
@@ -63,6 +63,12 @@ function clubWith(id: string): Club {
     default_vibe_mode: false,
     submission_window_hours: 72,
     voting_window_hours: 72,
+    deadline_mode: "duration",
+    timezone: "UTC",
+    submission_weekday: null,
+    submission_time: null,
+    voting_weekday: null,
+    voting_time: null,
     completed_at: null,
     viewer_is_admin: null,
   };

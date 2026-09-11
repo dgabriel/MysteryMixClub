@@ -108,6 +108,8 @@ function mix(overrides: Partial<Mix> = {}): Mix {
     viewer_voted: false,
     voted_count: 0,
     voting_eligible_count: 0,
+    missing_submitters: null,
+    missing_voters: null,
     ...overrides,
   };
 }

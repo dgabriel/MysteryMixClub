@@ -848,6 +848,169 @@ async def test_list_mixes_includes_voted_counts(client, db_session):
 
 
 # --------------------------------------------------------------------------- #
+# Missing members (MysteryMixClub-xfq5, ADR 0027)
+# --------------------------------------------------------------------------- #
+
+
+async def test_missing_submitters_hidden_below_half(client, db_session):
+    organizer = await _seed_user(db_session, "org@example.com")
+    m2 = await _seed_user(db_session, "m2@example.com")
+    m3 = await _seed_user(db_session, "m3@example.com")
+    m4 = await _seed_user(db_session, "m4@example.com")
+    club = await _seed_club(db_session, organizer)
+    for m in (m2, m3, m4):
+        await _add_member(db_session, club.id, m)
+
+    rid = (await _create_mix(client, club.id, organizer.id)).json()["id"]
+    # 1 of 4 submitted (25%) -- well below the reveal threshold.
+    await _add_submission(db_session, uuid.UUID(rid), organizer)
+
+    detail = await client.get(f"/api/v1/mixes/{rid}", headers=_auth(m2.id))
+    assert detail.json()["missing_submitters"] is None
+
+
+async def test_missing_submitters_hidden_at_exactly_half(client, db_session):
+    # "more than half", not "at least half" -- exactly 50% must stay hidden.
+    organizer = await _seed_user(db_session, "org@example.com")
+    m2 = await _seed_user(db_session, "m2@example.com")
+    club = await _seed_club(db_session, organizer)
+    await _add_member(db_session, club.id, m2)
+
+    rid = (await _create_mix(client, club.id, organizer.id)).json()["id"]
+    await _add_submission(db_session, uuid.UUID(rid), organizer)  # 1 of 2 = 50%
+
+    detail = await client.get(f"/api/v1/mixes/{rid}", headers=_auth(m2.id))
+    assert detail.json()["missing_submitters"] is None
+
+
+async def test_missing_submitters_revealed_past_half(client, db_session):
+    organizer = await _seed_user(db_session, "org@example.com")
+    m2 = await _seed_user(db_session, "m2@example.com")
+    m3 = await _seed_user(db_session, "m3@example.com", name="Charlie")
+    club = await _seed_club(db_session, organizer)
+    await _add_member(db_session, club.id, m2)
+    await _add_member(db_session, club.id, m3)
+
+    rid = (await _create_mix(client, club.id, organizer.id)).json()["id"]
+    mix_id = uuid.UUID(rid)
+    await _add_submission(db_session, mix_id, organizer)
+    await _add_submission(db_session, mix_id, m2)  # 2 of 3 = 67%, past the threshold
+
+    detail = await client.get(f"/api/v1/mixes/{rid}", headers=_auth(m2.id))
+    missing = detail.json()["missing_submitters"]
+    assert missing is not None
+    assert [m["display_name"] for m in missing] == ["Charlie"]
+
+
+async def test_missing_submitters_null_once_submissions_close(client, db_session):
+    organizer = await _seed_user(db_session, "org@example.com")
+    m2 = await _seed_user(db_session, "m2@example.com")
+    m3 = await _seed_user(db_session, "m3@example.com")
+    club = await _seed_club(db_session, organizer)
+    await _add_member(db_session, club.id, m2)
+    await _add_member(db_session, club.id, m3)
+
+    rid = (await _create_mix(client, club.id, organizer.id)).json()["id"]
+    mix_id = uuid.UUID(rid)
+    await _add_submission(db_session, mix_id, organizer)
+    await _add_submission(db_session, mix_id, m2)  # past threshold while open
+
+    await _advance(client, rid, organizer.id, "open_voting")
+
+    detail = await client.get(f"/api/v1/mixes/{rid}", headers=_auth(m2.id))
+    # Submission phase is over -- no longer the relevant nudge.
+    assert detail.json()["missing_submitters"] is None
+
+
+async def test_missing_submitters_empty_list_when_everyone_has_submitted(client, db_session):
+    # Past the threshold AND nobody left missing -- an empty list, not null.
+    # Null means "not revealed yet"; [] means "revealed, and everyone's in".
+    organizer = await _seed_user(db_session, "org@example.com")
+    m2 = await _seed_user(db_session, "m2@example.com")
+    club = await _seed_club(db_session, organizer)
+    await _add_member(db_session, club.id, m2)
+
+    rid = (await _create_mix(client, club.id, organizer.id)).json()["id"]
+    mix_id = uuid.UUID(rid)
+    await _add_submission(db_session, mix_id, organizer)
+    await _add_submission(db_session, mix_id, m2)  # 2 of 2 = 100%, past threshold
+
+    detail = await client.get(f"/api/v1/mixes/{rid}", headers=_auth(m2.id))
+    body = detail.json()
+    assert body["missing_submitters"] == []
+
+
+async def test_missing_submitters_excludes_removed_members(client, db_session):
+    organizer = await _seed_user(db_session, "org@example.com")
+    m2 = await _seed_user(db_session, "m2@example.com")
+    gone = await _seed_user(db_session, "gone@example.com")
+    club = await _seed_club(db_session, organizer)
+    await _add_member(db_session, club.id, m2)
+    await _add_member(db_session, club.id, gone)
+
+    rid = (await _create_mix(client, club.id, organizer.id)).json()["id"]
+    mix_id = uuid.UUID(rid)
+    membership = await db_session.scalar(
+        select(ClubMember).where(ClubMember.club_id == club.id, ClubMember.user_id == gone.id)
+    )
+    membership.removed_at = datetime.now(timezone.utc)
+    await db_session.commit()
+
+    await _add_submission(db_session, mix_id, organizer)  # 1 of 2 active members = 50%...
+    # ...but a removed member shrinks member_count too, so re-check at a real
+    # majority: organizer submitted, m2 has not -- 1 of 2 active is still 50%,
+    # not revealed. Add nothing else; assert the removed member never appears
+    # even once revealed by a second club with the same shape but 2 of 3.
+
+    detail = await client.get(f"/api/v1/mixes/{rid}", headers=_auth(m2.id))
+    body = detail.json()
+    assert body["member_count"] == 2  # removed member excluded from the denominator
+    assert body["missing_submitters"] is None  # exactly 50%, still hidden
+
+
+async def test_missing_voters_revealed_past_half_and_excludes_vibing(client, db_session):
+    organizer = await _seed_user(db_session, "org@example.com")
+    m2 = await _seed_user(db_session, "m2@example.com")
+    viber = await _seed_user(db_session, "viber@example.com", name="Vibes")
+    club = await _seed_club(db_session, organizer)
+    await _add_member(db_session, club.id, m2)
+    await _add_member(db_session, club.id, viber)
+
+    rid = (await _create_mix(client, club.id, organizer.id)).json()["id"]
+    mix_id = uuid.UUID(rid)
+    org_sub = await _add_submission_ret(db_session, mix_id, organizer, mode="playing")
+    m2_sub = await _add_submission_ret(db_session, mix_id, m2, mode="playing")
+    # Vibing submitter is never expected to vote -- must never show up as missing.
+    await _add_submission_ret(db_session, mix_id, viber, mode="vibing")
+
+    await _advance(client, rid, organizer.id, "open_voting")
+
+    # Below threshold: 0 of 2 eligible voted.
+    detail = await client.get(f"/api/v1/mixes/{rid}", headers=_auth(m2.id))
+    assert detail.json()["missing_voters"] is None
+
+    # Organizer votes for member's song -- 1 of 2 eligible = 50%, still hidden.
+    await _add_vote(db_session, mix_id, organizer, m2_sub)
+    detail2 = await client.get(f"/api/v1/mixes/{rid}", headers=_auth(m2.id))
+    assert detail2.json()["missing_voters"] is None
+
+    # Member votes too -- but that's 2 of 2, not "more than half" of a 2-person
+    # set is impossible past 100%, so use a third playing voter instead to
+    # actually cross the threshold cleanly.
+    other = await _seed_user(db_session, "other@example.com", name="Otto")
+    await _add_member(db_session, club.id, other)
+    await _add_submission_ret(db_session, mix_id, other, mode="playing")
+    await _add_vote(db_session, mix_id, m2, org_sub)  # 2 of 3 eligible = 67%
+
+    detail3 = await client.get(f"/api/v1/mixes/{rid}", headers=_auth(m2.id))
+    missing = detail3.json()["missing_voters"]
+    assert missing is not None
+    names = [m["display_name"] for m in missing]
+    assert names == ["Otto"]
+    assert "Vibes" not in names
+
+
+# --------------------------------------------------------------------------- #
 # Extend voting deadline (MYS-180)
 # --------------------------------------------------------------------------- #
 

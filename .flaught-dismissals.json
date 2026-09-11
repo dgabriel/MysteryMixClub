@@ -748,6 +748,28 @@
         "file": ".github/dependabot.yml"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:a6673be896a4b71bdb486d79d4972929",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-11T19:27:47.968Z",
+      "reason": "False positive: the flagged text (test file line 120-121) is a plain explanatory comment sitting above real, active assertions -- it documents why ClubName splits text nodes across elements, it doesn't replace or stub out any test body. The row itself is asserted immediately above (expect(row).not.toBeNull()) and real assertions (getByText for each word, artist, date, etc.) follow directly after. Nothing was weakened or commented out.",
+      "context": {
+        "title": "A test body was replaced with comments",
+        "file": "frontend/src/pages/SubmissionHistoryRoute.test.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:20f34d84ffc815034d871d10a240f950",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-11T19:27:48.038Z",
+      "reason": "Test-only code, no ReDoS surface: the interpolated 'title' in rowToggle()'s RegExp is always a hardcoded literal from this same file's entryWith() test fixtures (e.g. 'Song One', 'Open Song') -- never external, user-controlled, or attacker-reachable input. The pattern match is technically correct (non-literal RegExp construction) but the risk category (ReDoS via untrusted input) doesn't apply here.",
+      "context": {
+        "title": "javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp",
+        "file": "frontend/src/pages/SubmissionHistoryRoute.test.tsx"
+      },
+      "expires_at": null
     }
   ]
 }

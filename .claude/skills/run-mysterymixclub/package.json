@@ -4,6 +4,6 @@
   "type": "module",
   "description": "Playwright driver for the run-mysterymixclub agent skill. Not part of the app's build.",
   "dependencies": {
-    "playwright": "1.61.1"
+    "playwright": "1.63.0"
   }
 }

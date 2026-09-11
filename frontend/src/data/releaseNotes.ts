@@ -14,6 +14,12 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: "2026-09-10",
+    items: [
+      "once more than half the club has submitted or voted in a mystery mix, the mix screen now shows who's still missing so it's easy to give them a nudge.",
+    ],
+  },
+  {
     date: "2026-09-09",
     items: [
       "clubs can now anchor submission and voting deadlines to a fixed day and time every week (say, songs due tuesday at noon, votes due saturday at noon) instead of only a rolling window that starts whenever the previous phase closes. set it from the club settings.",

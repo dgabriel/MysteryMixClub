@@ -1,7 +1,7 @@
 # ADR 0027: Reveal who hasn't submitted/voted, but only past 50%
 
 **Status:** Accepted
-**Date:** 2026-09-11
+**Date:** 2026-09-10
 
 ## Context
 
@@ -39,7 +39,7 @@ defines exactly the two "who's expected to act" sets this feature needs:
   closes, the nudge is no longer actionable — showing "you never voted" after
   the fact isn't this feature's job.
 - **Visible to every club member, not just organizers** (Dawn's call,
-  2026-09-11) — a peer nudge, not an admin tool. No new authorization check
+  2026-09-10) — a peer nudge, not an admin tool. No new authorization check
   needed: `get_mix` already gates on club membership.
 - **Voting's eligible set excludes vibing submitters**, mirroring
   `voting_quorum_met` exactly — a vibing member is never "missing" a vote

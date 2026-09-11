@@ -286,6 +286,7 @@ export function ProfileRoute() {
       loading={loading}
       error={error}
       onOpenClub={(id) => navigate(`/clubs/${id}`)}
+      onOpenSubmissionHistory={() => navigate("/profile/history")}
       onSaveName={handleSaveName}
       saving={saving}
       saveError={saveError}

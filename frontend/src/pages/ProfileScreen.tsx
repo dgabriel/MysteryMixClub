@@ -19,6 +19,7 @@ type ProfileScreenProps = {
   loading: boolean;
   error?: string | null;
   onOpenClub: (id: string) => void;
+  onOpenSubmissionHistory: () => void;
   onSaveName: (name: string) => void;
   saving: boolean;
   saveError?: string | null;
@@ -94,6 +95,7 @@ export function ProfileScreen({
   loading,
   error,
   onOpenClub,
+  onOpenSubmissionHistory,
   onSaveName,
   saving,
   saveError,
@@ -168,6 +170,20 @@ export function ProfileScreen({
               saveError={saveError}
               saved={saved}
             />
+
+            <section className="mt-12 border-t border-ink-hairline pt-10">
+              <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-accent">
+                your submissions
+              </h2>
+              <p className="mt-2 text-sm leading-[1.72] text-ink-muted">
+                every song you&apos;ve ever submitted, across every club.
+              </p>
+              <div className="mt-4">
+                <Button onPaper variant="ghost" type="button" onClick={onOpenSubmissionHistory}>
+                  view history
+                </Button>
+              </div>
+            </section>
 
             <ArchivedClubs clubs={archivedClubs} onOpenClub={onOpenClub} />
 

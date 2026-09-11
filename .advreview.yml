@@ -18,14 +18,23 @@ llm:
   # base_url: null          # override for OpenAI-compatible endpoints, or an
                              # Anthropic Messages-API-compatible proxy/gateway
   temperature: 0.2
-  # 4096 -> 8192, reasoning_effort: low added (ADR 0026, matches 0.11.0's new
-  # flaught init default). Empirically justified: PR #291 hit a live Groq 400
-  # ("Refute (skeptic) pass failed... Bad request") on this exact
+  # 4096 -> 8192 (ADR 0026). Empirically justified: PR #291 hit a live Groq
+  # 400 ("Refute (skeptic) pass failed... Bad request") on this exact
   # provider/model -- 0.11.0's changelog attributes that failure mode to a
   # reasoning model spending its token budget on chain-of-thought and never
   # closing the JSON object at the old default.
+  #
+  # reasoning_effort: low was ALSO added by ADR 0026, matching 0.11.0's new
+  # flaught init default -- and was wrong. groq/compound-mini rejects it
+  # outright ("`reasoning_effort` is not supported with this model", 400),
+  # which broke EVERY LLM review since PR #292 merged -- every run silently
+  # fell back to deterministic-only findings with no gate failure to flag it
+  # (noise_budget/severity_gate don't distinguish "LLM found nothing" from
+  # "LLM never ran"). Caught 2026-09-10 on PR #293's own review comment,
+  # reproduced live with `flaught review` locally. That default is meant for
+  # gpt-oss-family reasoning models specifically, not compound-mini -- ADR
+  # 0026 applied it without verifying against our actual model. Removed.
   max_tokens: 8192
-  reasoning_effort: low
   timeout_seconds: 120     # timeout for LLM API calls
   # Empirically justified, not speculative (ADR 0023): PR #285 (this bump)
   # spent 3 CI rounds dismissing the same handful of concerns reworded by a

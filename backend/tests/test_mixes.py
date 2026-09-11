@@ -922,6 +922,24 @@ async def test_missing_submitters_null_once_submissions_close(client, db_session
     assert detail.json()["missing_submitters"] is None
 
 
+async def test_missing_submitters_empty_list_when_everyone_has_submitted(client, db_session):
+    # Past the threshold AND nobody left missing -- an empty list, not null.
+    # Null means "not revealed yet"; [] means "revealed, and everyone's in".
+    organizer = await _seed_user(db_session, "org@example.com")
+    m2 = await _seed_user(db_session, "m2@example.com")
+    club = await _seed_club(db_session, organizer)
+    await _add_member(db_session, club.id, m2)
+
+    rid = (await _create_mix(client, club.id, organizer.id)).json()["id"]
+    mix_id = uuid.UUID(rid)
+    await _add_submission(db_session, mix_id, organizer)
+    await _add_submission(db_session, mix_id, m2)  # 2 of 2 = 100%, past threshold
+
+    detail = await client.get(f"/api/v1/mixes/{rid}", headers=_auth(m2.id))
+    body = detail.json()
+    assert body["missing_submitters"] == []
+
+
 async def test_missing_submitters_excludes_removed_members(client, db_session):
     organizer = await _seed_user(db_session, "org@example.com")
     m2 = await _seed_user(db_session, "m2@example.com")

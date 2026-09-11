@@ -638,6 +638,50 @@
         "file": ".advreview.yml"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:dc1af341d5daf3c9ca58d66c03f2bf65",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-11T00:53:28.313Z",
+      "reason": "Real finding, out of scope for this PR. Tracked separately in MysteryMixClub-feuy since Flaught's linter tool first surfaced these 5 pre-existing eslint warnings (ADR 0025).",
+      "context": {
+        "title": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+        "file": "/Users/dgabriel/claudeProjects/MysteryMixClub/frontend/src/components/AuthedLayout.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:941b2d71b8b4452d93cfb5257e851dbf",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-11T00:53:28.448Z",
+      "reason": "Real finding, out of scope for this PR. Tracked separately in MysteryMixClub-feuy since Flaught's linter tool first surfaced these 5 pre-existing eslint warnings (ADR 0025).",
+      "context": {
+        "title": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+        "file": "/Users/dgabriel/claudeProjects/MysteryMixClub/frontend/src/hooks/useAuth.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:7fa3ef56c74d8ba48f7781cb8b6302ef",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-11T00:53:28.584Z",
+      "reason": "Real finding, out of scope for this PR. Tracked separately in MysteryMixClub-feuy since Flaught's linter tool first surfaced these 5 pre-existing eslint warnings (ADR 0025).",
+      "context": {
+        "title": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\n/Users/dgabriel/claudeProjects/MysteryMixClub/frontend/src/pages/MixDetailRoute.tsx:287:10\n  285 |\n  286 |   useEffect(() => {\n> 287 |     void load();\n      |          ^^^^ Avoid calling setState() directly within an effect\n  288 |   }, [load]);\n  289 |\n  290 |   // Poll every 60s so state transitions (submission → voting → closed) and",
+        "file": "/Users/dgabriel/claudeProjects/MysteryMixClub/frontend/src/pages/MixDetailRoute.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:a3c2359abc9f071a06db139d42793d17",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-11T00:53:28.718Z",
+      "reason": "Real finding, out of scope for this PR. Tracked separately in MysteryMixClub-feuy since Flaught's linter tool first surfaced these 5 pre-existing eslint warnings (ADR 0025).",
+      "context": {
+        "title": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\n/Users/dgabriel/claudeProjects/MysteryMixClub/frontend/src/pages/VerifyRoute.tsx:51:7\n  49 |     const invite = searchParams.get(\"invite\");\n  50 |     if (!token) {\n> 51 |       setState(\"error\");\n     |       ^^^^^^^^ Avoid calling setState() directly within an effect\n  52 |       return;\n  53 |     }\n  54 |",
+        "file": "/Users/dgabriel/claudeProjects/MysteryMixClub/frontend/src/pages/VerifyRoute.tsx"
+      },
+      "expires_at": null
     }
   ]
 }

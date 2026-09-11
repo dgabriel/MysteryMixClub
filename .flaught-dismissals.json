@@ -682,6 +682,72 @@
         "file": "/Users/dgabriel/claudeProjects/MysteryMixClub/frontend/src/pages/VerifyRoute.tsx"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:1b5c0d40baf3206555e0dc567326fcd1",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-11T18:49:11.850Z",
+      "reason": "Accepted, not a new risk: every other change in this repo already goes through feature/* -> develop -> main (docs/ci-cd.md, docs/git-hygiene.md) -- main and develop are kept nearly in sync via routine full promotion PRs (not a stale/lagging branch), and only Dawn merges develop->main promotions regardless of CI status. Pointing Dependabot at develop is consistency with that existing, deliberate policy, not an exception to it. If a genuine CVE needs faster turnaround than the next routine promotion, that's a process call for a human at merge time, not a reason to bypass develop for automated dependency PRs specifically.",
+      "context": {
+        "title": "Dependabot PRs target develop branch instead of default main",
+        "file": ".github/dependabot.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:3f6110ef14f4601d4948993314961521",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-11T18:49:16.356Z",
+      "reason": "False premise: there is no ADR for this change (MysteryMixClub-78dp is a bd issue id, not an ADR -- deliberately not ADR'd, since this restores already-documented branch-model policy to a config file rather than introducing a new architectural decision). The inline comments explain WHY (a specific bug being fixed), which is exactly what this repo's own commenting convention calls for (CLAUDE.md: comment only when the WHY is non-obvious). Nothing to duplicate or trim.",
+      "context": {
+        "title": "Overly verbose inline comments duplicate ADR documentation",
+        "file": ".github/dependabot.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:4de6eb17793fd75c01e85eb88895c112",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-11T18:54:57.213Z",
+      "reason": "Accepted, not a new risk: every other change in this repo already goes through feature/* -> develop -> main (docs/ci-cd.md, docs/git-hygiene.md) -- main and develop are kept nearly in sync via routine full promotion PRs, and only Dawn merges develop->main regardless of CI status. Pointing Dependabot at develop is consistency with that existing, deliberate policy, not a new exception to it.",
+      "context": {
+        "title": "Dependabot PRs targeting develop may delay critical security fixes to production",
+        "file": ".github/dependabot.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:0699cdfec8c0c68a41c1cfff45e6bf5c",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-11T18:54:57.289Z",
+      "reason": "Considered and accepted (Dawn, 2026-09-11): the cooldown: block (this file's own top comment) is the real defense against a yanked/compromised release and is per-dependency, unaffected by grouping -- a malicious release doesn't even reach a grouped PR until it survives the cooldown window. dependency_sanity (.advreview.yml) also scans per-dependency inside a grouped PR. Majors -- the highest-risk single jumps -- stay ungrouped/individually reviewed by design. This is a solo-reviewed repo, so the PR-fatigue/rubber-stamping case for splitting further doesn't apply.",
+      "context": {
+        "title": "Bulk grouping of minor/patch updates can mask malicious or vulnerable changes",
+        "file": ".github/dependabot.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:5796fcfc081a828ae2e4a9946fb76038",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-11T18:54:57.362Z",
+      "reason": "False premise: there is no ADR for this change (MysteryMixClub-78dp is a bd issue id, not an ADR -- deliberately not ADR'd, since this restores already-documented branch-model policy to a config file rather than introducing a new architectural decision). The comments explain WHY (a specific bug being fixed), matching this repo's own commenting convention (CLAUDE.md: comment only when the WHY is non-obvious).",
+      "context": {
+        "title": "Extensive inline commentary increases future maintenance overhead",
+        "file": ".github/dependabot.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:37061b17ec58d7e5ed28eeaafe5406cd",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-11T18:54:57.436Z",
+      "reason": "Real gap, deferred: no CI check validates dependabot.yml syntax today (predates this PR). Tracked in MysteryMixClub-uvci (low priority: this file changes rarely, and a bad edit is self-correcting -- Dependabot just silently stops opening PRs, not a security or data-loss issue).",
+      "context": {
+        "title": "No automated tests verify dependabot configuration correctness",
+        "file": ".github/dependabot.yml"
+      },
+      "expires_at": null
     }
   ]
 }

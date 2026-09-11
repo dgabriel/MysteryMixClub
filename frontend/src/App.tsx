@@ -4,7 +4,7 @@ import { Navigate, createBrowserRouter, useParams } from "react-router";
 // entry point in a real browser context (react-router/dom) -- the top-level
 // package export is for non-DOM contexts like tests instead.
 import { RouterProvider } from "react-router/dom";
-import { AuthProvider } from "./hooks/useAuth";
+import { AuthProvider } from "./hooks/AuthProvider";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { LoginRoute } from "./pages/LoginRoute";
 import { AuthedLayout } from "./components/AuthedLayout";

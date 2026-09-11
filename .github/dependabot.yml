@@ -9,6 +9,21 @@ version: 2
 # semver-major-days is only valid for semver ecosystems (npm/pip), not
 # github-actions -- confirmed via Dependabot's own config-validation error
 # on a first attempt that included it everywhere.
+#
+# target-branch: develop on every block (MysteryMixClub-78dp) -- without it,
+# Dependabot falls back to the repo's default branch (main), which skipped
+# the feature/* -> develop -> main flow every other change in this repo
+# follows and opened PRs directly against main. #296-307 are the 12 PRs that
+# shipped under the old (missing) config; this fix is forward-only, not a
+# retroactive re-target of those.
+#
+# groups: on every block (MysteryMixClub-78dp) -- Dependabot's default is one
+# PR per dependency, which is what produced 12 separate PRs for a single
+# weekly run. Only minor/patch bumps are grouped into one PR per block; a
+# major bump stays its own ungrouped PR, on purpose -- it's the one case
+# genuinely worth reviewing on its own (hence the longer
+# semver-major-days cooldown above), and folding a major into a bundle would
+# let an unrelated minor bump block on it, or worse, hide it.
 updates:
   - package-ecosystem: "npm"
     directory: "/"
@@ -17,6 +32,12 @@ updates:
     cooldown:
       default-days: 3
       semver-major-days: 7
+    target-branch: "develop"
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "npm"
     directory: "/frontend"
@@ -25,6 +46,12 @@ updates:
     cooldown:
       default-days: 3
       semver-major-days: 7
+    target-branch: "develop"
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "npm"
     directory: "/.claude/skills/run-mysterymixclub"
@@ -33,6 +60,12 @@ updates:
     cooldown:
       default-days: 3
       semver-major-days: 7
+    target-branch: "develop"
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "pip"
     directory: "/backend"
@@ -41,6 +74,12 @@ updates:
     cooldown:
       default-days: 3
       semver-major-days: 7
+    target-branch: "develop"
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -50,3 +89,9 @@ updates:
     # reliably semver-tagged, so Dependabot rejects that key here.
     cooldown:
       default-days: 3
+    target-branch: "develop"
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"

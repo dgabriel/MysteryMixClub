@@ -142,7 +142,14 @@ for await (const line of rl) {
   if (!fn) { console.log('unknown:', cmd, '- try: help'); rl.prompt(); continue; }
   try { await fn(rest.join(' ')); } catch (e) { console.log('ERROR:', e.message); }
   if (cmd === 'quit') break;
-  rl.prompt();
+  // Piped/heredoc stdin can hit EOF (closing `rl`) while a slow command like
+  // `launch` (spinning up Chromium) is still being awaited above -- by the
+  // time we get here, `rl.prompt()` throws ERR_USE_AFTER_CLOSE instead of the
+  // remaining buffered lines being processed normally. Guarding it is enough:
+  // `for await…of rl` still delivers every already-buffered line regardless
+  // of `close`, so the only thing that needed protecting was this call.
+  // Found and fixed while manually QA-ing MysteryMixClub-ps1w.1 on Node 26.
+  if (!rl.closed) rl.prompt();
 }
 await COMMANDS.quit();
 process.exit(0);

@@ -54,6 +54,9 @@ const AdminMetricsRoute = lazy(() =>
 const ProfileRoute = lazy(() =>
   import("./pages/ProfileRoute").then((m) => ({ default: m.ProfileRoute })),
 );
+const SubmissionHistoryRoute = lazy(() =>
+  import("./pages/SubmissionHistoryRoute").then((m) => ({ default: m.SubmissionHistoryRoute })),
+);
 
 /**
  * Route map:
@@ -80,6 +83,8 @@ const ProfileRoute = lazy(() =>
  *     /mixes/:id   → mystery-mix detail (submit / playlist / reveal); shows the
  *                    nav's back link
  *     /profile     → edit display name + archived (completed) clubs
+ *     /profile/history → every song the caller has ever submitted, across
+ *                    every club (MysteryMixClub-ps1w.1)
  *     /admin       → platform-admin only (self-guards non-admins → /home)
  *     /admin/metrics → platform-admin only; read-only platform snapshot,
  *                    self-guarded the same way as /admin
@@ -142,6 +147,7 @@ const router = createBrowserRouter([
       { path: "/leagues/:id", element: <LegacyPathRedirect prefix="clubs" /> },
       { path: "/rounds/:id", element: <LegacyPathRedirect prefix="mixes" /> },
       { path: "/profile", element: withSuspense(<ProfileRoute />) },
+      { path: "/profile/history", element: withSuspense(<SubmissionHistoryRoute />) },
       { path: "/admin", element: withSuspense(<AdminRoute />) },
       { path: "/admin/metrics", element: withSuspense(<AdminMetricsRoute />) },
       // /clubs/new used to sit outside this layout as a "focused" form with no

@@ -1414,6 +1414,52 @@ export async function getResults(mixId: string): Promise<MixResults> {
 }
 
 // --------------------------------------------------------------------------- //
+// My submission history (MysteryMixClub-ps1w.1): every song the caller has
+// ever submitted, across every club.
+// --------------------------------------------------------------------------- //
+
+/** One song the caller has ever submitted, with the club/mix it went to.
+ *  `vote_count`/`voters` are null/empty until that mix closes (MYS-173
+ *  anonymity, same rule the reveal follows) -- null rather than 0 so the
+ *  client can't mistake "hidden" for "actually zero votes so far". `notes`
+ *  follows the same open-voting visibility GET /submissions/:id/notes already
+ *  enforces: only the caller's own notes appear before the mix closes, then
+ *  the full set. */
+export type MySubmission = {
+  submission_id: string;
+  club_id: string;
+  club_name: string;
+  mix_id: string;
+  mix_number: number;
+  theme: string | null;
+  state: MixState;
+  isrc: string | null;
+  source: "youtube" | "bandcamp" | null;
+  source_url: string | null;
+  title: string;
+  artist: string;
+  album: string | null;
+  album_art_url: string | null;
+  submitter_note: string | null;
+  notes: ResultNote[];
+  vote_count: number | null;
+  voters: ResultVoter[];
+  created_at: string;
+};
+
+/** Get the caller's full submission history, newest first. Sorting/searching
+ *  happen client-side over this one list -- there's no pagination convention
+ *  elsewhere in the API, and this app's invite-only, friend-group scale
+ *  doesn't call for introducing one here. */
+export async function getMySubmissionHistory(): Promise<MySubmission[]> {
+  const res = await authenticatedRequest("/api/v1/users/me/submissions");
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as MySubmission[];
+}
+
+// --------------------------------------------------------------------------- //
 // Votes (MYS-20).
 // --------------------------------------------------------------------------- //
 

@@ -1,5 +1,12 @@
 # Agent Instructions
 
+## Git workflow guidance
+
+Before branching, committing, pushing, merging, rebasing, or recovering git
+history, use `.agents/skills/mmc-git-hygiene/SKILL.md` and read
+`docs/git-hygiene.md`. The document is the canonical git policy; the skill
+provides workflow routing without duplicating it.
+
 This project uses **bd** (beads) for issue tracking. Run `bd prime` for full workflow context.
 
 > **Architecture in one line:** Issues live in a local Dolt database

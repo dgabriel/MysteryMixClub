@@ -14,6 +14,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: "2026-09-12",
+    items: [
+      "your profile now has a full submission history: every song you've ever submitted, across every club, in a sortable, searchable grid (song, artist, club, mix, date, votes, notes). click a row to see who voted and what people noted, once revealed.",
+      "each club now has its own songs page listing every track ever submitted there, once its mystery mix closes, in that same sortable grid.",
+    ],
+  },
+  {
     date: "2026-09-10",
     items: [
       "once more than half the club has submitted or voted in a mystery mix, the mix screen now shows who's still missing so it's easy to give them a nudge.",

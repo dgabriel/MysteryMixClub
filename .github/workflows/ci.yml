@@ -171,9 +171,22 @@ jobs:
           python-version: "3.11"
 
       # Pinned to an exact version (ADR 0017) so a newly published version
-      # can't start running in CI unreviewed. 0.10.0 -> 0.12.0, ADR 0026.
+      # can't start running in CI unreviewed. 0.10.0 -> 0.12.0, ADR 0026;
+      # 0.12.0 -> 0.13.0 (MysteryMixClub-2fci):
+      #   0.12.1 -- two semgrep correctness fixes (stop rendering the
+      #     CE-gated "requires login" sentinel as a finding's code snippet;
+      #     a non-JSON semgrep stdout now fails the tool open instead of
+      #     silently reporting a clean scan).
+      #   0.13.0 -- semgrep now scans only the PR's changed files instead of
+      #     the whole repo (flaught/core#79). This is the actual fix for the
+      #     noise we hit repeatedly today (2026-09-12): every PR resurfaced
+      #     the same 20+ historical dismissed findings from files it never
+      #     touched, because semgrep re-scanned the entire repo on every run
+      #     regardless of diff size. Also adds report.hide_dismissed (default
+      #     off, not enabled here) to omit dismissed findings from the
+      #     rendered comment. No findings-schema change.
       - name: Install Flaught
-        run: npm install -g @flaught/core@0.12.0
+        run: npm install -g @flaught/core@0.13.0
 
       - name: Install Semgrep
         run: pip install semgrep

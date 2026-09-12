@@ -228,6 +228,7 @@ function renderClub(id = "club-1") {
           <Route path="/clubs/:id" element={<ClubHomeRoute />} />
         </Route>
         <Route path="/home" element={<div>HOME CONTENT</div>} />
+        <Route path="/clubs/:id/songs" element={<div>CLUB SONGS CONTENT</div>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -255,6 +256,15 @@ describe("ClubHomeRoute", () => {
     expect(screen.getByText("Bo")).toBeInTheDocument();
     expect(mockGetClub).toHaveBeenCalledWith("club-1");
     expect(mockGetClubMembers).toHaveBeenCalledWith("club-1");
+  });
+
+  it("navigates to the club's song list", async () => {
+    renderClub("club-1");
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+    await userEvent.click(screen.getByRole("button", { name: /view all songs/i }));
+
+    expect(await screen.findByText("CLUB SONGS CONTENT")).toBeInTheDocument();
   });
 
   it("mix order: active first, then upcoming by number, then closed by number", async () => {

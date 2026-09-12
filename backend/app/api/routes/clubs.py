@@ -24,6 +24,7 @@ from app.models.spotify_mix_playlist import SpotifyMixPlaylist
 from app.models.submission import Submission
 from app.models.user import User
 from app.models.vote import Vote
+from app.services.source_tracks import source_fields
 
 router = APIRouter(prefix="/clubs", tags=["clubs"])
 
@@ -542,6 +543,145 @@ async def get_club_leaderboard(
             )
         )
     return entries
+
+
+# --------------------------------------------------------------------------- #
+# Club song list (MysteryMixClub-ps1w.2): every song ever submitted to any of
+# a club's CLOSED mixes, with submitter, notes, and voters. Mirrors
+# app.api.routes.mixes' ResultNote/ResultVoter shapes rather than importing
+# them -- mixes.py already imports from this module, so importing back would
+# be a circular import.
+# --------------------------------------------------------------------------- #
+
+
+class ClubSongNote(WireModel):
+    body: str
+    author_display_name: str
+    created_at: datetime
+
+
+class ClubSongVoter(WireModel):
+    user_id: str
+    display_name: str
+    weight: int
+
+
+class ClubSongEntry(WireModel):
+    submission_id: str
+    user_id: str
+    submitter_display_name: str
+    round_id: str
+    round_number: int
+    theme: str | None
+    isrc: str | None
+    source: Literal["youtube", "bandcamp"] | None = None
+    source_url: str | None = None
+    title: str
+    artist: str
+    album: str | None
+    album_art_url: str | None
+    submitter_note: str | None
+    notes: list[ClubSongNote]
+    vote_count: int
+    voters: list[ClubSongVoter]
+    created_at: datetime
+
+
+@router.get("/{league_id}/submissions", response_model=list[ClubSongEntry])
+async def list_club_songs(
+    league_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[ClubSongEntry]:
+    """Every song ever submitted to the club, across its CLOSED mixes only.
+
+    Matches the existing per-mix rule (GET /mixes/:id/submissions is only
+    available once a mix closes) and MYS-173 vote anonymity -- the club's
+    current active mix (open_submission/open_voting) simply doesn't appear
+    here yet. A read surface only; doesn't change when anything becomes
+    visible elsewhere.
+    """
+    await _load_club_as_member(league_id, current_user, db)
+
+    closed_mix_ids = select(Mix.id).where(Mix.club_id == league_id, Mix.state == "closed")
+
+    rows = (
+        await db.execute(
+            select(Submission, Mix, User.display_name)
+            .join(Mix, Mix.id == Submission.mix_id)
+            .join(User, User.id == Submission.user_id)
+            .where(Submission.mix_id.in_(closed_mix_ids))
+            .order_by(Submission.created_at.desc())
+        )
+    ).all()
+    if not rows:
+        return []
+
+    submission_ids = [s.id for s, _mix, _name in rows]
+
+    vote_count_rows = (
+        await db.execute(
+            select(Vote.submission_id, func.sum(Vote.weight))
+            .where(Vote.submission_id.in_(submission_ids))
+            .group_by(Vote.submission_id)
+        )
+    ).all()
+    vote_counts: dict[uuid.UUID, int] = {sid: count for sid, count in vote_count_rows}
+
+    voter_rows = (
+        await db.execute(
+            select(Vote.submission_id, Vote.voter_id, User.display_name, Vote.weight)
+            .join(User, User.id == Vote.voter_id)
+            .where(Vote.submission_id.in_(submission_ids))
+        )
+    ).all()
+    voters_by_submission: dict[uuid.UUID, list[ClubSongVoter]] = {}
+    for submission_id, voter_id, display_name, weight in voter_rows:
+        voters_by_submission.setdefault(submission_id, []).append(
+            ClubSongVoter(user_id=str(voter_id), display_name=display_name, weight=weight)
+        )
+    for voters in voters_by_submission.values():
+        voters.sort(key=lambda v: v.display_name)
+
+    note_rows = (
+        await db.execute(
+            select(Note, User.display_name)
+            .join(User, User.id == Note.author_id)
+            .where(Note.submission_id.in_(submission_ids))
+            .order_by(Note.created_at.asc())
+        )
+    ).all()
+    notes_by_submission: dict[uuid.UUID, list[ClubSongNote]] = {}
+    for note, display_name in note_rows:
+        notes_by_submission.setdefault(note.submission_id, []).append(
+            ClubSongNote(
+                body=note.body, author_display_name=display_name, created_at=note.created_at
+            )
+        )
+
+    return [
+        ClubSongEntry(
+            submission_id=str(s.id),
+            user_id=str(s.user_id),
+            submitter_display_name=display_name,
+            round_id=str(mix_.id),
+            round_number=mix_.mix_number,
+            theme=mix_.theme,
+            isrc=s.isrc,
+            source=source_fields(s.source_key)[0],
+            source_url=source_fields(s.source_key)[1],
+            title=s.title,
+            artist=s.artist,
+            album=s.album,
+            album_art_url=s.album_art_url,
+            submitter_note=s.note,
+            notes=notes_by_submission.get(s.id, []),
+            vote_count=vote_counts.get(s.id, 0),
+            voters=voters_by_submission.get(s.id, []),
+            created_at=s.created_at,
+        )
+        for s, mix_, display_name in rows
+    ]
 
 
 class MembershipResponse(WireModel):

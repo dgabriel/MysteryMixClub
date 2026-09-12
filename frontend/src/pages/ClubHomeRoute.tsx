@@ -360,6 +360,7 @@ export function ClubHomeRoute() {
       onLeaveClub={handleLeaveClub}
       leavingClub={leavingClub}
       leaveClubError={leaveClubError}
+      onOpenClubSongs={() => navigate(`/clubs/${id}/songs`)}
     />
   );
 }

@@ -39,6 +39,9 @@ const CreateClubRoute = lazy(() =>
 const ClubHomeRoute = lazy(() =>
   import("./pages/ClubHomeRoute").then((m) => ({ default: m.ClubHomeRoute })),
 );
+const ClubSongsRoute = lazy(() =>
+  import("./pages/ClubSongsRoute").then((m) => ({ default: m.ClubSongsRoute })),
+);
 const MixDetailRoute = lazy(() =>
   import("./pages/MixDetailRoute").then((m) => ({ default: m.MixDetailRoute })),
 );
@@ -80,6 +83,8 @@ const SubmissionHistoryRoute = lazy(() =>
  *   Authed shell (ProtectedRoute + AuthedLayout, which renders the shared TopNav):
  *     /home        → My Clubs landing
  *     /clubs/:id   → club home (mystery mixes, members, invite, organizer edit)
+ *     /clubs/:id/songs → every song ever submitted to the club, across its
+ *                    closed mixes only (MysteryMixClub-ps1w.2)
  *     /mixes/:id   → mystery-mix detail (submit / playlist / reveal); shows the
  *                    nav's back link
  *     /profile     → edit display name + archived (completed) clubs
@@ -142,6 +147,7 @@ const router = createBrowserRouter([
     children: [
       { path: "/home", element: withSuspense(<HomeRoute />) },
       { path: "/clubs/:id", element: withSuspense(<ClubHomeRoute />) },
+      { path: "/clubs/:id/songs", element: withSuspense(<ClubSongsRoute />) },
       { path: "/mixes/:id", element: withSuspense(<MixDetailRoute />) },
       // Permanent legacy redirects — old emails link these shapes forever.
       { path: "/leagues/:id", element: <LegacyPathRedirect prefix="clubs" /> },

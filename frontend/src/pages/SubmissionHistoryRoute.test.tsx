@@ -247,6 +247,47 @@ describe("SubmissionHistoryRoute", () => {
     expect(await screen.findByText("MIX DETAIL CONTENT")).toBeInTheDocument();
   });
 
+  it("paginates once there are more than 25 submissions, and resets to page 1 on search", async () => {
+    const entries = Array.from({ length: 30 }, (_, i) =>
+      entryWith({
+        submission_id: `s${i}`,
+        title: `Song ${String(i).padStart(2, "0")}`,
+        artist: "Artist",
+      }),
+    );
+    mockGetMySubmissionHistory.mockResolvedValue(entries);
+
+    renderHistory();
+    await screen.findByText("Song 00");
+
+    expect(screen.getByText(/page 1 of 2/i)).toBeInTheDocument();
+    expect(screen.queryByText("Song 25")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /prev/i })).toBeDisabled();
+
+    await userEvent.click(screen.getByRole("button", { name: /next/i }));
+
+    expect(await screen.findByText("Song 25")).toBeInTheDocument();
+    expect(screen.queryByText("Song 00")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /next/i })).toBeDisabled();
+
+    // Typing a search (even one that matches everything) should snap back to
+    // page 1 -- otherwise a search from page 2 could render an empty grid if
+    // the new result set has fewer pages than the one being viewed.
+    await userEvent.type(screen.getByLabelText(/search/i), "Song");
+
+    expect(await screen.findByText("Song 00")).toBeInTheDocument();
+    expect(screen.getByText(/page 1 of 2/i)).toBeInTheDocument();
+  });
+
+  it("has no pagination control when everything fits on one page", async () => {
+    mockGetMySubmissionHistory.mockResolvedValue([entryWith()]);
+
+    renderHistory();
+    await screen.findByText("Song One");
+
+    expect(screen.queryByRole("navigation", { name: /pagination/i })).not.toBeInTheDocument();
+  });
+
   it("shows the server's error message when the load fails", async () => {
     mockGetMySubmissionHistory.mockRejectedValue(new ApiError(500, "server error"));
 

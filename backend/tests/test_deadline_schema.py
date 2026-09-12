@@ -27,6 +27,7 @@ from sqlalchemy import select
 from app.auth.jwt import create_access_token
 from app.models.club import Club
 from app.models.user import User
+from app.services.deadline_scheduling import MIN_ANCHOR_LEAD
 
 _WEEKDAY_NAMES = (
     "monday",
@@ -101,8 +102,17 @@ def _assert_matches_weekly_anchor(
 
     A live "now" isn't controllable in an integration test, so this checks the
     invariants a correctly-computed anchor must satisfy — right weekday/time in
-    the configured zone, and within [24h, 7d+] of the moment it was stamped —
-    rather than an exact timestamp.
+    the configured zone, and within [24h, 7d + MIN_ANCHOR_LEAD] of the moment
+    it was stamped — rather than an exact timestamp.
+
+    The upper bound is NOT simply "7 days": _next_weekly_occurrence rolls a
+    same-day-but-too-soon candidate forward a full extra week (MIN_ANCHOR_LEAD),
+    so when "now" lands on the anchor's own weekday just before its anchor
+    time, the true gap can be up to just under 7 days + MIN_ANCHOR_LEAD. A
+    tighter "7 days + 1h" bound here previously failed deterministically
+    whenever a test happened to run on the anchor weekday's morning in its
+    configured zone (MysteryMixClub-w790) — not flakiness, a bound that didn't
+    account for real production behavior it was supposed to allow.
     """
     assert deadline_iso is not None, "expected a stamped deadline, got null"
     deadline = datetime.fromisoformat(deadline_iso)
@@ -112,8 +122,9 @@ def _assert_matches_weekly_anchor(
     )
     assert local.time() == at_time
     now = datetime.now(timezone.utc)
-    assert timedelta(hours=24) <= (deadline - now) <= timedelta(days=7, hours=1), (
-        f"deadline {deadline} is not within [24h, 7d] of now ({now})"
+    upper_bound = timedelta(days=7) + MIN_ANCHOR_LEAD
+    assert timedelta(hours=24) <= (deadline - now) <= upper_bound, (
+        f"deadline {deadline} is not within [24h, {upper_bound}] of now ({now})"
     )
 
 

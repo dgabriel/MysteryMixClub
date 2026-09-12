@@ -803,6 +803,17 @@
         "file": "backend/tests/test_deadline_schema.py"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:875f28403d7ea9817e31131ff35fbe57",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-12T14:57:20.864Z",
+      "reason": "Test-only code, no ReDoS surface: same rowToggle() pattern as SubmissionHistoryRoute.test.tsx (already dismissed) -- the interpolated 'title' is always a hardcoded literal from this file's own entryWith() test fixtures (e.g. 'Song One'), never external or attacker-controlled input.",
+      "context": {
+        "title": "javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp",
+        "file": "frontend/src/pages/ClubSongsRoute.test.tsx"
+      },
+      "expires_at": null
     }
   ]
 }

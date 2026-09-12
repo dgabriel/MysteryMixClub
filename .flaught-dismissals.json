@@ -183,7 +183,7 @@
       "dismissed_at": "2026-09-09T16:03:14.167Z",
       "reason": "False positive / no second pin exists to diverge from -- ci.yml's npm install -g @flaught/core@0.10.0 is the only place a Flaught version is pinned anywhere in this repo; .advreview.yml declares no version.",
       "context": {
-        "title": "Hard‑coded Flaught version in CI may diverge from repo pin, causing inconsistency",
+        "title": "Hard\u2011coded Flaught version in CI may diverge from repo pin, causing inconsistency",
         "file": ".github/workflows/ci.yml"
       },
       "expires_at": null
@@ -194,7 +194,7 @@
       "dismissed_at": "2026-09-09T16:03:14.304Z",
       "reason": "Fixed at the config level -- .advreview.yml's tools:/test_inversion:/scope_creep:/noise_budget:/severity_gate: blocks are now all explicit (this same PR), closing the exact confusion this finding describes.",
       "context": {
-        "title": "Commented‑out default tool block in .advreview.yml may cause future confusion",
+        "title": "Commented\u2011out default tool block in .advreview.yml may cause future confusion",
         "file": ".advreview.yml"
       },
       "expires_at": null
@@ -502,7 +502,7 @@
       "dismissed_at": "2026-09-10T02:08:45.764Z",
       "reason": "Real finding, out of scope for this dependency-only PR. Tracked separately in MysteryMixClub-feuy (filed when Flaught's linter tool first surfaced these 5 pre-existing eslint warnings, ADR 0025).",
       "context": {
-        "title": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\n/home/runner/work/MysteryMixClub/MysteryMixClub/frontend/src/pages/MixDetailRoute.tsx:286:10\n  284 |\n  285 |   useEffect(() => {\n> 286 |     void load();\n      |          ^^^^ Avoid calling setState() directly within an effect\n  287 |   }, [load]);\n  288 |\n  289 |   // Poll every 60s so state transitions (submission → voting → closed) and",
+        "title": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\n/home/runner/work/MysteryMixClub/MysteryMixClub/frontend/src/pages/MixDetailRoute.tsx:286:10\n  284 |\n  285 |   useEffect(() => {\n> 286 |     void load();\n      |          ^^^^ Avoid calling setState() directly within an effect\n  287 |   }, [load]);\n  288 |\n  289 |   // Poll every 60s so state transitions (submission \u2192 voting \u2192 closed) and",
         "file": "/home/runner/work/MysteryMixClub/MysteryMixClub/frontend/src/pages/MixDetailRoute.tsx"
       },
       "expires_at": null
@@ -601,7 +601,7 @@
       "dismissed_at": "2026-09-11T00:01:41.298Z",
       "reason": "Skeptic-refuted, and correctly so: --config-from-base's exact tradeoff (PR-specific .advreview.yml edits reviewed under stale config until merged) is the intended, explicitly documented behavior -- ADR 0026 accepts this tradeoff by design, security over self-referential convenience, matching this repo's existing dependency_sanity/dismissals posture from ADR 0023.",
       "context": {
-        "title": "`--config-from-base` hides PR‑specific .advreview.yml changes, risking missed security tooling",
+        "title": "`--config-from-base` hides PR\u2011specific .advreview.yml changes, risking missed security tooling",
         "file": ".github/workflows/ci.yml"
       },
       "expires_at": null
@@ -623,7 +623,7 @@
       "dismissed_at": "2026-09-11T00:01:41.581Z",
       "reason": "Skeptic-refuted, and correctly so: this exit-code branching (1 blocks, other nonzero warns) is pre-existing, unchanged by this PR, and was a deliberate design decision from ADR 0017 to distinguish a real gate trip from a tool/config fault (e.g. no GROQ_API_KEY reachable on a fork PR) -- not a new gap introduced here.",
       "context": {
-        "title": "Exit‑code handling masks tool‑faults, allowing silent CI degradation",
+        "title": "Exit\u2011code handling masks tool\u2011faults, allowing silent CI degradation",
         "file": ".github/workflows/ci.yml"
       },
       "expires_at": null
@@ -634,7 +634,7 @@
       "dismissed_at": "2026-09-11T00:01:41.715Z",
       "reason": "This is upstream's own new recommended default (0.11.0's flaught init now emits max_tokens: 8192), not an aggressive value we invented. max_tokens is a ceiling on output length, not a mandate to use it -- normal-size findings cost the same; only previously-truncated reasoning-heavy responses now complete, which is the documented fix for the exact Groq 400 this repo hit live on PR #291.",
       "context": {
-        "title": "Increasing `max_tokens` to 8192 may cause provider‑level throttling or higher costs",
+        "title": "Increasing `max_tokens` to 8192 may cause provider\u2011level throttling or higher costs",
         "file": ".advreview.yml"
       },
       "expires_at": null
@@ -667,7 +667,7 @@
       "dismissed_at": "2026-09-11T00:53:28.584Z",
       "reason": "Real finding, out of scope for this PR. Tracked separately in MysteryMixClub-feuy since Flaught's linter tool first surfaced these 5 pre-existing eslint warnings (ADR 0025).",
       "context": {
-        "title": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\n/Users/dgabriel/claudeProjects/MysteryMixClub/frontend/src/pages/MixDetailRoute.tsx:287:10\n  285 |\n  286 |   useEffect(() => {\n> 287 |     void load();\n      |          ^^^^ Avoid calling setState() directly within an effect\n  288 |   }, [load]);\n  289 |\n  290 |   // Poll every 60s so state transitions (submission → voting → closed) and",
+        "title": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\n/Users/dgabriel/claudeProjects/MysteryMixClub/frontend/src/pages/MixDetailRoute.tsx:287:10\n  285 |\n  286 |   useEffect(() => {\n> 287 |     void load();\n      |          ^^^^ Avoid calling setState() directly within an effect\n  288 |   }, [load]);\n  289 |\n  290 |   // Poll every 60s so state transitions (submission \u2192 voting \u2192 closed) and",
         "file": "/Users/dgabriel/claudeProjects/MysteryMixClub/frontend/src/pages/MixDetailRoute.tsx"
       },
       "expires_at": null
@@ -812,6 +812,72 @@
       "context": {
         "title": "javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp",
         "file": "frontend/src/pages/ClubSongsRoute.test.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:2aeecb3bdb3581d5bb7c28b7ab87c912",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-12T15:37:25.184Z",
+      "reason": "Accepted tradeoff, and consistent with this repo's existing scanning posture: CodeQL (Analyze actions/python/javascript-typescript, same workflow) also runs PR-triggered only, with no scheduled whole-repo scan -- semgrep behaving the same way post-0.13.0 isn't a new gap unique to this bump. The prior whole-repo-per-PR behavior also didn't provide real periodic coverage: it re-scanned identical code with an identical ruleset on every PR, which can only surface something new in an unchanged file if semgrep's OWN ruleset changed between runs -- a real but separate question ('should this repo run a scheduled full scan, independent of PRs') that applies equally to CodeQL and is worth its own decision, not a reason to keep the noisy whole-repo-per-PR behavior. Filed MysteryMixClub-aaq4 to consider a scheduled scan as a follow-up.",
+      "context": {
+        "title": "New Flaught version limits scanning to changed files, potentially missing existing vulnerabilities",
+        "file": ".github/workflows/ci.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:ae1d388317092d072d68638018c3c50a",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-12T15:37:25.258Z",
+      "reason": "Already corrected: this review ran against a stale PR title/description snapshot -- the push that triggered this CI run landed a moment before the 'gh pr edit' call that retitled it to '0.13.0'. PR #312's title and description already say 0.13.0 as of now.",
+      "context": {
+        "title": "PR description claims bump to 0.12.1 but workflow installs 0.13.0",
+        "file": ".github/workflows/ci.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:eebc5db326a93b565a04f1d91d1297c1",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-12T15:37:25.326Z",
+      "reason": "Agreeing with the skeptic's own refutation: npm install -g runs inside one isolated GitHub Actions job container that's discarded after the job. Nothing else in this workflow shares that container or depends on a different Flaught version.",
+      "context": {
+        "title": "Global npm install of Flaught may cause environment contamination",
+        "file": ".github/workflows/ci.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:1d8962b8fcdc980c22a2632d3bb88559",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-12T15:37:25.395Z",
+      "reason": "This repo doesn't own flaught/core's semgrep-scoping implementation, so there's nothing here to unit-test -- the verification method for a CI-tool version bump is watching its own live run, which this PR's own Flaught report already demonstrates: findings dropped from 20-28 (mostly stale, already-dismissed, unrelated-file noise) on the prior 0.12.1 run to 5, all genuinely about this diff, with zero unrelated-file noise. That's the real-world proof the fix works.",
+      "context": {
+        "title": "No tests added to verify new Flaught behavior (changed scanning scope)",
+        "file": ".github/workflows/ci.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:22ccfccbe2bc8df5277ad1c229ac0f15",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-12T15:37:25.463Z",
+      "reason": "Explains WHY (the specific noise problem being fixed and its evidence), matching this repo's own commenting convention (CLAUDE.md: comment only when the WHY is non-obvious). Confidence 35%, skeptic itself calls this a style preference with no rule violated.",
+      "context": {
+        "title": "Excessive inline comment block about version history adds noise",
+        "file": ".github/workflows/ci.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:6b1539cf4e77ebffb13742a72c9406e1",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-12T15:40:24.675Z",
+      "reason": "Agreeing with the skeptic's own refutation: pull-requests: write is required by this same job's later step (flaught report ... | gh pr comment), which posts the review as a PR comment. Already scoped to only this job (not the workflow-level contents: read grant shared by frontend/backend), per ADR 0020.",
+      "context": {
+        "title": "Workflow grants pull\u2011request write permission, enabling potential abuse",
+        "file": ".github/workflows/ci.yml"
       },
       "expires_at": null
     }

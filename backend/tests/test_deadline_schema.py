@@ -123,8 +123,14 @@ def _assert_matches_weekly_anchor(
     assert local.time() == at_time
     now = datetime.now(timezone.utc)
     upper_bound = timedelta(days=7) + MIN_ANCHOR_LEAD
-    assert timedelta(hours=24) <= (deadline - now) <= upper_bound, (
-        f"deadline {deadline} is not within [24h, {upper_bound}] of now ({now})"
+    # _TOL_SECONDS slack on the lower bound too: the server computes the
+    # deadline, then this test's `now` is captured after the response
+    # round-trip, so a raw candidate that landed exactly at the 24h minimum
+    # lead would otherwise read as slightly under 24h here and fail on
+    # nothing but request latency.
+    lower_bound = timedelta(hours=24) - timedelta(seconds=_TOL_SECONDS)
+    assert lower_bound <= (deadline - now) <= upper_bound, (
+        f"deadline {deadline} is not within [{lower_bound}, {upper_bound}] of now ({now})"
     )
 
 

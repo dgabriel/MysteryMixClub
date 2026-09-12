@@ -91,6 +91,8 @@ type ClubHomeScreenProps = {
   // --- All-time vote leaderboard (MYS-157) ---
   leaderboard: LeaderboardEntry[];
   userId: string | null;
+  // --- Club song list (MysteryMixClub-ps1w.2) ---
+  onOpenClubSongs: () => void;
 };
 
 export function ClubHomeScreen({
@@ -128,6 +130,7 @@ export function ClubHomeScreen({
   leaveClubError,
   leaderboard,
   userId,
+  onOpenClubSongs,
 }: ClubHomeScreenProps) {
   if (loading) {
     return (
@@ -353,6 +356,24 @@ export function ClubHomeScreen({
               <FormError onPaper>{removeError}</FormError>
             </div>
           ) : null}
+        </section>
+
+        {/* Club song list (MysteryMixClub-ps1w.2): every song submitted to any
+            of this club's closed mixes, across all mystery mixes. A separate
+            page rather than inline here, mirroring /profile/history off
+            ProfileScreen. */}
+        <section className="mt-12">
+          <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-muted">
+            songs
+          </h2>
+          <p className="mt-2 text-sm leading-[1.72] text-ink-muted">
+            every song submitted to this club, once its mix has closed.
+          </p>
+          <div className="mt-4">
+            <Button onPaper variant="ghost" type="button" onClick={onOpenClubSongs}>
+              view all songs
+            </Button>
+          </div>
         </section>
 
         {/* Invite share — a single shareable link. Admin-only (MYS-246): the

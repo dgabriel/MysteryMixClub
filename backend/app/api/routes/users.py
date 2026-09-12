@@ -1,4 +1,5 @@
 import asyncio
+import uuid
 from datetime import datetime, timezone
 from typing import Annotated, Literal
 
@@ -18,6 +19,7 @@ from app.api.routes.auth import (
     _PASSWORD_MAX_LENGTH,
     _PASSWORD_MIN_LENGTH,
 )
+from app.api.routes.mixes import ResultNote, ResultVoter
 from app.auth.deps import get_current_user
 from app.auth.jwt import create_google_link_state
 from app.auth.passwords import hash_password
@@ -27,6 +29,7 @@ from app.db.session import get_db
 from app.models.club import Club
 from app.models.club_member import ClubMember
 from app.models.login_attempt import LoginAttempt
+from app.models.mix import Mix
 from app.models.note import Note
 from app.models.password_reset_token import PasswordResetToken
 from app.models.session import Session
@@ -34,6 +37,7 @@ from app.models.submission import Submission
 from app.models.user import User
 from app.models.vote import Vote
 from app.services.google_oauth import GoogleOAuthClient, generate_pkce_pair, get_google_oauth_client
+from app.services.source_tracks import source_fields
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -226,6 +230,141 @@ async def export_me(
             for member, club_name in memberships
         ],
     )
+
+
+# --------------------------------------------------------------------------- #
+# My submission history (MysteryMixClub-ps1w.1): every song the caller has
+# ever submitted, across every club, for a sortable/searchable profile view.
+# --------------------------------------------------------------------------- #
+
+
+class MySubmissionEntry(WireModel):
+    submission_id: str
+    league_id: str
+    league_name: str
+    round_id: str
+    round_number: int
+    theme: str | None
+    state: str
+    # None for a source-only track; source/source_url identify it instead (MYS-201).
+    isrc: str | None
+    source: Literal["youtube", "bandcamp"] | None = None
+    source_url: str | None = None
+    title: str
+    artist: str
+    album: str | None
+    album_art_url: str | None
+    # The submitter's own optional note attached at submission time.
+    submitter_note: str | None
+    # Notes others left on this submission. Gated exactly like
+    # GET /submissions/:id/notes: hidden from everyone but their own author
+    # while the mix's voting is open, fully revealed once it closes (MYS-67).
+    notes: list[ResultNote]
+    # Vote identity stays anonymous until the mix closes (MYS-173) -- null
+    # rather than 0 for an open mix, so the client can't mistake "hidden" for
+    # "actually zero votes so far".
+    vote_count: int | None
+    voters: list[ResultVoter]
+    created_at: datetime
+
+
+@router.get("/me/submissions", response_model=list[MySubmissionEntry])
+async def get_my_submission_history(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[MySubmissionEntry]:
+    """Every song the caller has ever submitted, newest first.
+
+    Sorting/searching happen client-side over this one list, the same way
+    ProfileRoute already treats archived clubs -- there's no pagination
+    convention elsewhere in the API, and this app's invite-only, friend-group
+    scale doesn't call for introducing one here.
+    """
+    rows = (
+        await db.execute(
+            select(Submission, Mix, Club.name)
+            .join(Mix, Mix.id == Submission.mix_id)
+            .join(Club, Club.id == Mix.club_id)
+            .where(Submission.user_id == current_user.id)
+            .order_by(Submission.created_at.desc())
+        )
+    ).all()
+    if not rows:
+        return []
+
+    submission_ids = [s.id for s, _mix, _name in rows]
+    closed_submission_ids = {s.id for s, mix_, _name in rows if mix_.state == "closed"}
+
+    vote_counts: dict[uuid.UUID, int] = {}
+    voters_by_submission: dict[uuid.UUID, list[ResultVoter]] = {}
+    if closed_submission_ids:
+        vote_count_rows = (
+            await db.execute(
+                select(Vote.submission_id, func.sum(Vote.weight))
+                .where(Vote.submission_id.in_(closed_submission_ids))
+                .group_by(Vote.submission_id)
+            )
+        ).all()
+        vote_counts = {sid: count for sid, count in vote_count_rows}
+
+        voter_rows = (
+            await db.execute(
+                select(Vote.submission_id, Vote.voter_id, User.display_name, Vote.weight)
+                .join(User, User.id == Vote.voter_id)
+                .where(Vote.submission_id.in_(closed_submission_ids))
+            )
+        ).all()
+        for submission_id, voter_id, display_name, weight in voter_rows:
+            voters_by_submission.setdefault(submission_id, []).append(
+                ResultVoter(user_id=str(voter_id), display_name=display_name, weight=weight)
+            )
+        for voters in voters_by_submission.values():
+            voters.sort(key=lambda v: v.display_name)
+
+    note_rows = (
+        await db.execute(
+            select(Note, User.display_name, Mix.state)
+            .join(User, User.id == Note.author_id)
+            .join(Mix, Mix.id == Note.mix_id)
+            .where(Note.submission_id.in_(submission_ids))
+            .order_by(Note.created_at.asc())
+        )
+    ).all()
+    notes_by_submission: dict[uuid.UUID, list[ResultNote]] = {}
+    for note, display_name, mix_state in note_rows:
+        # Mirrors GET /submissions/:id/notes: a member (including the
+        # submitter) sees only their own notes while voting is open, so notes
+        # can't sway votes (MYS-67); the full set is revealed once closed.
+        if mix_state != "closed" and note.author_id != current_user.id:
+            continue
+        notes_by_submission.setdefault(note.submission_id, []).append(
+            ResultNote(body=note.body, author_display_name=display_name, created_at=note.created_at)
+        )
+
+    return [
+        MySubmissionEntry(
+            submission_id=str(s.id),
+            league_id=str(mix_.club_id),
+            league_name=club_name,
+            round_id=str(mix_.id),
+            round_number=mix_.mix_number,
+            theme=mix_.theme,
+            state=mix_.state,
+            isrc=s.isrc,
+            source=source_fields(s.source_key)[0],
+            source_url=source_fields(s.source_key)[1],
+            title=s.title,
+            artist=s.artist,
+            album=s.album,
+            album_art_url=s.album_art_url,
+            submitter_note=s.note,
+            notes=notes_by_submission.get(s.id, []),
+            vote_count=vote_counts.get(s.id, 0) if s.id in closed_submission_ids else None,
+            voters=voters_by_submission.get(s.id, []),
+            created_at=s.created_at,
+        )
+        for s, mix_, club_name in rows
+    ]
 
 
 @router.patch("/me", response_model=UserProfileResponse)

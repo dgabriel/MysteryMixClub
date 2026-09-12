@@ -611,6 +611,60 @@ export async function getClubLeaderboard(id: string): Promise<LeaderboardEntry[]
   return (await res.json()) as LeaderboardEntry[];
 }
 
+// --------------------------------------------------------------------------- //
+// Club song list (MysteryMixClub-ps1w.2): every song ever submitted to any of
+// a club's CLOSED mixes.
+// --------------------------------------------------------------------------- //
+
+/** A note on a club song entry -- same shape as the mix reveal's ResultNote. */
+export type ClubSongNote = {
+  body: string;
+  author_display_name: string;
+  created_at: string;
+};
+
+/** A voter on a club song entry -- always populated, since every entry here
+ *  belongs to an already-closed mix (MYS-173 anonymity no longer applies). */
+export type ClubSongVoter = {
+  user_id: string;
+  display_name: string;
+  weight: number;
+};
+
+/** One song ever submitted to the club, across its closed mixes only -- the
+ *  club's currently active mix (open_submission/open_voting) doesn't appear
+ *  here until it closes, matching GET /mixes/:id/submissions' own rule. */
+export type ClubSong = {
+  submission_id: string;
+  user_id: string;
+  submitter_display_name: string;
+  mix_id: string;
+  mix_number: number;
+  theme: string | null;
+  isrc: string | null;
+  source: "youtube" | "bandcamp" | null;
+  source_url: string | null;
+  title: string;
+  artist: string;
+  album: string | null;
+  album_art_url: string | null;
+  submitter_note: string | null;
+  notes: ClubSongNote[];
+  vote_count: number;
+  voters: ClubSongVoter[];
+  created_at: string;
+};
+
+/** Get every song ever submitted to the club, newest first. Sorting/searching
+ *  happen client-side over this one list, same as /users/me/submissions. */
+export async function getClubSongs(clubId: string): Promise<ClubSong[]> {
+  const res = await authenticatedRequest(`/api/v1/clubs/${clubId}/submissions`);
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as ClubSong[];
+}
+
 /** Update a club (organizer only). An explicit null description is sent as-is;
  *  only undefined keys are dropped by JSON.stringify. Returns the updated Club. */
 export async function updateClub(
@@ -1411,6 +1465,52 @@ export async function getResults(mixId: string): Promise<MixResults> {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
   return (await res.json()) as MixResults;
+}
+
+// --------------------------------------------------------------------------- //
+// My submission history (MysteryMixClub-ps1w.1): every song the caller has
+// ever submitted, across every club.
+// --------------------------------------------------------------------------- //
+
+/** One song the caller has ever submitted, with the club/mix it went to.
+ *  `vote_count`/`voters` are null/empty until that mix closes (MYS-173
+ *  anonymity, same rule the reveal follows) -- null rather than 0 so the
+ *  client can't mistake "hidden" for "actually zero votes so far". `notes`
+ *  follows the same open-voting visibility GET /submissions/:id/notes already
+ *  enforces: only the caller's own notes appear before the mix closes, then
+ *  the full set. */
+export type MySubmission = {
+  submission_id: string;
+  club_id: string;
+  club_name: string;
+  mix_id: string;
+  mix_number: number;
+  theme: string | null;
+  state: MixState;
+  isrc: string | null;
+  source: "youtube" | "bandcamp" | null;
+  source_url: string | null;
+  title: string;
+  artist: string;
+  album: string | null;
+  album_art_url: string | null;
+  submitter_note: string | null;
+  notes: ResultNote[];
+  vote_count: number | null;
+  voters: ResultVoter[];
+  created_at: string;
+};
+
+/** Get the caller's full submission history, newest first. Sorting/searching
+ *  happen client-side over this one list -- there's no pagination convention
+ *  elsewhere in the API, and this app's invite-only, friend-group scale
+ *  doesn't call for introducing one here. */
+export async function getMySubmissionHistory(): Promise<MySubmission[]> {
+  const res = await authenticatedRequest("/api/v1/users/me/submissions");
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as MySubmission[];
 }
 
 // --------------------------------------------------------------------------- //

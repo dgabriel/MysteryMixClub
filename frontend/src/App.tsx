@@ -39,6 +39,9 @@ const CreateClubRoute = lazy(() =>
 const ClubHomeRoute = lazy(() =>
   import("./pages/ClubHomeRoute").then((m) => ({ default: m.ClubHomeRoute })),
 );
+const ClubSongsRoute = lazy(() =>
+  import("./pages/ClubSongsRoute").then((m) => ({ default: m.ClubSongsRoute })),
+);
 const MixDetailRoute = lazy(() =>
   import("./pages/MixDetailRoute").then((m) => ({ default: m.MixDetailRoute })),
 );
@@ -53,6 +56,9 @@ const AdminMetricsRoute = lazy(() =>
 );
 const ProfileRoute = lazy(() =>
   import("./pages/ProfileRoute").then((m) => ({ default: m.ProfileRoute })),
+);
+const SubmissionHistoryRoute = lazy(() =>
+  import("./pages/SubmissionHistoryRoute").then((m) => ({ default: m.SubmissionHistoryRoute })),
 );
 
 /**
@@ -77,9 +83,13 @@ const ProfileRoute = lazy(() =>
  *   Authed shell (ProtectedRoute + AuthedLayout, which renders the shared TopNav):
  *     /home        → My Clubs landing
  *     /clubs/:id   → club home (mystery mixes, members, invite, organizer edit)
+ *     /clubs/:id/songs → every song ever submitted to the club, across its
+ *                    closed mixes only (MysteryMixClub-ps1w.2)
  *     /mixes/:id   → mystery-mix detail (submit / playlist / reveal); shows the
  *                    nav's back link
  *     /profile     → edit display name + archived (completed) clubs
+ *     /profile/history → every song the caller has ever submitted, across
+ *                    every club (MysteryMixClub-ps1w.1)
  *     /admin       → platform-admin only (self-guards non-admins → /home)
  *     /admin/metrics → platform-admin only; read-only platform snapshot,
  *                    self-guarded the same way as /admin
@@ -137,11 +147,13 @@ const router = createBrowserRouter([
     children: [
       { path: "/home", element: withSuspense(<HomeRoute />) },
       { path: "/clubs/:id", element: withSuspense(<ClubHomeRoute />) },
+      { path: "/clubs/:id/songs", element: withSuspense(<ClubSongsRoute />) },
       { path: "/mixes/:id", element: withSuspense(<MixDetailRoute />) },
       // Permanent legacy redirects — old emails link these shapes forever.
       { path: "/leagues/:id", element: <LegacyPathRedirect prefix="clubs" /> },
       { path: "/rounds/:id", element: <LegacyPathRedirect prefix="mixes" /> },
       { path: "/profile", element: withSuspense(<ProfileRoute />) },
+      { path: "/profile/history", element: withSuspense(<SubmissionHistoryRoute />) },
       { path: "/admin", element: withSuspense(<AdminRoute />) },
       { path: "/admin/metrics", element: withSuspense(<AdminMetricsRoute />) },
       // /clubs/new used to sit outside this layout as a "focused" form with no

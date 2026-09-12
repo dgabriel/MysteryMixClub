@@ -6,9 +6,18 @@ import { Badge } from "../components/Badge";
 import { ClubName } from "../components/ClubName";
 import { SourceBadge } from "../components/SourceBadge";
 import { ConcentricRings } from "../components/ConcentricRings";
+import { Pagination } from "../components/Pagination";
 import { MIX_BADGE, MIX_STATE_LABEL, mixGroup } from "../utils/mixState";
 
 type SortKey = "newest" | "title" | "artist" | "club";
+
+/** Rows per page (MysteryMixClub-ps1w.4) -- a prolific submitter across many
+ *  clubs can accumulate a long history, so the grid pages client-side over
+ *  the one list `GET /users/me/submissions` returns rather than growing the
+ *  DOM unbounded. No backend pagination convention exists elsewhere in this
+ *  app, and this dataset's invite-only, friend-group scale doesn't need one
+ *  either -- slicing the already-fetched array is the smallest fix. */
+const PAGE_SIZE = 25;
 
 function matchesQuery(entry: MySubmission, query: string): boolean {
   if (!query) return true;
@@ -85,10 +94,9 @@ function ChevronIcon({ open }: { open: boolean }) {
  * submitter's own note, the notes thread, voter names, the mix's theme and
  * state).
  *
- * Filtering/sorting happen client-side over the one list `GET
- * /users/me/submissions` returns -- there's no pagination convention
- * elsewhere in this app, and its invite-only, friend-group scale doesn't
- * call for one here.
+ * Filtering/sorting/pagination all happen client-side over the one list `GET
+ * /users/me/submissions` returns (see `PAGE_SIZE` below for why pagination
+ * is client-side rather than a new backend query param).
  *
  * Renders on the light `paper` surface (ADR 0013): the grid itself is one
  * dark `card` island (ADR 0013's frame model -- a dark surface on a light
@@ -115,10 +123,32 @@ export function SubmissionHistoryScreen({
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("newest");
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
-  const visible = useMemo(
+  // A new search/sort reshuffles what page 1 even means -- reset to it during
+  // render (React's documented pattern for state that must reset when a prop
+  // it derives from changes) rather than in an effect, which would cause an
+  // extra visible render at the stale page first.
+  const [prevQuery, setPrevQuery] = useState(query);
+  const [prevSort, setPrevSort] = useState(sort);
+  if (query !== prevQuery || sort !== prevSort) {
+    setPrevQuery(query);
+    setPrevSort(sort);
+    setPage(1);
+  }
+
+  const filtered = useMemo(
     () => sortEntries(entries.filter((e) => matchesQuery(e, query)), sort),
     [entries, query, sort],
+  );
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  // If a filter shrinks the result set below the page we were on, clamp back
+  // rather than render an empty grid -- read-time clamp, no state of its own.
+  const currentPage = Math.min(page, totalPages);
+
+  const visible = useMemo(
+    () => filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [filtered, currentPage],
   );
 
   if (loading) {
@@ -162,19 +192,27 @@ export function SubmissionHistoryScreen({
               <p className="mt-8 text-sm leading-[1.72] text-ink-muted">
                 you haven&apos;t submitted a song yet.
               </p>
-            ) : visible.length === 0 ? (
+            ) : filtered.length === 0 ? (
               <p className="mt-8 text-sm leading-[1.72] text-ink-muted">
                 no songs match &ldquo;{query}&rdquo;.
               </p>
             ) : (
-              <SubmissionGrid
-                entries={visible}
-                sort={sort}
-                onSort={setSort}
-                expanded={expanded}
-                onToggle={(id) => setExpanded((cur) => (cur === id ? null : id))}
-                onOpenMix={onOpenMix}
-              />
+              <>
+                <SubmissionGrid
+                  entries={visible}
+                  sort={sort}
+                  onSort={setSort}
+                  expanded={expanded}
+                  onToggle={(id) => setExpanded((cur) => (cur === id ? null : id))}
+                  onOpenMix={onOpenMix}
+                />
+                <Pagination
+                  page={currentPage}
+                  totalPages={totalPages}
+                  onPageChange={setPage}
+                  onPaper
+                />
+              </>
             )}
           </>
         )}

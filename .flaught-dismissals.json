@@ -770,6 +770,39 @@
         "file": "frontend/src/pages/SubmissionHistoryRoute.test.tsx"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:dae30c961b0ac7a29325f2aa8479e8ab",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-12T15:17:00.088Z",
+      "reason": "Not a coverage gap: this integration test's job is only to verify the deadline lands on the right weekday/time at a reasonable distance from now, not to pin MIN_ANCHOR_LEAD's exact value. That value IS already pinned by deterministic unit tests in test_deadline_scheduling.py (e.g. test_exactly_24h_lead_is_not_rolled, test_just_under_24h_lead_is_rolled) with hardcoded now/expected pairs -- those would catch a regression to the constant. Deriving this test's sanity envelope from the same constant is what prevents it drifting out of sync with real behavior, which is the exact bug this PR fixes (MysteryMixClub-w790).",
+      "context": {
+        "title": "Test overfits to implementation by importing MIN_ANCHOR_LEAD",
+        "file": "backend/tests/test_deadline_schema.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:b2938ea7212986b13e52609e196551db",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-12T15:17:00.168Z",
+      "reason": "Pre-existing, deliberate, and already documented: the function's own docstring states 'A live now isn't controllable in an integration test, so this checks invariants... rather than an exact timestamp' -- this is the whole design of the helper, unchanged by this PR (which only widened the upper bound). Not a new determinism regression.",
+      "context": {
+        "title": "Test relies on real system time, reducing determinism",
+        "file": "backend/tests/test_deadline_schema.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:9089120577327f6faea37c3b40d7db9d",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-12T15:17:00.236Z",
+      "reason": "No actual duplication: the docstring explains the upper-bound reasoning once, in one place. There is no separate inline comment repeating it. Confidence 0.1 -- the finding itself is uncertain.",
+      "context": {
+        "title": "Verbose docstring duplication adds maintenance overhead",
+        "file": "backend/tests/test_deadline_schema.py"
+      },
+      "expires_at": null
     }
   ]
 }

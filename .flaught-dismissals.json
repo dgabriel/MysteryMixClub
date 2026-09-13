@@ -891,6 +891,28 @@
         "file": "frontend/src/ios/MusicProof.tsx"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:50558470f0590dc1c336088c297a91fb",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-13T17:57:52.852Z",
+      "reason": "Already verified concretely, not just assumed safe: full test suite (669/669) passes under vitest 5, tsc -b is clean, and this repo has no usage of any of vitest 5's actual breaking-change APIs (no toMatchSnapshot, no sequential test/suite option). Node 22+ requirement is also already satisfied (CI: Node 24, local: Node 26).",
+      "context": {
+        "title": "Major version bump of Vitest may break test suite compatibility",
+        "file": "frontend/package.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:a1592d20efc3dbfeadea998a89d9b84c",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-13T17:57:52.990Z",
+      "reason": "The existing 669-test suite passing under the new runner is the compatibility validation for a test-tooling upgrade -- there is no separate class of test that validates 'the test runner itself works,' short of the suite it runs. Vitest is devDependency-only test tooling, not app code with its own behavior to newly test.",
+      "context": {
+        "title": "No tests added to validate compatibility of upgraded dev dependencies",
+        "file": "frontend/package-lock.json"
+      },
+      "expires_at": null
     }
   ]
 }

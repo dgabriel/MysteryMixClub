@@ -1,29 +1,60 @@
 # Getting started with the iOS proof
 
-The [PRD](PRD-v0.1.md) is the supplied draft, preserved unchanged. [ADR 0028](../adr/0028-prototype-ios-with-capacitor-and-native-musickit.md) records the proposed prototype architecture. Durable progress lives in Bead `MysteryMixClub-yyuq`.
+The [PRD](PRD-v0.1.md) is the supplied draft, preserved unchanged. [ADR 0028](../adr/0028-prototype-ios-with-capacitor-and-native-musickit.md) records the prototype architecture and [ADR 0029](../adr/0029-native-owns-the-http-boundary-in-the-ios-proof.md) records why the server calls are made from Swift rather than from the WebView. Durable progress lives in Bead `MysteryMixClub-yyuq`.
 
 ## The tools in plain language
 
-React continues to draw MMC's screens. Capacitor packages those screens in an iPhone application and lets JavaScript call native code. Swift is the language for the small Apple Music integration. Xcode builds, signs, and runs that application. Signing associates a build with your Apple development team and permitted devices. TestFlight is a later beta-distribution step.
+React continues to draw MMC's screens. Capacitor packages those screens in an iPhone application and lets JavaScript call native code. Swift is the language for the Apple Music integration and, here, for the calls to the MMC backend. Xcode builds, signs, and runs the application. Signing associates a build with your Apple development team and permitted devices. TestFlight is a later beta-distribution step.
 
-## This Mac's readiness on September 12, 2026
+## This Mac's readiness
 
-macOS is 26.6.1 and Node is v26.7.0. The active developer directory is `/Library/Developer/CommandLineTools`; Xcode is absent from `/Applications`. No iOS project is present in the repository yet. Apple Developer Program enrollment and a physical iPhone with Apple Music access still need confirmation.
+Confirmed on September 13, 2026:
 
-Capacitor 8's documented prerequisites are Node 22 or newer and Xcode 26 or newer. Prefer Swift Package Manager, the default for new Capacitor 8 iOS projects. See the [official setup guide](https://capacitorjs.com/docs/getting-started/environment-setup).
+- Xcode 26.6, with `xcode-select -p` pointing inside it. CocoaPods is not installed and is not needed: the project uses Swift Package Manager, the default for new Capacitor 8 iOS projects.
+- A physical iPhone ("Dawn's iPhone", iPhone 16 Plus, iOS 26.6) paired through Xcode's Devices window.
+- Apple ID `dgabriel@gmail.com` holds a paid Apple Developer Program membership, so MusicKit enrollment is not a blocker.
+- An explicit (non-wildcard) App ID is registered for `com.mysterymixclub.iospoc`. The auto-generated "XC Wildcard" App ID is not sufficient.
 
-## First owner setup step
+Both a simulator build and a signed device build currently succeed with no warnings from the app's own code.
 
-Install [Xcode from the Mac App Store](https://apps.apple.com/app/xcode/id497799835), launch it, and finish its first-run setup including iOS platform support. Apple account sign-in, license acceptance, and any device trust prompts require the owner's interaction. After installation, verify that `xcodebuild -version` reports full Xcode and that `xcode-select -p` points inside Xcode. If the command-line directory is still selected, configure Xcode's Command Line Tools selection in its settings.
+**The deployment target is iOS 16.0.** Capacitor 8's floor is 15.0, but `MusicLibraryRequest` needs 16, and reading the playlist back out of the device library is central to the proof. This is a prototype-scoped choice. It is an input to the PRD's still-open "supported devices and OS" decision, not an answer to it.
 
-The first physical-device run will also need the correct development team, an app identifier with the required MusicKit configuration, and an iPhone available for testing. Do not paste signing keys or account credentials into chat.
+## Running the proof on your iPhone
 
-## What the first proof must establish
+```
+cd frontend
+npm run ios:sync     # build the proof's web bundle and copy it into the iOS app
+npm run ios:open     # open the project in Xcode
+```
 
-Use a test club and an explicit user action to create one playlist. Confirm native permission works without a browser popup, then validate its token against the existing server playlist boundary. Show only confirmed creation results. Open Apple Music if a usable playlist destination is available and restore the same MMC mix when returning.
+In Xcode, pick your iPhone as the run destination and press Run. The first run on a new device needs the device registered to the team, which selecting it as the destination does automatically.
 
-Exercise denied permission, unavailable subscription, interrupted network, repeated taps, and app resume. A timeout after playlist creation is an uncertain outcome: reconcile before retrying. Existing server playlist support is not evidence that every retry is safe.
+The proof asks for a **server address** rather than hard-coding one, because a phone cannot reach `127.0.0.1` on your Mac. Two workable choices:
 
-Device observations must distinguish authorization, MMC session, playlist creation, and handoff failures. Never record tokens, private notes, or invitation URLs in diagnostics. A simulator can help with layout; it does not satisfy the PRD's physical-device acceptance gate.
+- **Your Mac's LAN address**, for example `http://192.168.1.20:8000`, with the backend bound to `0.0.0.0` and both devices on the same network. iOS will ask once for permission to find devices on the local network. This is why `Info.plist` carries `NSAllowsLocalNetworking` and a local-network usage string; that relief is scoped to local addresses and does not permit insecure connections to the public internet.
+- **Staging over https**, which needs no App Transport Security relief at all.
 
-Implementation and native validation remain outstanding. The initial repository change contains documentation only, so application tests are not applicable.
+There is no CORS configuration to add for either. The requests are made by `URLSession` in Swift, not by the WebView, so no browser origin is involved.
+
+## What the proof does
+
+1. **Sign in** to MMC with email and password. The access token stays in Swift; JavaScript never receives it.
+2. **Connect Apple Music** through the native permission dialog, then report subscription eligibility, Sync Library state, and whether a native authorization token can be obtained. The token's value is never displayed, logged, or sent across the bridge.
+3. **Build this mix's playlist** by calling the existing `POST /mixes/{id}/apple-playlist` with the native Music User Token. This is the compatibility question ADR 0028 left open.
+4. **Check this mix** to reconcile both sides: what MMC recorded, and what this iPhone's library actually holds.
+5. **Open Apple Music** at the member's library.
+
+## What it deliberately does not claim
+
+- **It offers no link to the playlist.** A library playlist URL does not resolve on a mobile client, confirmed twice on a real device including through the native `music://` scheme (`MysteryMixClub-o3r8`, `MysteryMixClub-ap25`). The proof gives the playlist's name and sends the member to their library instead.
+- **Opening Apple Music is not evidence the member got there**, and the copy says so.
+- **A build that did not answer is an unknown result, not a failure.** The proof blocks a second build until you reconcile, because retrying blind is how a member ends up with two playlists.
+- **The track count is the server's confirmed count**, never the number submitted.
+
+## Known session limitation
+
+MMC's web session is an in-memory access token plus an HttpOnly refresh cookie. The native session keeps the refresh cookie in `URLSession`'s shared store, but the proof does not yet exercise a refresh, so a session lasts only as long as the 60-minute access token. Expiry recovery, account switching, and logout-all across devices are IOS-01 work and are not proven here.
+
+## What still needs device evidence
+
+Physical-device runs must record, separately and honestly: native permission granted with no browser popup; denied and restricted permission; an account with no eligible subscription; an interrupted network mid-build; repeated taps; and a return to MMC after opening Apple Music. Record the outcomes on `MysteryMixClub-yyuq`. Never record tokens, private notes, or invitation URLs in diagnostics. A simulator can help with layout; it does not satisfy the PRD's physical-device acceptance gate.

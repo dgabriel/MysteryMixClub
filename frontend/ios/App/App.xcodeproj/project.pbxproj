@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		0A78DDF8593A47D69A6335E8 /* MusicPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BC3F634013F45649FF02168 /* MusicPlugin.swift */; };
+		B85B6F2501A449D986C3B0CE /* MMCAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77DCF84FB93E496B843B9386 /* MMCAPIClient.swift */; };
+		C52149A3783C462081AFE1AF /* ProofError.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9D50CEAD59247B0835A4A75 /* ProofError.swift */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */ = {isa = PBXBuildFile; productRef = 4D22ABE82AF431CB00220026 /* CapApp-SPM */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
@@ -32,6 +34,8 @@
 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
 		8BC3F634013F45649FF02168 /* MusicPlugin.swift */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; path = MusicPlugin.swift; sourceTree = "<group>"; };
+		77DCF84FB93E496B843B9386 /* MMCAPIClient.swift */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; path = MMCAPIClient.swift; sourceTree = "<group>"; };
+		A9D50CEAD59247B0835A4A75 /* ProofError.swift */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; path = ProofError.swift; sourceTree = "<group>"; };
 		9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
@@ -78,6 +82,8 @@
 				2FAD9762203C412B000D30F8 /* config.xml */,
 				50B271D01FEDC1A000F3C39B /* public */,
 				8BC3F634013F45649FF02168 /* MusicPlugin.swift */,
+				77DCF84FB93E496B843B9386 /* MMCAPIClient.swift */,
+				A9D50CEAD59247B0835A4A75 /* ProofError.swift */,
 				30A8FA1AFD934EF6BDFB825B /* ProofViewController.swift */,
 			);
 			path = App;
@@ -168,6 +174,8 @@
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,
 				0A78DDF8593A47D69A6335E8 /* MusicPlugin.swift in Sources */,
+				B85B6F2501A449D986C3B0CE /* MMCAPIClient.swift in Sources */,
+				C52149A3783C462081AFE1AF /* ProofError.swift in Sources */,
 				AF018E3B0AF04114BCB753B6 /* ProofViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -204,6 +204,18 @@ jobs:
         working-directory: backend
         run: pip install -e ".[dev]"
 
+      # scripts/instrumentation/flaught_linter.py (ADR 0031) shells out to a
+      # `swiftlint` binary on PATH for the iOS proof's Swift files. The
+      # official Linux release ships a statically-linked binary specifically
+      # so this doesn't need a Swift toolchain installed at all -- pin the
+      # exact version, same reasoning as Flaught's own pin above.
+      - name: Install SwiftLint (Linux static binary)
+        run: |
+          curl -sL -o swiftlint.zip "https://github.com/realm/SwiftLint/releases/download/0.65.1/swiftlint_linux_amd64.zip"
+          unzip -o swiftlint.zip swiftlint-static
+          sudo install -m 755 swiftlint-static /usr/local/bin/swiftlint
+          swiftlint version
+
       # Blocking as of ADR 0022 -- undismissed findings at or above the
       # severity gate now fail the merge check. Exit codes distinguish a real
       # gate trip from a tool/config fault (ADR 0017): 1 means undismissed

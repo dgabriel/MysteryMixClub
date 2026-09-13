@@ -1,0 +1,20 @@
+# SwiftLint configuration for the iOS proof (MysteryMixClub-yyuq / ADR 0028).
+# Run through Flaught's adversarial review via
+# scripts/instrumentation/flaught_linter.py (see .advreview.yml and ADR 0031),
+# not invoked standalone in CI.
+
+excluded:
+  # Capacitor-CLI-managed; its own file header says "DO NOT MODIFY THIS FILE".
+  # Linting it would surface findings nobody should act on by hand.
+  - frontend/ios/App/CapApp-SPM
+
+# SwiftLint's stock 120/200 default flags Apple's/Capacitor's own generated
+# boilerplate comments in AppDelegate.swift and SceneDelegate.swift (lines up
+# to 285 characters) -- noise from scaffolding nobody here wrote, not signal
+# about this project's own code. Verified this doesn't paper over anything
+# real: MusicPlugin.swift's actual findings (cyclomatic_complexity,
+# file_length, type_body_length) are a different rule family and are
+# untouched by raising this one.
+line_length:
+  warning: 160
+  error: 250

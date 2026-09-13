@@ -183,7 +183,7 @@
       "dismissed_at": "2026-09-09T16:03:14.167Z",
       "reason": "False positive / no second pin exists to diverge from -- ci.yml's npm install -g @flaught/core@0.10.0 is the only place a Flaught version is pinned anywhere in this repo; .advreview.yml declares no version.",
       "context": {
-        "title": "Hard\u2011coded Flaught version in CI may diverge from repo pin, causing inconsistency",
+        "title": "Hard‑coded Flaught version in CI may diverge from repo pin, causing inconsistency",
         "file": ".github/workflows/ci.yml"
       },
       "expires_at": null
@@ -194,7 +194,7 @@
       "dismissed_at": "2026-09-09T16:03:14.304Z",
       "reason": "Fixed at the config level -- .advreview.yml's tools:/test_inversion:/scope_creep:/noise_budget:/severity_gate: blocks are now all explicit (this same PR), closing the exact confusion this finding describes.",
       "context": {
-        "title": "Commented\u2011out default tool block in .advreview.yml may cause future confusion",
+        "title": "Commented‑out default tool block in .advreview.yml may cause future confusion",
         "file": ".advreview.yml"
       },
       "expires_at": null
@@ -502,7 +502,7 @@
       "dismissed_at": "2026-09-10T02:08:45.764Z",
       "reason": "Real finding, out of scope for this dependency-only PR. Tracked separately in MysteryMixClub-feuy (filed when Flaught's linter tool first surfaced these 5 pre-existing eslint warnings, ADR 0025).",
       "context": {
-        "title": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\n/home/runner/work/MysteryMixClub/MysteryMixClub/frontend/src/pages/MixDetailRoute.tsx:286:10\n  284 |\n  285 |   useEffect(() => {\n> 286 |     void load();\n      |          ^^^^ Avoid calling setState() directly within an effect\n  287 |   }, [load]);\n  288 |\n  289 |   // Poll every 60s so state transitions (submission \u2192 voting \u2192 closed) and",
+        "title": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\n/home/runner/work/MysteryMixClub/MysteryMixClub/frontend/src/pages/MixDetailRoute.tsx:286:10\n  284 |\n  285 |   useEffect(() => {\n> 286 |     void load();\n      |          ^^^^ Avoid calling setState() directly within an effect\n  287 |   }, [load]);\n  288 |\n  289 |   // Poll every 60s so state transitions (submission → voting → closed) and",
         "file": "/home/runner/work/MysteryMixClub/MysteryMixClub/frontend/src/pages/MixDetailRoute.tsx"
       },
       "expires_at": null
@@ -601,7 +601,7 @@
       "dismissed_at": "2026-09-11T00:01:41.298Z",
       "reason": "Skeptic-refuted, and correctly so: --config-from-base's exact tradeoff (PR-specific .advreview.yml edits reviewed under stale config until merged) is the intended, explicitly documented behavior -- ADR 0026 accepts this tradeoff by design, security over self-referential convenience, matching this repo's existing dependency_sanity/dismissals posture from ADR 0023.",
       "context": {
-        "title": "`--config-from-base` hides PR\u2011specific .advreview.yml changes, risking missed security tooling",
+        "title": "`--config-from-base` hides PR‑specific .advreview.yml changes, risking missed security tooling",
         "file": ".github/workflows/ci.yml"
       },
       "expires_at": null
@@ -623,7 +623,7 @@
       "dismissed_at": "2026-09-11T00:01:41.581Z",
       "reason": "Skeptic-refuted, and correctly so: this exit-code branching (1 blocks, other nonzero warns) is pre-existing, unchanged by this PR, and was a deliberate design decision from ADR 0017 to distinguish a real gate trip from a tool/config fault (e.g. no GROQ_API_KEY reachable on a fork PR) -- not a new gap introduced here.",
       "context": {
-        "title": "Exit\u2011code handling masks tool\u2011faults, allowing silent CI degradation",
+        "title": "Exit‑code handling masks tool‑faults, allowing silent CI degradation",
         "file": ".github/workflows/ci.yml"
       },
       "expires_at": null
@@ -634,7 +634,7 @@
       "dismissed_at": "2026-09-11T00:01:41.715Z",
       "reason": "This is upstream's own new recommended default (0.11.0's flaught init now emits max_tokens: 8192), not an aggressive value we invented. max_tokens is a ceiling on output length, not a mandate to use it -- normal-size findings cost the same; only previously-truncated reasoning-heavy responses now complete, which is the documented fix for the exact Groq 400 this repo hit live on PR #291.",
       "context": {
-        "title": "Increasing `max_tokens` to 8192 may cause provider\u2011level throttling or higher costs",
+        "title": "Increasing `max_tokens` to 8192 may cause provider‑level throttling or higher costs",
         "file": ".advreview.yml"
       },
       "expires_at": null
@@ -667,7 +667,7 @@
       "dismissed_at": "2026-09-11T00:53:28.584Z",
       "reason": "Real finding, out of scope for this PR. Tracked separately in MysteryMixClub-feuy since Flaught's linter tool first surfaced these 5 pre-existing eslint warnings (ADR 0025).",
       "context": {
-        "title": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\n/Users/dgabriel/claudeProjects/MysteryMixClub/frontend/src/pages/MixDetailRoute.tsx:287:10\n  285 |\n  286 |   useEffect(() => {\n> 287 |     void load();\n      |          ^^^^ Avoid calling setState() directly within an effect\n  288 |   }, [load]);\n  289 |\n  290 |   // Poll every 60s so state transitions (submission \u2192 voting \u2192 closed) and",
+        "title": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\n/Users/dgabriel/claudeProjects/MysteryMixClub/frontend/src/pages/MixDetailRoute.tsx:287:10\n  285 |\n  286 |   useEffect(() => {\n> 287 |     void load();\n      |          ^^^^ Avoid calling setState() directly within an effect\n  288 |   }, [load]);\n  289 |\n  290 |   // Poll every 60s so state transitions (submission → voting → closed) and",
         "file": "/Users/dgabriel/claudeProjects/MysteryMixClub/frontend/src/pages/MixDetailRoute.tsx"
       },
       "expires_at": null
@@ -876,8 +876,19 @@
       "dismissed_at": "2026-09-12T15:40:24.675Z",
       "reason": "Agreeing with the skeptic's own refutation: pull-requests: write is required by this same job's later step (flaught report ... | gh pr comment), which posts the review as a PR comment. Already scoped to only this job (not the workflow-level contents: read grant shared by frontend/backend), per ADR 0020.",
       "context": {
-        "title": "Workflow grants pull\u2011request write permission, enabling potential abuse",
+        "title": "Workflow grants pull‑request write permission, enabling potential abuse",
         "file": ".github/workflows/ci.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:ac565dba12aa21117939aa6090ef8d46",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-13T17:33:52.575Z",
+      "reason": "False positive, and the quoted snippet doesn't match the actual file: the real line 143 is console.error(`[ios-proof] ${next} failed:`, error) -- not the console.log(...resultMessage) shown as evidence. Even evaluated correctly, next is typed Action = 'signIn'|'signOut'|'connect'|'build'|'check'|'open', a closed union of hardcoded literals this code writes itself, never derived from user or network input, so there is no format-string injection surface. error is a separate console.error argument, not interpolated into the format string at all.",
+      "context": {
+        "title": "Unsafe format string in MusicProof logging",
+        "file": "frontend/src/ios/MusicProof.tsx"
       },
       "expires_at": null
     }

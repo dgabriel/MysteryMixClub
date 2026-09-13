@@ -136,7 +136,8 @@ final class MMCAPIClient {
         method: String,
         body: [String: Any]? = nil,
         authorized: Bool = true,
-        unauthorized: (String?) -> String = { _ in "SESSION_EXPIRED" }
+        allowRefresh: Bool = true,
+        unauthorized: (Any?) -> String = { _ in "SESSION_EXPIRED" }
     ) async throws -> [String: Any] {
         guard let base = apiBaseURL, let url = URL(string: base.absoluteString + path) else {
             throw ProofError.invalidBaseURL
@@ -167,32 +168,75 @@ final class MMCAPIClient {
         let parsed = try? JSONSerialization.jsonObject(with: data)
         let payload = parsed as? [String: Any] ?? [:]
         guard (200..<300).contains(http.statusCode) else {
-            let detail = payload["detail"] as? String
-            throw ProofError.server(
-                Self.serverCode(http.statusCode, detail: detail, unauthorized: unauthorized)
-            )
+            let code = Self.serverCode(http.statusCode, detail: payload["detail"], unauthorized: unauthorized)
+            // A session-expiry 401 on an authorized call gets exactly one silent
+            // recovery attempt via the refresh cookie before it reaches the UI as
+            // an error (MysteryMixClub-mfhg.1). allowRefresh: false on the retry
+            // stops this from ever looping -- a refresh that itself fails (an
+            // invalidated or expired refresh cookie, e.g. after logout-all) falls
+            // straight through to clearing the session below, never a second
+            // refresh attempt.
+            if authorized, allowRefresh, http.statusCode == 401, code == "SESSION_EXPIRED" {
+                if await refreshAccessToken() {
+                    return try await send(
+                        path: path, method: method, body: body,
+                        authorized: authorized, allowRefresh: false, unauthorized: unauthorized
+                    )
+                }
+                clearSession()
+            }
+            throw ProofError.server(code)
         }
         return payload
     }
 
+    /// Exchange the refresh cookie for a new access token. Never throws --
+    /// failure just means the caller's own SESSION_EXPIRED stands, and the
+    /// cookie itself (valid, expired, or invalidated by logout-all) is the
+    /// only thing that decides the outcome.
+    private func refreshAccessToken() async -> Bool {
+        guard let base = apiBaseURL, let url = URL(string: base.absoluteString + "/api/v1/auth/refresh") else {
+            return false
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode),
+              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let token = payload["access_token"] as? String, !token.isEmpty
+        else { return false }
+        accessToken = token
+        return true
+    }
+
+    /// The machine-readable discriminator the server puts on a structured 401
+    /// body, when it has one (MysteryMixClub-6x45) -- `nil` for the ordinary
+    /// neutral `{"detail": "not authenticated"}` shape every other endpoint
+    /// still uses.
+    private static func structuredCode(_ detail: Any?) -> String? {
+        (detail as? [String: Any])?["code"] as? String
+    }
+
     /// What a 401 from the playlist endpoint means.
     ///
-    /// This is the fragile one: `POST /mixes/{id}/apple-playlist` answers 401
-    /// both for an expired MMC session and for an expired Music User Token, and
-    /// the only discriminator on the wire is the detail string
-    /// (MysteryMixClub-6x45). Match the narrow, documented neutral constant for
-    /// the session case and let every other 401 mean Apple, so an unrecognised
-    /// one prompts a reconnect rather than dropping a live session.
-    private static let playlistUnauthorizedCode: (String?) -> String = { detail in
-        detail == "not authenticated" ? "SESSION_EXPIRED" : "APPLE_AUTH_EXPIRED"
+    /// `POST /mixes/{id}/apple-playlist` answers 401 both for an expired MMC
+    /// session and for an expired Music User Token. The server now tells them
+    /// apart with a structured `code` on the Apple-token case
+    /// (MysteryMixClub-6x45) instead of leaving the client to match on
+    /// human-readable copy; an unrecognised 401 still means session, not Apple,
+    /// so a shape the client doesn't understand fails toward the safer outcome.
+    private static let playlistUnauthorizedCode: (Any?) -> String = { detail in
+        structuredCode(detail) == "apple_auth_expired" ? "APPLE_AUTH_EXPIRED" : "SESSION_EXPIRED"
     }
 
     /// Map a server status onto something the UI can act on. Callers own the
     /// 401 meaning, because it differs by endpoint.
     private static func serverCode(
         _ status: Int,
-        detail: String?,
-        unauthorized: (String?) -> String
+        detail: Any?,
+        unauthorized: (Any?) -> String
     ) -> String {
         switch status {
         case 401: return unauthorized(detail)

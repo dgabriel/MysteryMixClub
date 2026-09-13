@@ -70,7 +70,10 @@ def run_swiftlint() -> list[dict]:
     """SwiftLint's --reporter json is a FLAT array -- [{file, line, reason,
     rule_id, severity, ...}] -- with no per-file nesting at all. Group it back
     into ESLint's per-file shape by hand."""
-    target = REPO_ROOT / "frontend" / "ios" / "App" / "App"
+    # The App target and AppTests both live under here; CapApp-SPM (vendored)
+    # and AppDelegate.swift (Capacitor boilerplate) are excluded via
+    # .swiftlint.yml, not by narrowing this path.
+    target = REPO_ROOT / "frontend" / "ios" / "App"
     stdout = _run(["swiftlint", "lint", "--reporter", "json", "--quiet", str(target)], cwd=REPO_ROOT)
     if not stdout:
         return []

@@ -125,6 +125,52 @@ project's ADR process exists to prevent.
 Item 2's answer turns out to be `CapacitorHttp` or a WebView-origin change —
 that is itself a decision this ADR defers, not one it makes.
 
+## Addendum: items 1–4 resolved (2026-09-13, MysteryMixClub-mfhg)
+
+**Item 1 (session refresh) — implemented.** `MMCAPIClient.send()` now catches a
+`SESSION_EXPIRED` 401 on any authorized call, spends one `/auth/refresh`
+attempt against the cookie already sitting in `URLSession.shared`'s cookie
+storage, and retries the original call once on success. A failed refresh
+(expired or `logout-all`-invalidated cookie) clears the session instead of
+retrying again — there is no loop. Tracked and implemented under
+MysteryMixClub-mfhg.1; account-switch and logout-all behavior still need
+verification with a real member account (see the device test plan on that
+issue), which is what "proven," not just "coded," requires here.
+
+**Item 2 (does native-owns-HTTP scale) — decision: stay native for now.**
+`MMCAPIClient` already generalized the request path (auth header, JSON
+body/error handling, and now refresh-on-401) behind one `send()` helper, so
+adding IOS-05's remaining routes is mostly one thin method per endpoint against
+that helper, not bespoke plumbing each time — the dozens-of-routes concern this
+ADR raised is smaller in practice than it looked before the refactor SwiftLint
+forced (see ADR 0031). Switching to `CapacitorHttp` or a WebView-origin pattern
+is a real migration with its own risk (losing the "credential never crosses the
+bridge" property ADR 0029 chose), and nothing observed yet justifies paying
+that cost pre-emptively. Concrete revisit trigger, not a vibe: if building out
+IOS-05 shows each new endpoint costing meaningfully more than writing the
+equivalent `frontend/src/services/api.ts` function did, or the plugin file
+needs another SwiftLint-forced split within one milestone, treat that as the
+signal to revisit rather than pushing further on the native path by default.
+
+**Item 3 (ambiguous 401) — fixed.** `POST /mixes/{id}/apple-playlist`'s 401 now
+carries a structured body (`{"detail": {"message": ..., "code":
+"apple_auth_expired"}}`) instead of the plain-string shape every other 401 in
+the app still uses; `get_current_user`'s own neutral 401 is deliberately left
+untouched (TD §5's "one uniform detail" reasoning still applies there — this
+was never about making every 401 structured, only the one endpoint where two
+different failures were wire-indistinguishable). `MMCAPIClient` discriminates
+on the `code` field, not the message text. MysteryMixClub-6x45's acceptance
+criteria are met.
+
+**Item 4 (iOS 16 floor) — decision stands; copy placement deferred.** iOS 16.0
+remains the permanent floor (unchanged from the decision recorded above). The
+unsupported-device guidance copy itself is **not** written yet: there is no
+invite email, invite landing page, or TestFlight listing for this app today —
+the iOS build has no distribution surface to put that copy on. Writing it now
+would be copy with nowhere to live. Revisit when milestone 2 gives the iOS
+build its first real distribution channel (TestFlight, most likely), and place
+the PWA-fallback guidance there at that point.
+
 ## References
 
 - [ADR 0028](0028-prototype-ios-with-capacitor-and-native-musickit.md)

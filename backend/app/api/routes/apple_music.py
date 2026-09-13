@@ -187,9 +187,22 @@ async def create_mix_apple_playlist(
     except AppleMusicAuthError as exc:
         # 401 so the client re-runs the MusicKit popup rather than showing a dead
         # end — an expired/revoked MUT is the one failure the user can fix.
+        #
+        # `detail` is a structured body here, not the app's usual plain string
+        # (MysteryMixClub-6x45): this endpoint's 401 is otherwise indistinguishable
+        # on the wire from get_current_user's neutral session-expiry 401, and a
+        # client that needs to tell them apart (the iOS proof, MMCAPIClient.swift)
+        # had nothing but human-readable copy to match on. `code` is the
+        # discriminator; `message` is unchanged from before for anything still
+        # just displaying it. get_current_user's own 401 deliberately keeps its
+        # plain-string shape (TD Sec.5) — only this endpoint's Apple-specific
+        # case gets a code, so "no code" already means "session, not Apple."
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="apple music authorization expired; reconnect and try again",
+            detail={
+                "message": "apple music authorization expired; reconnect and try again",
+                "code": "apple_auth_expired",
+            },
         ) from exc
     except AppleMusicApiError as exc:
         raise HTTPException(

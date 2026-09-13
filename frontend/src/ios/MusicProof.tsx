@@ -126,6 +126,10 @@ export function MusicProof() {
     try {
       await work();
     } catch (error) {
+      // Not Capacitor's own bridge logging (that stays off, capacitor.config.ts) --
+      // this is our own, and is worth keeping in a device-test prototype: the
+      // one way to see the raw shape a native rejection actually arrived in.
+      console.error(`[ios-proof] ${next} failed:`, error);
       setMessage(musicErrorMessage(error));
     } finally {
       running.current = false;

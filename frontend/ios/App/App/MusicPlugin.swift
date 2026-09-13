@@ -102,12 +102,37 @@ public final class MMCMusicPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    /// A fresh Music User Token. The return value never leaves this file's call
-    /// stack; callers spend it on a request and discard it.
+    /// A fresh Music User Token, minted against Apple's own automatically-
+    /// vended developer token. Only for local connectivity checks (`inspect`)
+    /// that never leave the device -- a token minted this way is not what
+    /// `musicUserTokenForServer()` below produces, and the two are not
+    /// interchangeable at the API (see that function's doc comment).
     @MainActor private func musicUserToken() async throws -> String {
         let provider = MusicDataRequest.tokenProvider
         let developerToken = try await provider.developerToken(options: [])
         let userToken = try await provider.userToken(for: developerToken, options: [])
+        guard !userToken.isEmpty else { throw ProofError.tokenUnavailable }
+        return userToken
+    }
+
+    /// A fresh Music User Token, minted against THIS SERVER's own developer
+    /// token rather than Apple's automatically-vended one.
+    ///
+    /// `MMCAPIClient.createApplePlaylist` spends this token alongside that
+    /// same server-signed developer token (ADR 0029: the server owns the
+    /// Apple Music HTTP calls). Minting the Music User Token against a
+    /// *different* developer token than the one that will actually spend
+    /// it -- even a same-team one -- is a real, previously-unverified
+    /// mismatch: nothing enforces the two must be interchangeable, and the
+    /// web flow never has this problem because MusicKit JS mints its token
+    /// against this exact same server-provided developer token already.
+    /// `.ignoreCache` forces a fresh mint against this specific developer
+    /// token rather than reusing whatever Apple cached for the automatic one.
+    @MainActor private func musicUserTokenForServer() async throws -> String {
+        let developerToken = try await api.getDeveloperToken()
+        let userToken = try await MusicDataRequest.tokenProvider.userToken(
+            for: developerToken, options: [.ignoreCache]
+        )
         guard !userToken.isEmpty else { throw ProofError.tokenUnavailable }
         return userToken
     }
@@ -160,7 +185,7 @@ public final class MMCMusicPlugin: CAPPlugin, CAPBridgedPlugin {
                     throw ProofError.subscriptionRequired
                 }
 
-                let userToken = try await self.musicUserToken()
+                let userToken = try await self.musicUserTokenForServer()
                 let result = try await self.api.createApplePlaylist(
                     mixId: mix, musicUserToken: userToken, tzOffsetMinutes: tzOffsetMinutes
                 )

@@ -97,6 +97,19 @@ final class MMCAPIClient {
         try await send(path: "/api/v1/mixes/\(mixId.uuidString.lowercased())/apple-playlist", method: "GET")
     }
 
+    /// This server's own Apple Music developer token -- the same one MusicKit
+    /// JS fetches for the web flow. Native mints its Music User Token against
+    /// this, not Apple's automatically-vended one, so the token this server
+    /// later spends alongside the MUT is the one the MUT was actually minted
+    /// for, not a different (if same-team) developer token.
+    func getDeveloperToken() async throws -> String {
+        let response = try await send(path: "/api/v1/apple-music/developer-token", method: "GET")
+        guard let token = response["token"] as? String, !token.isEmpty else {
+            throw ProofError.badResponse
+        }
+        return token
+    }
+
     func createApplePlaylist(
         mixId: UUID,
         musicUserToken: String,

@@ -1,6 +1,6 @@
 # ADR 0028: Evaluate Capacitor and native MusicKit in an iPhone integration proof
 
-**Status:** Proposed
+**Status:** Accepted — confirmed by physical-device evidence 2026-09-13, see [ADR 0030](0030-carry-the-ios-proof-architecture-into-milestone-2.md)
 **Date:** 2026-09-12
 
 ## Context
@@ -18,6 +18,8 @@ MMC authentication is a separate integration gate. Do not assume Safari cookies 
 ## Consequences
 
 React reuse avoids an immediate interface rewrite, but introduces a native bridge and an Xcode build toolchain. Real-device evidence is required for permission, subscription eligibility, token compatibility, and playlist handoff. No native build or successful device test has yet been performed. This proposal does not approve the full PRD scope or a production deployment.
+
+**2026-09-13 update:** all of the above has now been demonstrated on a physical iPhone — native authorization, the existing server playlist endpoint accepting a natively-obtained Music User Token unmodified, external handoff, and mix-context resume, plus denied permission, interrupted network, and repeated-tap handling. See [ADR 0030](0030-carry-the-ios-proof-architecture-into-milestone-2.md) for what carries forward and what remains open before milestone 2.
 
 ## Revisit if
 

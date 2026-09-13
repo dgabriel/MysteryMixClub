@@ -1,6 +1,6 @@
 # ADR 0029: The native layer owns the HTTP boundary in the iOS proof
 
-**Status:** Proposed
+**Status:** Accepted — confirmed by physical-device evidence 2026-09-13, see [ADR 0030](0030-carry-the-ios-proof-architecture-into-milestone-2.md)
 **Date:** 2026-09-13
 
 ## Context
@@ -85,6 +85,14 @@ Dev builds reach a LAN backend over plain HTTP, so `Info.plist` gains
 `NSAllowsLocalNetworking` and a local-network usage string. That relief is scoped
 to local addresses and does not weaken ATS for the public internet; a build
 pointed at staging or production needs neither.
+
+**2026-09-13 update:** confirmed on a physical iPhone against a LAN dev backend
+— sign-in, playlist creation via the unmodified server endpoint, reconciliation
+against both the server record and the device's own library, and a real network
+interruption all behave as designed. See
+[ADR 0030](0030-carry-the-ios-proof-architecture-into-milestone-2.md) for
+whether this four-endpoint pattern is the right shape once the full member loop
+is in scope, rather than just this proof's slice of it.
 
 ## Revisit if
 

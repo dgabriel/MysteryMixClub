@@ -80,16 +80,26 @@ discovered mid-build:
    acceptable interim for a proof with one caller; it is not acceptable once
    real sessions expire under real members.
 
-4. **Minimum iOS version needs an explicit answer, not an inherited one.** The
-   PRD's own decision table (§10) lists "Supported devices and OS" as
-   unresolved, deferred until after SDK validation. That validation has now
-   happened, and the answer it produced is **iOS 16.0** — not a preference, but
-   a floor: reconciling a build against the device library
-   (`MusicLibraryRequest`, the mechanism behind "Check this mix") requires it,
-   and that reconciliation is load-bearing, not optional polish, given IOS-03's
-   requirement to prevent duplicate playlists after an uncertain result.
-   Confirm this is an acceptable floor for the release, since it is a product
-   decision (how many members' devices it excludes), not a technical one.
+4. **Minimum iOS version: settled at 16.0, permanently.** The PRD's own
+   decision table (§10) lists "Supported devices and OS" as unresolved,
+   deferred until after SDK validation. That validation has now happened —
+   `MusicLibraryRequest`, the mechanism behind "Check this mix," requires
+   iOS 16, and that reconciliation is load-bearing (IOS-03's duplicate-
+   playlist prevention), not optional polish. **Decision: iOS 16.0 is the
+   floor and MMC will not lower it to accommodate an older device.** Given
+   16.0 shipped in 2022, this excludes only phones that were already old when
+   it released.
+
+   A device below the floor is not simply turned away silently. MMC already
+   runs as a PWA in any mobile browser regardless of iOS version — the native
+   app adds native Apple Music auth, push, and the reconciliation behavior
+   above, but isn't the only way to use MMC. Milestone 2 must give an
+   unsupported member MMC-authored guidance that says so, rather than relying
+   on Apple's own generic "requires iOS 16" gating at the App Store/TestFlight
+   listing: point them at continuing on the existing PWA in Safari, not just
+   at an upgrade they may not be able to make. Where exactly that copy lives
+   (invite email, invite landing page, a TestFlight-page note) is milestone-2
+   scoping work, not decided here.
 
 The two skipped scenarios are recorded as a deliberate scope decision, not a
 silent gap: milestone 2 should decide whether ineligible-subscription and

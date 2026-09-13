@@ -93,6 +93,17 @@ export function MusicProof() {
   const [message, setMessage] = useState('');
   const running = useRef(false);
   const revision = useRef(0);
+  const messageRef = useRef<HTMLParagraphElement>(null);
+
+  // The message sits below every section, so on a phone it can render entirely
+  // off-screen from wherever the action that caused it was tapped (confirmed on
+  // device: a real failure message was there the whole time, just unseen below
+  // the fold). Bring it into view rather than relying on a scroll to find it.
+  useEffect(() => {
+    if (!message) return;
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    messageRef.current?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' });
+  }, [message]);
 
   useEffect(() => {
     if (!native) return;
@@ -316,7 +327,7 @@ export function MusicProof() {
           </>}
         </Section>
 
-        {message && <p role="alert" className="rounded-tile bg-card p-6 text-sm leading-relaxed shadow-z2">{message}</p>}
+        {message && <p ref={messageRef} role="alert" className="rounded-tile bg-card p-6 text-sm leading-relaxed shadow-z2">{message}</p>}
 
         <p className="text-sm leading-relaxed text-muted-foreground">Nothing on this screen stores a password, an Apple Music token, or a Mystery Mix Club token where JavaScript can read it.</p>
       </div>

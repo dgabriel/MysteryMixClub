@@ -259,3 +259,15 @@ it('clears mix state on sign-out so the next account starts clean', async () => 
   expect(screen.queryByText(/10 of 10 tracks/)).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Open Apple Music' })).not.toBeInTheDocument();
 });
+
+it('brings a failure message into view rather than leaving it to be scrolled to', async () => {
+  // Confirmed on device: the message renders correctly below the whole Mix
+  // playlist section, off-screen on a phone, and was mistaken for missing
+  // entirely until someone scrolled down to it.
+  await ready();
+  vi.mocked(music.createPlaylist).mockRejectedValue({ code: 'APPLE_AUTH_EXPIRED' });
+  fireEvent.click(screen.getByRole('button', { name: 'Build playlist' }));
+  const alert = await screen.findByRole('alert');
+  expect(alert).toHaveTextContent('Apple Music access expired');
+  expect(alert.scrollIntoView).toHaveBeenCalledWith(expect.objectContaining({ block: 'center' }));
+});

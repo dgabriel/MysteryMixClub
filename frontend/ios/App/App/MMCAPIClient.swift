@@ -20,6 +20,20 @@ final class MMCAPIClient {
 
     var isSignedIn: Bool { accessToken != nil }
 
+    /// Adopt an already-established MMC session (ADR 0032): the real app
+    /// running in this same Capacitor WebView already holds a valid access
+    /// token from its own sign-in, so a native call on its behalf uses that
+    /// token directly rather than this client performing an independent
+    /// sign-in. The standalone MusicKit proof still uses `signIn()` above.
+    func adoptSession(apiBaseUrl: String, accessToken token: String) throws {
+        guard let base = Self.normalizedBaseURL(apiBaseUrl) else {
+            throw ProofError.invalidBaseURL
+        }
+        guard !token.isEmpty else { throw ProofError.credentialsRequired }
+        apiBaseURL = base
+        accessToken = token
+    }
+
     func sessionPayload() -> JSObject {
         guard accessToken != nil else { return ["signedIn": false] }
         return [

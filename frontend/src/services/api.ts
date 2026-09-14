@@ -13,7 +13,10 @@
 // Default to the 127.0.0.1 loopback (not "localhost"): the app keeps every
 // origin on one host so the session cookie survives the Spotify OAuth redirect
 // (MYS-85), and Spotify rejects "localhost" redirect URIs.
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+// Exported for the native iOS bridge (ADR 0032): MMCMusicPlugin.createPlaylist
+// needs the same base URL this WebView is already talking to, since it
+// adopts this session's access token rather than maintaining its own.
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 const AUTH_BASE = `${API_BASE_URL}/api/v1/auth`;
 
 /** Password bounds the backend enforces on register/reset. Mirrored here only so

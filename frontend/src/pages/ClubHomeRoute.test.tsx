@@ -16,6 +16,7 @@ import {
   removeMember,
   updateClub,
   updateMemberRole,
+  updateMix,
 } from "../services/api";
 import type { Invite, Club, LeaderboardEntry, ClubMember, Mix, MixResults } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
@@ -32,6 +33,7 @@ vi.mock("../services/api", async () => {
     getResults: vi.fn(),
     createMix: vi.fn(),
     updateClub: vi.fn(),
+    updateMix: vi.fn(),
     removeMember: vi.fn(),
     createInvite: vi.fn(),
     deleteClub: vi.fn(),
@@ -50,6 +52,7 @@ const mockGetClubMembers = vi.mocked(getClubMembers);
 const mockGetMixes = vi.mocked(getMixes);
 const mockGetResults = vi.mocked(getResults);
 const mockUpdateClub = vi.mocked(updateClub);
+const mockUpdateMix = vi.mocked(updateMix);
 const mockRemoveMember = vi.mocked(removeMember);
 const mockCreateInvite = vi.mocked(createInvite);
 const mockDeleteClub = vi.mocked(deleteClub);
@@ -823,5 +826,56 @@ describe("ClubHomeRoute", () => {
     renderClub();
     await screen.findByRole("heading", { name: "Friday Mixtape" });
     expect(screen.queryByText(/of 0 voted/i)).not.toBeInTheDocument();
+  });
+
+  describe("open mix from the club home list (MysteryMixClub-4vii.4)", () => {
+    it("a themed pending mix's 'open mix' button opens it for submissions", async () => {
+      const pending = closedMix({ id: "mix-pending", state: "pending", theme: "late summer feels" });
+      mockGetMixes.mockResolvedValue([pending]);
+      mockUpdateMix.mockResolvedValue({ ...pending, state: "open_submission" });
+
+      renderClub();
+      await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+      await userEvent.click(screen.getByRole("button", { name: /^open mix$/i }));
+
+      expect(mockUpdateMix).toHaveBeenCalledWith("mix-pending", { state: "open_submission" });
+      // Reflects the server's returned state (patched into local state)
+      // rather than a refetch — "upcoming" is gone, its open_submission
+      // label is showing.
+      expect(await screen.findByText(/^submissions open$/i)).toBeInTheDocument();
+      expect(screen.queryByText(/^upcoming$/i)).not.toBeInTheDocument();
+    });
+
+    it("an untitled pending mix has no 'open mix' button, and explains why", async () => {
+      mockGetMixes.mockResolvedValue([
+        closedMix({ id: "mix-untitled", state: "pending", theme: null }),
+      ]);
+
+      renderClub();
+      await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+      expect(screen.queryByRole("button", { name: /^open mix$/i })).not.toBeInTheDocument();
+      expect(
+        screen.getByText(/add a theme before you can open this mystery mix/i),
+      ).toBeInTheDocument();
+    });
+
+    it("a failed open shows a calm error without navigating away", async () => {
+      mockGetMixes.mockResolvedValue([
+        closedMix({ id: "mix-pending", state: "pending", theme: "late summer feels" }),
+      ]);
+      mockUpdateMix.mockRejectedValue(new ApiError(409, "set a theme before opening this mystery mix"));
+
+      renderClub();
+      await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+      await userEvent.click(screen.getByRole("button", { name: /^open mix$/i }));
+
+      expect(
+        await screen.findByText(/set a theme before opening this mystery mix/i),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Friday Mixtape" })).toBeInTheDocument();
+    });
   });
 });

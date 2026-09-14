@@ -91,8 +91,11 @@ function CloseIcon() {
 }
 
 /**
- * Shared top navigation. On authenticated screens the ring mark returns home;
- * HOME / PROFILE / ABOUT / HELP / LOGOUT are always present, ADMIN only for
+ * Shared top navigation. On authenticated screens the ring mark returns to
+ * /home (labeled "my clubs" -- MysteryMixClub-4vii.5: that page is entirely a
+ * club listing, and a nav item reading "home" pointing at a page titled "my
+ * clubs" read as two different destinations);
+ * MY CLUBS / PROFILE / ABOUT / HELP / LOGOUT are always present, ADMIN only for
  * platform admins. An optional back affordance (e.g. "← club") sits beside the mark on
  * deeper screens. The mark's amber centre label is the brand mark, and the
  * wordmark beside it carries the name. Amber placement is a design decision
@@ -230,7 +233,7 @@ export function TopNav({ back }: TopNavProps) {
         <button
           type="button"
           onClick={() => navigate("/home")}
-          aria-label="home"
+          aria-label="my clubs"
           className="transition-opacity duration-150 hover:opacity-70"
         >
           {/* The vinyl disc, amber label with the `mmc` mark printed on it —
@@ -248,7 +251,7 @@ export function TopNav({ back }: TopNavProps) {
             mono links — and putting the brand on every screen rather than
             leaving it to a 28px dot. A sibling of the mark rather than inside
             it: folding it into the button would replace that button's
-            accessible name ("home" / "login") with the brand text, and the
+            accessible name ("my clubs" / "login") with the brand text, and the
             destination is the more useful thing to announce. Hidden below `sm`,
             where the bar has no room for it. */}
         <span className="hidden font-display text-[1.2rem] font-extrabold uppercase leading-none tracking-display-snug text-foreground sm:block">
@@ -266,7 +269,7 @@ export function TopNav({ back }: TopNavProps) {
       {/* Desktop: unchanged inline row, `sm` and up. */}
       <nav className="hidden items-center gap-4 sm:flex">
         <button type="button" onClick={() => navigate("/home")} className={navLinkClass("/home")}>
-          home
+          my clubs
         </button>
         <button
           type="button"
@@ -335,7 +338,7 @@ export function TopNav({ back }: TopNavProps) {
               onClick={() => go("/home")}
               className={`${navLinkClass("/home")} text-left`}
             >
-              home
+              my clubs
             </button>
             <button
               type="button"

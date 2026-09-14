@@ -240,7 +240,7 @@ describe("ProfileRoute", () => {
     await screen.findByText(/archived/i);
 
     // Two "home" controls in the TopNav (ring mark + text link); either routes home.
-    await user.click(screen.getAllByRole("button", { name: /^home$/i })[1]);
+    await user.click(screen.getAllByRole("button", { name: /^my clubs$/i })[1]);
 
     expect(await screen.findByText("HOME CONTENT")).toBeInTheDocument();
   });

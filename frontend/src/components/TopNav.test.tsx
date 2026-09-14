@@ -78,11 +78,11 @@ describe("TopNav", () => {
     setAuth(false);
   });
 
-  it("renders home / profile / about / help / logout for any authed user, and hides admin for non-admins", () => {
+  it("renders my clubs / profile / about / help / logout for any authed user, and hides admin for non-admins", () => {
     renderNav();
 
-    // Two home controls: the ring mark (aria-label) and the text link.
-    expect(screen.getAllByRole("button", { name: /^home$/i })).toHaveLength(2);
+    // Two "my clubs" controls: the ring mark (aria-label) and the text link.
+    expect(screen.getAllByRole("button", { name: /^my clubs$/i })).toHaveLength(2);
     expect(screen.getByRole("button", { name: /^profile$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^about$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^help$/i })).toBeInTheDocument();
@@ -138,9 +138,9 @@ describe("TopNav", () => {
     const user = userEvent.setup();
     renderNav();
 
-    // The ring mark and the text link both label "home"; the mark is first.
-    const homeControls = screen.getAllByRole("button", { name: /^home$/i });
-    await user.click(homeControls[0]);
+    // The ring mark and the text link both label "my clubs"; the mark is first.
+    const myClubsControls = screen.getAllByRole("button", { name: /^my clubs$/i });
+    await user.click(myClubsControls[0]);
     expect(await screen.findByText("HOME CONTENT")).toBeInTheDocument();
   });
 
@@ -161,9 +161,9 @@ describe("TopNav", () => {
   describe("mobile menu (MysteryMixClub-4vii: below `sm`, and the only layout on the iOS app)", () => {
     it("is closed by default -- desktop's inline row is the only nav in the DOM", () => {
       renderNav();
-      // Two "home" controls (ring mark + desktop link), not three: the
-      // mobile panel's own "home" link isn't rendered until opened.
-      expect(screen.getAllByRole("button", { name: /^home$/i })).toHaveLength(2);
+      // Two "my clubs" controls (ring mark + desktop link), not three: the
+      // mobile panel's own "my clubs" link isn't rendered until opened.
+      expect(screen.getAllByRole("button", { name: /^my clubs$/i })).toHaveLength(2);
       expect(screen.getByRole("button", { name: /^open menu$/i })).toBeInTheDocument();
     });
 
@@ -172,10 +172,10 @@ describe("TopNav", () => {
       renderNav();
 
       await user.click(screen.getByRole("button", { name: /^open menu$/i }));
-      expect(screen.getAllByRole("button", { name: /^home$/i })).toHaveLength(3);
+      expect(screen.getAllByRole("button", { name: /^my clubs$/i })).toHaveLength(3);
 
       await user.click(screen.getByRole("button", { name: /^close menu$/i }));
-      expect(screen.getAllByRole("button", { name: /^home$/i })).toHaveLength(2);
+      expect(screen.getAllByRole("button", { name: /^my clubs$/i })).toHaveLength(2);
     });
 
     it("closes on tapping the backdrop", async () => {
@@ -184,7 +184,7 @@ describe("TopNav", () => {
 
       await user.click(screen.getByRole("button", { name: /^open menu$/i }));
       await user.click(screen.getByRole("button", { name: /^dismiss menu$/i }));
-      expect(screen.getAllByRole("button", { name: /^home$/i })).toHaveLength(2);
+      expect(screen.getAllByRole("button", { name: /^my clubs$/i })).toHaveLength(2);
     });
 
     it("a mobile link navigates and closes the panel", async () => {
@@ -221,7 +221,7 @@ describe("TopNav", () => {
 
       // Two login controls: the ring mark (aria-label) and the text link.
       expect(screen.getAllByRole("button", { name: /^login$/i })).toHaveLength(2);
-      expect(screen.queryByRole("button", { name: /^home$/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^my clubs$/i })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /^profile$/i })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /^about$/i })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /^help$/i })).not.toBeInTheDocument();

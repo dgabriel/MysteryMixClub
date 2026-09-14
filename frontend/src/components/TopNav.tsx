@@ -5,6 +5,7 @@ import { ConcentricRings } from "./ConcentricRings";
 import { Badge } from "./Badge";
 import { ReleaseNotesModal } from "./ReleaseNotesModal";
 import { markLatestReleaseSeen } from "../data/releaseNotes";
+import { IS_NATIVE_BUILD } from "../lib/platform";
 
 type TopNavProps = {
   /** Optional back affordance shown on the far left after the ring mark — used by
@@ -224,7 +225,7 @@ export function TopNav({ back }: TopNavProps) {
         <button type="button" onClick={() => navigate("/help")} className={navLinkClass("/help")}>
           help
         </button>
-        {isPlatformAdmin ? (
+        {isPlatformAdmin && !IS_NATIVE_BUILD ? (
           <button
             type="button"
             onClick={() => navigate("/admin")}

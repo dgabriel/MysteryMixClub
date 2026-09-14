@@ -913,6 +913,72 @@
         "file": "frontend/package-lock.json"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:c54520cd2148032b3b1695e04ead6bf9",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:32:20.382Z",
+      "reason": "False positive, verified against current file: the assertion expect(screen.getAllByRole('button', { name: /^my clubs$/i })).toHaveLength(2) is present unchanged on the very next line (TopNav.test.tsx:85). Only the preceding comment's text was updated to match the label rename; the tool's diff-hunk heuristic likely mis-grouped the comment-only edit as isolated from the adjacent assertion line.",
+      "context": {
+        "title": "A test body was replaced with comments",
+        "file": "frontend/src/components/TopNav.test.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:9e8749b44c63ec50c20e5b8f3eb77e0d",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:32:20.523Z",
+      "reason": "Same false positive as D-0001 (deterministic finding on the identical claim) -- the assertion is present and unweakened, verified directly against the file.",
+      "context": {
+        "title": "Test body replaced with comment in TopNav test",
+        "file": "frontend/src/components/TopNav.test.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:72558fc8e130734384e76ba5d82e98b5",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:32:20.659Z",
+      "reason": "Mischaracterizes PR scope, not a bug: the rename intentionally applies to web too, per Dawn's explicit request in this session ('I think we need to change Home to My Clubs... navigation is confusing'). Several commits on this PR are deliberately general web fixes surfaced via iOS testing (the About-page Link bug, the open-mix-from-list feature), not iOS-exclusive -- that is this PR's actual, deliberate scope, not scope drift.",
+      "context": {
+        "title": "UI rename from \"home\" to \"my clubs\" affects all platforms",
+        "file": "frontend/src/components/TopNav.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:09c305fd7b3a1fd14e4715f0ca51f9e3",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:32:20.795Z",
+      "reason": "False positive: the tests exist. ClubHomeRoute.test.tsx has 'a themed mix #2 has no open mix button while mix #1 is still pending, and explains why' (line 881) and 'mix #2's open mix button appears once mix #1 has closed' (line 897), directly covering canOpenMix's hidden/disabled behavior. The LLM's own report notes a 100,000-char prompt truncation that likely excluded the test-file diff from what it reviewed.",
+      "context": {
+        "title": "Missing tests for forward-only mix opening UI logic",
+        "file": "frontend/src/pages/ClubHomeScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:b2dc4dcf3d58ee38944a4a58f6bc7bbd",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:32:20.935Z",
+      "reason": "Plausible in isolation but not a new regression: the new previous-mix check uses the exact same unlocked select(Mix)...scalar() pattern as the pre-existing 'another mix is already active' check three lines above it in the same function -- same file, same transaction, same discipline. If this class of race is a real concern it already existed before this PR; tracked as a real follow-up (MysteryMixClub-4vii.6) to add FOR UPDATE to both checks together rather than inconsistently to only the new one.",
+      "context": {
+        "title": "Potential race condition in forward-only mix opening check",
+        "file": "backend/app/api/routes/mixes.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:1f2ae8365f3e8f0afc097550627b09cd",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:32:21.077Z",
+      "reason": "No logging or persistence occurs anywhere in this flow -- verified via direct grep for print/NSLog/log. in both MusicPlugin.swift and MMCAPIClient.swift: zero matches. adoptSession's accessToken = token is a plain in-memory assignment, identical in kind to signIn()'s existing, already-accepted token handling (MMCAPIClient's own doc comment: 'never written to disk, the keychain, or the WebView').",
+      "context": {
+        "title": "Access token passed to native plugin without sanitization",
+        "file": "frontend/ios/App/App/MusicPlugin.swift"
+      },
+      "expires_at": null
     }
   ]
 }

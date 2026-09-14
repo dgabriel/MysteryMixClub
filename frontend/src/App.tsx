@@ -78,8 +78,7 @@ const SubmissionHistoryRoute = lazy(() =>
  *                    TopNav, and the onboarding/consent gate
  *   /privacy       → public Privacy Policy (MYS-183); linked from /login,
  *                    TopNav, and the onboarding/consent gate
- *   /help          → public help/FAQ (MYS-222); linked from /login, TopNav, and
- *                    context-help "?" icons elsewhere in the app (HelpLink.tsx)
+ *   /help          → public help/FAQ (MYS-222); linked from /login and TopNav
  *
  *   Authed shell (ProtectedRoute + AuthedLayout, which renders the shared TopNav):
  *     /home        → My Clubs landing

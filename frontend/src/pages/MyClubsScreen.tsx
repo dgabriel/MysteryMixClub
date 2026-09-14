@@ -5,7 +5,7 @@ import { Card } from "../components/Card";
 import { ClubName } from "../components/ClubName";
 import { ConcentricRings } from "../components/ConcentricRings";
 import { CrownIcon } from "../components/CrownIcon";
-import { HelpLink } from "../components/HelpLink";
+import { OnboardingGuideModal } from "../components/OnboardingGuideModal";
 import { PaperSurface } from "../components/PaperSurface";
 import { SongSearchCard } from "../components/songs/SongSearchCard";
 
@@ -17,7 +17,32 @@ type MyClubsScreenProps = {
   preferredService?: string | null;
   onCreateClub: () => void;
   onOpenClub: (id: string) => void;
+  /** Empty-clubs welcome guide (MysteryMixClub-6eo8) -- see HomeRoute for the
+   *  trigger/persistence logic; this screen only renders it. */
+  showWelcomeGuide: boolean;
+  onDismissWelcomeGuide: () => void;
+  onCreateClubFromGuide: () => void;
+  onReopenWelcomeGuide: () => void;
 };
+
+const WELCOME_GUIDE_STEPS = [
+  {
+    title: "start a club",
+    description: "Create a home for your group and choose how you want to play.",
+  },
+  {
+    title: "invite your friends",
+    description: "Share your club's invite link so everyone can join.",
+  },
+  {
+    title: "submit your songs",
+    description: "Each mix has a theme. Pick favorites that fit, and keep your picks a secret.",
+  },
+  {
+    title: "listen and vote",
+    description: "Enjoy the mystery playlist, vote for your favorites, then discover who picked what.",
+  },
+];
 
 export function MyClubsScreen({
   displayName,
@@ -27,6 +52,10 @@ export function MyClubsScreen({
   preferredService,
   onCreateClub,
   onOpenClub,
+  showWelcomeGuide,
+  onDismissWelcomeGuide,
+  onCreateClubFromGuide,
+  onReopenWelcomeGuide,
 }: MyClubsScreenProps) {
   const activeClubs = clubs.filter((l) => l.state !== "complete");
   const completedClubs = clubs.filter((l) => l.state === "complete");
@@ -53,21 +82,31 @@ export function MyClubsScreen({
               <div className="flex flex-col items-center pt-4 text-center">
                 {/* Empty state — accented because it is marking the screen
                     itself rather than decorating it: with no clubs the disc is
-                    the only object here, at the 88px page-hero size, and the
+                    the only object here, at the 96px page-hero size, and the
                     loading disc it replaces can never render at the same
-                    time. */}
-                <ConcentricRings size={88} accent onPaper className="mx-auto" />
-                <span className="mt-8 flex items-center gap-2">
-                  <p className="font-mono text-meta uppercase tracking-mono-wide text-ink-muted">
-                    no clubs yet
-                  </p>
-                  <HelpLink anchor="clubs" onPaper />
-                </span>
+                    time. `spinning`/`wordmark` match the disc's other public
+                    hero appearance (BrandLockup, e.g. /about) for consistency
+                    across the app's two "here's the brand mark" moments. */}
+                <ConcentricRings size={96} spinning accent wordmark onPaper className="mx-auto" />
+                <p className="mt-8 font-mono text-meta uppercase tracking-mono-wide text-ink-muted">
+                  no clubs yet
+                </p>
                 <div className="mt-6">
                   <Button type="button" onClick={onCreateClub}>
                     create a club
                   </Button>
                 </div>
+                {/* Reopen affordance for the welcome guide below (requirement
+                    4, MysteryMixClub-6eo8) -- discoverable even after it's
+                    been dismissed once. Muted rather than amber: a help
+                    affordance, not an action worth marking. */}
+                <button
+                  type="button"
+                  onClick={onReopenWelcomeGuide}
+                  className="mt-4 font-mono text-mini uppercase tracking-mono-caps text-ink-muted underline underline-offset-[3px] hover:text-ink"
+                >
+                  how it works
+                </button>
                 {error ? (
                   <p role="alert" className="mt-6 text-sm leading-[1.72] text-ink">
                     {error}
@@ -90,12 +129,9 @@ export function MyClubsScreen({
                     {displayName}
                   </p>
                 ) : null}
-                <span className="mt-1 flex items-center gap-2">
-                  <h1 className="font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
-                    my clubs
-                  </h1>
-                  <HelpLink anchor="clubs" onPaper />
-                </span>
+                <h1 className="mt-1 font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
+                  my clubs
+                </h1>
 
                 <div className="mt-4">
                   <Button type="button" onClick={onCreateClub}>
@@ -156,6 +192,23 @@ export function MyClubsScreen({
           </div>
         )}
       </main>
+      {showWelcomeGuide ? (
+        <OnboardingGuideModal
+          eyebrow="mystery mix club"
+          heading={
+            <>
+              music is better
+              <br />
+              with friends.
+            </>
+          }
+          intro="Start a private club and discover music together. Here's how it works."
+          steps={WELCOME_GUIDE_STEPS}
+          primaryLabel="create a club"
+          onPrimary={onCreateClubFromGuide}
+          onDismiss={onDismissWelcomeGuide}
+        />
+      ) : null}
     </PaperSurface>
   );
 }

@@ -44,7 +44,8 @@ describe("HelpRoute", () => {
   });
 
   it("every section anchor referenced by a hash actually exists on the page", () => {
-    // Guards against a HelpLink and this page's section ids drifting apart.
+    // Guards against a deep link (e.g. /help#casual-mode) and this page's
+    // section ids drifting apart.
     const { container } = renderAt("/help");
     const sectionIds = Array.from(container.querySelectorAll("section[id]")).map((el) => el.id);
 

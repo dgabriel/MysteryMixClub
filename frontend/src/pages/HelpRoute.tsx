@@ -207,13 +207,13 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
  * screen footer and TopNav. Mirrors TermsRoute/PrivacyRoute's layout; TopNav
  * collapses to a login-only nav for signed-out visitors.
  *
- * Each section carries a stable `id` so it can be deep-linked as context help
- * from elsewhere in the app (e.g. /help#casual-mode) — see HelpLink.tsx.
+ * Each section carries a stable `id` so it can be deep-linked (e.g.
+ * /help#casual-mode).
  *
  * Client-side route changes don't get the browser's native #hash scroll (that
  * only fires on a real document navigation), so this scrolls to the target
  * section itself on mount and on every hash change thereafter — covers both
- * arriving fresh from another page and clicking a second HelpLink while
+ * arriving fresh from another page and following a second #hash link while
  * already on /help.
  */
 export function HelpRoute() {

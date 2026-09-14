@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { ClubHomeRoute } from "./ClubHomeRoute";
@@ -20,6 +20,8 @@ import {
 } from "../services/api";
 import type { Invite, Club, LeaderboardEntry, ClubMember, Mix, MixResults } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
+import { dismissGuide, isGuideDismissed, markJustJoinedClub } from "../data/onboardingGuides";
+import { markLatestReleaseSeen } from "../data/releaseNotes";
 
 // Mock the API module (no network). Keep ApiError real.
 vi.mock("../services/api", async () => {
@@ -904,6 +906,127 @@ describe("ClubHomeRoute", () => {
       await screen.findByRole("heading", { name: "Friday Mixtape" });
 
       expect(screen.getAllByRole("button", { name: /^open mix$/i })).toHaveLength(1);
+    });
+  });
+
+  describe("club-invite welcome guide (MysteryMixClub-6eo8)", () => {
+    beforeEach(() => {
+      localStorage.clear();
+      // Global setup's own beforeEach marks the release-notes popup seen
+      // before this one runs; the clear() above wipes that back out, so redo
+      // it here or that unrelated modal renders too and getByRole("dialog")
+      // stops being unambiguous.
+      markLatestReleaseSeen();
+    });
+
+    it("auto-shows when the caller just joined this club via invite", async () => {
+      markJustJoinedClub("club-1");
+      renderClub("club-1");
+
+      const dialog = await screen.findByRole("dialog");
+      expect(dialog).toHaveAccessibleName(/you're in/i);
+      // The real club name replaces the mockup's placeholder "the listening room".
+      expect(within(dialog).getByText(/friday/i)).toBeInTheDocument();
+      expect(within(dialog).getByText(/mixtape/i)).toBeInTheDocument();
+      for (const step of [
+        "join your friends",
+        "submit your songs",
+        "listen to the mix",
+        "vote for your favorites",
+      ]) {
+        expect(within(dialog).getByText(step)).toBeInTheDocument();
+      }
+    });
+
+    it("does not show on an ordinary visit (no just-joined flag set)", async () => {
+      renderClub("club-1");
+
+      await screen.findByRole("heading", { name: "Friday Mixtape" });
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("does not show while the club is still loading", async () => {
+      let resolveClub: (club: Club) => void = () => {};
+      mockGetClub.mockReturnValue(
+        new Promise((resolve) => {
+          resolveClub = resolve;
+        }),
+      );
+      markJustJoinedClub("club-1");
+      renderClub("club-1");
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      resolveClub(clubWith());
+      expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    });
+
+    it("does not show when the club fails to load", async () => {
+      mockGetClub.mockRejectedValue(new ApiError(500, "boom"));
+      markJustJoinedClub("club-1");
+      renderClub("club-1");
+
+      await screen.findByText("boom");
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("the just-joined flag is one-shot: a second club-home mount never auto-shows from the same flag", async () => {
+      markJustJoinedClub("club-1");
+      const { unmount } = renderClub("club-1");
+      await screen.findByRole("dialog");
+      unmount();
+
+      renderClub("club-1");
+      await screen.findByRole("heading", { name: "Friday Mixtape" });
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("dismissing (close button) persists per account and leaves the member in the club", async () => {
+      const user = userEvent.setup();
+      markJustJoinedClub("club-1");
+      renderClub("club-1");
+
+      await screen.findByRole("dialog");
+      await user.click(screen.getByRole("button", { name: /dismiss welcome guide/i }));
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Friday Mixtape" })).toBeInTheDocument();
+      expect(isGuideDismissed("invite", ORGANIZER_ID)).toBe(true);
+    });
+
+    it("the primary CTA ('let's go') dismisses without navigating away", async () => {
+      const user = userEvent.setup();
+      markJustJoinedClub("club-1");
+      renderClub("club-1");
+
+      const dialog = await screen.findByRole("dialog");
+      await user.click(within(dialog).getByRole("button", { name: "let's go" }));
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Friday Mixtape" })).toBeInTheDocument();
+    });
+
+    it("Escape dismisses the guide", async () => {
+      const user = userEvent.setup();
+      markJustJoinedClub("club-1");
+      renderClub("club-1");
+
+      await screen.findByRole("dialog");
+      await user.keyboard("{Escape}");
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("'how it works' reopens the guide at any time, even without ever having joined via invite", async () => {
+      const user = userEvent.setup();
+      dismissGuide("invite", ORGANIZER_ID);
+      renderClub("club-1");
+
+      await screen.findByRole("heading", { name: "Friday Mixtape" });
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: /how it works/i }));
+
+      expect(await screen.findByRole("dialog")).toBeInTheDocument();
     });
   });
 });

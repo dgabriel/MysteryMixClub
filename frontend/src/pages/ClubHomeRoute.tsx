@@ -23,6 +23,7 @@ import {
 } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 import { usePolling } from "../hooks/usePolling";
+import { consumeJustJoinedClub, dismissGuide, isGuideDismissed } from "../data/onboardingGuides";
 
 /**
  * Protected club-home route. Loads the club and its members in parallel,
@@ -80,6 +81,29 @@ export function ClubHomeRoute() {
   // Member self-leave (MYS-97).
   const [leavingClub, setLeavingClub] = useState(false);
   const [leaveClubError, setLeaveClubError] = useState<string | null>(null);
+
+  // Club-invite welcome guide (MysteryMixClub-6eo8). The lazy initializer
+  // reads-and-clears the one-shot "just joined" flag exactly once at mount,
+  // regardless of when `userId` below resolves -- consumeJustJoinedClub
+  // removes its localStorage key on read, so calling it again on a later
+  // re-render (e.g. once userId loads) would always read false.
+  const [justJoinedThisClub] = useState(() => (id ? consumeJustJoinedClub(id) : false));
+  const [showInviteGuide, setShowInviteGuide] = useState(false);
+
+  useEffect(() => {
+    if (!justJoinedThisClub || !userId) return;
+    if (!isGuideDismissed("invite", userId)) {
+      // Syncing from external state (localStorage), same pattern the rule
+      // already accepts elsewhere (see MixDetailRoute's load() effect).
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setShowInviteGuide(true);
+    }
+  }, [justJoinedThisClub, userId]);
+
+  function dismissInviteGuide() {
+    if (userId) dismissGuide("invite", userId);
+    setShowInviteGuide(false);
+  }
 
   useEffect(() => {
     if (!id) return;
@@ -400,6 +424,9 @@ export function ClubHomeRoute() {
       leavingClub={leavingClub}
       leaveClubError={leaveClubError}
       onOpenClubSongs={() => navigate(`/clubs/${id}/songs`)}
+      showInviteGuide={showInviteGuide}
+      onDismissInviteGuide={dismissInviteGuide}
+      onReopenInviteGuide={() => setShowInviteGuide(true)}
     />
   );
 }

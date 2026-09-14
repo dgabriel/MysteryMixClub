@@ -16,6 +16,7 @@ import { DeadlineWindowField } from "../components/DeadlineWindowField";
 import { DeadlineAnchorField, TimezoneField } from "../components/DeadlineAnchorField";
 import { DeadlineModeToggle } from "../components/DeadlineModeToggle";
 import { InviteShare } from "../components/InviteShare";
+import { OnboardingGuideModal } from "../components/OnboardingGuideModal";
 import { UserAvatar } from "../components/avatars/UserAvatar";
 import { MIX_BADGE, MIX_ORDER, MIX_STATE_LABEL, mixGroup } from "../utils/mixState";
 import {
@@ -103,6 +104,10 @@ type ClubHomeScreenProps = {
   userId: string | null;
   // --- Club song list (MysteryMixClub-ps1w.2) ---
   onOpenClubSongs: () => void;
+  // --- Club-invite welcome guide (MysteryMixClub-6eo8) ---
+  showInviteGuide: boolean;
+  onDismissInviteGuide: () => void;
+  onReopenInviteGuide: () => void;
 };
 
 export function ClubHomeScreen({
@@ -145,6 +150,9 @@ export function ClubHomeScreen({
   leaderboard,
   userId,
   onOpenClubSongs,
+  showInviteGuide,
+  onDismissInviteGuide,
+  onReopenInviteGuide,
 }: ClubHomeScreenProps) {
   if (loading) {
     return (
@@ -217,6 +225,17 @@ export function ClubHomeScreen({
         <p className="mt-3 font-mono text-meta text-ink-muted">
           mix {club.current_mix} of {club.total_mixes}
         </p>
+        {/* Reopen affordance for the club-invite welcome guide (requirement 4,
+            MysteryMixClub-6eo8) -- discoverable at any time, whether or not
+            it auto-showed on the way in. Muted rather than amber: a help
+            affordance, not an action worth marking. */}
+        <button
+          type="button"
+          onClick={onReopenInviteGuide}
+          className="mt-2 font-mono text-mini uppercase tracking-mono-caps text-ink-muted underline underline-offset-[3px] hover:text-ink"
+        >
+          how it works
+        </button>
         {isComplete ? (
           <p className="mt-4 text-base leading-[1.72] text-ink-muted">this club has wrapped.</p>
         ) : null}
@@ -454,9 +473,44 @@ export function ClubHomeScreen({
           />
         ) : null}
       </main>
+      {showInviteGuide ? (
+        <OnboardingGuideModal
+          eyebrow="mystery mix club"
+          heading="you're in."
+          intro={
+            <>
+              Welcome to <ClubName name={club.name} />. Here&apos;s how to play along.
+            </>
+          }
+          steps={INVITE_GUIDE_STEPS}
+          primaryLabel="let's go"
+          onPrimary={onDismissInviteGuide}
+          onDismiss={onDismissInviteGuide}
+        />
+      ) : null}
     </PaperSurface>
   );
 }
+
+const INVITE_GUIDE_STEPS = [
+  {
+    title: "join your friends",
+    description: "You've joined the club. You're ready to go.",
+    complete: true,
+  },
+  {
+    title: "submit your songs",
+    description: "Each mix has a theme. Pick favorites that fit, and keep your picks a secret.",
+  },
+  {
+    title: "listen to the mix",
+    description: "When voting opens, explore everyone's songs in one mystery playlist.",
+  },
+  {
+    title: "vote for your favorites",
+    description: "Cast your votes, then see who picked what when the results are revealed.",
+  },
+];
 
 /**
  * Admin-only destructive action — the fixed organizer or any co-organizer

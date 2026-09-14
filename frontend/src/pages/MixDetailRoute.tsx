@@ -69,7 +69,6 @@ import { CrownIcon } from "../components/CrownIcon";
 import { MedalIcon } from "../components/MedalIcon";
 import { MusicNoteIcon } from "../components/MusicNoteIcon";
 import { DeadlineChip } from "../components/DeadlineChip";
-import { HelpLink } from "../components/HelpLink";
 import { toDatetimeLocalValue } from "../utils/deadline";
 
 /**
@@ -1514,7 +1513,6 @@ function ComposerSlot({
       <SongSearchCard
         eyebrow="this mix"
         heading={heading}
-        helpAnchor="submitting-a-song"
         idPrefix={idPrefix}
         submitting={submitting}
         noteText={noteText}
@@ -2030,7 +2028,6 @@ function VotingSection({
       <div className="flex items-baseline justify-between gap-4">
         <span className="flex items-baseline gap-2">
           <PaperSectionHeading>cast your votes</PaperSectionHeading>
-          <HelpLink anchor="voting-results" onPaper />
         </span>
         <span
           aria-live="polite"

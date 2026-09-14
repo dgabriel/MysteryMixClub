@@ -343,6 +343,32 @@ async def test_opening_already_themed_pending_mix_succeeds(client, db_session):
     assert resp.json()["state"] == "open_submission"
 
 
+async def test_opening_second_mix_while_first_still_pending_is_rejected(client, db_session):
+    # MysteryMixClub-4vii.4: forward-only opening order. The "one active mix"
+    # check alone doesn't catch this — neither mix is in an ACTIVE_STATE yet.
+    organizer = await _seed_user(db_session, "org@example.com")
+    club = await _seed_club(db_session, organizer, total_mixes=2)
+    await _seed_pending_mix(db_session, club, mix_number=1, theme="mix one")
+    mix_two = await _seed_pending_mix(db_session, club, mix_number=2, theme="mix two")
+
+    resp = await _advance(client, str(mix_two.id), organizer.id, "open_submission")
+    assert resp.status_code == 409, resp.text
+    assert "previous mystery mix must close" in resp.json()["detail"]
+
+
+async def test_opening_second_mix_after_first_closed_succeeds(client, db_session):
+    organizer = await _seed_user(db_session, "org@example.com")
+    club = await _seed_club(db_session, organizer, total_mixes=2)
+    mix_one = await _seed_pending_mix(db_session, club, mix_number=1, theme="mix one")
+    mix_one.state = "closed"
+    await db_session.commit()
+    mix_two = await _seed_pending_mix(db_session, club, mix_number=2, theme="mix two")
+
+    resp = await _advance(client, str(mix_two.id), organizer.id, "open_submission")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["state"] == "open_submission"
+
+
 async def test_editing_closed_mix_is_rejected(client, db_session):
     organizer = await _seed_user(db_session, "org@example.com")
     club = await _seed_club(db_session, organizer, total_mixes=2)

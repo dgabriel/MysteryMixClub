@@ -135,3 +135,22 @@
     animation: none;
   }
 }
+
+/* MysteryMixClub-4vii: iOS Safari/WKWebView auto-zooms the whole page on
+   focusing any text input whose *computed* font-size is under 16px, and the
+   zoomed state doesn't reset once the keyboard closes -- the page is left too
+   big for the viewport until the user manually pinch-zooms back out.
+   TextField's inputs are `text-sm` (14px) by design, matching this app's
+   mono aesthetic; forcing 16px only below the `sm` breakpoint, only on the
+   actual form controls, keeps that design everywhere zoom-on-focus isn't a
+   risk (desktop browsers don't have this behavior at all) instead of bumping
+   the type scale globally. `!important` because Tailwind's own `text-sm`
+   utility class already sets font-size inline in the cascade at the same
+   specificity as a plain element selector. */
+@media (max-width: 640px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}

@@ -913,6 +913,160 @@
         "file": "frontend/package-lock.json"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:c54520cd2148032b3b1695e04ead6bf9",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:32:20.382Z",
+      "reason": "False positive, verified against current file: the assertion expect(screen.getAllByRole('button', { name: /^my clubs$/i })).toHaveLength(2) is present unchanged on the very next line (TopNav.test.tsx:85). Only the preceding comment's text was updated to match the label rename; the tool's diff-hunk heuristic likely mis-grouped the comment-only edit as isolated from the adjacent assertion line.",
+      "context": {
+        "title": "A test body was replaced with comments",
+        "file": "frontend/src/components/TopNav.test.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:9e8749b44c63ec50c20e5b8f3eb77e0d",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:32:20.523Z",
+      "reason": "Same false positive as D-0001 (deterministic finding on the identical claim) -- the assertion is present and unweakened, verified directly against the file.",
+      "context": {
+        "title": "Test body replaced with comment in TopNav test",
+        "file": "frontend/src/components/TopNav.test.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:72558fc8e130734384e76ba5d82e98b5",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:32:20.659Z",
+      "reason": "Mischaracterizes PR scope, not a bug: the rename intentionally applies to web too, per Dawn's explicit request in this session ('I think we need to change Home to My Clubs... navigation is confusing'). Several commits on this PR are deliberately general web fixes surfaced via iOS testing (the About-page Link bug, the open-mix-from-list feature), not iOS-exclusive -- that is this PR's actual, deliberate scope, not scope drift.",
+      "context": {
+        "title": "UI rename from \"home\" to \"my clubs\" affects all platforms",
+        "file": "frontend/src/components/TopNav.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:09c305fd7b3a1fd14e4715f0ca51f9e3",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:32:20.795Z",
+      "reason": "False positive: the tests exist. ClubHomeRoute.test.tsx has 'a themed mix #2 has no open mix button while mix #1 is still pending, and explains why' (line 881) and 'mix #2's open mix button appears once mix #1 has closed' (line 897), directly covering canOpenMix's hidden/disabled behavior. The LLM's own report notes a 100,000-char prompt truncation that likely excluded the test-file diff from what it reviewed.",
+      "context": {
+        "title": "Missing tests for forward-only mix opening UI logic",
+        "file": "frontend/src/pages/ClubHomeScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:b2dc4dcf3d58ee38944a4a58f6bc7bbd",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:32:20.935Z",
+      "reason": "Plausible in isolation but not a new regression: the new previous-mix check uses the exact same unlocked select(Mix)...scalar() pattern as the pre-existing 'another mix is already active' check three lines above it in the same function -- same file, same transaction, same discipline. If this class of race is a real concern it already existed before this PR; tracked as a real follow-up (MysteryMixClub-4vii.6) to add FOR UPDATE to both checks together rather than inconsistently to only the new one.",
+      "context": {
+        "title": "Potential race condition in forward-only mix opening check",
+        "file": "backend/app/api/routes/mixes.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:1f2ae8365f3e8f0afc097550627b09cd",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:32:21.077Z",
+      "reason": "No logging or persistence occurs anywhere in this flow -- verified via direct grep for print/NSLog/log. in both MusicPlugin.swift and MMCAPIClient.swift: zero matches. adoptSession's accessToken = token is a plain in-memory assignment, identical in kind to signIn()'s existing, already-accepted token handling (MMCAPIClient's own doc comment: 'never written to disk, the keychain, or the WebView').",
+      "context": {
+        "title": "Access token passed to native plugin without sanitization",
+        "file": "frontend/ios/App/App/MusicPlugin.swift"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:29ba5aa12f6cbeef75885ae4dd0bc58b",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:41:06.751Z",
+      "reason": "Re-assertion of an already-dismissed concern (prior run's F-005, same underlying claim). No logging of the token occurs anywhere (verified via grep, zero print/NSLog/log. calls touching it in either Swift file) -- adoptSession's assignment is a plain in-memory store, identical in kind to signIn()'s existing, already-accepted handling. 'Malicious plugin interception' isn't a credible threat model here: MMCMusicPlugin is the only plugin this app registers, no third-party plugin code is loaded. The Capacitor bridge carrying plain JS objects to native is the platform's only JS-to-native mechanism, not something this PR introduced or could avoid.",
+      "context": {
+        "title": "Access token exposed via Capacitor bridge to native code",
+        "file": "frontend/ios/App/App/MusicPlugin.swift"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:545a50a1cc6f41bc46fe9e9c98aec1b4",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:41:06.889Z",
+      "reason": "Inverted reasoning: excluding /admin from the iOS route table cannot bypass a server-side guard, because the two are independent -- the backend's authorization checks on admin endpoints are completely unaffected by which frontend routes exist. If anything this is additional restriction (one fewer client entry point on iOS), not a bypass. Matches the PRD's explicit requirement that platform-admin stays web-only (IOS-05).",
+      "context": {
+        "title": "Build‑time route exclusion creates divergent code paths",
+        "file": "frontend/src/App.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:54c6790f2826591347bc35786ae3e370",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:41:07.025Z",
+      "reason": "Process/PR-scope opinion, not a correctness defect. The rename and mobile menu are deliberate, explicit scope for this PR -- Dawn asked for the rename directly in this session ('I think we need to change Home to My Clubs'), and the hamburger menu was the fix for a real, already-reported bug (status bar overlap + unusable horizontal nav on mobile width) found while testing this same PR's core change. Both are tested (17 TopNav tests, all passing) and verified on a physical device.",
+      "context": {
+        "title": "Extensive UI rename and mobile menu added in same PR",
+        "file": "frontend/src/components/TopNav.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:b8d5bc1c638a9764094d60028e3c4633",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:41:07.162Z",
+      "reason": "Process/PR-scope opinion, not a correctness defect, and factually not 'unrelated': the capacitor.config.ts/vite.ios.config.ts/env-template changes are directly required for the PR's own stated goal (the real app reaching its backend and being debuggable inside the Capacitor shell) -- without the CORS origin and API base URL changes, the core feature this PR ships would not function at all.",
+      "context": {
+        "title": "Multiple unrelated configuration changes bundled together",
+        "file": "frontend/capacitor.config.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:5a95503e8cb3e0d35e8a3b2581b79e12",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:41:07.301Z",
+      "reason": "Mischaracterizes normal, intended behavior: import.meta.env.VITE_PLATFORM is undefined on every build except the iOS one by design, and undefined === 'capacitor' deterministically evaluates to false -- exactly the desired default (IS_NATIVE_BUILD false everywhere except the iOS build). This is not unexpected or undefined behavior in the JS sense; it's a normal, correct boolean comparison.",
+      "context": {
+        "title": "Platform flag may be undefined in non‑iOS builds",
+        "file": "frontend/src/lib/platform.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:8bf77f93fbf327452ad260d6b4123d64",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:41:07.439Z",
+      "reason": "Factually incorrect reading of the code: the mobile panel uses JS conditional rendering (`{menuOpen ? (...) : null}`), not CSS-based hiding -- it is not in the DOM at all when closed, so there is no 'unconditional rendering... relying on CSS to hide' and no reflow cost while closed. The sm:hidden CSS classes mentioned only apply to the always-mounted hamburger toggle button and desktop nav row, a separate and correct responsive-breakpoint technique already explained in the surrounding code comments.",
+      "context": {
+        "title": "Unconditional rendering of mobile menu panel may cause layout thrashing",
+        "file": "frontend/src/components/TopNav.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:f362f180a5e5df2686930a597ccffeb9",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:41:07.576Z",
+      "reason": "Known, already-documented tradeoff, not an oversight -- the code comment directly above this rule explains exactly why !important is necessary here (Tailwind's own text-sm utility class already sets font-size at equal-or-higher specificity than a bare element selector, so !important is the only way this override actually takes effect without a global type-scale change).",
+      "context": {
+        "title": "Hard‑coded CSS fix for iOS auto‑zoom uses !important",
+        "file": "frontend/src/index.css"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:fa758e5cb4972a19d2325d320ef8f91e",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:41:07.713Z",
+      "reason": "Already covered by the existing assertion, not missing: getAllByRole('button', { name: /^my clubs$/i }) matching exactly 2 elements IS the verification that both controls (the ring mark, whose accessible name comes from its aria-label, and the text link) share the same accessible name -- a mismatch between the visual label and the aria-label would make this exact assertion fail.",
+      "context": {
+        "title": "TopNav test only checks button count, not accessibility labels after rename",
+        "file": "frontend/src/components/TopNav.test.tsx"
+      },
+      "expires_at": null
     }
   ]
 }

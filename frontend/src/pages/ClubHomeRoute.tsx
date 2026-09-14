@@ -50,6 +50,14 @@ export function ClubHomeRoute() {
 
   const [savingMixId, setSavingMixId] = useState<string | null>(null);
   const [updateMixError, setUpdateMixError] = useState<string | null>(null);
+  const [openingMixId, setOpeningMixId] = useState<string | null>(null);
+  // Separate from openingMixId on purpose: both the catch's setOpenMixError
+  // and the finally's setOpeningMixId(null) fire in the same synchronous
+  // continuation, which React 18 batches into one render -- scoping the error
+  // to openingMixId would make it clear itself the instant it's set, since
+  // openingMixId is already back to null by the render that would show it.
+  const [openErrorMixId, setOpenErrorMixId] = useState<string | null>(null);
+  const [openMixError, setOpenMixError] = useState<string | null>(null);
 
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [generatingInvite, setGeneratingInvite] = useState(false);
@@ -215,6 +223,33 @@ export function ClubHomeRoute() {
     }
   }
 
+  // Open a pending mix for submissions, from the club home list itself
+  // (MysteryMixClub-4vii.4) rather than only from the mix's own detail page's
+  // collapsed tools panel — that was real, reported organizer confusion, not
+  // a missing feature: opening has always been this one manual PATCH, just
+  // hard to find. Own saving/error state, separate from theme-editing above,
+  // since the two are different actions that can be mid-flight on different
+  // rows at once.
+  async function handleOpenMix(mixId: string): Promise<boolean> {
+    if (!id) return false;
+    setOpeningMixId(mixId);
+    setOpenErrorMixId(null);
+    setOpenMixError(null);
+    try {
+      const updated = await updateMix(mixId, { state: "open_submission" });
+      setMixes((current) => current.map((r) => (r.id === mixId ? updated : r)));
+      return true;
+    } catch (err) {
+      setOpenErrorMixId(mixId);
+      setOpenMixError(
+        err instanceof ApiError ? err.message : "couldn't open this mystery mix. try again.",
+      );
+      return false;
+    } finally {
+      setOpeningMixId(null);
+    }
+  }
+
   async function handleUpdateClub(input: {
     name?: string;
     description?: string | null;
@@ -341,6 +376,10 @@ export function ClubHomeRoute() {
       onUpdateMix={handleUpdateMix}
       savingMixId={savingMixId}
       updateMixError={updateMixError}
+      onOpenSubmissions={handleOpenMix}
+      openingMixId={openingMixId}
+      openErrorMixId={openErrorMixId}
+      openMixError={openMixError}
       inviteUrl={inviteUrl}
       onGenerateInvite={handleGenerateInvite}
       generatingInvite={generatingInvite}

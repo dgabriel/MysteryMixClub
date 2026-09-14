@@ -5,6 +5,7 @@ import { Navigate, createBrowserRouter, useParams } from "react-router";
 // package export is for non-DOM contexts like tests instead.
 import { RouterProvider } from "react-router/dom";
 import { AuthProvider } from "./hooks/AuthProvider";
+import { IS_NATIVE_BUILD } from "./lib/platform";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { LoginRoute } from "./pages/LoginRoute";
 import { AuthedLayout } from "./components/AuthedLayout";
@@ -154,8 +155,12 @@ const router = createBrowserRouter([
       { path: "/rounds/:id", element: <LegacyPathRedirect prefix="mixes" /> },
       { path: "/profile", element: withSuspense(<ProfileRoute />) },
       { path: "/profile/history", element: withSuspense(<SubmissionHistoryRoute />) },
-      { path: "/admin", element: withSuspense(<AdminRoute />) },
-      { path: "/admin/metrics", element: withSuspense(<AdminMetricsRoute />) },
+      ...(IS_NATIVE_BUILD
+        ? []
+        : [
+            { path: "/admin", element: withSuspense(<AdminRoute />) },
+            { path: "/admin/metrics", element: withSuspense(<AdminMetricsRoute />) },
+          ]),
       // /clubs/new used to sit outside this layout as a "focused" form with no
       // nav. In practice that read as a broken page — you land on it from the
       // nav shell and the toolbar vanishes — so it joins the shell like every

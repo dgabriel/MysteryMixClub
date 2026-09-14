@@ -54,6 +54,16 @@ type ClubHomeScreenProps = {
   ) => Promise<boolean>;
   savingMixId: string | null;
   updateMixError?: string | null;
+  /** Open a pending mix for submissions (MysteryMixClub-4vii.4) — a direct
+   *  action on the list row, not just a link to the mix detail page's own
+   *  tools panel. */
+  onOpenSubmissions: (mixId: string) => Promise<boolean>;
+  openingMixId: string | null;
+  /** Which mix the current openMixError belongs to -- deliberately not the
+   *  same thing as openingMixId, which resets to null in the same render
+   *  batch the error is set in. */
+  openErrorMixId: string | null;
+  openMixError?: string | null;
   inviteUrl: string | null;
   onGenerateInvite: () => void;
   generatingInvite: boolean;
@@ -109,6 +119,10 @@ export function ClubHomeScreen({
   onUpdateMix,
   savingMixId,
   updateMixError,
+  onOpenSubmissions,
+  openingMixId,
+  openErrorMixId,
+  openMixError,
   inviteUrl,
   onGenerateInvite,
   generatingInvite,
@@ -225,6 +239,10 @@ export function ClubHomeScreen({
           onUpdateMix={onUpdateMix}
           savingMixId={savingMixId}
           updateMixError={updateMixError}
+          onOpenSubmissions={onOpenSubmissions}
+          openingMixId={openingMixId}
+          openErrorMixId={openErrorMixId}
+          openMixError={openMixError}
         />
 
         {/* Members / all-time leaderboard (MYS-157) — the style tile's ScoreRow:
@@ -587,6 +605,10 @@ function MixesSection({
   onUpdateMix,
   savingMixId,
   updateMixError,
+  onOpenSubmissions,
+  openingMixId,
+  openErrorMixId,
+  openMixError,
 }: {
   mixes: Mix[];
   mixResults: Record<string, MixResults>;
@@ -598,6 +620,10 @@ function MixesSection({
   ) => Promise<boolean>;
   savingMixId: string | null;
   updateMixError?: string | null;
+  onOpenSubmissions: (mixId: string) => Promise<boolean>;
+  openingMixId: string | null;
+  openErrorMixId: string | null;
+  openMixError?: string | null;
 }) {
   // Mixes are auto-created with the club, so the slate always exists. The
   // empty state is a fallback only (e.g. a stale/odd club with zero mixes).
@@ -614,6 +640,17 @@ function MixesSection({
     (a, b) =>
       MIX_ORDER[mixGroup(a.state)] - MIX_ORDER[mixGroup(b.state)] || a.mix_number - b.mix_number,
   );
+
+  // Forward-only opening order (MysteryMixClub-4vii.4, mirrors the server's
+  // own check): a mix can open once it's #1, or once the mix immediately
+  // before it (by number) has closed. Computed once here rather than per-row
+  // so each row does a Set lookup instead of scanning the whole list.
+  const closedMixNumbers = new Set(
+    mixes.filter((m) => m.state === "closed").map((m) => m.mix_number),
+  );
+  function canOpenMix(mix: Mix): boolean {
+    return mix.mix_number === 1 || closedMixNumbers.has(mix.mix_number - 1);
+  }
 
   return (
     <section className="mt-12">
@@ -635,6 +672,10 @@ function MixesSection({
                 onUpdate={(input) => onUpdateMix(mix.id, input)}
                 saving={savingMixId === mix.id}
                 error={savingMixId === mix.id ? updateMixError : null}
+                onOpenSubmissions={() => onOpenSubmissions(mix.id)}
+                opening={openingMixId === mix.id}
+                openError={openErrorMixId === mix.id ? openMixError : null}
+                canOpen={canOpenMix(mix)}
               />
             </li>
           ))}
@@ -689,6 +730,10 @@ function MixRow({
   onUpdate,
   saving,
   error,
+  onOpenSubmissions,
+  opening,
+  openError,
+  canOpen,
 }: {
   mix: Mix;
   results?: MixResults;
@@ -697,6 +742,17 @@ function MixRow({
   onUpdate: (input: { theme?: string | null; description?: string | null }) => Promise<boolean>;
   saving: boolean;
   error?: string | null;
+  /** Open this pending mix for submissions (MysteryMixClub-4vii.4) -- the
+   *  same PATCH the mix detail page's own "open mix" button makes, surfaced
+   *  here too since it was easy to miss buried in that page's collapsed
+   *  tools panel. */
+  onOpenSubmissions: () => Promise<boolean>;
+  opening: boolean;
+  openError?: string | null;
+  /** Forward-only opening order: true only for mix #1, or once the mix
+   *  immediately before this one has closed. Mirrors the server's own check
+   *  so the button doesn't offer an action that would just 409. */
+  canOpen: boolean;
 }) {
   const [editing, setEditing] = useState(false);
 
@@ -807,18 +863,48 @@ function MixRow({
       {isAdmin ? (
         <div className="mt-3">
           {pending ? (
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              className="font-mono uppercase tracking-mono text-mini text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-link"
-            >
-              {named ? "edit" : "add a theme"}
-            </button>
+            <div className="flex flex-wrap items-center gap-4">
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                className="font-mono uppercase tracking-mono text-mini text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-link"
+              >
+                {named ? "edit" : "add a theme"}
+              </button>
+              {/* A pending mix can't open without a theme (MYS-211) or out of
+                  order (MysteryMixClub-4vii.4) -- both are the same server
+                  rules the mix detail page's own "open mix" button respects,
+                  just enforced here by not offering the action rather than
+                  letting the click hit the server's 409. */}
+              {named && canOpen ? (
+                <button
+                  type="button"
+                  onClick={onOpenSubmissions}
+                  disabled={opening}
+                  className="font-mono uppercase tracking-mono text-mini text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-link disabled:cursor-not-allowed disabled:text-muted-foreground disabled:hover:text-muted-foreground"
+                >
+                  {opening ? "opening…" : "open mix"}
+                </button>
+              ) : null}
+            </div>
           ) : (
             <p className="text-meta leading-[1.6] text-muted-foreground">
               theme locks once a mystery mix opens
             </p>
           )}
+          {pending && !named ? (
+            <p className="mt-2 text-meta leading-[1.6] text-muted-foreground">
+              add a theme before you can open this mystery mix
+            </p>
+          ) : null}
+          {pending && named && !canOpen ? (
+            <p className="mt-2 text-meta leading-[1.6] text-muted-foreground">
+              mystery mix {mix.mix_number - 1} must close before this one can open
+            </p>
+          ) : null}
+          {openError ? (
+            <p className="mt-2 text-meta leading-[1.6] text-destructive-text">{openError}</p>
+          ) : null}
         </div>
       ) : null}
     </Card>

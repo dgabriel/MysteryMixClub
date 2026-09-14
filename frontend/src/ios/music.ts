@@ -54,7 +54,17 @@ interface NativeMusicPlugin {
   signIn(options: { apiBaseUrl: string; email: string; password: string }): Promise<Session>;
   sessionStatus(): Promise<Session>;
   signOut(): Promise<Session>;
-  createPlaylist(options: { mixId: string; tzOffsetMinutes: number }): Promise<PlaylistResult>;
+  /** `apiBaseUrl`/`accessToken`, when passed, adopt this session directly
+   *  instead of requiring a prior native `signIn()` -- how the real app
+   *  (already authenticated in this same WebView) invokes it (ADR 0032).
+   *  The standalone MusicKit proof still omits them and relies on its own
+   *  native sign-in. */
+  createPlaylist(options: {
+    mixId: string;
+    tzOffsetMinutes: number;
+    apiBaseUrl?: string;
+    accessToken?: string;
+  }): Promise<PlaylistResult>;
   reconcile(options: { mixId: string }): Promise<Reconciliation>;
   openMusic(): Promise<Handoff>;
 }

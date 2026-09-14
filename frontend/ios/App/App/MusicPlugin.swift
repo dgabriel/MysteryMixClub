@@ -169,8 +169,16 @@ public final class MMCMusicPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func createPlaylist(_ call: CAPPluginCall) {
         let mixId = call.getString("mixId") ?? ""
         let tzOffsetMinutes = call.getInt("tzOffsetMinutes")
+        // Passed by the real app (ADR 0032), which is already authenticated
+        // in this same WebView; the standalone MusicKit proof omits these and
+        // relies on its own prior native signIn() instead.
+        let sessionApiBaseUrl = call.getString("apiBaseUrl")
+        let sessionAccessToken = call.getString("accessToken")
         Task { @MainActor in
             self.run(call, timeout: Self.playlistTimeout) {
+                if let base = sessionApiBaseUrl, let token = sessionAccessToken {
+                    try self.api.adoptSession(apiBaseUrl: base, accessToken: token)
+                }
                 // UUID-parsed rather than string-interpolated: the mix id comes
                 // from a text field and lands in a URL path.
                 guard let mix = UUID(uuidString: mixId.trimmingCharacters(in: .whitespaces)) else {

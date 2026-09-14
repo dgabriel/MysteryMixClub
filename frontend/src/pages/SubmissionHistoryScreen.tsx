@@ -35,9 +35,7 @@ function sortEntries(entries: MySubmission[], sort: SortKey): MySubmission[] {
       sorted.sort((a, b) => a.artist.localeCompare(b.artist));
       break;
     case "club":
-      sorted.sort(
-        (a, b) => a.club_name.localeCompare(b.club_name) || a.mix_number - b.mix_number,
-      );
+      sorted.sort((a, b) => a.club_name.localeCompare(b.club_name) || a.mix_number - b.mix_number);
       break;
     case "newest":
     default:
@@ -64,6 +62,15 @@ const SORTABLE_COLUMNS: { field: SortKey; label: string }[] = [
   { field: "club", label: "club" },
   { field: "newest", label: "date" },
 ];
+
+// Shared visual language with TextField/DeadlineAnchorField's own local
+// select styling (underline-only, mono label above) -- no shared Select
+// primitive exists yet (MysteryMixClub-z845). `onPaper` isn't needed here:
+// this select sits directly on the page's light `paper` surface (it's above
+// the grid, not inside the dark `card` island), so it always takes the ink
+// ramp.
+const SORT_SELECT_CLASSES =
+  "mt-2 w-full max-w-[10rem] bg-transparent font-mono text-sm text-ink border-0 border-b border-ink-muted rounded-none px-0 py-1 focus:outline-none focus:border-ink-accent";
 
 /** Small line chevron, rotates on expand. 1.25px stroke, matching the
  *  iconography spec (TopNav's BackIcon uses the same weight). */
@@ -138,7 +145,11 @@ export function SubmissionHistoryScreen({
   }
 
   const filtered = useMemo(
-    () => sortEntries(entries.filter((e) => matchesQuery(e, query)), sort),
+    () =>
+      sortEntries(
+        entries.filter((e) => matchesQuery(e, query)),
+        sort,
+      ),
     [entries, query, sort],
   );
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -237,110 +248,211 @@ function SubmissionGrid({
   onOpenMix: (mixId: string) => void;
 }) {
   return (
-    <div className="mt-6 overflow-hidden rounded-tile border border-hairline bg-card shadow-z2">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[800px] border-collapse text-foreground">
-          <thead>
-            <tr className="border-b border-hairline">
-              <th scope="col" className="w-10 px-4 py-3">
-                <span className="sr-only">expand</span>
-              </th>
-              {SORTABLE_COLUMNS.map((col) => (
-                <th key={col.field} scope="col" className="px-2 py-3 text-left">
-                  <button
-                    type="button"
-                    onClick={() => onSort(col.field)}
-                    aria-pressed={sort === col.field}
-                    className={[
-                      "font-mono uppercase tracking-mono-caps text-mini transition-colors duration-150",
-                      sort === col.field
-                        ? "text-foreground underline underline-offset-[3px]"
-                        : "text-muted-foreground hover:text-foreground",
-                    ].join(" ")}
-                  >
-                    {col.label}
-                  </button>
+    <>
+      {/* Mobile (below `sm`): the eight-column table doesn't fit a phone
+          width at any reasonable tuning, and this screen's row already had a
+          full detail view one tap away -- reflowing into a card per
+          submission keeps every field, it just stacks instead of scrolling.
+          Sorting has no column header to live on here, so it becomes an
+          explicit control instead (MysteryMixClub-4vii.7). */}
+      <div className="mt-6 sm:hidden">
+        <label
+          htmlFor="submission-history-sort"
+          className="block font-mono uppercase tracking-mono-caps text-mini text-ink-muted"
+        >
+          sort by
+        </label>
+        <select
+          id="submission-history-sort"
+          value={sort}
+          onChange={(e) => onSort(e.target.value as SortKey)}
+          className={SORT_SELECT_CLASSES}
+        >
+          {SORTABLE_COLUMNS.map((col) => (
+            <option key={col.field} value={col.field}>
+              {col.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <ul className="mt-4 space-y-3 sm:hidden">
+        {entries.map((entry) => (
+          <SubmissionCard
+            key={entry.submission_id}
+            entry={entry}
+            open={expanded === entry.submission_id}
+            onToggle={() => onToggle(entry.submission_id)}
+            onOpenMix={onOpenMix}
+          />
+        ))}
+      </ul>
+
+      {/* Desktop (`sm` and up): unchanged table with sortable column headers. */}
+      <div className="mt-6 hidden overflow-hidden rounded-tile border border-hairline bg-card shadow-z2 sm:block">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[800px] border-collapse text-foreground">
+            <thead>
+              <tr className="border-b border-hairline">
+                <th scope="col" className="w-10 px-4 py-3">
+                  <span className="sr-only">expand</span>
                 </th>
-              ))}
-              <th
-                scope="col"
-                className="px-2 py-3 text-right font-mono uppercase tracking-mono-caps text-mini text-muted-foreground"
-              >
-                mix
-              </th>
-              <th
-                scope="col"
-                className="px-2 py-3 text-right font-mono uppercase tracking-mono-caps text-mini text-muted-foreground"
-              >
-                votes
-              </th>
-              <th
-                scope="col"
-                className="px-4 py-3 text-right font-mono uppercase tracking-mono-caps text-mini text-muted-foreground"
-              >
-                notes
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {entries.map((entry) => {
-              const open = expanded === entry.submission_id;
-              return (
-                <Fragment key={entry.submission_id}>
-                  <tr
-                    onClick={() => onToggle(entry.submission_id)}
-                    className="cursor-pointer border-b border-hairline-soft transition-colors duration-150 last:border-b-0 hover:bg-tile/50"
-                  >
-                    <td className="px-4 py-3">
-                      <button
-                        type="button"
-                        aria-expanded={open}
-                        aria-label={`${open ? "hide" : "show"} details for ${entry.title}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onToggle(entry.submission_id);
-                        }}
-                        className="flex items-center justify-center text-muted-foreground transition-colors duration-150 hover:text-foreground"
-                      >
-                        <ChevronIcon open={open} />
-                      </button>
-                    </td>
-                    <td className="px-2 py-3 font-display text-sm font-bold uppercase leading-none">
-                      {entry.title}
-                    </td>
-                    <td className="px-2 py-3 font-mono text-mini text-muted-foreground">
-                      {entry.artist}
-                    </td>
-                    <td className="px-2 py-3 text-sm">
-                      <ClubName name={entry.club_name} />
-                    </td>
-                    <td className="px-2 py-3 font-mono text-mini text-muted-foreground">
-                      {formatDate(entry.created_at)}
-                    </td>
-                    <td className="px-2 py-3 text-right font-mono text-mini text-muted-foreground">
-                      {entry.mix_number}
-                    </td>
-                    <td className="px-2 py-3 text-right font-mono text-mini text-muted-foreground">
-                      {entry.vote_count !== null ? entry.vote_count : "hidden"}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono text-mini text-muted-foreground">
-                      {entry.notes.length}
-                    </td>
-                  </tr>
-                  {open ? (
-                    <tr className="border-b border-hairline-soft last:border-b-0">
-                      <td colSpan={8} className="bg-tile px-4 py-4">
-                        <SubmissionPreview entry={entry} onOpenMix={onOpenMix} />
+                {SORTABLE_COLUMNS.map((col) => (
+                  <th key={col.field} scope="col" className="px-2 py-3 text-left">
+                    <button
+                      type="button"
+                      onClick={() => onSort(col.field)}
+                      aria-pressed={sort === col.field}
+                      className={[
+                        "font-mono uppercase tracking-mono-caps text-mini transition-colors duration-150",
+                        sort === col.field
+                          ? "text-foreground underline underline-offset-[3px]"
+                          : "text-muted-foreground hover:text-foreground",
+                      ].join(" ")}
+                    >
+                      {col.label}
+                    </button>
+                  </th>
+                ))}
+                <th
+                  scope="col"
+                  className="px-2 py-3 text-right font-mono uppercase tracking-mono-caps text-mini text-muted-foreground"
+                >
+                  mix
+                </th>
+                <th
+                  scope="col"
+                  className="px-2 py-3 text-right font-mono uppercase tracking-mono-caps text-mini text-muted-foreground"
+                >
+                  votes
+                </th>
+                <th
+                  scope="col"
+                  className="px-4 py-3 text-right font-mono uppercase tracking-mono-caps text-mini text-muted-foreground"
+                >
+                  notes
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((entry) => {
+                const open = expanded === entry.submission_id;
+                return (
+                  <Fragment key={entry.submission_id}>
+                    <tr
+                      onClick={() => onToggle(entry.submission_id)}
+                      className="cursor-pointer border-b border-hairline-soft transition-colors duration-150 last:border-b-0 hover:bg-tile/50"
+                    >
+                      <td className="px-4 py-3">
+                        <button
+                          type="button"
+                          aria-expanded={open}
+                          aria-label={`${open ? "hide" : "show"} details for ${entry.title}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onToggle(entry.submission_id);
+                          }}
+                          className="flex items-center justify-center text-muted-foreground transition-colors duration-150 hover:text-foreground"
+                        >
+                          <ChevronIcon open={open} />
+                        </button>
+                      </td>
+                      <td className="px-2 py-3 font-display text-sm font-bold uppercase leading-none">
+                        {entry.title}
+                      </td>
+                      <td className="px-2 py-3 font-mono text-mini text-muted-foreground">
+                        {entry.artist}
+                      </td>
+                      <td className="px-2 py-3 text-sm">
+                        <ClubName name={entry.club_name} />
+                      </td>
+                      <td className="px-2 py-3 font-mono text-mini text-muted-foreground">
+                        {formatDate(entry.created_at)}
+                      </td>
+                      <td className="px-2 py-3 text-right font-mono text-mini text-muted-foreground">
+                        {entry.mix_number}
+                      </td>
+                      <td className="px-2 py-3 text-right font-mono text-mini text-muted-foreground">
+                        {entry.vote_count !== null ? entry.vote_count : "hidden"}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-mini text-muted-foreground">
+                        {entry.notes.length}
                       </td>
                     </tr>
-                  ) : null}
-                </Fragment>
-              );
-            })}
-          </tbody>
-        </table>
+                    {open ? (
+                      <tr className="border-b border-hairline-soft last:border-b-0">
+                        <td colSpan={8} className="bg-tile px-4 py-4">
+                          <SubmissionPreview entry={entry} onOpenMix={onOpenMix} />
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
+    </>
+  );
+}
+
+/** One submission, stacked for a phone-width column instead of a table row.
+ *  Same information as the desktop row (song, artist, club, mix, date, vote
+ *  and note counts) plus the same tap-to-expand detail -- nothing dropped,
+ *  just reflowed. A `bg-card` island like the desktop table's own frame,
+ *  matching ADR 0013's dark-surface-on-paper model. */
+function SubmissionCard({
+  entry,
+  open,
+  onToggle,
+  onOpenMix,
+}: {
+  entry: MySubmission;
+  open: boolean;
+  onToggle: () => void;
+  onOpenMix: (mixId: string) => void;
+}) {
+  return (
+    <li className="overflow-hidden rounded-tile border border-hairline bg-card shadow-z2">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-label={`${open ? "hide" : "show"} details for ${entry.title}`}
+        className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left"
+      >
+        <span className="min-w-0">
+          <span className="block truncate font-display text-sm font-bold uppercase leading-none">
+            {entry.title}
+          </span>
+          <span className="mt-1 block truncate font-mono text-mini text-muted-foreground">
+            {entry.artist}
+          </span>
+          <span className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 font-mono text-mini text-muted-foreground">
+            <ClubName name={entry.club_name} />
+            <span aria-hidden="true">·</span>
+            <span>mix {entry.mix_number}</span>
+            <span aria-hidden="true">·</span>
+            <span>{formatDate(entry.created_at)}</span>
+          </span>
+          <span className="mt-1.5 block font-mono text-mini text-muted-foreground">
+            {entry.vote_count !== null
+              ? `${entry.vote_count} vote${entry.vote_count === 1 ? "" : "s"}`
+              : "votes hidden"}
+            {" · "}
+            {entry.notes.length} note{entry.notes.length === 1 ? "" : "s"}
+          </span>
+        </span>
+        <span className="shrink-0 pt-1 text-muted-foreground">
+          <ChevronIcon open={open} />
+        </span>
+      </button>
+      {open ? (
+        <div className="border-t border-hairline-soft bg-tile px-4 py-4">
+          <SubmissionPreview entry={entry} onOpenMix={onOpenMix} />
+        </div>
+      ) : null}
+    </li>
   );
 }
 

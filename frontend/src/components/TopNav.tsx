@@ -57,12 +57,12 @@ function LogoutIcon() {
 function MenuIcon() {
   return (
     <svg
-      width="18"
-      height="18"
+      width="22"
+      height="22"
       viewBox="0 0 16 16"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.25"
+      strokeWidth="1.5"
       strokeLinecap="round"
       aria-hidden="true"
     >
@@ -76,12 +76,12 @@ function MenuIcon() {
 function CloseIcon() {
   return (
     <svg
-      width="18"
-      height="18"
+      width="22"
+      height="22"
       viewBox="0 0 16 16"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.25"
+      strokeWidth="1.5"
       strokeLinecap="round"
       aria-hidden="true"
     >
@@ -120,7 +120,7 @@ function CloseIcon() {
  * window — so it collapses to a single hamburger toggle opening the same
  * links stacked in a `sheet` panel (Z4, matching every other dropdown/modal
  * surface in this app). Desktop's inline row is unchanged at `sm` and above.
- * `pt-[max(1rem,env(safe-area-inset-top))]` keeps the bar clear of the status
+ * `pt-[max(1.5rem,env(safe-area-inset-top))]` keeps the bar clear of the status
  * bar / notch in the native app and in a PWA's standalone display mode, where
  * there is no browser chrome to absorb it; it's a no-op in a normal browser
  * tab, where that env() value is 0.
@@ -202,7 +202,7 @@ export function TopNav({ back }: TopNavProps) {
 
   if (!authed) {
     return (
-      <header className="relative z-10 flex items-center justify-between border-b border-hairline-strong bg-sunken px-4 pb-4 pt-[max(1rem,env(safe-area-inset-top))] shadow-z2 sm:px-8">
+      <header className="relative z-10 flex items-center justify-between border-b border-hairline-strong bg-sunken px-4 pb-4 pt-[max(1.5rem,env(safe-area-inset-top))] shadow-z2 sm:px-8">
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -225,7 +225,7 @@ export function TopNav({ back }: TopNavProps) {
   }
 
   return (
-    <header className="relative z-10 flex items-center justify-between border-b border-hairline-strong bg-sunken px-4 py-4 shadow-z2 sm:px-8">
+    <header className="relative z-10 flex items-center justify-between border-b border-hairline-strong bg-sunken px-4 pb-4 pt-[max(1.5rem,env(safe-area-inset-top))] shadow-z2 sm:px-8">
       <div className="flex items-center gap-4">
         <button
           type="button"
@@ -301,13 +301,17 @@ export function TopNav({ back }: TopNavProps) {
         </button>
       </nav>
 
-      {/* Mobile: one hamburger toggle, below `sm` only. */}
+      {/* Mobile: one hamburger toggle, below `sm` only. A real `tile` surface
+          (Z2, "interactive tile" per the token table) rather than bare-icon
+          chrome like the desktop links -- against the header's near-black
+          `sunken` fill, a thin line icon alone read as barely-there and not
+          obviously tappable. 44px square meets the minimum touch target. */}
       <button
         type="button"
         onClick={() => setMenuOpen((open) => !open)}
         aria-label={menuOpen ? "close menu" : "open menu"}
         aria-expanded={menuOpen}
-        className={`${iconLinkClass} sm:hidden`}
+        className="flex h-11 w-11 items-center justify-center rounded-tile bg-tile text-foreground transition-colors duration-150 hover:bg-panel sm:hidden"
       >
         {menuOpen ? <CloseIcon /> : <MenuIcon />}
       </button>

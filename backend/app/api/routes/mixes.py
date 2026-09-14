@@ -733,6 +733,24 @@ async def update_mix(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="another mix is already active",
                 )
+            # Forward-only opening order (MysteryMixClub-4vii.4): a mix may
+            # open only as the club's first mix, or once the mix immediately
+            # before it (by number) has closed. The "already active" check
+            # above only rules out a currently-running earlier mix
+            # (open_submission/open_voting) -- it says nothing about an
+            # earlier mix still sitting `pending`, which this closes.
+            if mix_.mix_number > 1:
+                previous = await db.scalar(
+                    select(Mix).where(
+                        Mix.club_id == mix_.club_id,
+                        Mix.mix_number == mix_.mix_number - 1,
+                    )
+                )
+                if previous is None or previous.state != "closed":
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="the previous mystery mix must close first",
+                    )
         if is_rollback:
             # Serialize with the deadline force-advance job and the vote-cast
             # auto-close (MYS-145/MYS-69) under the same FOR UPDATE discipline,

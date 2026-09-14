@@ -641,6 +641,17 @@ function MixesSection({
       MIX_ORDER[mixGroup(a.state)] - MIX_ORDER[mixGroup(b.state)] || a.mix_number - b.mix_number,
   );
 
+  // Forward-only opening order (MysteryMixClub-4vii.4, mirrors the server's
+  // own check): a mix can open once it's #1, or once the mix immediately
+  // before it (by number) has closed. Computed once here rather than per-row
+  // so each row does a Set lookup instead of scanning the whole list.
+  const closedMixNumbers = new Set(
+    mixes.filter((m) => m.state === "closed").map((m) => m.mix_number),
+  );
+  function canOpenMix(mix: Mix): boolean {
+    return mix.mix_number === 1 || closedMixNumbers.has(mix.mix_number - 1);
+  }
+
   return (
     <section className="mt-12">
       <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-muted">
@@ -664,6 +675,7 @@ function MixesSection({
                 onOpenSubmissions={() => onOpenSubmissions(mix.id)}
                 opening={openingMixId === mix.id}
                 openError={openErrorMixId === mix.id ? openMixError : null}
+                canOpen={canOpenMix(mix)}
               />
             </li>
           ))}
@@ -721,6 +733,7 @@ function MixRow({
   onOpenSubmissions,
   opening,
   openError,
+  canOpen,
 }: {
   mix: Mix;
   results?: MixResults;
@@ -736,6 +749,10 @@ function MixRow({
   onOpenSubmissions: () => Promise<boolean>;
   opening: boolean;
   openError?: string | null;
+  /** Forward-only opening order: true only for mix #1, or once the mix
+   *  immediately before this one has closed. Mirrors the server's own check
+   *  so the button doesn't offer an action that would just 409. */
+  canOpen: boolean;
 }) {
   const [editing, setEditing] = useState(false);
 
@@ -854,11 +871,12 @@ function MixRow({
               >
                 {named ? "edit" : "add a theme"}
               </button>
-              {/* A pending mix can't open without a theme (MYS-211) -- same
-                  server rule the mix detail page's own "open mix" button
-                  respects, just enforced here by not offering the action
-                  rather than letting the click hit the server's 409. */}
-              {named ? (
+              {/* A pending mix can't open without a theme (MYS-211) or out of
+                  order (MysteryMixClub-4vii.4) -- both are the same server
+                  rules the mix detail page's own "open mix" button respects,
+                  just enforced here by not offering the action rather than
+                  letting the click hit the server's 409. */}
+              {named && canOpen ? (
                 <button
                   type="button"
                   onClick={onOpenSubmissions}
@@ -877,6 +895,11 @@ function MixRow({
           {pending && !named ? (
             <p className="mt-2 text-meta leading-[1.6] text-muted-foreground">
               add a theme before you can open this mystery mix
+            </p>
+          ) : null}
+          {pending && named && !canOpen ? (
+            <p className="mt-2 text-meta leading-[1.6] text-muted-foreground">
+              mystery mix {mix.mix_number - 1} must close before this one can open
             </p>
           ) : null}
           {openError ? (

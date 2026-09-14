@@ -877,5 +877,33 @@ describe("ClubHomeRoute", () => {
       ).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: "Friday Mixtape" })).toBeInTheDocument();
     });
+
+    it("a themed mix #2 has no 'open mix' button while mix #1 is still pending, and explains why", async () => {
+      mockGetMixes.mockResolvedValue([
+        closedMix({ id: "mix-1", mix_number: 1, state: "pending", theme: "mix one" }),
+        closedMix({ id: "mix-2", mix_number: 2, state: "pending", theme: "mix two" }),
+      ]);
+
+      renderClub();
+      await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+      // Only mix #1 (the first mix) is eligible — one "open mix" button, not two.
+      expect(screen.getAllByRole("button", { name: /^open mix$/i })).toHaveLength(1);
+      expect(
+        screen.getByText(/mystery mix 1 must close before this one can open/i),
+      ).toBeInTheDocument();
+    });
+
+    it("mix #2's 'open mix' button appears once mix #1 has closed", async () => {
+      mockGetMixes.mockResolvedValue([
+        closedMix({ id: "mix-1", mix_number: 1, state: "closed" }),
+        closedMix({ id: "mix-2", mix_number: 2, state: "pending", theme: "mix two" }),
+      ]);
+
+      renderClub();
+      await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+      expect(screen.getAllByRole("button", { name: /^open mix$/i })).toHaveLength(1);
+    });
   });
 });

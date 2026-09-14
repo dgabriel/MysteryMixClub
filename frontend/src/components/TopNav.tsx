@@ -53,6 +53,43 @@ function LogoutIcon() {
   );
 }
 
+/** Three-line "menu" glyph, matching the other nav icons' 1.25px stroke. */
+function MenuIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.25"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11" />
+    </svg>
+  );
+}
+
+/** "X" close glyph, same stroke weight as MenuIcon so the toggle doesn't jump
+ *  in visual weight when it swaps. */
+function CloseIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.25"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <path d="M3.5 3.5l9 9M12.5 3.5l-9 9" />
+    </svg>
+  );
+}
+
 /**
  * Shared top navigation. On authenticated screens the ring mark returns home;
  * HOME / PROFILE / ABOUT / HELP / LOGOUT are always present, ADMIN only for
@@ -77,13 +114,31 @@ function LogoutIcon() {
  * authed-only actions — profile, admin, logout all assume a live session — so
  * anything short of "authenticated" collapses the nav to just the mark and a
  * single LOGIN link, both pointing at /login.
+ *
+ * Below `sm` the horizontal link row doesn't fit — this is also the iOS app's
+ * only viewport (MysteryMixClub-4vii, ADR 0032), not just a narrow browser
+ * window — so it collapses to a single hamburger toggle opening the same
+ * links stacked in a `sheet` panel (Z4, matching every other dropdown/modal
+ * surface in this app). Desktop's inline row is unchanged at `sm` and above.
+ * `pt-[max(1rem,env(safe-area-inset-top))]` keeps the bar clear of the status
+ * bar / notch in the native app and in a PWA's standalone display mode, where
+ * there is no browser chrome to absorb it; it's a no-op in a normal browser
+ * tab, where that env() value is 0.
  */
 export function TopNav({ back }: TopNavProps) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const { status, isPlatformAdmin, logout } = useAuth();
   const [loggingOut, setLoggingOut] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const authed = status === "authenticated";
+
+  /** Mobile menu link: navigate, then close the panel — desktop's inline
+   *  buttons call `navigate` directly and have no panel to close. */
+  function go(to: string) {
+    setMenuOpen(false);
+    navigate(to);
+  }
 
   // Manual "what's new" open, independent of AuthedLayout's once-per-release
   // auto-popup (TopNav also renders standalone on several public pages, so
@@ -147,7 +202,7 @@ export function TopNav({ back }: TopNavProps) {
 
   if (!authed) {
     return (
-      <header className="relative z-10 flex items-center justify-between border-b border-hairline-strong bg-sunken px-4 py-4 shadow-z2 sm:px-8">
+      <header className="relative z-10 flex items-center justify-between border-b border-hairline-strong bg-sunken px-4 pb-4 pt-[max(1rem,env(safe-area-inset-top))] shadow-z2 sm:px-8">
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -208,7 +263,8 @@ export function TopNav({ back }: TopNavProps) {
         ) : null}
       </div>
 
-      <nav className="flex items-center gap-4">
+      {/* Desktop: unchanged inline row, `sm` and up. */}
+      <nav className="hidden items-center gap-4 sm:flex">
         <button type="button" onClick={() => navigate("/home")} className={navLinkClass("/home")}>
           home
         </button>
@@ -244,6 +300,84 @@ export function TopNav({ back }: TopNavProps) {
           {loggingOut ? "logging out…" : "logout"}
         </button>
       </nav>
+
+      {/* Mobile: one hamburger toggle, below `sm` only. */}
+      <button
+        type="button"
+        onClick={() => setMenuOpen((open) => !open)}
+        aria-label={menuOpen ? "close menu" : "open menu"}
+        aria-expanded={menuOpen}
+        className={`${iconLinkClass} sm:hidden`}
+      >
+        {menuOpen ? <CloseIcon /> : <MenuIcon />}
+      </button>
+
+      {menuOpen ? (
+        <>
+          {/* Tap-outside-to-close backdrop, below the panel but above the
+              page. Distinct label from the toggle button's "close menu" so
+              the two controls don't share one accessible name. */}
+          <button
+            type="button"
+            aria-label="dismiss menu"
+            onClick={() => setMenuOpen(false)}
+            className="fixed inset-0 z-10 bg-floor/60 sm:hidden"
+          />
+          {/* Same Z4 `sheet` surface every other dropdown/modal in this app
+              uses, anchored full-width under the bar. */}
+          <nav className="absolute inset-x-0 top-full z-20 flex flex-col gap-1 border-b border-hairline-strong bg-sheet px-4 py-3 shadow-z4 sm:hidden">
+            <button
+              type="button"
+              onClick={() => go("/home")}
+              className={`${navLinkClass("/home")} text-left`}
+            >
+              home
+            </button>
+            <button
+              type="button"
+              onClick={() => go("/profile")}
+              className={`${navLinkClass("/profile")} text-left`}
+            >
+              profile
+            </button>
+            <button
+              type="button"
+              onClick={() => go("/about")}
+              className={`${navLinkClass("/about")} text-left`}
+            >
+              about
+            </button>
+            <button
+              type="button"
+              onClick={() => go("/help")}
+              className={`${navLinkClass("/help")} text-left`}
+            >
+              help
+            </button>
+            {isPlatformAdmin && !IS_NATIVE_BUILD ? (
+              <button
+                type="button"
+                onClick={() => go("/admin")}
+                className={`${navLinkClass("/admin")} text-left`}
+              >
+                admin
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => {
+                setMenuOpen(false);
+                handleLogout();
+              }}
+              disabled={loggingOut}
+              className={`${iconLinkClass} justify-start`}
+            >
+              <LogoutIcon />
+              {loggingOut ? "logging out…" : "logout"}
+            </button>
+          </nav>
+        </>
+      ) : null}
       {showReleaseNotes ? <ReleaseNotesModal onDismiss={dismissReleaseNotes} /> : null}
     </header>
   );

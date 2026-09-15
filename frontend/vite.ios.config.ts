@@ -7,6 +7,23 @@ import path from "node:path";
 // harness that lived in ios-web/ before this. VITE_PLATFORM=capacitor is
 // how App.tsx knows to exclude the platform-admin routes at build time
 // rather than only role-gating them.
+//
+// The API base always resolves to a real HTTPS backend now (staging by
+// default; override with VITE_IOS_API_BASE_URL for prod or another target).
+// There is no LAN/HTTP fallback -- MysteryMixClub-4vii.12 removed it and the
+// matching NSAllowsLocalNetworking ATS exception from Info.plist, since a
+// build carrying either could reach an App Store reviewer or a real member.
+// Fail closed rather than silently falling back to a dev-only address if
+// that ever regresses.
+const apiBaseUrl = process.env.VITE_IOS_API_BASE_URL ?? "https://staging.mysterymixclub.com";
+if (!apiBaseUrl.startsWith("https://")) {
+  throw new Error(
+    `vite.ios.config.ts: VITE_IOS_API_BASE_URL must be an https:// URL, got "${apiBaseUrl}". ` +
+      "The iOS build has no local-network ATS exception, so a non-HTTPS backend is unreachable " +
+      "by design (MysteryMixClub-4vii.12) -- this is not a build worth completing.",
+  );
+}
+
 export default defineConfig({
   publicDir: path.resolve(__dirname, "public"),
   resolve: {
@@ -17,15 +34,7 @@ export default defineConfig({
   plugins: [react()],
   define: {
     "import.meta.env.VITE_PLATFORM": JSON.stringify("capacitor"),
-    // A physical device's "127.0.0.1" (services/api.ts's default) is the
-    // phone itself, not the dev Mac -- override to a LAN-reachable address
-    // for device testing. VITE_IOS_API_BASE_URL overrides this default;
-    // this LAN IP is a local-dev convenience only, not a production value --
-    // milestone 2 still needs a real staging/prod API domain here before
-    // this build ships anywhere but a dev device (ADR 0030 item 4).
-    "import.meta.env.VITE_API_BASE_URL": JSON.stringify(
-      process.env.VITE_IOS_API_BASE_URL ?? "http://192.168.1.153:8001",
-    ),
+    "import.meta.env.VITE_API_BASE_URL": JSON.stringify(apiBaseUrl),
   },
   build: { outDir: "dist-ios", emptyOutDir: true },
   server: { host: "127.0.0.1", port: 5174, strictPort: true },

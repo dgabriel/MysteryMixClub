@@ -29,12 +29,20 @@ npm run ios:open     # open the project in Xcode
 
 In Xcode, pick your iPhone as the run destination and press Run. The first run on a new device needs the device registered to the team, which selecting it as the destination does automatically.
 
-The proof asks for a **server address** rather than hard-coding one, because a phone cannot reach `127.0.0.1` on your Mac. Two workable choices:
+The build always points at a real HTTPS backend -- staging by default
+(`vite.ios.config.ts`), overridable with `VITE_IOS_API_BASE_URL` for prod or
+another target. There is no LAN/plain-HTTP option: a phone can't reach
+`127.0.0.1` on your Mac anyway, and `Info.plist` carries no App Transport
+Security relief to fall back on (removed in `MysteryMixClub-4vii.12` --
+config resolving to anything but `https://` now fails the build outright
+rather than shipping a build that could reach a real user with a
+local-network permission prompt).
 
-- **Your Mac's LAN address**, for example `http://192.168.1.20:8000`, with the backend bound to `0.0.0.0` and both devices on the same network. iOS will ask once for permission to find devices on the local network. This is why `Info.plist` carries `NSAllowsLocalNetworking` and a local-network usage string; that relief is scoped to local addresses and does not permit insecure connections to the public internet.
-- **Staging over https**, which needs no App Transport Security relief at all.
-
-There is no CORS configuration to add for either. The requests are made by `URLSession` in Swift, not by the WebView, so no browser origin is involved.
+Since [ADR 0032](../adr/0032-run-the-real-web-app-inside-the-capacitor-shell.md),
+most requests are made by the WebView via `frontend/src/services/api.ts`, not
+by native `URLSession` -- that means CORS applies, and the target backend's
+`ALLOWED_ORIGINS` must include `capacitor://localhost` (already true for
+staging and prod; see `scripts/staging.env.example` / `scripts/prod.env.example`).
 
 ## What the proof does
 

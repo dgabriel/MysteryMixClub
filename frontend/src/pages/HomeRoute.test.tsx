@@ -118,6 +118,20 @@ describe("HomeRoute (My Clubs)", () => {
     expect(mockGetClubs).toHaveBeenCalledTimes(1);
   });
 
+  it("'how it works' stays visible and reopens the guide even when the member already has clubs (MysteryMixClub-h0ea)", async () => {
+    // Suppress the unrelated ReleaseNotesModal auto-popup so it doesn't make
+    // the dialog query ambiguous -- same reasoning as the guide-specific
+    // describe block below.
+    markLatestReleaseSeen();
+    const user = userEvent.setup();
+    renderHome();
+
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
+    await user.click(screen.getByRole("button", { name: /how it works/i }));
+
+    expect(await screen.findByRole("heading", { name: /music is better/i })).toBeInTheDocument();
+  });
+
   it("groups completed clubs below active ones under a 'completed' heading with the crown marker", async () => {
     mockGetClubs.mockResolvedValue([
       clubWith({ id: "a1", name: "Active One", state: "active" }),

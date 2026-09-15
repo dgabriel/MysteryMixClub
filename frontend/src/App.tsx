@@ -6,6 +6,7 @@ import { Navigate, createBrowserRouter, useParams } from "react-router";
 import { RouterProvider } from "react-router/dom";
 import { AuthProvider } from "./hooks/AuthProvider";
 import { IS_NATIVE_BUILD } from "./lib/platform";
+import { registerDeepLinkHandler } from "./native/deepLinks";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { LoginRoute } from "./pages/LoginRoute";
 import { AuthedLayout } from "./components/AuthedLayout";
@@ -174,6 +175,11 @@ const router = createBrowserRouter([
   { path: "/join/:token", element: withSuspense(<JoinClubRoute />) },
   { path: "*", element: <Navigate to="/login" replace /> },
 ]);
+
+// Universal Link taps (magic-link email, Google's redirect landing, an
+// invite link) land here instead of Safari once tapped from another app --
+// no-op on web (MysteryMixClub-4vii.10).
+registerDeepLinkHandler(router);
 
 export default function App() {
   return (

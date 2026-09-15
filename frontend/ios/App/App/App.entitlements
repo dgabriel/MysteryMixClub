@@ -2,5 +2,16 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- Universal Links (MysteryMixClub-4vii.10): lets magic-link email,
+	     Google's OAuth redirect, and invite links open inside the app
+	     instead of Safari when tapped, degrading gracefully to a normal
+	     page load when the app isn't installed. Requires a matching
+	     apple-app-site-association hosted at each domain's root -- inert
+	     without one. Requires the Associated Domains capability enabled
+	     for this App ID in the Apple Developer portal. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:staging.mysterymixclub.com</string>
+	</array>
 </dict>
 </plist>

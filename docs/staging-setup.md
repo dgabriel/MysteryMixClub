@@ -58,6 +58,14 @@ It is idempotent — safe to re-run.
 > Optional overrides (env vars): `STAGING_DB_NAME`, `STAGING_DB_USER`,
 > `REPO_URL`, `REPO_BRANCH`, `APP_ROOT`, `WEB_ROOT`.
 
+The bootstrap also creates a 2GB swap file if the Droplet has none. This
+$6/mo box only has ~1GB RAM, and `npm ci` for the frontend has been observed
+to get OOM-killed outright without swap (`MysteryMixClub-jrm2`,
+2026-09-15) -- which aborts `deploy-staging.sh` mid-way through publishing
+the frontend, since `set -euo pipefail` means the failed `npm ci` takes the
+whole deploy down with it. Check `free -h` after bootstrapping a new Droplet
+if you ever see a deploy fail with `npm ci ... Killed`.
+
 ---
 
 ## 2. Populate the runtime env file
@@ -251,6 +259,29 @@ Confirm it's online: `gh api repos/dgabriel/MysteryMixClub/actions/runners --jq 
 The workflow targets it via `runs-on: [self-hosted, staging]` — the `staging`
 label is what scopes deploy jobs to this specific runner, separate from
 prod's `prod`-labeled one.
+
+**Make the runner service auto-restart (`MysteryMixClub-jrm2`, 2026-09-15).**
+`./svc.sh install` generates a unit with no `Restart=` directive, so a runner
+process killed by anything (the OOM kill this bead traces, a bad deploy step,
+a Droplet hiccup) stays dead until someone notices and restarts it by hand --
+which is exactly what happened here: the runner sat crashed for 7 hours,
+silently queuing every deploy with nothing to pick them up. Add a drop-in
+rather than editing the generated unit file directly (`svc.sh` may
+regenerate it):
+
+```bash
+sudo mkdir -p /etc/systemd/system/actions.runner.dgabriel-MysteryMixClub.mysterymixclub-staging.service.d
+sudo tee /etc/systemd/system/actions.runner.dgabriel-MysteryMixClub.mysterymixclub-staging.service.d/override.conf <<'EOF'
+[Service]
+Restart=on-failure
+RestartSec=10
+EOF
+sudo systemctl daemon-reload
+```
+
+Do this once per runner install (it doesn't survive `svc.sh uninstall` +
+reinstall). Verify with
+`systemctl show actions.runner.<name>.service -p Restart`.
 
 **No SSH secrets needed** — `STAGING_HOST`/`STAGING_SSH_USER`/`STAGING_SSH_KEY`
 were used by the old SSH-based workflow and are no longer referenced. Safe to

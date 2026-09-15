@@ -74,7 +74,17 @@ tools:
     # can't be naively concatenated back into one valid array). Python isn't
     # left uncovered -- ruff + mypy already run for real in the backend CI
     # job, pre-commit (lint-staged), and pre-push.
-    command: 'sh -c "cd frontend && npx eslint --format json ."'
+    #
+    # Swift IS covered through this one command, not left out the same way
+    # (ADR 0031, MysteryMixClub-yyuq's iOS proof): scripts/instrumentation/
+    # flaught_linter.py runs eslint AND swiftlint, normalizes both into the
+    # one shape @flaught/core's parser actually understands ([{filePath,
+    # messages: [...]}] -- confirmed by reading its source, not assumed), and
+    # merges them into a single valid array. This is what the ADR 0025 "can't
+    # concatenate" finding was missing: the fix isn't concatenation, it's a
+    # shared normalized shape. Extensible on purpose -- add a language by
+    # adding one function inside that script, not by editing this line.
+    command: 'python3 scripts/instrumentation/flaught_linter.py'
   vuln_scanner:
     enabled: true
     # command: npm audit  # override auto-detected scanner

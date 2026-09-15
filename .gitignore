@@ -23,6 +23,7 @@
 # Node
 node_modules/
 dist/
+dist-ios/
 .vite/
 *.log
 npm-debug.log*

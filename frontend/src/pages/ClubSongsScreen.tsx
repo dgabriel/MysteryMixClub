@@ -4,8 +4,14 @@ import { PaperSurface } from "../components/PaperSurface";
 import { TextField } from "../components/TextField";
 import { SourceBadge } from "../components/SourceBadge";
 import { ConcentricRings } from "../components/ConcentricRings";
+import { Pagination } from "../components/Pagination";
 
 type SortKey = "newest" | "title" | "artist" | "submitter";
+
+/** Rows per page (MysteryMixClub-ps1w.4) -- see SubmissionHistoryScreen's
+ *  identical constant for why this pages client-side over the one list `GET
+ *  /clubs/:id/submissions` returns rather than a new backend query param. */
+const PAGE_SIZE = 25;
 
 function matchesQuery(entry: ClubSong, query: string): boolean {
   if (!query) return true;
@@ -108,10 +114,28 @@ export function ClubSongsScreen({
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("newest");
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
-  const visible = useMemo(
+  // See SubmissionHistoryScreen's identical block for why this resets during
+  // render rather than in an effect.
+  const [prevQuery, setPrevQuery] = useState(query);
+  const [prevSort, setPrevSort] = useState(sort);
+  if (query !== prevQuery || sort !== prevSort) {
+    setPrevQuery(query);
+    setPrevSort(sort);
+    setPage(1);
+  }
+
+  const filtered = useMemo(
     () => sortEntries(entries.filter((e) => matchesQuery(e, query)), sort),
     [entries, query, sort],
+  );
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+
+  const visible = useMemo(
+    () => filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [filtered, currentPage],
   );
 
   if (loading) {
@@ -155,19 +179,27 @@ export function ClubSongsScreen({
               <p className="mt-8 text-sm leading-[1.72] text-ink-muted">
                 no songs yet -- they&apos;ll show up here once a mystery mix closes.
               </p>
-            ) : visible.length === 0 ? (
+            ) : filtered.length === 0 ? (
               <p className="mt-8 text-sm leading-[1.72] text-ink-muted">
                 no songs match &ldquo;{query}&rdquo;.
               </p>
             ) : (
-              <ClubSongsGrid
-                entries={visible}
-                sort={sort}
-                onSort={setSort}
-                expanded={expanded}
-                onToggle={(id) => setExpanded((cur) => (cur === id ? null : id))}
-                onOpenMix={onOpenMix}
-              />
+              <>
+                <ClubSongsGrid
+                  entries={visible}
+                  sort={sort}
+                  onSort={setSort}
+                  expanded={expanded}
+                  onToggle={(id) => setExpanded((cur) => (cur === id ? null : id))}
+                  onOpenMix={onOpenMix}
+                />
+                <Pagination
+                  page={currentPage}
+                  totalPages={totalPages}
+                  onPageChange={setPage}
+                  onPaper
+                />
+              </>
             )}
           </>
         )}

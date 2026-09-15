@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { SubmissionHistoryRoute } from "./SubmissionHistoryRoute";
@@ -81,9 +81,13 @@ function renderHistory() {
 }
 
 /** The row toggle's accessible name is on the chevron button, keyed off the
- *  song title (see SubmissionHistoryScreen's `aria-label`). */
+ *  song title (see SubmissionHistoryScreen's `aria-label`). The mobile card's
+ *  own toggle button shares that same accessible name (MysteryMixClub-4vii.7),
+ *  so this is scoped to the desktop table to stay unambiguous. */
 function rowToggle(title: string) {
-  return screen.getByRole("button", { name: new RegExp(`(show|hide) details for ${title}`, "i") });
+  return within(screen.getByRole("table")).getByRole("button", {
+    name: new RegExp(`(show|hide) details for ${title}`, "i"),
+  });
 }
 
 describe("SubmissionHistoryRoute", () => {
@@ -115,22 +119,26 @@ describe("SubmissionHistoryRoute", () => {
 
     renderHistory();
 
-    const row = (await screen.findByText("Song One")).closest("tr");
+    // The mobile card list mirrors the same fields (MysteryMixClub-4vii.7),
+    // so title/club/artist/date text is ambiguous unscoped -- pin these
+    // checks to the desktop table.
+    const table = await screen.findByRole("table");
+    const row = within(table).getByText("Song One").closest("tr");
     expect(row).not.toBeNull();
     // ClubName splits a multi-word name across text nodes (its second word is
     // its own <span>), so check each word rather than the joined string.
-    expect(screen.getByText(/friday/i)).toBeInTheDocument();
-    expect(screen.getByText(/mixtape/i)).toBeInTheDocument();
-    expect(screen.getByText("Artist One")).toBeInTheDocument();
+    expect(within(table).getByText(/friday/i)).toBeInTheDocument();
+    expect(within(table).getByText(/mixtape/i)).toBeInTheDocument();
+    expect(within(table).getByText("Artist One")).toBeInTheDocument();
     const expectedDate = new Date("2026-03-05T00:00:00Z").toLocaleDateString(undefined, {
       year: "numeric",
       month: "short",
       day: "numeric",
     });
-    expect(screen.getByText(expectedDate)).toBeInTheDocument();
-    expect(screen.getByText("3")).toBeInTheDocument(); // mix number
-    expect(screen.getByText("4")).toBeInTheDocument(); // vote count
-    expect(screen.getByText("1")).toBeInTheDocument(); // note count
+    expect(within(table).getByText(expectedDate)).toBeInTheDocument();
+    expect(within(table).getByText("3")).toBeInTheDocument(); // mix number
+    expect(within(table).getByText("4")).toBeInTheDocument(); // vote count
+    expect(within(table).getByText("1")).toBeInTheDocument(); // note count
     // The theme is in the collapsed-by-default preview, not the row itself.
     expect(screen.queryByText(/road trip/i)).not.toBeInTheDocument();
   });
@@ -145,7 +153,7 @@ describe("SubmissionHistoryRoute", () => {
     ]);
 
     renderHistory();
-    await screen.findByText("Song One");
+    const table = await screen.findByRole("table");
 
     const toggle = rowToggle("Song One");
     expect(toggle).toHaveAttribute("aria-expanded", "false");
@@ -154,22 +162,25 @@ describe("SubmissionHistoryRoute", () => {
 
     await userEvent.click(toggle);
 
+    // Expanding is shared state (MysteryMixClub-4vii.7): the mobile card's
+    // own preview opens too, so pin the assertions to the table's copy.
     expect(toggle).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText("great pick")).toBeInTheDocument();
-    expect(screen.getByText(/road trip/i)).toBeInTheDocument();
-    expect(screen.getByText(/my pick/i)).toBeInTheDocument();
+    expect(within(table).getByText("great pick")).toBeInTheDocument();
+    expect(within(table).getByText(/road trip/i)).toBeInTheDocument();
+    expect(within(table).getByText(/my pick/i)).toBeInTheDocument();
   });
 
   it("toggles the preview when the row itself is clicked, not just the chevron", async () => {
     mockGetMySubmissionHistory.mockResolvedValue([entryWith({ submitter_note: "my pick" })]);
 
     renderHistory();
-    const cell = await screen.findByText("Song One");
+    const table = await screen.findByRole("table");
+    const cell = within(table).getByText("Song One");
 
     await userEvent.click(cell);
 
     expect(rowToggle("Song One")).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText(/my pick/i)).toBeInTheDocument();
+    expect(within(table).getByText(/my pick/i)).toBeInTheDocument();
   });
 
   it("hides vote identity for a still-open mix and shows it once closed", async () => {
@@ -191,17 +202,17 @@ describe("SubmissionHistoryRoute", () => {
     ]);
 
     renderHistory();
-    await screen.findByText("Open Song");
+    const table = await screen.findByRole("table");
 
     // Grid cell shows "hidden" rather than a number for the open mix.
-    expect(screen.getByText("hidden")).toBeInTheDocument();
-    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(within(table).getByText("hidden")).toBeInTheDocument();
+    expect(within(table).getByText("2")).toBeInTheDocument();
 
     await userEvent.click(rowToggle("Open Song"));
-    expect(screen.getByText(/votes reveal once this mix closes/i)).toBeInTheDocument();
+    expect(within(table).getByText(/votes reveal once this mix closes/i)).toBeInTheDocument();
 
     await userEvent.click(rowToggle("Closed Song"));
-    expect(screen.getByText(/voted by sam ×2/i)).toBeInTheDocument();
+    expect(within(table).getByText(/voted by sam ×2/i)).toBeInTheDocument();
   });
 
   it("filters by title/artist search", async () => {
@@ -211,12 +222,13 @@ describe("SubmissionHistoryRoute", () => {
     ]);
 
     renderHistory();
-    await screen.findByText("Blue Moon");
+    const table = await screen.findByRole("table");
+    expect(within(table).getByText("Blue Moon")).toBeInTheDocument();
 
     await userEvent.type(screen.getByLabelText(/search/i), "prince");
 
-    expect(screen.queryByText("Blue Moon")).not.toBeInTheDocument();
-    expect(screen.getByText("Purple Rain")).toBeInTheDocument();
+    expect(within(table).queryByText("Blue Moon")).not.toBeInTheDocument();
+    expect(within(table).getByText("Purple Rain")).toBeInTheDocument();
   });
 
   it("sorts by clicking the song column header", async () => {
@@ -226,7 +238,7 @@ describe("SubmissionHistoryRoute", () => {
     ]);
 
     renderHistory();
-    await screen.findByText("Zebra");
+    await screen.findByRole("table");
 
     await userEvent.click(screen.getByRole("button", { name: "song" }));
 
@@ -240,11 +252,119 @@ describe("SubmissionHistoryRoute", () => {
     mockGetMySubmissionHistory.mockResolvedValue([entryWith({ mix_id: "mix-42" })]);
 
     renderHistory();
-    await screen.findByText("Song One");
+    const table = await screen.findByRole("table");
     await userEvent.click(rowToggle("Song One"));
-    await userEvent.click(screen.getByRole("button", { name: /open mix/i }));
+    // The mobile card's own preview renders an identical "open mix" button
+    // (shared expanded state, MysteryMixClub-4vii.7) -- scope to the table's.
+    await userEvent.click(within(table).getByRole("button", { name: /open mix/i }));
 
     expect(await screen.findByText("MIX DETAIL CONTENT")).toBeInTheDocument();
+  });
+
+  it("paginates once there are more than 25 submissions, and resets to page 1 on search", async () => {
+    const entries = Array.from({ length: 30 }, (_, i) =>
+      entryWith({
+        submission_id: `s${i}`,
+        title: `Song ${String(i).padStart(2, "0")}`,
+        artist: "Artist",
+      }),
+    );
+    mockGetMySubmissionHistory.mockResolvedValue(entries);
+
+    renderHistory();
+    const table = await screen.findByRole("table");
+    expect(within(table).getByText("Song 00")).toBeInTheDocument();
+
+    expect(screen.getByText(/page 1 of 2/i)).toBeInTheDocument();
+    expect(within(table).queryByText("Song 25")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /prev/i })).toBeDisabled();
+
+    await userEvent.click(screen.getByRole("button", { name: /next/i }));
+
+    expect(await within(table).findByText("Song 25")).toBeInTheDocument();
+    expect(within(table).queryByText("Song 00")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /next/i })).toBeDisabled();
+
+    // Typing a search (even one that matches everything) should snap back to
+    // page 1 -- otherwise a search from page 2 could render an empty grid if
+    // the new result set has fewer pages than the one being viewed.
+    await userEvent.type(screen.getByLabelText(/search/i), "Song");
+
+    expect(await within(table).findByText("Song 00")).toBeInTheDocument();
+    expect(screen.getByText(/page 1 of 2/i)).toBeInTheDocument();
+  });
+
+  it("has no pagination control when everything fits on one page", async () => {
+    mockGetMySubmissionHistory.mockResolvedValue([entryWith()]);
+
+    renderHistory();
+    await screen.findByRole("table");
+
+    expect(screen.queryByRole("navigation", { name: /pagination/i })).not.toBeInTheDocument();
+  });
+
+  it("mirrors every table row as a mobile card with a sort-by select (MysteryMixClub-4vii.7)", async () => {
+    mockGetMySubmissionHistory.mockResolvedValue([
+      entryWith({
+        title: "Song One",
+        artist: "Artist One",
+        club_name: "Friday Mixtape",
+        mix_number: 3,
+        created_at: "2026-03-05T00:00:00Z",
+        vote_count: 4,
+        notes: [{ body: "nice", author_display_name: "Sam", created_at: "2026-03-06T00:00:00Z" }],
+      }),
+    ]);
+
+    renderHistory();
+    await screen.findByRole("table");
+
+    const card = within(screen.getByRole("list")).getByRole("listitem");
+    expect(within(card).getByText("Song One")).toBeInTheDocument();
+    expect(within(card).getByText("Artist One")).toBeInTheDocument();
+    expect(within(card).getByText(/friday/i)).toBeInTheDocument();
+    expect(within(card).getByText(/mixtape/i)).toBeInTheDocument();
+    expect(within(card).getByText(/4 votes/i)).toBeInTheDocument();
+    expect(within(card).getByText(/1 note/i)).toBeInTheDocument();
+
+    expect(screen.getByLabelText(/sort by/i)).toBeInTheDocument();
+  });
+
+  it("expands the mobile card's own detail panel when its toggle is tapped", async () => {
+    mockGetMySubmissionHistory.mockResolvedValue([
+      entryWith({ submitter_note: "my pick", theme: "road trip" }),
+    ]);
+
+    renderHistory();
+    await screen.findByRole("table");
+
+    const card = within(screen.getByRole("list")).getByRole("listitem");
+    const toggle = within(card).getByRole("button", { name: /show details for song one/i });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(within(card).queryByText(/my pick/i)).not.toBeInTheDocument();
+
+    await userEvent.click(toggle);
+
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(within(card).getByText(/my pick/i)).toBeInTheDocument();
+    expect(within(card).getByText(/road trip/i)).toBeInTheDocument();
+  });
+
+  it("sorts via the mobile select control, same as the desktop column header", async () => {
+    mockGetMySubmissionHistory.mockResolvedValue([
+      entryWith({ submission_id: "s1", title: "Zebra", artist: "Z" }),
+      entryWith({ submission_id: "s2", title: "Apple", artist: "A" }),
+    ]);
+
+    renderHistory();
+    await screen.findByRole("table");
+
+    await userEvent.selectOptions(screen.getByLabelText(/sort by/i), "title");
+
+    const rows = screen.getAllByRole("row").slice(1); // drop the header row
+    const titles = rows.map((r) => r.textContent);
+    expect(titles[0]).toContain("Apple");
+    expect(titles[1]).toContain("Zebra");
   });
 
   it("shows the server's error message when the load fails", async () => {

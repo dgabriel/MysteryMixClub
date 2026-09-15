@@ -183,7 +183,7 @@
       "dismissed_at": "2026-09-09T16:03:14.167Z",
       "reason": "False positive / no second pin exists to diverge from -- ci.yml's npm install -g @flaught/core@0.10.0 is the only place a Flaught version is pinned anywhere in this repo; .advreview.yml declares no version.",
       "context": {
-        "title": "Hard\u2011coded Flaught version in CI may diverge from repo pin, causing inconsistency",
+        "title": "Hard‑coded Flaught version in CI may diverge from repo pin, causing inconsistency",
         "file": ".github/workflows/ci.yml"
       },
       "expires_at": null
@@ -194,7 +194,7 @@
       "dismissed_at": "2026-09-09T16:03:14.304Z",
       "reason": "Fixed at the config level -- .advreview.yml's tools:/test_inversion:/scope_creep:/noise_budget:/severity_gate: blocks are now all explicit (this same PR), closing the exact confusion this finding describes.",
       "context": {
-        "title": "Commented\u2011out default tool block in .advreview.yml may cause future confusion",
+        "title": "Commented‑out default tool block in .advreview.yml may cause future confusion",
         "file": ".advreview.yml"
       },
       "expires_at": null
@@ -502,7 +502,7 @@
       "dismissed_at": "2026-09-10T02:08:45.764Z",
       "reason": "Real finding, out of scope for this dependency-only PR. Tracked separately in MysteryMixClub-feuy (filed when Flaught's linter tool first surfaced these 5 pre-existing eslint warnings, ADR 0025).",
       "context": {
-        "title": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\n/home/runner/work/MysteryMixClub/MysteryMixClub/frontend/src/pages/MixDetailRoute.tsx:286:10\n  284 |\n  285 |   useEffect(() => {\n> 286 |     void load();\n      |          ^^^^ Avoid calling setState() directly within an effect\n  287 |   }, [load]);\n  288 |\n  289 |   // Poll every 60s so state transitions (submission \u2192 voting \u2192 closed) and",
+        "title": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\n/home/runner/work/MysteryMixClub/MysteryMixClub/frontend/src/pages/MixDetailRoute.tsx:286:10\n  284 |\n  285 |   useEffect(() => {\n> 286 |     void load();\n      |          ^^^^ Avoid calling setState() directly within an effect\n  287 |   }, [load]);\n  288 |\n  289 |   // Poll every 60s so state transitions (submission → voting → closed) and",
         "file": "/home/runner/work/MysteryMixClub/MysteryMixClub/frontend/src/pages/MixDetailRoute.tsx"
       },
       "expires_at": null
@@ -601,7 +601,7 @@
       "dismissed_at": "2026-09-11T00:01:41.298Z",
       "reason": "Skeptic-refuted, and correctly so: --config-from-base's exact tradeoff (PR-specific .advreview.yml edits reviewed under stale config until merged) is the intended, explicitly documented behavior -- ADR 0026 accepts this tradeoff by design, security over self-referential convenience, matching this repo's existing dependency_sanity/dismissals posture from ADR 0023.",
       "context": {
-        "title": "`--config-from-base` hides PR\u2011specific .advreview.yml changes, risking missed security tooling",
+        "title": "`--config-from-base` hides PR‑specific .advreview.yml changes, risking missed security tooling",
         "file": ".github/workflows/ci.yml"
       },
       "expires_at": null
@@ -623,7 +623,7 @@
       "dismissed_at": "2026-09-11T00:01:41.581Z",
       "reason": "Skeptic-refuted, and correctly so: this exit-code branching (1 blocks, other nonzero warns) is pre-existing, unchanged by this PR, and was a deliberate design decision from ADR 0017 to distinguish a real gate trip from a tool/config fault (e.g. no GROQ_API_KEY reachable on a fork PR) -- not a new gap introduced here.",
       "context": {
-        "title": "Exit\u2011code handling masks tool\u2011faults, allowing silent CI degradation",
+        "title": "Exit‑code handling masks tool‑faults, allowing silent CI degradation",
         "file": ".github/workflows/ci.yml"
       },
       "expires_at": null
@@ -634,7 +634,7 @@
       "dismissed_at": "2026-09-11T00:01:41.715Z",
       "reason": "This is upstream's own new recommended default (0.11.0's flaught init now emits max_tokens: 8192), not an aggressive value we invented. max_tokens is a ceiling on output length, not a mandate to use it -- normal-size findings cost the same; only previously-truncated reasoning-heavy responses now complete, which is the documented fix for the exact Groq 400 this repo hit live on PR #291.",
       "context": {
-        "title": "Increasing `max_tokens` to 8192 may cause provider\u2011level throttling or higher costs",
+        "title": "Increasing `max_tokens` to 8192 may cause provider‑level throttling or higher costs",
         "file": ".advreview.yml"
       },
       "expires_at": null
@@ -667,7 +667,7 @@
       "dismissed_at": "2026-09-11T00:53:28.584Z",
       "reason": "Real finding, out of scope for this PR. Tracked separately in MysteryMixClub-feuy since Flaught's linter tool first surfaced these 5 pre-existing eslint warnings (ADR 0025).",
       "context": {
-        "title": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\n/Users/dgabriel/claudeProjects/MysteryMixClub/frontend/src/pages/MixDetailRoute.tsx:287:10\n  285 |\n  286 |   useEffect(() => {\n> 287 |     void load();\n      |          ^^^^ Avoid calling setState() directly within an effect\n  288 |   }, [load]);\n  289 |\n  290 |   // Poll every 60s so state transitions (submission \u2192 voting \u2192 closed) and",
+        "title": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\n/Users/dgabriel/claudeProjects/MysteryMixClub/frontend/src/pages/MixDetailRoute.tsx:287:10\n  285 |\n  286 |   useEffect(() => {\n> 287 |     void load();\n      |          ^^^^ Avoid calling setState() directly within an effect\n  288 |   }, [load]);\n  289 |\n  290 |   // Poll every 60s so state transitions (submission → voting → closed) and",
         "file": "/Users/dgabriel/claudeProjects/MysteryMixClub/frontend/src/pages/MixDetailRoute.tsx"
       },
       "expires_at": null
@@ -876,8 +876,404 @@
       "dismissed_at": "2026-09-12T15:40:24.675Z",
       "reason": "Agreeing with the skeptic's own refutation: pull-requests: write is required by this same job's later step (flaught report ... | gh pr comment), which posts the review as a PR comment. Already scoped to only this job (not the workflow-level contents: read grant shared by frontend/backend), per ADR 0020.",
       "context": {
-        "title": "Workflow grants pull\u2011request write permission, enabling potential abuse",
+        "title": "Workflow grants pull‑request write permission, enabling potential abuse",
         "file": ".github/workflows/ci.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:ac565dba12aa21117939aa6090ef8d46",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-13T17:33:52.575Z",
+      "reason": "False positive, and the quoted snippet doesn't match the actual file: the real line 143 is console.error(`[ios-proof] ${next} failed:`, error) -- not the console.log(...resultMessage) shown as evidence. Even evaluated correctly, next is typed Action = 'signIn'|'signOut'|'connect'|'build'|'check'|'open', a closed union of hardcoded literals this code writes itself, never derived from user or network input, so there is no format-string injection surface. error is a separate console.error argument, not interpolated into the format string at all.",
+      "context": {
+        "title": "Unsafe format string in MusicProof logging",
+        "file": "frontend/src/ios/MusicProof.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:50558470f0590dc1c336088c297a91fb",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-13T17:57:52.852Z",
+      "reason": "Already verified concretely, not just assumed safe: full test suite (669/669) passes under vitest 5, tsc -b is clean, and this repo has no usage of any of vitest 5's actual breaking-change APIs (no toMatchSnapshot, no sequential test/suite option). Node 22+ requirement is also already satisfied (CI: Node 24, local: Node 26).",
+      "context": {
+        "title": "Major version bump of Vitest may break test suite compatibility",
+        "file": "frontend/package.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:a1592d20efc3dbfeadea998a89d9b84c",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-13T17:57:52.990Z",
+      "reason": "The existing 669-test suite passing under the new runner is the compatibility validation for a test-tooling upgrade -- there is no separate class of test that validates 'the test runner itself works,' short of the suite it runs. Vitest is devDependency-only test tooling, not app code with its own behavior to newly test.",
+      "context": {
+        "title": "No tests added to validate compatibility of upgraded dev dependencies",
+        "file": "frontend/package-lock.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:c54520cd2148032b3b1695e04ead6bf9",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:32:20.382Z",
+      "reason": "False positive, verified against current file: the assertion expect(screen.getAllByRole('button', { name: /^my clubs$/i })).toHaveLength(2) is present unchanged on the very next line (TopNav.test.tsx:85). Only the preceding comment's text was updated to match the label rename; the tool's diff-hunk heuristic likely mis-grouped the comment-only edit as isolated from the adjacent assertion line.",
+      "context": {
+        "title": "A test body was replaced with comments",
+        "file": "frontend/src/components/TopNav.test.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:9e8749b44c63ec50c20e5b8f3eb77e0d",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:32:20.523Z",
+      "reason": "Same false positive as D-0001 (deterministic finding on the identical claim) -- the assertion is present and unweakened, verified directly against the file.",
+      "context": {
+        "title": "Test body replaced with comment in TopNav test",
+        "file": "frontend/src/components/TopNav.test.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:72558fc8e130734384e76ba5d82e98b5",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:32:20.659Z",
+      "reason": "Mischaracterizes PR scope, not a bug: the rename intentionally applies to web too, per Dawn's explicit request in this session ('I think we need to change Home to My Clubs... navigation is confusing'). Several commits on this PR are deliberately general web fixes surfaced via iOS testing (the About-page Link bug, the open-mix-from-list feature), not iOS-exclusive -- that is this PR's actual, deliberate scope, not scope drift.",
+      "context": {
+        "title": "UI rename from \"home\" to \"my clubs\" affects all platforms",
+        "file": "frontend/src/components/TopNav.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:09c305fd7b3a1fd14e4715f0ca51f9e3",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:32:20.795Z",
+      "reason": "False positive: the tests exist. ClubHomeRoute.test.tsx has 'a themed mix #2 has no open mix button while mix #1 is still pending, and explains why' (line 881) and 'mix #2's open mix button appears once mix #1 has closed' (line 897), directly covering canOpenMix's hidden/disabled behavior. The LLM's own report notes a 100,000-char prompt truncation that likely excluded the test-file diff from what it reviewed.",
+      "context": {
+        "title": "Missing tests for forward-only mix opening UI logic",
+        "file": "frontend/src/pages/ClubHomeScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:b2dc4dcf3d58ee38944a4a58f6bc7bbd",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:32:20.935Z",
+      "reason": "Plausible in isolation but not a new regression: the new previous-mix check uses the exact same unlocked select(Mix)...scalar() pattern as the pre-existing 'another mix is already active' check three lines above it in the same function -- same file, same transaction, same discipline. If this class of race is a real concern it already existed before this PR; tracked as a real follow-up (MysteryMixClub-4vii.6) to add FOR UPDATE to both checks together rather than inconsistently to only the new one.",
+      "context": {
+        "title": "Potential race condition in forward-only mix opening check",
+        "file": "backend/app/api/routes/mixes.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:1f2ae8365f3e8f0afc097550627b09cd",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:32:21.077Z",
+      "reason": "No logging or persistence occurs anywhere in this flow -- verified via direct grep for print/NSLog/log. in both MusicPlugin.swift and MMCAPIClient.swift: zero matches. adoptSession's accessToken = token is a plain in-memory assignment, identical in kind to signIn()'s existing, already-accepted token handling (MMCAPIClient's own doc comment: 'never written to disk, the keychain, or the WebView').",
+      "context": {
+        "title": "Access token passed to native plugin without sanitization",
+        "file": "frontend/ios/App/App/MusicPlugin.swift"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:29ba5aa12f6cbeef75885ae4dd0bc58b",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:41:06.751Z",
+      "reason": "Re-assertion of an already-dismissed concern (prior run's F-005, same underlying claim). No logging of the token occurs anywhere (verified via grep, zero print/NSLog/log. calls touching it in either Swift file) -- adoptSession's assignment is a plain in-memory store, identical in kind to signIn()'s existing, already-accepted handling. 'Malicious plugin interception' isn't a credible threat model here: MMCMusicPlugin is the only plugin this app registers, no third-party plugin code is loaded. The Capacitor bridge carrying plain JS objects to native is the platform's only JS-to-native mechanism, not something this PR introduced or could avoid.",
+      "context": {
+        "title": "Access token exposed via Capacitor bridge to native code",
+        "file": "frontend/ios/App/App/MusicPlugin.swift"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:545a50a1cc6f41bc46fe9e9c98aec1b4",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:41:06.889Z",
+      "reason": "Inverted reasoning: excluding /admin from the iOS route table cannot bypass a server-side guard, because the two are independent -- the backend's authorization checks on admin endpoints are completely unaffected by which frontend routes exist. If anything this is additional restriction (one fewer client entry point on iOS), not a bypass. Matches the PRD's explicit requirement that platform-admin stays web-only (IOS-05).",
+      "context": {
+        "title": "Build‑time route exclusion creates divergent code paths",
+        "file": "frontend/src/App.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:54c6790f2826591347bc35786ae3e370",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:41:07.025Z",
+      "reason": "Process/PR-scope opinion, not a correctness defect. The rename and mobile menu are deliberate, explicit scope for this PR -- Dawn asked for the rename directly in this session ('I think we need to change Home to My Clubs'), and the hamburger menu was the fix for a real, already-reported bug (status bar overlap + unusable horizontal nav on mobile width) found while testing this same PR's core change. Both are tested (17 TopNav tests, all passing) and verified on a physical device.",
+      "context": {
+        "title": "Extensive UI rename and mobile menu added in same PR",
+        "file": "frontend/src/components/TopNav.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:b8d5bc1c638a9764094d60028e3c4633",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:41:07.162Z",
+      "reason": "Process/PR-scope opinion, not a correctness defect, and factually not 'unrelated': the capacitor.config.ts/vite.ios.config.ts/env-template changes are directly required for the PR's own stated goal (the real app reaching its backend and being debuggable inside the Capacitor shell) -- without the CORS origin and API base URL changes, the core feature this PR ships would not function at all.",
+      "context": {
+        "title": "Multiple unrelated configuration changes bundled together",
+        "file": "frontend/capacitor.config.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:5a95503e8cb3e0d35e8a3b2581b79e12",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:41:07.301Z",
+      "reason": "Mischaracterizes normal, intended behavior: import.meta.env.VITE_PLATFORM is undefined on every build except the iOS one by design, and undefined === 'capacitor' deterministically evaluates to false -- exactly the desired default (IS_NATIVE_BUILD false everywhere except the iOS build). This is not unexpected or undefined behavior in the JS sense; it's a normal, correct boolean comparison.",
+      "context": {
+        "title": "Platform flag may be undefined in non‑iOS builds",
+        "file": "frontend/src/lib/platform.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:8bf77f93fbf327452ad260d6b4123d64",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:41:07.439Z",
+      "reason": "Factually incorrect reading of the code: the mobile panel uses JS conditional rendering (`{menuOpen ? (...) : null}`), not CSS-based hiding -- it is not in the DOM at all when closed, so there is no 'unconditional rendering... relying on CSS to hide' and no reflow cost while closed. The sm:hidden CSS classes mentioned only apply to the always-mounted hamburger toggle button and desktop nav row, a separate and correct responsive-breakpoint technique already explained in the surrounding code comments.",
+      "context": {
+        "title": "Unconditional rendering of mobile menu panel may cause layout thrashing",
+        "file": "frontend/src/components/TopNav.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:f362f180a5e5df2686930a597ccffeb9",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:41:07.576Z",
+      "reason": "Known, already-documented tradeoff, not an oversight -- the code comment directly above this rule explains exactly why !important is necessary here (Tailwind's own text-sm utility class already sets font-size at equal-or-higher specificity than a bare element selector, so !important is the only way this override actually takes effect without a global type-scale change).",
+      "context": {
+        "title": "Hard‑coded CSS fix for iOS auto‑zoom uses !important",
+        "file": "frontend/src/index.css"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:fa758e5cb4972a19d2325d320ef8f91e",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:41:07.713Z",
+      "reason": "Already covered by the existing assertion, not missing: getAllByRole('button', { name: /^my clubs$/i }) matching exactly 2 elements IS the verification that both controls (the ring mark, whose accessible name comes from its aria-label, and the text link) share the same accessible name -- a mismatch between the visual label and the aria-label would make this exact assertion fail.",
+      "context": {
+        "title": "TopNav test only checks button count, not accessibility labels after rename",
+        "file": "frontend/src/components/TopNav.test.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:f230a5ad14c5a4f7ef0c47a047dcdd27",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T00:12:19.538Z",
+      "reason": "Inherent to Capacitor+Xcode: appId/appName in capacitor.config.ts (JS build tool) and PRODUCT_BUNDLE_IDENTIFIER in project.pbxproj / Info.plist (native Xcode build) are separate toolchains with no shared runtime -- npx cap sync does not propagate the identifier into the native project by design. Centralizing via codegen would be new infra for a 3-location, rarely-changed value; out of scope for this release-hygiene fix.",
+      "context": {
+        "title": "Bundle identifier hard‑coded in multiple disparate files",
+        "file": "frontend/capacitor.config.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:3e862051d2fd5af8c8ca38dd5cfa92b4",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T00:12:19.680Z",
+      "reason": "Same root cause as F-0001: capacitor.config.ts's appName and Info.plist's CFBundleDisplayName are independent config surfaces in Capacitor's own architecture, not an accidental duplication introduced here.",
+      "context": {
+        "title": "App display name duplicated across config and plist",
+        "file": "frontend/ios/App/App/Info.plist"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:ce5f789a07a5ea1acabb57e6cbd2226c",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T00:12:19.843Z",
+      "reason": "Pre-existing content, not introduced by this PR -- the email line was already in docs/ios/README.md since PR #326 (commit f4e5769), predating this branch. This PR only edited the neighboring App ID line in the same list. Repository is private; the address is the project owner's own, already recorded as the account tied to the Apple Developer team registering this app.",
+      "context": {
+        "title": "Personal email address exposed in documentation",
+        "file": "docs/ios/README.md"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:def623c2a06f4937beb508883afa4e2c",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T00:25:44.649Z",
+      "reason": "Not unrelated -- discovered and fixed as part of implementing this exact ticket: while wiring the release build's HTTPS base URL, I found the WebView's origin (capacitor://localhost) was missing from staging's live ALLOWED_ORIGINS despite being documented in staging.env.example since #329, verified with a CORS preflight and fixed on the Droplet. The doc update explains why that matters for whoever reads this file next.",
+      "context": {
+        "title": "Docs include unrelated CORS and origin details",
+        "file": "docs/ios/README.md"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:9a5bedf9825dfae28d57b519eb05e27a",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T00:25:44.786Z",
+      "reason": "The finding's own premise is inaccurate: the line it quotes already is the override mechanism (VITE_IOS_API_BASE_URL env var), not a hardcoded coupling -- changing the staging domain requires no code change, just setting that env var. A literal default value is normal and matches every other default in this codebase (e.g. api.ts's own http://127.0.0.1:8000 default).",
+      "context": {
+        "title": "Hard‑coded staging HTTPS URL couples build to a specific domain",
+        "file": "frontend/vite.ios.config.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:b897af8ee0a2482179e52e5baca8d1a5",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T00:25:44.923Z",
+      "reason": "Not a real leak: the URL a developer sees echoed back is one they themselves just typed into VITE_IOS_API_BASE_URL on their own machine/CI config -- there's no code path where this surfaces someone else's infrastructure info to an untrusted party. This is a fail-closed build guard, not a runtime error surfaced to end users.",
+      "context": {
+        "title": "Error message may expose internal non‑HTTPS endpoint URLs",
+        "file": "frontend/vite.ios.config.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:868dbffd16d1fd158457a5d17143a837",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T00:25:45.059Z",
+      "reason": "Stylistic opinion, not a defect -- this project's own CLAUDE.md explicitly calls for comments that capture non-obvious WHY context (a hidden constraint, a subtle invariant), which is exactly what this comment does. Reduced further after the F-0002 fix moved the substantive rationale into iosApiBaseUrl.ts's own docstring.",
+      "context": {
+        "title": "Verbose comment block in Vite config may become outdated",
+        "file": "frontend/vite.ios.config.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:6404c226b9d3511ac89406e6b9fe0853",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T22:25:24.275Z",
+      "reason": "api.ts is browser-only by construction -- this project has no SSR/Node rendering path anywhere (plain Vite SPA). window.location.origin was ALREADY used directly at both call sites before this PR (that's the exact bug being fixed); shareableOrigin only wraps that pre-existing access behind a platform branch, it doesn't introduce a new window dependency into a previously window-free module.",
+      "context": {
+        "title": "shareableOrigin accesses window in non‑browser contexts",
+        "file": "frontend/src/services/api.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:d810b0ece65aef957854b7fd6c671e45",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T22:25:24.410Z",
+      "reason": "api.ts is already platform-aware by design -- its own top-of-file comment documents API_BASE_URL being 'exported for the native iOS bridge (ADR 0032)' and resolved differently per-platform via vite.ios.config.ts vs vite.config.ts. IS_NATIVE_BUILD is already a first-class, widely-imported concept across this codebase (App.tsx's route table, etc.); one more small platform branch in the same module that already owns API_BASE_URL is consistent with the existing pattern, not a new coupling.",
+      "context": {
+        "title": "Platform detection introduced in API service creates tight coupling",
+        "file": "frontend/src/services/api.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:61ef4adc1beb10901b92fa6853bb3b4d",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T22:25:24.548Z",
+      "reason": "The native test asserts shareableOrigin() === API_BASE_URL generically (whatever that constant resolves to), so a VITE_API_BASE_URL override is already implicitly covered -- it isn't hardcoded against one literal value. window.location.origin being undefined isn't a reachable case in any real browser/WebView. On the resetModules concern: the new describe block is the last one in the file (tests run in declaration order) and explicitly calls vi.doUnmock + a second vi.resetModules() at the end of its own test to restore state -- it doesn't leak into tests that already ran before it or (there are none) after it.",
+      "context": {
+        "title": "shareableOrigin tests lack coverage for custom API_BASE_URL and edge cases",
+        "file": "frontend/src/services/api.test.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:2da3838f97240d2202d16989165a2af4",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T22:25:24.686Z",
+      "reason": "Not reachable on a real native build: MysteryMixClub-4vii.12 made vite.ios.config.ts's resolveIosApiBaseUrl() throw at build time unless VITE_IOS_API_BASE_URL resolves to an https:// URL (default https://staging.mysterymixclub.com), and its define block always injects that validated value as a concrete string -- import.meta.env.VITE_API_BASE_URL can never be undefined in an actual native build, so api.ts's own 127.0.0.1 fallback is dead code on iOS specifically, not a reachable leak.",
+      "context": {
+        "title": "Potential leakage of internal API base URL in invite links on native builds",
+        "file": "frontend/src/services/api.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:58be1298a8dd229bbb72764ad634c7c3",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T22:25:24.823Z",
+      "reason": "This import IS the fix -- adopting the new shared shareableOrigin() helper at both call sites instead of the broken window.location.origin is the entire point of this PR, not incidental scope expansion.",
+      "context": {
+        "title": "Unrelated import of shareableOrigin in AdminRoute and ClubHomeRoute",
+        "file": "frontend/src/pages/AdminRoute.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:4e37b0e457fb275c5f8705e0739d9b8a",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T22:31:30.638Z",
+      "reason": "Re-asserting the prior dismissal with the specific mechanism spelled out: IS_NATIVE_BUILD and API_BASE_URL are not independently-set values that could diverge -- both VITE_PLATFORM and VITE_API_BASE_URL are baked in by the SAME vite.ios.config.ts define block in the SAME build invocation, and resolveIosApiBaseUrl() throws synchronously during config evaluation (before that define block even runs) if the URL isn't https://. There is no code path that produces a bundle where IS_NATIVE_BUILD reads true at runtime while VITE_API_BASE_URL was left unset -- they are set together, atomically, by construction, not by convention.",
+      "context": {
+        "title": "Invite links may expose internal API base URL if env is misconfigured",
+        "file": "frontend/src/services/api.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:57ebd03aaf0f562bf581d8aa625689a4",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T22:31:30.775Z",
+      "reason": "Same as the prior round: this project has no SSR/Node rendering path anywhere -- it's a plain Vite SPA, and api.ts already assumed a browser (fetch, credentials:'include' cookies) long before this change. window.location.origin was already called directly at both existing call sites; this doesn't add a new browser dependency to a previously platform-neutral module.",
+      "context": {
+        "title": "Potential ReferenceError in non‑browser environments due to window access",
+        "file": "frontend/src/services/api.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:0153be397dac7f823f9e792771952cab",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T22:31:30.913Z",
+      "reason": "api.ts already documents itself as platform-aware (its own header comment: API_BASE_URL 'exported for the native iOS bridge (ADR 0032)'), and IS_NATIVE_BUILD is already a first-class concept imported across the codebase (App.tsx's route table). One more small platform branch in the module that already owns API_BASE_URL is consistent with the established pattern.",
+      "context": {
+        "title": "API service now contains platform‑specific UI logic",
+        "file": "frontend/src/services/api.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:99838362c3294d59f55b11ce78c3de79",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T22:31:31.054Z",
+      "reason": "vitest.config.ts sets environment: 'jsdom' project-wide, which always provides window.location.origin -- there is no configuration in this suite where it's absent, so this isn't a reachable flakiness risk here. The native test already asserts against the live API_BASE_URL constant (not a hardcoded string), so an env override is implicitly covered without needing a separate case.",
+      "context": {
+        "title": "shareableOrigin tests miss critical edge cases and rely on real window",
+        "file": "frontend/src/services/api.test.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:d8acbe9d39f41b66918478f3ca4ec917",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T22:31:31.193Z",
+      "reason": "Same architectural-opinion finding as F-003 from a different angle -- api.ts already exports platform-relevant surface (API_BASE_URL itself). Not a defect.",
+      "context": {
+        "title": "Exporting UI helper from API module pollutes public API surface",
+        "file": "frontend/src/services/api.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:409f3714b9fbdf4025fc5032edb49ffd",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T22:31:31.329Z",
+      "reason": "This dependency is the fix itself (replacing the broken window.location.origin with the shared helper), not incidental scope. Bundle-size impact of one small conditional function is not measurable.",
+      "context": {
+        "title": "AdminRoute and ClubHomeRoute now depend on shareableOrigin helper",
+        "file": "frontend/src/pages/AdminRoute.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:1d6deab566008acf7b2d6361530cdae8",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T22:31:31.469Z",
+      "reason": "Factually incorrect premise: shareableOrigin() is not 'merely returning a constant' -- it's a conditional that returns one of two different values (API_BASE_URL or window.location.origin) depending on IS_NATIVE_BUILD, which is exactly why it can't be inlined as a single constant at either call site.",
+      "context": {
+        "title": "Unnecessary function call for each invite generation",
+        "file": "frontend/src/pages/ClubHomeRoute.tsx"
       },
       "expires_at": null
     }

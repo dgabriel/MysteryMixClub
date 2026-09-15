@@ -1,7 +1,16 @@
 import "@testing-library/jest-dom/vitest";
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
 import { markLatestReleaseSeen } from "../data/releaseNotes";
+
+// jsdom doesn't implement scrollIntoView at all; anything that calls it
+// (e.g. MusicProof's failure-message autoscroll) throws "not a function"
+// without this stand-in. A vi.fn() rather than a plain no-op so a test can
+// still assert it was called; vi.resetAllMocks() (run per-file as needed)
+// clears its history like any other mock.
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = vi.fn();
+}
 
 // Default test state is "a returning user who's already seen the current
 // release" — AuthedLayout's release-notes auto-popup otherwise fires

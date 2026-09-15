@@ -6,6 +6,7 @@ import { JoinClubRoute } from "./JoinClubRoute";
 import { ApiError, acceptInvite, getInvitePreview } from "../services/api";
 import type { InvitePreview, Club } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
+import { consumeJustJoinedClub } from "../data/onboardingGuides";
 
 // Mock the API module (no network). Keep ApiError real.
 vi.mock("../services/api", async () => {
@@ -95,9 +96,9 @@ function setAuth(isAuthenticated: boolean) {
   });
 }
 
-function joinTree(token: string) {
+function joinTree(token: string, state?: { fromPendingInvite?: boolean }) {
   return (
-    <MemoryRouter initialEntries={[`/join/${token}`]}>
+    <MemoryRouter initialEntries={[{ pathname: `/join/${token}`, state }]}>
       <Routes>
         <Route path="/join/:token" element={<JoinClubRoute />} />
         <Route path="/login" element={<div>LOGIN CONTENT</div>} />
@@ -108,8 +109,8 @@ function joinTree(token: string) {
   );
 }
 
-function renderJoin(token = "tok-abc") {
-  return render(joinTree(token));
+function renderJoin(token = "tok-abc", state?: { fromPendingInvite?: boolean }) {
+  return render(joinTree(token, state));
 }
 
 function loadingAuth() {
@@ -257,6 +258,45 @@ describe("JoinClubRoute", () => {
       expect(await screen.findByText("CLUB DETAIL CONTENT")).toBeInTheDocument();
       expect(screen.queryByText("Friday Mixtape")).not.toBeInTheDocument();
       expect(mockAcceptInvite).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("invite-welcome guide trigger (MysteryMixClub-6eo8)", () => {
+    it("explicit accept (logged-in join) always marks the club as just-joined", async () => {
+      mockAcceptInvite.mockResolvedValue(clubWith("joined-club-7"));
+      const user = userEvent.setup();
+
+      renderJoin("tok-abc");
+      await screen.findByText("Friday Mixtape");
+      await user.click(screen.getByRole("button", { name: /join club/i }));
+
+      await screen.findByText("CLUB DETAIL CONTENT");
+      expect(consumeJustJoinedClub("joined-club-7")).toBe(true);
+    });
+
+    it("an already_member redirect reached via a stashed pending invite (fresh sign-in) marks just-joined", async () => {
+      mockGetInvitePreview.mockResolvedValue(
+        preview({ club_id: "club-99", already_member: true }),
+      );
+
+      renderJoin("tok-abc", { fromPendingInvite: true });
+
+      await screen.findByText("CLUB DETAIL CONTENT");
+      expect(consumeJustJoinedClub("club-99")).toBe(true);
+    });
+
+    it("an already_member redirect reached directly (no pending-invite stash) does NOT mark just-joined", async () => {
+      // A long-time member re-clicking an old invite link they still have --
+      // already_member reads true here too, but nothing was actually just
+      // joined, so the invite-welcome guide must not auto-show for it.
+      mockGetInvitePreview.mockResolvedValue(
+        preview({ club_id: "club-99", already_member: true }),
+      );
+
+      renderJoin("tok-abc");
+
+      await screen.findByText("CLUB DETAIL CONTENT");
+      expect(consumeJustJoinedClub("club-99")).toBe(false);
     });
   });
 

@@ -5,13 +5,15 @@ import { PlaylistRow } from "./playlists/PlaylistRow";
 import { ServiceMark } from "./playlists/ServiceMark";
 import { PlaylistLink, PlaylistButton } from "./playlists/PlaylistAction";
 import {
+  API_BASE_URL,
   ApiError,
   createApplePlaylist,
+  getAccessToken,
   getAppleDeveloperToken,
   getApplePlaylistLink,
-  type UnmatchedTrack,
 } from "../services/api";
 import { AppleMusicError, authorizeAppleMusic, preloadAppleMusic } from "../services/musickit";
+import { music, musicErrorMessage, nativeMusicAvailable } from "../ios/music";
 
 /**
  * Per-player Apple Music playlist for a mix (MYS-108).
@@ -101,7 +103,12 @@ export function AppleMusicPlaylist({ mixId, entryCount }: { mixId: string; entry
   // ever reported by `createApplePlaylist`, so on a plain page load we have a
   // playlist link and no idea what is on it. Defaulting to [] made the status
   // read "all N songs" — completeness asserted from absence of data.
-  const [unmatched, setUnmatched] = useState<UnmatchedTrack[] | null>(null);
+  // unknown[], not UnmatchedTrack[] (services/api.ts): this component only
+  // ever reads `.length` off this list, and the web server response and the
+  // native bridge (ios/music.ts) shape their unmatched entries slightly
+  // differently in fields neither is read here -- narrowing to what's
+  // actually used avoids picking one shape arbitrarily for the other.
+  const [unmatched, setUnmatched] = useState<unknown[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSignInModal, setShowSignInModal] = useState(false);
@@ -145,9 +152,36 @@ export function AppleMusicPlaylist({ mixId, entryCount }: { mixId: string; entry
   // head start this needs. Failure is swallowed here on purpose: they have not
   // asked for anything yet, and handleGenerate reports it if they go on.
   useEffect(() => {
-    if (!showSignInModal || !developerToken) return;
+    // Native mints its own developer token server-side (MMCAPIClient); the
+    // web MusicKit JS warm-up below is web-only.
+    if (!showSignInModal || !developerToken || nativeMusicAvailable()) return;
     preloadAppleMusic(developerToken).catch(() => {});
   }, [showSignInModal, developerToken]);
+
+  /** Native path (ADR 0032): native MusicKit instead of MusicKit JS, and the
+   *  real app's own session (already authenticated in this WebView) passed
+   *  straight through rather than a separate native sign-in. */
+  async function handleGenerateNative() {
+    await music.authorize();
+    const tzOffsetMinutes = -new Date().getTimezoneOffset();
+    const accessToken = getAccessToken();
+    if (!accessToken) throw new Error("not signed in");
+    const result = await music.createPlaylist({
+      mixId,
+      tzOffsetMinutes,
+      apiBaseUrl: API_BASE_URL,
+      accessToken,
+    });
+    setUnmatched(result.unmatched);
+    // The native call reports only what the server confirmed -- no playlist
+    // URL, since one never resolves on a mobile client (MysteryMixClub-ap25).
+    // Re-read the same record the mount effect uses rather than fabricate a
+    // link client-side; this is what flips `hasPlaylist` to true below.
+    const link = await getApplePlaylistLink(mixId);
+    setPlaylistUrl(link.playlist_url);
+    setDirectPlaylistUrl(link.direct_playlist_url);
+    setPlaylistName(link.playlist_name);
+  }
 
   async function handleGenerate() {
     if (!developerToken) return;
@@ -155,6 +189,10 @@ export function AppleMusicPlaylist({ mixId, entryCount }: { mixId: string; entry
     setBusy(true);
     setError(null);
     try {
+      if (nativeMusicAvailable()) {
+        await handleGenerateNative();
+        return;
+      }
       // Apple's sign-in window must open from the click, so authorize before any
       // await on our own API. Called from the modal's own "continue" button,
       // which is itself a fresh user gesture. The preload above is what makes
@@ -167,7 +205,9 @@ export function AppleMusicPlaylist({ mixId, entryCount }: { mixId: string; entry
       setPlaylistName(result.playlist_name);
       setUnmatched(result.unmatched);
     } catch (err) {
-      if (err instanceof ApiError && err.status === 401) {
+      if (nativeMusicAvailable()) {
+        setError(musicErrorMessage(err));
+      } else if (err instanceof ApiError && err.status === 401) {
         setError("apple music connection expired. try again.");
       } else if (err instanceof ApiError && err.status === 503) {
         setError("apple music isn't available right now.");

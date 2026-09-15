@@ -41,8 +41,8 @@ type PaperSurfaceProps = {
  * Cards are the deliberate exception, and the reason this composes at all: a
  * `bg-card` island inside a paper page is its own dark surface, so everything
  * *within* it correctly keeps the dark ramp. Only chrome sitting directly on the
- * page moves to `ink`. A component that renders on both (`HelpLink`,
- * `TextField`, `Button`, `FormError`, `ConcentricRings`) takes an `onPaper`
+ * page moves to `ink`. A component that renders on both (`TextField`,
+ * `Button`, `FormError`, `ConcentricRings`) takes an `onPaper`
  * prop rather than picking a ramp for itself.
  *
  * `TopNav` is deliberately *not* affected. It carries its own dark fill, so it

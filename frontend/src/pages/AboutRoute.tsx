@@ -1,3 +1,4 @@
+import { Link } from "react-router";
 import { BrandLockup } from "../components/BrandLockup";
 import { PaperSurface } from "../components/PaperSurface";
 import { TopNav } from "../components/TopNav";
@@ -134,12 +135,18 @@ export function AboutRoute() {
           </div>
 
           <div className="mt-8 flex justify-center gap-4 border-t border-ink-hairline pt-6">
-            <a href="/terms" className={LINK_CLASS}>
+            {/* A plain <a href> forces a full page reload -- an unnecessary
+                round trip on web, and on iOS (MysteryMixClub-4vii) it remounts
+                AuthProvider fresh, so a signed-in visitor briefly (or not so
+                briefly, on a slow connection) sees the signed-out nav while
+                the reload re-derives their session from the refresh cookie.
+                Link keeps this an in-app transition instead. */}
+            <Link to="/terms" className={LINK_CLASS}>
               terms
-            </a>
-            <a href="/privacy" className={LINK_CLASS}>
+            </Link>
+            <Link to="/privacy" className={LINK_CLASS}>
               privacy
-            </a>
+            </Link>
           </div>
         </div>
       </main>

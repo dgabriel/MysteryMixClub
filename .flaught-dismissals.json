@@ -1320,6 +1320,61 @@
         "file": "scripts/deploy-prod.sh"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:3153af2b39b18589c5484a0b1ae678ae",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T23:41:13.777Z",
+      "reason": "Same reasoning as the prior round: frontend/public/ (the only source of dotfiles alongside Vite's own compiled output) currently contains nothing sensitive, and it's Vite's publicDir by design -- everything placed there is meant to be publicly served, dotfile or not. That is the entire point of this fix (we WANT .well-known served). A stray secret in public/ would be equally exposed via a non-dotted filename; this isn't a new class of risk the dist/. change introduces.",
+      "context": {
+        "title": "Unrestricted deployment of any dotfile may expose future secrets",
+        "file": "scripts/deploy-prod.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:36a94a9621c73a2e09f8e4cc0186b2b0",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T23:41:13.913Z",
+      "reason": "Committing .flaught-dismissals.json is the tool's own required workflow, not scope creep -- its own CLI output says verbatim 'Commit .flaught-dismissals.json so CI picks up this dismissal' after every dismiss. Every PR in this repo that has needed a dismissal has committed the updated file in the same PR all session.",
+      "context": {
+        "title": "Bulk addition of Flaught dismissals unrelated to the deploy fix",
+        "file": ".flaught-dismissals.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:3e830c1f86af49ead18d58a81bba5b19",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T23:41:14.056Z",
+      "reason": "Both scripts are shebanged #!/usr/bin/env bash explicitly (verified), not /bin/sh -- there is no dash/POSIX-sh portability concern here, they already commit to bash throughout (set -euo pipefail, [[ ]], etc. elsewhere in both files).",
+      "context": {
+        "title": "Bash‑specific glob semantics make the script non‑portable",
+        "file": "scripts/deploy-prod.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:8832c008536ab4a552dc36f67f2fb512",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T23:41:14.193Z",
+      "reason": "Real but pre-existing duplication -- deploy-staging.sh and deploy-prod.sh were already near-identical scripts with the same structure before this PR (same find -delete pattern, same comment style, etc. throughout both files). This fix corrects the same bug in both already-duplicated locations rather than introducing new duplication; extracting a shared helper is a legitimate but separate refactor, out of scope for a targeted one-line bug fix in two places.",
+      "context": {
+        "title": "Duplicated copy logic across prod and staging scripts",
+        "file": "scripts/deploy-staging.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:6ac763f2dce5d7944ef6482f20e594d6",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T23:41:14.329Z",
+      "reason": "Factually incorrect -- verified directly: 'cp -r src/. dest/' does NOT create a literal '.' entry in the destination. find dest -maxdepth 1 after the copy shows exactly dest, dest/index.html, dest/.well-known -- no spurious '.' directory. This is standard, well-known cp/rsync/tar idiom for including dotfiles, not a bug.",
+      "context": {
+        "title": "`cp -r dist/.` may create an extra `.` directory entry in the target",
+        "file": "scripts/deploy-prod.sh"
+      },
+      "expires_at": null
     }
   ]
 }

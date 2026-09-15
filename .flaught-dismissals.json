@@ -1199,6 +1199,83 @@
         "file": "frontend/src/pages/AdminRoute.tsx"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:4e37b0e457fb275c5f8705e0739d9b8a",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T22:31:30.638Z",
+      "reason": "Re-asserting the prior dismissal with the specific mechanism spelled out: IS_NATIVE_BUILD and API_BASE_URL are not independently-set values that could diverge -- both VITE_PLATFORM and VITE_API_BASE_URL are baked in by the SAME vite.ios.config.ts define block in the SAME build invocation, and resolveIosApiBaseUrl() throws synchronously during config evaluation (before that define block even runs) if the URL isn't https://. There is no code path that produces a bundle where IS_NATIVE_BUILD reads true at runtime while VITE_API_BASE_URL was left unset -- they are set together, atomically, by construction, not by convention.",
+      "context": {
+        "title": "Invite links may expose internal API base URL if env is misconfigured",
+        "file": "frontend/src/services/api.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:57ebd03aaf0f562bf581d8aa625689a4",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T22:31:30.775Z",
+      "reason": "Same as the prior round: this project has no SSR/Node rendering path anywhere -- it's a plain Vite SPA, and api.ts already assumed a browser (fetch, credentials:'include' cookies) long before this change. window.location.origin was already called directly at both existing call sites; this doesn't add a new browser dependency to a previously platform-neutral module.",
+      "context": {
+        "title": "Potential ReferenceError in non‑browser environments due to window access",
+        "file": "frontend/src/services/api.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:0153be397dac7f823f9e792771952cab",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T22:31:30.913Z",
+      "reason": "api.ts already documents itself as platform-aware (its own header comment: API_BASE_URL 'exported for the native iOS bridge (ADR 0032)'), and IS_NATIVE_BUILD is already a first-class concept imported across the codebase (App.tsx's route table). One more small platform branch in the module that already owns API_BASE_URL is consistent with the established pattern.",
+      "context": {
+        "title": "API service now contains platform‑specific UI logic",
+        "file": "frontend/src/services/api.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:99838362c3294d59f55b11ce78c3de79",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T22:31:31.054Z",
+      "reason": "vitest.config.ts sets environment: 'jsdom' project-wide, which always provides window.location.origin -- there is no configuration in this suite where it's absent, so this isn't a reachable flakiness risk here. The native test already asserts against the live API_BASE_URL constant (not a hardcoded string), so an env override is implicitly covered without needing a separate case.",
+      "context": {
+        "title": "shareableOrigin tests miss critical edge cases and rely on real window",
+        "file": "frontend/src/services/api.test.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:d8acbe9d39f41b66918478f3ca4ec917",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T22:31:31.193Z",
+      "reason": "Same architectural-opinion finding as F-003 from a different angle -- api.ts already exports platform-relevant surface (API_BASE_URL itself). Not a defect.",
+      "context": {
+        "title": "Exporting UI helper from API module pollutes public API surface",
+        "file": "frontend/src/services/api.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:409f3714b9fbdf4025fc5032edb49ffd",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T22:31:31.329Z",
+      "reason": "This dependency is the fix itself (replacing the broken window.location.origin with the shared helper), not incidental scope. Bundle-size impact of one small conditional function is not measurable.",
+      "context": {
+        "title": "AdminRoute and ClubHomeRoute now depend on shareableOrigin helper",
+        "file": "frontend/src/pages/AdminRoute.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:1d6deab566008acf7b2d6361530cdae8",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T22:31:31.469Z",
+      "reason": "Factually incorrect premise: shareableOrigin() is not 'merely returning a constant' -- it's a conditional that returns one of two different values (API_BASE_URL or window.location.origin) depending on IS_NATIVE_BUILD, which is exactly why it can't be inlined as a single constant at either call site.",
+      "context": {
+        "title": "Unnecessary function call for each invite generation",
+        "file": "frontend/src/pages/ClubHomeRoute.tsx"
+      },
+      "expires_at": null
     }
   ]
 }

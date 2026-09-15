@@ -10,6 +10,8 @@
  *    cookie is sent on the cross-origin (but same-site) request to :8000.
  */
 
+import { IS_NATIVE_BUILD } from "../lib/platform";
+
 // Default to the 127.0.0.1 loopback (not "localhost"): the app keeps every
 // origin on one host so the session cookie survives the Spotify OAuth redirect
 // (MYS-85), and Spotify rejects "localhost" redirect URIs.
@@ -18,6 +20,21 @@
 // adopts this session's access token rather than maintaining its own.
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 const AUTH_BASE = `${API_BASE_URL}/api/v1/auth`;
+
+/**
+ * The origin to build a real, externally-shareable URL from -- an invite
+ * link, or anything else meant to be pasted somewhere else entirely
+ * (MysteryMixClub-jrm2). `window.location.origin` is wrong on native: it's
+ * the WebView's own bundled-content address (`capacitor://localhost`), not a
+ * real web URL anyone else's device or browser could open. On web,
+ * `API_BASE_URL` is empty/relative by design (deploy-staging.sh builds the
+ * SPA to call its own API same-origin), so `window.location.origin` is the
+ * only correct source there -- and it's already exactly right, since web is
+ * actually served from that origin.
+ */
+export function shareableOrigin(): string {
+  return IS_NATIVE_BUILD ? API_BASE_URL : window.location.origin;
+}
 
 /** Password bounds the backend enforces on register/reset. Mirrored here only so
  *  the UI can hint before a round-trip — the server stays authoritative. */

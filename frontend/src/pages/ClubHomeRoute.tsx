@@ -11,6 +11,7 @@ import {
   getResults,
   getMixes,
   removeMember,
+  shareableOrigin,
   updateClub,
   updateMemberRole,
   updateMix,
@@ -213,7 +214,7 @@ export function ClubHomeRoute() {
       const invite = await createInvite(id);
       // Canonical invite path is /invite/:token (what the backend emails too);
       // /join/:token still resolves as a legacy alias.
-      setInviteUrl(`${window.location.origin}/invite/${invite.token}`);
+      setInviteUrl(`${shareableOrigin()}/invite/${invite.token}`);
     } catch (err) {
       setInviteError(
         err instanceof ApiError ? err.message : "couldn't generate an invite. try again.",

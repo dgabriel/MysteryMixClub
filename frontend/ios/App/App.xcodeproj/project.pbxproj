@@ -7,10 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0485F3A8C0021B28E8A710F4 /* MockURLProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99E51AB52C6373C0620362D8 /* MockURLProtocol.swift */; };
 		0A78DDF8593A47D69A6335E8 /* MusicPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BC3F634013F45649FF02168 /* MusicPlugin.swift */; };
-		B85B6F2501A449D986C3B0CE /* MMCAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77DCF84FB93E496B843B9386 /* MMCAPIClient.swift */; };
-		C52149A3783C462081AFE1AF /* ProofError.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9D50CEAD59247B0835A4A75 /* ProofError.swift */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
+		3B47D0F9EFC4873AB540D54D /* CapApp-SPM in Frameworks */ = {isa = PBXBuildFile; productRef = 4D22ABE82AF431CB00220026 /* CapApp-SPM */; };
 		4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */ = {isa = PBXBuildFile; productRef = 4D22ABE82AF431CB00220026 /* CapApp-SPM */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
@@ -20,14 +20,25 @@
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };
 		AF018E3B0AF04114BCB753B6 /* ProofViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30A8FA1AFD934EF6BDFB825B /* ProofViewController.swift */; };
+		B85B6F2501A449D986C3B0CE /* MMCAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77DCF84FB93E496B843B9386 /* MMCAPIClient.swift */; };
+		C52149A3783C462081AFE1AF /* ProofError.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9D50CEAD59247B0835A4A75 /* ProofError.swift */; };
 		FA1B92E06D34AC556268ABF3 /* MMCAPIClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0B57B8C6174FADEFA5D7F39 /* MMCAPIClientTests.swift */; };
-		0485F3A8C0021B28E8A710F4 /* MockURLProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99E51AB52C6373C0620362D8 /* MockURLProtocol.swift */; };
-		3B47D0F9EFC4873AB540D54D /* CapApp-SPM in Frameworks */ = {isa = PBXBuildFile; productRef = 4D22ABE82AF431CB00220026 /* CapApp-SPM */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		383BF9437314E7C3E8A81188 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 504EC3031FED79650016851F;
+			remoteInfo = App;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
 		30A8FA1AFD934EF6BDFB825B /* ProofViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; path = ProofViewController.swift; sourceTree = "<group>"; };
+		4569671C1AABCF1CBD01911F /* AppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -36,30 +47,29 @@
 		504EC3111FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
-		8BC3F634013F45649FF02168 /* MusicPlugin.swift */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; path = MusicPlugin.swift; sourceTree = "<group>"; };
 		77DCF84FB93E496B843B9386 /* MMCAPIClient.swift */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; path = MMCAPIClient.swift; sourceTree = "<group>"; };
-		A9D50CEAD59247B0835A4A75 /* ProofError.swift */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; path = ProofError.swift; sourceTree = "<group>"; };
+		8BC3F634013F45649FF02168 /* MusicPlugin.swift */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; path = MusicPlugin.swift; sourceTree = "<group>"; };
 		9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
-		4569671C1AABCF1CBD01911F /* AppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		F0B57B8C6174FADEFA5D7F39 /* MMCAPIClientTests.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = MMCAPIClientTests.swift; sourceTree = "<group>"; };
 		99E51AB52C6373C0620362D8 /* MockURLProtocol.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = MockURLProtocol.swift; sourceTree = "<group>"; };
+		A9D50CEAD59247B0835A4A75 /* ProofError.swift */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; path = ProofError.swift; sourceTree = "<group>"; };
+		F0B57B8C6174FADEFA5D7F39 /* MMCAPIClientTests.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = MMCAPIClientTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		504EC3011FED79650016851F /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		0329560527AB248367A5409F /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				3B47D0F9EFC4873AB540D54D /* CapApp-SPM in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		504EC3011FED79650016851F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -85,15 +95,6 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		F7830B449E617505736DE951 /* AppTests */ = {
-			isa = PBXGroup;
-			children = (
-				F0B57B8C6174FADEFA5D7F39 /* MMCAPIClientTests.swift */,
-				99E51AB52C6373C0620362D8 /* MockURLProtocol.swift */,
-			);
-			path = AppTests;
-			sourceTree = "<group>";
-		};
 		504EC3061FED79650016851F /* App */ = {
 			isa = PBXGroup;
 			children = (
@@ -114,6 +115,15 @@
 			path = App;
 			sourceTree = "<group>";
 		};
+		F7830B449E617505736DE951 /* AppTests */ = {
+			isa = PBXGroup;
+			children = (
+				F0B57B8C6174FADEFA5D7F39 /* MMCAPIClientTests.swift */,
+				99E51AB52C6373C0620362D8 /* MockURLProtocol.swift */,
+			);
+			path = AppTests;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -121,6 +131,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 504EC3161FED79650016851F /* Build configuration list for PBXNativeTarget "App" */;
 			buildPhases = (
+				050D3EF374EB6A01FC76AF37 /* Sync web bundle (MysteryMixClub-4vii.19) */,
 				504EC3001FED79650016851F /* Sources */,
 				504EC3011FED79650016851F /* Frameworks */,
 				504EC3021FED79650016851F /* Resources */,
@@ -225,6 +236,29 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		050D3EF374EB6A01FC76AF37 /* Sync web bundle (MysteryMixClub-4vii.19) */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Sync web bundle (MysteryMixClub-4vii.19)";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "set -euo pipefail\n\n# Xcode's script-phase shell has a minimal PATH that usually excludes\n# Homebrew -- add the common install locations rather than assume npm\n# is already on it (MysteryMixClub-4vii.19).\nexport PATH=\"/opt/homebrew/bin:/usr/local/bin:${PATH}\"\n\nif ! command -v npm >/dev/null 2>&1; then\n  echo \"error: npm not found on PATH -- checked /opt/homebrew/bin and /usr/local/bin in addition to Xcode's default PATH. Install Node/npm or adjust this script's PATH export.\" >&2\n  exit 1\nfi\n\ncd \"${SRCROOT}/../..\"\nnpm run ios:sync\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		504EC3001FED79650016851F /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -249,16 +283,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
-
-/* Begin PBXContainerItemProxy section */
-		383BF9437314E7C3E8A81188 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 504EC3031FED79650016851F;
-			remoteInfo = App;
-		};
-/* End PBXContainerItemProxy section */
 
 /* Begin PBXTargetDependency section */
 		4C889C095C4D644F0C28476C /* PBXTargetDependency */ = {
@@ -288,6 +312,21 @@
 /* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
+		133BBB89F002063F6EB80D7F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mysterymixclub.app.AppTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/App.app/App";
+			};
+			name = Debug;
+		};
 		504EC3141FED79650016851F /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 958DCC722DB07C7200EA8C5F /* debug.xcconfig */;
@@ -328,7 +367,7 @@
 				DEVELOPMENT_TEAM = QFY64RHPNG;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -393,7 +432,7 @@
 				DEVELOPMENT_TEAM = QFY64RHPNG;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -459,28 +498,13 @@
 			};
 			name = Release;
 		};
-		133BBB89F002063F6EB80D7F /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				CODE_SIGN_STYLE = Automatic;
-				GENERATE_INFOPLIST_FILE = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.mysterymixclub.app.AppTests";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/App.app/App";
-			};
-			name = Debug;
-		};
 		82AC6B7CED58E8AE887E9988 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				GENERATE_INFOPLIST_FILE = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.mysterymixclub.app.AppTests";
+				PRODUCT_BUNDLE_IDENTIFIER = com.mysterymixclub.app.AppTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;

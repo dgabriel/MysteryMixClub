@@ -1,9 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  // Prototype identifier; select the owner's team in Xcode before device signing.
-  appId: 'com.mysterymixclub.iospoc',
-  appName: 'MMC iOS Proof',
+  appId: 'com.mysterymixclub.app',
+  appName: 'Mystery Mix Club',
   webDir: 'dist-ios',
   // 'none' hid the real app's console entirely while it was still just the
   // MusicKit proof; now that Capacitor runs the whole member app (ADR 0032),

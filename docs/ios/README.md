@@ -13,7 +13,7 @@ Confirmed on September 13, 2026:
 - Xcode 26.6, with `xcode-select -p` pointing inside it. CocoaPods is not installed and is not needed: the project uses Swift Package Manager, the default for new Capacitor 8 iOS projects.
 - A physical iPhone ("Dawn's iPhone", iPhone 16 Plus, iOS 26.6) paired through Xcode's Devices window.
 - Apple ID `dgabriel@gmail.com` holds a paid Apple Developer Program membership, so MusicKit enrollment is not a blocker.
-- An explicit (non-wildcard) App ID is registered for `com.mysterymixclub.iospoc`. The auto-generated "XC Wildcard" App ID is not sufficient.
+- An explicit (non-wildcard) App ID is registered for `com.mysterymixclub.app`. The auto-generated "XC Wildcard" App ID is not sufficient.
 
 Both a simulator build and a signed device build currently succeed with no warnings from the app's own code.
 

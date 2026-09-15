@@ -24,19 +24,8 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<!-- Dev builds point at a backend on the Mac's LAN address over plain
-		     HTTP. This relief is scoped to local addresses only and does not
-		     permit arbitrary insecure loads; a build pointed at staging or
-		     production needs none of it. See ADR 0029. -->
-		<key>NSAllowsLocalNetworking</key>
-		<true/>
-	</dict>
 	<key>NSAppleMusicUsageDescription</key>
 	<string>Mystery Mix Club uses Apple Music to build this mix's playlist in your library. Your Apple Music credentials stay on your iPhone.</string>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>This prototype connects to a Mystery Mix Club development server running on your local network.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

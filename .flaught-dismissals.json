@@ -1375,6 +1375,28 @@
         "file": "scripts/deploy-prod.sh"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:49f03647b497b9b7aced291661d2e018",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T23:58:33.126Z",
+      "reason": "Pre-existing characteristic of the script, not introduced by this fix -- the find -delete then cp -r dist/* pattern (non-atomic by construction) already existed in both scripts before this PR; the only change here is dist/* -> dist/. to stop dropping dotfiles. Atomicity/rollback is a legitimate but separate improvement to the deploy strategy as a whole, out of scope for a targeted one-line bug fix.",
+      "context": {
+        "title": "Non‑atomic deploy can leave web root empty on copy failure",
+        "file": "scripts/deploy-prod.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:cc5c160fbcb0e74f7752b51553e2f1de",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T23:58:33.265Z",
+      "reason": "Same pre-existing duplication raised in two prior rounds of this same review -- deploy-staging.sh and deploy-prod.sh were already near-identical scripts before this PR. This fix corrects the same bug in both already-duplicated locations; extracting a shared helper is a legitimate but separate refactor.",
+      "context": {
+        "title": "Duplicated deployment logic across prod and staging scripts",
+        "file": "scripts/deploy-staging.sh"
+      },
+      "expires_at": null
     }
   ]
 }

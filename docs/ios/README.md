@@ -23,11 +23,27 @@ Both a simulator build and a signed device build currently succeed with no warni
 
 ```
 cd frontend
-npm run ios:sync     # build the proof's web bundle and copy it into the iOS app
 npm run ios:open     # open the project in Xcode
 ```
 
 In Xcode, pick your iPhone as the run destination and press Run. The first run on a new device needs the device registered to the team, which selecting it as the destination does automatically.
+
+**The web bundle syncs itself now (`MysteryMixClub-4vii.19`).** A build phase
+named "Sync web bundle" runs `npm run ios:sync` automatically, first, before
+every build or archive -- `npm run ios:sync` by hand is no longer required
+(though still harmless if you run it anyway). It always runs (the phase's
+"Based on dependency analysis" option is off) so a stale bundle is never
+silently reused, and it fails the whole Xcode build if the sync fails (a
+TypeScript error, for instance) rather than archiving old content.
+
+This required disabling `ENABLE_USER_SCRIPT_SANDBOXING` project-wide: Xcode
+15's script-phase sandbox otherwise blocks the sync from writing to
+`ios/App/App/public`, `capacitor.config.json`, and `CapApp-SPM/Package.swift`
+(`EPERM: operation not permitted`), and those writes are too spread across
+the source tree for a narrow `outputPaths` declaration to unblock instead.
+This is the standard, documented workaround for Capacitor/React-Native-style
+sync phases; it only affects this one first-party script phase, not
+third-party build tooling.
 
 The build always points at a real HTTPS backend -- staging by default
 (`vite.ios.config.ts`), overridable with `VITE_IOS_API_BASE_URL` for prod or

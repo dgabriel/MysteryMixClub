@@ -26,6 +26,7 @@ import {
   requestMagicLink,
   setPassword,
   setStoredAccessToken,
+  shareableOrigin,
   startGoogleLink,
   updateDisplayName,
   updateClub,
@@ -1546,6 +1547,25 @@ describe("api.ts", () => {
         status: 500,
         message: "request failed (500)",
       });
+    });
+  });
+
+  describe("shareableOrigin (MysteryMixClub-jrm2)", () => {
+    it("uses window.location.origin on web", () => {
+      expect(shareableOrigin()).toBe(window.location.origin);
+    });
+
+    it("uses the real API base URL on native, never window.location.origin", async () => {
+      vi.resetModules();
+      vi.doMock("../lib/platform", () => ({ IS_NATIVE_BUILD: true }));
+
+      const nativeApi = await import("./api");
+
+      expect(nativeApi.shareableOrigin()).toBe(nativeApi.API_BASE_URL);
+      expect(nativeApi.shareableOrigin()).not.toBe(window.location.origin);
+
+      vi.doUnmock("../lib/platform");
+      vi.resetModules();
     });
   });
 });

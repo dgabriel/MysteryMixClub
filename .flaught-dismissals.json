@@ -1067,6 +1067,39 @@
         "file": "frontend/src/components/TopNav.test.tsx"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:f230a5ad14c5a4f7ef0c47a047dcdd27",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T00:12:19.538Z",
+      "reason": "Inherent to Capacitor+Xcode: appId/appName in capacitor.config.ts (JS build tool) and PRODUCT_BUNDLE_IDENTIFIER in project.pbxproj / Info.plist (native Xcode build) are separate toolchains with no shared runtime -- npx cap sync does not propagate the identifier into the native project by design. Centralizing via codegen would be new infra for a 3-location, rarely-changed value; out of scope for this release-hygiene fix.",
+      "context": {
+        "title": "Bundle identifier hard‑coded in multiple disparate files",
+        "file": "frontend/capacitor.config.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:3e862051d2fd5af8c8ca38dd5cfa92b4",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T00:12:19.680Z",
+      "reason": "Same root cause as F-0001: capacitor.config.ts's appName and Info.plist's CFBundleDisplayName are independent config surfaces in Capacitor's own architecture, not an accidental duplication introduced here.",
+      "context": {
+        "title": "App display name duplicated across config and plist",
+        "file": "frontend/ios/App/App/Info.plist"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:ce5f789a07a5ea1acabb57e6cbd2226c",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T00:12:19.843Z",
+      "reason": "Pre-existing content, not introduced by this PR -- the email line was already in docs/ios/README.md since PR #326 (commit f4e5769), predating this branch. This PR only edited the neighboring App ID line in the same list. Repository is private; the address is the project owner's own, already recorded as the account tied to the Apple Developer team registering this app.",
+      "context": {
+        "title": "Personal email address exposed in documentation",
+        "file": "docs/ios/README.md"
+      },
+      "expires_at": null
     }
   ]
 }

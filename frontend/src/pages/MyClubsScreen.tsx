@@ -133,10 +133,23 @@ export function MyClubsScreen({
                   my clubs
                 </h1>
 
-                <div className="mt-4">
+                <div className="mt-4 flex items-center gap-4">
                   <Button type="button" onClick={onCreateClub}>
                     create a club
                   </Button>
+                  {/* Reopen affordance for the welcome guide (requirement 4,
+                      MysteryMixClub-6eo8) -- was empty-state-only, which hid
+                      it the moment someone actually had a club and defeated
+                      the point of it being discoverable (MysteryMixClub-h0ea).
+                      Muted rather than amber: a help affordance, not an
+                      action worth marking. */}
+                  <button
+                    type="button"
+                    onClick={onReopenWelcomeGuide}
+                    className="font-mono text-mini uppercase tracking-mono-caps text-ink-muted underline underline-offset-[3px] hover:text-ink"
+                  >
+                    how it works
+                  </button>
                 </div>
 
                 {error ? (

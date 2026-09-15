@@ -1276,6 +1276,50 @@
         "file": "frontend/src/pages/ClubHomeRoute.tsx"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:47802c294038a535f42ed6ae4f9de4e0",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T23:36:26.042Z",
+      "reason": "Verified: frontend/public/ (the only source of dotfiles in dist/, alongside Vite's own compiled output) currently contains only fonts/, llms.txt, manifest.json, robots.txt, service-worker.js, and .well-known/ -- no .env, no .git, nothing sensitive. More importantly, frontend/public/ is Vite's publicDir by design: everything placed there is meant to be served verbatim at the site root, dotfile or not (that's the entire point of this PR -- we WANT .well-known/apple-app-site-association served). A stray secret dropped into public/ would already be equally exposed via a non-dotted filename; the previous dist/* bug only ever provided accidental, unintended protection that nothing relied on -- it's what was silently breaking Universal Links.",
+      "context": {
+        "title": "Potential exposure of sensitive dotfiles via blanket copy",
+        "file": "scripts/deploy-prod.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:9f57363731531474861357465c47b52a",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T23:36:26.174Z",
+      "reason": "Same reasoning as F-0001 -- staging's public/ directory is the identical source tree as prod's, both fully public by design, nothing sensitive present today.",
+      "context": {
+        "title": "Same dotfile exposure risk introduced to staging deployment",
+        "file": "scripts/deploy-staging.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:8e0d704fc423e84e79d7d395a551ff06",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T23:36:26.313Z",
+      "reason": "A whitelist would change the script's fundamental design, not fix a defect in this one-line change -- 'copy the whole build output' is the pre-existing, intended behavior (that's why the script already does find -delete + cp -r dist/* on the ENTIRE tree, not a curated subset). This fix makes that already-intended behavior actually correct rather than accidentally partial.",
+      "context": {
+        "title": "Tight coupling to build artifact layout without validation",
+        "file": "scripts/deploy-prod.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:3233473d6492438e685b01cfce314d43",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T23:36:26.465Z",
+      "reason": "Reasonable future idea, but out of scope for a one-line bash bug fix -- these deploy scripts have no existing test suite of any kind (they're ops scripts, not application code), and a live-deploy smoke test is a different, larger piece of infrastructure than this PR touches.",
+      "context": {
+        "title": "No automated verification for dotfile inclusion",
+        "file": "scripts/deploy-prod.sh"
+      },
+      "expires_at": null
     }
   ]
 }

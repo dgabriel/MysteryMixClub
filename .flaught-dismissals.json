@@ -1100,6 +1100,50 @@
         "file": "docs/ios/README.md"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:def623c2a06f4937beb508883afa4e2c",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T00:25:44.649Z",
+      "reason": "Not unrelated -- discovered and fixed as part of implementing this exact ticket: while wiring the release build's HTTPS base URL, I found the WebView's origin (capacitor://localhost) was missing from staging's live ALLOWED_ORIGINS despite being documented in staging.env.example since #329, verified with a CORS preflight and fixed on the Droplet. The doc update explains why that matters for whoever reads this file next.",
+      "context": {
+        "title": "Docs include unrelated CORS and origin details",
+        "file": "docs/ios/README.md"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:9a5bedf9825dfae28d57b519eb05e27a",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T00:25:44.786Z",
+      "reason": "The finding's own premise is inaccurate: the line it quotes already is the override mechanism (VITE_IOS_API_BASE_URL env var), not a hardcoded coupling -- changing the staging domain requires no code change, just setting that env var. A literal default value is normal and matches every other default in this codebase (e.g. api.ts's own http://127.0.0.1:8000 default).",
+      "context": {
+        "title": "Hard‑coded staging HTTPS URL couples build to a specific domain",
+        "file": "frontend/vite.ios.config.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:b897af8ee0a2482179e52e5baca8d1a5",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T00:25:44.923Z",
+      "reason": "Not a real leak: the URL a developer sees echoed back is one they themselves just typed into VITE_IOS_API_BASE_URL on their own machine/CI config -- there's no code path where this surfaces someone else's infrastructure info to an untrusted party. This is a fail-closed build guard, not a runtime error surfaced to end users.",
+      "context": {
+        "title": "Error message may expose internal non‑HTTPS endpoint URLs",
+        "file": "frontend/vite.ios.config.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:868dbffd16d1fd158457a5d17143a837",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T00:25:45.059Z",
+      "reason": "Stylistic opinion, not a defect -- this project's own CLAUDE.md explicitly calls for comments that capture non-obvious WHY context (a hidden constraint, a subtle invariant), which is exactly what this comment does. Reduced further after the F-0002 fix moved the substantive rationale into iosApiBaseUrl.ts's own docstring.",
+      "context": {
+        "title": "Verbose comment block in Vite config may become outdated",
+        "file": "frontend/vite.ios.config.ts"
+      },
+      "expires_at": null
     }
   ]
 }

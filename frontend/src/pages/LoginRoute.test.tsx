@@ -13,8 +13,10 @@ import {
   login,
   register,
   requestMagicLink,
+  signInWithApple,
 } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
+import { appleAuth, nativeAppleAuthAvailable } from "../ios/appleAuth";
 import { googleAuth, nativeGoogleAuthAvailable } from "../ios/googleAuth";
 
 // Mock only the API module so no network is touched. ApiError stays real so
@@ -35,12 +37,17 @@ vi.mock("../services/api", async () => {
     googleLoginUrl: vi.fn(),
     getGoogleEnabled: vi.fn(),
     exchangeGoogleNativeCode: vi.fn(),
+    signInWithApple: vi.fn(),
   };
 });
 vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
 vi.mock("../ios/googleAuth", () => ({
   googleAuth: { signIn: vi.fn() },
   nativeGoogleAuthAvailable: vi.fn(),
+}));
+vi.mock("../ios/appleAuth", () => ({
+  appleAuth: { signIn: vi.fn() },
+  nativeAppleAuthAvailable: vi.fn(),
 }));
 
 const mockRequestMagicLink = vi.mocked(requestMagicLink);
@@ -51,8 +58,11 @@ const mockForgotPassword = vi.mocked(forgotPassword);
 const mockGoogleLoginUrl = vi.mocked(googleLoginUrl);
 const mockGetGoogleEnabled = vi.mocked(getGoogleEnabled);
 const mockExchangeGoogleNativeCode = vi.mocked(exchangeGoogleNativeCode);
+const mockSignInWithApple = vi.mocked(signInWithApple);
 const mockUseAuth = vi.mocked(useAuth);
 const mockNativeGoogleAuthAvailable = vi.mocked(nativeGoogleAuthAvailable);
+const mockNativeAppleAuthAvailable = vi.mocked(nativeAppleAuthAvailable);
+const mockAppleAuthSignIn = vi.mocked(appleAuth.signIn);
 const mockGoogleAuthSignIn = vi.mocked(googleAuth.signIn);
 const setAccessToken = vi.fn();
 
@@ -100,6 +110,9 @@ describe("LoginRoute", () => {
     // Default: not native, so the existing web (<a href>) Google tests below
     // keep exercising the ordinary redirect path unchanged.
     mockNativeGoogleAuthAvailable.mockReturnValue(false);
+    // Apple is native-only in every case, so this stays false unless a test
+    // opts in.
+    mockNativeAppleAuthAvailable.mockReturnValue(false);
   });
 
   it("redirects an already-authenticated user to /home", () => {
@@ -772,6 +785,97 @@ describe("LoginRoute", () => {
     renderLogin();
 
     await user.click(await screen.findByRole("button", { name: /sign in with google/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/that sign-in didn't work/i);
+    expect(setAccessToken).not.toHaveBeenCalled();
+  });
+
+  // --- native apple (MysteryMixClub-4vii.9) ---------------------------------- //
+
+  it("native apple: renders alongside google when both are available natively", async () => {
+    mockNativeGoogleAuthAvailable.mockReturnValue(true);
+    mockNativeAppleAuthAvailable.mockReturnValue(true);
+    renderLogin();
+
+    expect(await screen.findByRole("button", { name: /sign in with apple/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /sign in with google/i })).toBeInTheDocument();
+  });
+
+  it("native apple: a successful sign-in exchanges the identity token and authenticates", async () => {
+    const user = userEvent.setup();
+    mockNativeAppleAuthAvailable.mockReturnValue(true);
+    mockAppleAuthSignIn.mockResolvedValue({ outcome: "ok", identityToken: "signed-jwt" });
+    mockSignInWithApple.mockResolvedValue({ access_token: "apple-token" });
+    renderLogin();
+
+    await user.click(await screen.findByRole("button", { name: /sign in with apple/i }));
+
+    await waitFor(() => {
+      expect(mockSignInWithApple).toHaveBeenCalledWith("signed-jwt", null);
+    });
+    expect(setAccessToken).toHaveBeenCalledWith("apple-token");
+  });
+
+  it("native apple: carries a stashed invite token into the exchange call", async () => {
+    const user = userEvent.setup();
+    localStorage.setItem("pendingInvitePath", "/invite/inv-789");
+    mockNativeAppleAuthAvailable.mockReturnValue(true);
+    mockAppleAuthSignIn.mockResolvedValue({ outcome: "ok", identityToken: "signed-jwt" });
+    mockSignInWithApple.mockResolvedValue({ access_token: "t" });
+
+    try {
+      renderLogin();
+
+      await user.click(await screen.findByRole("button", { name: /sign in with apple/i }));
+
+      await waitFor(() => {
+        expect(mockSignInWithApple).toHaveBeenCalledWith("signed-jwt", "inv-789");
+      });
+    } finally {
+      localStorage.clear();
+    }
+  });
+
+  it("native apple: a cancelled sheet shows no error", async () => {
+    const user = userEvent.setup();
+    mockNativeAppleAuthAvailable.mockReturnValue(true);
+    mockAppleAuthSignIn.mockResolvedValue({ outcome: "cancelled" });
+    renderLogin();
+
+    await user.click(await screen.findByRole("button", { name: /sign in with apple/i }));
+
+    await waitFor(() => {
+      expect(mockAppleAuthSignIn).toHaveBeenCalled();
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(setAccessToken).not.toHaveBeenCalled();
+    expect(mockSignInWithApple).not.toHaveBeenCalled();
+  });
+
+  it("native apple: the backend's own detail string is shown as-is on failure", async () => {
+    const user = userEvent.setup();
+    mockNativeAppleAuthAvailable.mockReturnValue(true);
+    mockAppleAuthSignIn.mockResolvedValue({ outcome: "ok", identityToken: "signed-jwt" });
+    mockSignInWithApple.mockRejectedValue(
+      new ApiError(403, "you need an invite to create an account"),
+    );
+    renderLogin();
+
+    await user.click(await screen.findByRole("button", { name: /sign in with apple/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /you need an invite to create an account/i,
+    );
+    expect(setAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("native apple: a rejected plugin call shows the generic error copy", async () => {
+    const user = userEvent.setup();
+    mockNativeAppleAuthAvailable.mockReturnValue(true);
+    mockAppleAuthSignIn.mockRejectedValue(new Error("native bridge exploded"));
+    renderLogin();
+
+    await user.click(await screen.findByRole("button", { name: /sign in with apple/i }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/that sign-in didn't work/i);
     expect(setAccessToken).not.toHaveBeenCalled();

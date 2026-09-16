@@ -145,6 +145,7 @@ async def test_get_me_returns_exact_profile_shape(client, db_session):
         "tos_accepted",
         "has_password",
         "google_linked",
+        "apple_linked",
     }
     assert body["id"] == str(user_id)
     assert body["display_name"] == "Bob"
@@ -157,6 +158,7 @@ async def test_get_me_returns_exact_profile_shape(client, db_session):
     # A fresh magic-link-only account has neither (MysteryMixClub-ali8.6).
     assert body["has_password"] is False
     assert body["google_linked"] is False
+    assert body["apple_linked"] is False
 
 
 async def test_get_me_includes_user_id(client, db_session):

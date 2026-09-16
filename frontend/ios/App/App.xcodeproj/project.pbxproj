@@ -24,6 +24,7 @@
 		B5CFE5EEE0CA92096990B4C6 /* GoogleAuthPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A526A1630150137CDA89D854 /* GoogleAuthPlugin.swift */; };
 		B85B6F2501A449D986C3B0CE /* MMCAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77DCF84FB93E496B843B9386 /* MMCAPIClient.swift */; };
 		C52149A3783C462081AFE1AF /* ProofError.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9D50CEAD59247B0835A4A75 /* ProofError.swift */; };
+		D1FE7773E6A64CAD8B519B92 /* AppleAuthPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42107C86018C49C6A59EAB75 /* AppleAuthPlugin.swift */; };
 		FA1B92E06D34AC556268ABF3 /* MMCAPIClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0B57B8C6174FADEFA5D7F39 /* MMCAPIClientTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -40,6 +41,7 @@
 /* Begin PBXFileReference section */
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
 		30A8FA1AFD934EF6BDFB825B /* ProofViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; path = ProofViewController.swift; sourceTree = "<group>"; };
+		42107C86018C49C6A59EAB75 /* AppleAuthPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppleAuthPlugin.swift; sourceTree = "<group>"; };
 		4569671C1AABCF1CBD01911F /* AppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		4DC7A4BA8F31533705B5F4DB /* TipsPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TipsPlugin.swift; sourceTree = "<group>"; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
@@ -117,6 +119,7 @@
 				30A8FA1AFD934EF6BDFB825B /* ProofViewController.swift */,
 				4DC7A4BA8F31533705B5F4DB /* TipsPlugin.swift */,
 				A526A1630150137CDA89D854 /* GoogleAuthPlugin.swift */,
+				42107C86018C49C6A59EAB75 /* AppleAuthPlugin.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -278,6 +281,7 @@
 				AF018E3B0AF04114BCB753B6 /* ProofViewController.swift in Sources */,
 				4DD97F31DBF41152B7AC0E1A /* TipsPlugin.swift in Sources */,
 				B5CFE5EEE0CA92096990B4C6 /* GoogleAuthPlugin.swift in Sources */,
+				D1FE7773E6A64CAD8B519B92 /* AppleAuthPlugin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

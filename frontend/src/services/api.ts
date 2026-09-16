@@ -288,6 +288,34 @@ export async function exchangeGoogleNativeCode(code: string): Promise<{ access_t
 }
 
 /**
+ * Sign in (or invite-gated sign up) with Apple (MysteryMixClub-4vii.9,
+ * Guideline 4.8). Unlike Google's native fix, there's no one-time exchange
+ * code here: `ASAuthorizationController` runs entirely inside the app with
+ * no browser hand-off, so this call itself is already the app's own fetch
+ * from its own WebView — the session is issued directly. Thrown ApiErrors
+ * carry the backend's real detail string (invite-required, account-exists
+ * conflict, or a generic verification failure) for the caller to show.
+ */
+export async function signInWithApple(
+  identityToken: string,
+  inviteToken?: string | null,
+): Promise<{ access_token: string }> {
+  const res = await fetch(`${AUTH_BASE}/apple/native-verify`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      identity_token: identityToken,
+      invite_token: inviteToken ?? undefined,
+    }),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as { access_token: string };
+}
+
+/**
  * Exchange the HttpOnly refresh cookie for a fresh access token. Returns the
  * new token on success, or null when there is no valid session (401). Any other
  * failure also resolves to null so callers can treat it as "unauthenticated".

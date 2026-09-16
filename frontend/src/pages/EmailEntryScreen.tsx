@@ -4,6 +4,7 @@ import { Badge } from "../components/Badge";
 import { Button } from "../components/Button";
 import { ContactEmail } from "../components/ContactEmail";
 import { FormError } from "../components/FormError";
+import { AppleSignInButton } from "../components/AppleSignInButton";
 import { GoogleSignInButton } from "../components/GoogleSignInButton";
 import { TextField } from "../components/TextField";
 import { BrandLockup } from "../components/BrandLockup";
@@ -46,6 +47,10 @@ type EmailEntryScreenProps = {
    *  (invite_required, at_capacity, club_full) and the split is by source, not
    *  by text. */
   googleError?: string | null;
+  /** Outcome of a failed native Apple sign-in (MysteryMixClub-4vii.9). Same
+   *  plain-copy treatment as googleError, for the same reason: a third
+   *  party's outcome, not a claim about the user's own attempt. */
+  appleError?: string | null;
   /** Neutral confirmation after a reset request. Says nothing about whether the
    *  address is registered, so it is never phrased as "sent". */
   resetNotice?: string | null;
@@ -57,6 +62,10 @@ type EmailEntryScreenProps = {
    *  (MysteryMixClub-4vii.21) -- when set, the Google button calls this
    *  instead of linking to `googleUrl`. */
   onNativeGoogleSignIn?: () => void;
+  /** Present only on native iOS, where Sign in with Apple is offered
+   *  alongside Google at equal prominence (MysteryMixClub-4vii.9, Guideline
+   *  4.8) -- absent entirely on web, where Apple's flow isn't built. */
+  onNativeAppleSignIn?: () => void;
 };
 
 /** Dev/staging convenience: a clickable link so testers don't need a delivered
@@ -106,10 +115,12 @@ export function EmailEntryScreen({
   canRegister,
   passwordError,
   googleError,
+  appleError,
   resetNotice,
   resetDevLink,
   googleUrl,
   onNativeGoogleSignIn,
+  onNativeAppleSignIn,
 }: EmailEntryScreenProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -274,6 +285,15 @@ export function EmailEntryScreen({
             </p>
           ) : null}
 
+          {/* Same treatment as googleError, for a failed native Apple sign-in
+            (MysteryMixClub-4vii.9) -- an external system's outcome, not a
+            form error. */}
+          {appleError ? (
+            <p role="alert" className="mt-6 text-center text-sm leading-[1.72] text-ink">
+              {appleError}
+            </p>
+          ) : null}
+
           {/* Deliberately not role="tablist"/"tab": that sets a WAI-ARIA APG
             expectation of arrow-key navigation with a roving tabIndex, which
             this doesn't implement. A labelled group of pressed-state buttons
@@ -416,7 +436,7 @@ export function EmailEntryScreen({
             <DevLink href={resetDevLink} label="set a new password with this link" />
           ) : null}
 
-          {googleEnabled ? (
+          {googleEnabled || onNativeAppleSignIn ? (
             <>
               <div className="mt-12 flex items-center gap-4">
                 <span className="h-px flex-1 bg-ink-hairline" />
@@ -425,13 +445,26 @@ export function EmailEntryScreen({
                 </span>
                 <span className="h-px flex-1 bg-ink-hairline" />
               </div>
-              <div className="mt-6">
-                {onNativeGoogleSignIn ? (
-                  <GoogleSignInButton onClick={onNativeGoogleSignIn} />
-                ) : (
-                  <GoogleSignInButton href={googleUrl} />
-                )}
-              </div>
+              {/* Apple sits above Google when both are offered natively --
+                MysteryMixClub-4vii.9 (Guideline 4.8) requires equivalent
+                prominence for both, not a hierarchy, but Apple's own review
+                guidelines separately expect Sign in with Apple to be at
+                least as prominent as any other third-party option, so it
+                leads. */}
+              {onNativeAppleSignIn ? (
+                <div className="mt-6">
+                  <AppleSignInButton onClick={onNativeAppleSignIn} />
+                </div>
+              ) : null}
+              {googleEnabled ? (
+                <div className="mt-6">
+                  {onNativeGoogleSignIn ? (
+                    <GoogleSignInButton onClick={onNativeGoogleSignIn} />
+                  ) : (
+                    <GoogleSignInButton href={googleUrl} />
+                  )}
+                </div>
+              ) : null}
             </>
           ) : null}
 

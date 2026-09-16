@@ -1,4 +1,5 @@
 from app.models.apple_mix_playlist import AppleMixPlaylist
+from app.models.auth_identity import AuthIdentity
 from app.models.club import Club
 from app.models.club_member import ClubMember
 from app.models.invite import Invite
@@ -22,6 +23,7 @@ from app.models.waitlist_join_attempt import WaitlistJoinAttempt
 
 __all__ = [
     "AppleMixPlaylist",
+    "AuthIdentity",
     "Club",
     "ClubMember",
     "Invite",

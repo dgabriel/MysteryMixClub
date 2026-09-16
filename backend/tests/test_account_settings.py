@@ -25,6 +25,7 @@ from app.auth.passwords import verify_password
 from app.config import Settings, get_settings
 from app.db.session import get_db
 from app.main import create_app
+from app.models.auth_identity import AuthIdentity
 from app.models.user import User
 from app.services.google_oauth import GoogleIdentity, get_google_oauth_client
 
@@ -40,8 +41,14 @@ def _auth_header(user_id) -> dict[str, str]:
 
 
 async def _seed_user(db_session, email: str, **overrides) -> User:
+    google_id = overrides.get("google_id")
     user = User(email=email, display_name="", **overrides)
     db_session.add(user)
+    await db_session.flush()
+    if google_id is not None:
+        # Mirrors the real write path (MysteryMixClub-4vii.9): every
+        # google_id write is now paired with an auth_identities row.
+        db_session.add(AuthIdentity(user_id=user.id, provider="google", subject=google_id))
     await db_session.commit()
     await db_session.refresh(user)
     return user

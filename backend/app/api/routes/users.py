@@ -27,6 +27,7 @@ from app.auth.tokens import generate_token
 from app.config import Settings, get_settings
 from app.db.session import get_db
 from app.models.club import Club
+from app.models.auth_identity import AuthIdentity
 from app.models.club_member import ClubMember
 from app.models.login_attempt import LoginAttempt
 from app.models.mix import Mix
@@ -64,6 +65,7 @@ class UserProfileResponse(WireModel):
     # 409s otherwise), and "linked" vs "link google" accordingly.
     has_password: bool
     google_linked: bool
+    apple_linked: bool
 
 
 class UserProfileUpdate(WireModel):
@@ -138,7 +140,15 @@ class UserDataExportResponse(WireModel):
     club_memberships: list[ExportClubMembership]
 
 
-def _to_profile(user: User, settings: Settings) -> UserProfileResponse:
+async def _to_profile(user: User, settings: Settings, db: AsyncSession) -> UserProfileResponse:
+    apple_linked = (
+        await db.scalar(
+            select(AuthIdentity.id).where(
+                AuthIdentity.user_id == user.id, AuthIdentity.provider == "apple"
+            )
+        )
+        is not None
+    )
     return UserProfileResponse(
         id=str(user.id),
         display_name=user.display_name,
@@ -149,15 +159,17 @@ def _to_profile(user: User, settings: Settings) -> UserProfileResponse:
         tos_accepted=user.tos_accepted_at is not None,
         has_password=user.password_hash is not None,
         google_linked=user.google_id is not None,
+        apple_linked=apple_linked,
     )
 
 
 @router.get("/me", response_model=UserProfileResponse)
 async def get_me(
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> UserProfileResponse:
-    return _to_profile(current_user, settings)
+    return await _to_profile(current_user, settings, db)
 
 
 @router.get("/me/export", response_model=UserDataExportResponse)
@@ -184,7 +196,7 @@ async def export_me(
 
     return UserDataExportResponse(
         exported_at=datetime.now(timezone.utc),
-        profile=_to_profile(current_user, settings),
+        profile=await _to_profile(current_user, settings, db),
         submissions=[
             ExportSubmission(
                 id=str(s.id),
@@ -380,7 +392,7 @@ async def update_me(
     if payload.accept_terms:
         current_user.tos_accepted_at = datetime.now(timezone.utc)
     await db.commit()
-    return _to_profile(current_user, settings)
+    return await _to_profile(current_user, settings, db)
 
 
 # Calm, actionable detail when the caller still organizes a live club.
@@ -418,13 +430,15 @@ async def delete_me(
     current_user.email = f"deleted+{current_user.id}@deleted.invalid"
     # Drop every credential and anything else keyed to the real address, while
     # that address is still known — after the tombstone above it can't be
-    # matched again (ADR 0007). google_id is a third-party identifier for a
-    # person who asked to be forgotten, so it goes for the same reason as the
-    # password hash (TD 10), not merely because it's UNIQUE: leaving it would
-    # also make the same Google account's next sign-up collide with a tombstone
-    # the resolution queries can no longer see.
+    # matched again (ADR 0007). google_id/auth_identities rows are third-party
+    # identifiers for a person who asked to be forgotten, so they go for the
+    # same reason as the password hash (TD 10), not merely because they're
+    # UNIQUE: leaving them would also make the same provider account's next
+    # sign-up collide with a tombstone the resolution queries can no longer
+    # see (MysteryMixClub-4vii.9 generalized this from google_id alone).
     current_user.password_hash = None
     current_user.google_id = None
+    await db.execute(delete(AuthIdentity).where(AuthIdentity.user_id == current_user.id))
     await db.execute(delete(PasswordResetToken).where(PasswordResetToken.email == former_email))
     await db.execute(delete(LoginAttempt).where(LoginAttempt.email == former_email))
 

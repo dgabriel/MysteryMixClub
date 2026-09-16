@@ -38,6 +38,23 @@ describe("NativeTipJar (MysteryMixClub-4vii.15)", () => {
     await vi.waitFor(() => expect(container).toBeEmptyDOMElement());
   });
 
+  it("does not update state (or warn) if unmounted before getProducts resolves", async () => {
+    let resolveProducts: (value: { products: typeof PRODUCTS }) => void = () => {};
+    mockGetProducts.mockReturnValue(
+      new Promise((resolve) => {
+        resolveProducts = resolve;
+      }),
+    );
+    const { unmount } = render(<NativeTipJar />);
+    unmount();
+
+    // Resolving after unmount must not throw or trigger a React
+    // setState-on-unmounted-component warning -- the `cancelled` flag in the
+    // effect cleanup is what prevents that.
+    expect(() => resolveProducts({ products: PRODUCTS })).not.toThrow();
+    await vi.waitFor(() => Promise.resolve());
+  });
+
   it("renders nothing if getProducts resolves with an empty list", async () => {
     mockGetProducts.mockResolvedValue({ products: [] });
     const { container } = render(<NativeTipJar />);

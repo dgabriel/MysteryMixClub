@@ -1496,6 +1496,61 @@
         "file": "docs/ios/README.md"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:1fcd4235a6f0eebd6ba9e12b4b5d5f34",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T02:54:00.203Z",
+      "reason": "Fixed -- added a test that unmounts before getProducts resolves, then resolves it, asserting no throw (the cancelled flag correctly guards the post-unmount setState).",
+      "context": {
+        "title": "Missing test for component unmount during async product load",
+        "file": "frontend/src/components/NativeTipJar.test.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:ea5daa7250de02d77976082a9200cb68",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T02:54:00.343Z",
+      "reason": "Repeat of a finding already dismissed in the prior review round with the same reasoning: three static string literals across Swift/Markdown/TypeScript-test-fixture have no meaningful shared-source mechanism without introducing real build-time codegen infrastructure for values set once and never changed.",
+      "context": {
+        "title": "Hard‑coded StoreKit product IDs duplicated across Swift, docs, and tests",
+        "file": "frontend/ios/App/App/TipsPlugin.swift"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:348e821c3b036c4af7d3ccbb37282c9a",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T02:54:00.496Z",
+      "reason": "Repeat of a finding already dismissed in the prior review round -- deliberate design tradeoff documented in the plugin's own header comment: plain consumables with no entitlement to protect, so a spoofed local purchase (requiring a jailbreak) only fools the spoofer's own device with zero effect on any other user or feature.",
+      "context": {
+        "title": "No server‑side receipt verification for consumable purchases",
+        "file": "frontend/ios/App/App/TipsPlugin.swift"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:3786a023e82ffe4044caa39528bcaeb0",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T02:54:00.632Z",
+      "reason": "Same established pattern as this codebase's existing AppleMusicPlaylist.tsx, which branches on nativeMusicAvailable() the identical way -- not new coupling introduced here, it's how every native-vs-web UI branch in this app already works.",
+      "context": {
+        "title": "Conditional UI logic tightly couples platform detection to business UI",
+        "file": "frontend/src/pages/AboutRoute.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:39c5f294179a6670a88e9f172dd68672",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T02:54:00.767Z",
+      "reason": "Stylistic preference -- the file already has one top-level describe() wrapping all cases, matching this session's other new test files (e.g. ReportContentModal.test.tsx) in this same codebase. Nested per-scenario describe blocks aren't this project's established convention.",
+      "context": {
+        "title": "Large inline test file without logical grouping",
+        "file": "frontend/src/components/NativeTipJar.test.tsx"
+      },
+      "expires_at": null
     }
   ]
 }

@@ -38,6 +38,13 @@ describe("NativeTipJar (MysteryMixClub-4vii.15)", () => {
     await vi.waitFor(() => expect(container).toBeEmptyDOMElement());
   });
 
+  it("renders nothing if getProducts resolves with an empty list", async () => {
+    mockGetProducts.mockResolvedValue({ products: [] });
+    const { container } = render(<NativeTipJar />);
+    await vi.waitFor(() => expect(mockGetProducts).toHaveBeenCalled());
+    expect(container).toBeEmptyDOMElement();
+  });
+
   it("renders a button per tip option with its real localized price, plus the no-unlock disclosure", async () => {
     mockGetProducts.mockResolvedValue({ products: PRODUCTS });
     render(<NativeTipJar />);
@@ -64,6 +71,19 @@ describe("NativeTipJar (MysteryMixClub-4vii.15)", () => {
     const user = userEvent.setup();
     mockGetProducts.mockResolvedValue({ products: PRODUCTS });
     mockPurchase.mockResolvedValue({ status: "cancelled" });
+    render(<NativeTipJar />);
+
+    await user.click(await screen.findByRole("button", { name: /small tip/ }));
+
+    await vi.waitFor(() => expect(mockPurchase).toHaveBeenCalled());
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("a pending purchase (e.g. Ask to Buy) shows neither a thank-you nor an error", async () => {
+    const user = userEvent.setup();
+    mockGetProducts.mockResolvedValue({ products: PRODUCTS });
+    mockPurchase.mockResolvedValue({ status: "pending" });
     render(<NativeTipJar />);
 
     await user.click(await screen.findByRole("button", { name: /small tip/ }));

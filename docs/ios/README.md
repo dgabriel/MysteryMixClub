@@ -197,6 +197,65 @@ non-native endpoint still 302s and needs a top-level navigation) or a
 Google-branded chrome either way, since only the interaction mechanism
 differs.
 
+## Sign in with Apple (`MysteryMixClub-4vii.9`, 2026-09-16)
+
+App Store Guideline 4.8 requires an app offering a third-party/social login
+(Google Sign-In, here) to also offer Sign in with Apple at equivalent
+placement and prominence. `AppleAuthPlugin.swift` (`MMCAppleAuthPlugin`)
+implements it via `ASAuthorizationController` -- structurally simpler than
+the Google native fix (`MysteryMixClub-4vii.21`): Apple's own sign-in sheet
+runs entirely inside the app with no browser hand-off, so there's no
+redirect, state, nonce, PKCE, or one-time exchange code involved. The plugin
+hands back a raw identity token; `POST /auth/apple/native-verify` verifies
+its signature against Apple's public keys (`app.services.apple_signin`,
+cached in-process, refetched on a cache miss or once a day) and resolves the
+account.
+
+**This needs one manual Apple Developer Portal step before it works
+on-device or in TestFlight**: enable the "Sign In with Apple" capability for
+this app's App ID (`com.mysterymixclub.app`), then regenerate/re-download
+its provisioning profile. `App.entitlements` already carries
+`com.apple.developer.applesignin` -- without the portal capability enabled
+to match, code signing with that entitlement present fails (or, in a
+looser signing configuration, the capability silently does nothing
+on-device). Same category of manual step as the IAP products above, just on
+the Developer Portal rather than App Store Connect.
+
+**Generalized identity model.** `AuthIdentity` (`auth_identities` table)
+replaces per-provider columns on `User` for account resolution going
+forward -- `User.google_id` is left in place (migration `07a9db76f961`
+backfills it) since dropping a column outright isn't an additive migration
+and MMC is live in prod, but every sign-in/link write now goes through
+`AuthIdentity`, and the profile response's `google_linked`/`apple_linked`
+both read from it.
+
+**Identity-conflict hardening** (from the external review that raised
+4vii.9): Apple's private relay ("Hide My Email") address is real and
+Apple-verified, but proves nothing about who owns any *other* mailbox --
+unlike a real Google/Apple email, it can never silently attach to an
+existing account by email match. `_resolve_identity_account`'s
+`allow_email_match` parameter is `False` whenever `is_private_email` is set,
+so a relay-email sign-in either finds its own already-linked
+`AuthIdentity` row, creates a brand-new invite-gated account, or -- if the
+relay address happens to already be some other account's registered email
+-- returns a clean 409 conflict rather than crashing on `users.email`'s
+unique constraint or silently taking over that account. **Scope note:**
+this hardening was NOT extended to Google's existing sign-in flow, which
+still silently relinks a different Google identity onto an account when the
+verified email matches (deliberate, tested behavior --
+`test_existing_link_is_replaced_by_the_current_google_identity`). Reversing
+that is a real product/security tradeoff with live-user lockout risk, not a
+bug fix, so it's tracked separately rather than bundled in:
+`MysteryMixClub-4vii.22`.
+
+**Scope limitation:** Apple is native-iOS-only, matching where Guideline 4.8
+actually applies -- there's no web `<a href>` equivalent (Sign in with
+Apple's web flow needs its own JS SDK and redirect configuration this app
+doesn't build) and no Settings-page "connect Apple" linking flow for an
+already-authenticated user (mirrors Google's own account-link flow, but
+wasn't required for launch). `apple_linked` on the profile response only
+ever becomes `true` via signing in with Apple itself.
+
 ## What still needs device evidence
 
 Physical-device runs must record, separately and honestly: native permission granted with no browser popup; denied and restricted permission; an account with no eligible subscription; an interrupted network mid-build; repeated taps; and a return to MMC after opening Apple Music. Record the outcomes on `MysteryMixClub-yyuq`. Never record tokens, private notes, or invitation URLs in diagnostics. A simulator can help with layout; it does not satisfy the PRD's physical-device acceptance gate.

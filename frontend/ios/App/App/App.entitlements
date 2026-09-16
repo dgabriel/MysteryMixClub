@@ -13,5 +13,15 @@
 	<array>
 		<string>applinks:staging.mysterymixclub.com</string>
 	</array>
+	<!-- Sign in with Apple (MysteryMixClub-4vii.9, Guideline 4.8). Requires the
+	     "Sign In with Apple" capability enabled for this App ID in the Apple
+	     Developer portal (a manual, one-time step -- see docs/ios/README.md)
+	     and a provisioning profile regenerated after enabling it; without
+	     that, code signing with this entitlement present fails or the
+	     capability silently does nothing on-device. -->
+	<key>com.apple.developer.applesignin</key>
+	<array>
+		<string>Default</string>
+	</array>
 </dict>
 </plist>

@@ -30,6 +30,7 @@ from app.auth.jwt import create_access_token, create_oauth_state, create_sign_in
 from app.config import Settings, get_settings
 from app.db.session import get_db
 from app.main import create_app
+from app.models.auth_identity import AuthIdentity
 from app.models.club import Club
 from app.models.club_member import ClubMember
 from app.models.invite import Invite
@@ -140,8 +141,16 @@ async def google_client(
 
 
 async def _seed_user(db_session, email: str, **overrides) -> User:
+    google_id = overrides.get("google_id")
     user = User(email=email, display_name="", **overrides)
     db_session.add(user)
+    await db_session.flush()
+    if google_id is not None:
+        # Mirrors the real write path (MysteryMixClub-4vii.9): every
+        # google_id write is now paired with an auth_identities row, so a
+        # fixture setting the legacy column alone would under-represent real
+        # post-migration state and let account-resolution tests miss it.
+        db_session.add(AuthIdentity(user_id=user.id, provider="google", subject=google_id))
     await db_session.commit()
     await db_session.refresh(user)
     return user

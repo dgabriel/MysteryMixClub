@@ -13,8 +13,10 @@ import {
   login,
   register,
   requestMagicLink,
+  signInWithApple,
 } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
+import { appleAuth, nativeAppleAuthAvailable } from "../ios/appleAuth";
 import { googleAuth, nativeGoogleAuthAvailable } from "../ios/googleAuth";
 
 /**
@@ -74,6 +76,11 @@ export function LoginRoute() {
   const [googleError, setGoogleError] = useState<string | null>(() =>
     googleErrorCopy(searchParams.get("google")),
   );
+  // Apple sign-in never redirects (MysteryMixClub-4vii.9 runs entirely
+  // in-app via ASAuthorizationController), so unlike googleError there's no
+  // URL outcome flag to read on mount -- only handleNativeAppleSignIn ever
+  // sets this.
+  const [appleError, setAppleError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [devLink, setDevLink] = useState<string | null>(null);
@@ -94,6 +101,7 @@ export function LoginRoute() {
   function clearFeedback() {
     setError(null);
     setGoogleError(null);
+    setAppleError(null);
     setPasswordError(null);
     setDevLink(null);
     setResetNotice(null);
@@ -169,6 +177,28 @@ export function LoginRoute() {
       setAccessToken(access_token);
     } catch {
       setGoogleError(googleErrorCopy("error"));
+    }
+  }
+
+  /** Native Sign in with Apple (MysteryMixClub-4vii.9, Guideline 4.8): runs
+   *  entirely inside the app via ASAuthorizationController, with no browser
+   *  hand-off and so no cancelled-outcome ambiguity the way a redirect flow
+   *  has -- a dismissed sheet resolves "cancelled" directly. Every other
+   *  outcome (invite-required, an account-exists conflict, or a failed
+   *  verification) is the backend's own calm detail string, shown as-is —
+   *  same pattern handleRegister already uses for its own 403/409s. */
+  async function handleNativeAppleSignIn() {
+    clearFeedback();
+    const inviteToken = readPendingInviteToken();
+    try {
+      const result = await appleAuth.signIn();
+      if (result.outcome === "cancelled") return;
+      const { access_token } = await signInWithApple(result.identityToken, inviteToken);
+      setAccessToken(access_token);
+    } catch (err) {
+      setAppleError(
+        err instanceof ApiError ? err.message : "that sign-in didn't work. try another way.",
+      );
     }
   }
 
@@ -261,11 +291,15 @@ export function LoginRoute() {
       canRegister={pendingInvite !== null}
       passwordError={passwordError}
       googleError={googleError}
+      appleError={appleError}
       resetNotice={resetNotice}
       resetDevLink={resetDevLink}
       googleUrl={googleLoginUrl(pendingInvite)}
       onNativeGoogleSignIn={
         nativeGoogleAuthAvailable() ? () => void handleNativeGoogleSignIn() : undefined
+      }
+      onNativeAppleSignIn={
+        nativeAppleAuthAvailable() ? () => void handleNativeAppleSignIn() : undefined
       }
     />
   );

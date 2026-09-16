@@ -113,10 +113,12 @@ _GOOGLE_NONCE_MAX_AGE = 600
 _GOOGLE_UNCONFIGURED_MESSAGE = "google sign-in is not configured on this server"
 
 # Native iOS hand-off (MysteryMixClub-4vii.21): the custom URL scheme
-# ASWebAuthenticationSession's callback matches, registered in
-# frontend/ios/App/App/Info.plist's CFBundleURLTypes. A one-time exchange
-# code rides in this URL rather than a session cookie -- see
-# OAuthExchangeCode's own docstring for why.
+# ASWebAuthenticationSession's callback matches internally -- no
+# CFBundleURLTypes registration needed, since the session (not iOS's normal
+# URL-scheme dispatch) is what intercepts it. A one-time exchange code rides
+# in this URL rather than a session cookie -- see OAuthExchangeCode's own
+# docstring for why. Must match `callbackScheme` in
+# frontend/ios/App/App/GoogleAuthPlugin.swift.
 _NATIVE_CALLBACK_SCHEME = "mysterymixclub"
 _OAUTH_EXCHANGE_CODE_TTL = timedelta(minutes=2)
 # Per-IP throttle on the callback itself (MysteryMixClub-ali8.8) — every other

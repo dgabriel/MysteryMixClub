@@ -36,6 +36,8 @@ public final class MMCGoogleAuthPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthen
     /// Passed bare (no "://") per ASWebAuthenticationSession's own
     /// requirement -- this scheme is matched internally by the session
     /// itself and does NOT need a CFBundleURLTypes entry in Info.plist.
+    /// Must match `_NATIVE_CALLBACK_SCHEME` in backend/app/api/routes/auth.py
+    /// -- that's the value that builds the redirect URL this session matches.
     private static let callbackScheme = "mysterymixclub"
 
     // Held for the session's lifetime so ARC doesn't tear it down mid-flow.

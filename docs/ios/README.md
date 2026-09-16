@@ -115,9 +115,9 @@ new `MMCTipsPlugin.swift` -- an external payment link on iOS is a real
 Guideline 3.1.1 risk. Tips unlock nothing (no club limits, votes,
 submissions, or status change).
 
-**This needs one manual App Store Connect step before it works on-device or
-in TestFlight**: create three consumable In-App Purchase products under this
-app's record, with exactly these product ids (the plugin hardcodes them):
+**This needs one manual App Store Connect step**: create three consumable
+In-App Purchase products under this app's record, with exactly these
+product ids (the plugin hardcodes them):
 
 - `com.mysterymixclub.app.tip.small`
 - `com.mysterymixclub.app.tip.medium`
@@ -125,10 +125,23 @@ app's record, with exactly these product ids (the plugin hardcodes them):
 
 Set whatever price tier and display name/description feel right for each
 (the app renders StoreKit's own `displayName`/`displayPrice`, so whatever is
-entered there is what shows). Until these exist in App Store Connect,
-`getProducts()` returns an empty list and the tip jar section on `/about`
-renders nothing (fails quietly by design, not an error state) -- that's
-expected before this step, not a bug to chase.
+entered there is what shows).
+
+**Deliberately deferred to a later version (`MysteryMixClub-4vii.23`):**
+Apple requires the first consumable IAP of each type to be submitted bundled
+with a new app version, not created and approved standalone
+(https://developer.apple.com/help/app-store-connect/manage-submissions-to-app-review/submit-an-in-app-purchase).
+Rather than couple the tip jar's App Review to the initial submission, the
+IAP products were left unfinished/unsubmitted in App Store Connect for the
+first release. This is a clean no-op, not a broken feature: until the
+products exist and are approved, `getProducts()` returns an empty list and
+the tip jar section on `/about` renders nothing at all (fails quietly by
+design, same pattern Apple Music's own "unconfigured" state already uses) --
+no tip jar and no Venmo link either (that's gated out specifically because
+an external payment link is the Guideline 3.1.1 risk this feature exists to
+avoid, so it's not a valid fallback). Nothing for App Review to reject in
+the meantime. Finish the App Store Connect listings and bundle them with a
+future version's submission per `MysteryMixClub-4vii.23` when ready.
 
 ## UGC moderation posture (`MysteryMixClub-4vii.13`, 2026-09-15)
 

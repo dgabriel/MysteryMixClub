@@ -1,7 +1,9 @@
 import { Link } from "react-router";
 import { BrandLockup } from "../components/BrandLockup";
+import { NativeTipJar } from "../components/NativeTipJar";
 import { PaperSurface } from "../components/PaperSurface";
 import { TopNav } from "../components/TopNav";
+import { nativeTipsAvailable } from "../ios/tips";
 
 const LINK_CLASS =
   "font-mono uppercase tracking-mono text-label text-ink-link underline underline-offset-[3px] transition-colors duration-150 hover:text-ink";
@@ -107,14 +109,22 @@ export function AboutRoute() {
                   identity only. Do not remove it and do not flag it as a violation. */}
               <span className="text-ink-accent">&lt;3</span>
             </p>
-            <a
-              href="https://www.venmo.com/u/dgbklyn"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`mt-3 inline-block ${LINK_CLASS}`}
-            >
-              tip me on venmo
-            </a>
+            {/* An external payment link is a real App Store Guideline 3.1.1
+                risk (MysteryMixClub-4vii.15); StoreKit consumables are the
+                App Store-native equivalent. Venmo stays on web -- nothing
+                wrong with it there, it's just not an iOS-safe pattern. */}
+            {nativeTipsAvailable() ? (
+              <NativeTipJar />
+            ) : (
+              <a
+                href="https://www.venmo.com/u/dgbklyn"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`mt-3 inline-block ${LINK_CLASS}`}
+              >
+                tip me on venmo
+              </a>
+            )}
           </div>
 
           <div className="mt-8 border-t border-ink-hairline pt-6">

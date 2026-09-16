@@ -1430,6 +1430,127 @@
         "file": "scripts/deploy-prod.sh"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:b131456151ae7f4da930cce8d14059fb",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T02:48:48.127Z",
+      "reason": "Deliberate design tradeoff, documented in the plugin's own header comment: these are plain consumables with NO server-tracked entitlement to protect -- nothing unlocks based on a tip. A spoofed local purchase (which requires jailbreaking, not something StoreKit's own real-purchase flow allows) would only fool the spoofer's own device into showing a thank-you message with zero effect on any other user, club feature, or access control -- there is no security boundary being crossed. The 'revenue tracking impossible' point is a real but separate product nicety (analytics), not a functional or security defect.",
+      "context": {
+        "title": "No server‑side receipt verification for consumable purchases",
+        "file": "frontend/ios/App/App/TipsPlugin.swift"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:1d28fb7594ccf7a74a85606e9d02818a",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T02:48:48.272Z",
+      "reason": "Fixed -- added two tests: an empty-array getProducts response renders nothing, and a 'pending' purchase status (e.g. Ask to Buy) shows neither a thank-you nor an error, matching the same pattern already used for 'cancelled'.",
+      "context": {
+        "title": "Missing tests for pending purchase and empty product list paths",
+        "file": "frontend/src/components/NativeTipJar.test.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:1492b3133038f00f68e8181ee3e15cb1",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T02:48:48.409Z",
+      "reason": "Three static string literals across a Swift file (needs them to call StoreKit), a docs file (needs them to tell Dawn what to create in App Store Connect), and a test fixture (needs realistic ids) -- there's no meaningful way to share a literal across Swift/Markdown/TypeScript without introducing a build-time codegen step, which would be real new infrastructure for values that are set once at IAP product creation and essentially never change.",
+      "context": {
+        "title": "Hard‑coded StoreKit product IDs duplicated across code, docs, and tests",
+        "file": "frontend/ios/App/App/TipsPlugin.swift"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:50307ac7f1d9955c74de1aa73f8b5749",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T02:48:48.548Z",
+      "reason": "Same mocking strategy already established for every native Capacitor plugin wrapper in this codebase (see AppleMusicPlaylist.test.tsx's identical vi.mock(\"../ios/music\", ...) pattern) -- not a new gap introduced here, it's this project's existing, accepted approach to testing native-bridge code from the JS side. Real-device verification (which this PR also includes: ARCHIVE SUCCEEDED + simulator BUILD SUCCEEDED) is what actually exercises the Capacitor runtime registration.",
+      "context": {
+        "title": "Mocking strategy for Capacitor plugin may mask real integration bugs",
+        "file": "frontend/src/components/NativeTipJar.test.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:8d082b70d074fa45615abf61a6822dd1",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T02:48:48.692Z",
+      "reason": "Same architectural point as F-0001 from a different angle -- there is no entitlement to track because tips deliberately unlock nothing. Nothing here mixes UI and payment handling incorrectly; NativeTipJar owns presentation, MMCTipsPlugin owns the StoreKit transaction, cleanly separated same as the existing Apple Music plugin boundary.",
+      "context": {
+        "title": "Tip feature is client‑only with no backend entitlement, violating separation of concerns",
+        "file": "frontend/src/components/NativeTipJar.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:64ffe228fbc0e6368a10481178b5abf4",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T02:48:48.828Z",
+      "reason": "The docs describe exactly the feature shipped in this PR and the one manual setup step required for it to function at all -- this is core to the change, not unrelated scope.",
+      "context": {
+        "title": "Documentation updates unrelated to code change",
+        "file": "docs/ios/README.md"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:1fcd4235a6f0eebd6ba9e12b4b5d5f34",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T02:54:00.203Z",
+      "reason": "Fixed -- added a test that unmounts before getProducts resolves, then resolves it, asserting no throw (the cancelled flag correctly guards the post-unmount setState).",
+      "context": {
+        "title": "Missing test for component unmount during async product load",
+        "file": "frontend/src/components/NativeTipJar.test.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:ea5daa7250de02d77976082a9200cb68",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T02:54:00.343Z",
+      "reason": "Repeat of a finding already dismissed in the prior review round with the same reasoning: three static string literals across Swift/Markdown/TypeScript-test-fixture have no meaningful shared-source mechanism without introducing real build-time codegen infrastructure for values set once and never changed.",
+      "context": {
+        "title": "Hard‑coded StoreKit product IDs duplicated across Swift, docs, and tests",
+        "file": "frontend/ios/App/App/TipsPlugin.swift"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:348e821c3b036c4af7d3ccbb37282c9a",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T02:54:00.496Z",
+      "reason": "Repeat of a finding already dismissed in the prior review round -- deliberate design tradeoff documented in the plugin's own header comment: plain consumables with no entitlement to protect, so a spoofed local purchase (requiring a jailbreak) only fools the spoofer's own device with zero effect on any other user or feature.",
+      "context": {
+        "title": "No server‑side receipt verification for consumable purchases",
+        "file": "frontend/ios/App/App/TipsPlugin.swift"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:3786a023e82ffe4044caa39528bcaeb0",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T02:54:00.632Z",
+      "reason": "Same established pattern as this codebase's existing AppleMusicPlaylist.tsx, which branches on nativeMusicAvailable() the identical way -- not new coupling introduced here, it's how every native-vs-web UI branch in this app already works.",
+      "context": {
+        "title": "Conditional UI logic tightly couples platform detection to business UI",
+        "file": "frontend/src/pages/AboutRoute.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:39c5f294179a6670a88e9f172dd68672",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T02:54:00.767Z",
+      "reason": "Stylistic preference -- the file already has one top-level describe() wrapping all cases, matching this session's other new test files (e.g. ReportContentModal.test.tsx) in this same codebase. Nested per-scenario describe blocks aren't this project's established convention.",
+      "context": {
+        "title": "Large inline test file without logical grouping",
+        "file": "frontend/src/components/NativeTipJar.test.tsx"
+      },
+      "expires_at": null
     }
   ]
 }

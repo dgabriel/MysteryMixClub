@@ -1397,6 +1397,39 @@
         "file": "scripts/deploy-staging.sh"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:63773b06fc222c8aa9dfebd4b222ec35",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T00:14:41.387Z",
+      "reason": "Repeat of a finding already dismissed twice in this same review chain (rounds 1 and 2) -- frontend/public/ (the only source of dotfiles in dist/ besides Vite's own compiled output) is verified clean of anything sensitive today, and is Vite's publicDir by design: everything there is meant to be publicly served. This is not a new risk class introduced by dist/* -> dist/., it's the deploy script finally doing what it was always meant to do.",
+      "context": {
+        "title": "Accidental deployment of hidden VCS metadata (e.g., .git) if present in dist",
+        "file": "scripts/deploy-prod.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:7c78dded9bd30aced2e2ed6dbb18e8a6",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T00:14:41.521Z",
+      "reason": "'dist' is Vite's own actual, already-hardcoded output directory name -- both scripts already reference it by name multiple times elsewhere (npm run build, cd into frontend, etc.), predating this PR entirely. This one-line fix doesn't introduce a new coupling to the path; it fixes a glob bug within an already-dist-specific script.",
+      "context": {
+        "title": "Hard‑coded build artifact path couples deployment scripts to Vite output layout",
+        "file": "scripts/deploy-staging.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:ee16e501cdd062f30d2592c163a262d5",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T00:14:41.662Z",
+      "reason": "Stylistic opinion, not a defect -- this project's own CLAUDE.md calls for comments capturing non-obvious WHY context (a hidden constraint, a subtle bug), which is exactly what this comment does for a bug that was genuinely non-obvious (a silent bash glob gap that broke Universal Links for days without any error anywhere).",
+      "context": {
+        "title": "Verbose inline comment duplicates dismissal rationale, adding noise",
+        "file": "scripts/deploy-prod.sh"
+      },
+      "expires_at": null
     }
   ]
 }

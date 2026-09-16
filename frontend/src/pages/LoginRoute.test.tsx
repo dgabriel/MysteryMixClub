@@ -797,8 +797,11 @@ describe("LoginRoute", () => {
     mockNativeAppleAuthAvailable.mockReturnValue(true);
     renderLogin();
 
+    // Both awaited (not a mix of findByRole/getByRole): the side-by-side
+    // layout only settles once the async getGoogleEnabled() check resolves,
+    // so Apple can render a render tick before Google does.
     expect(await screen.findByRole("button", { name: /sign in with apple/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /sign in with google/i })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /sign in with google/i })).toBeInTheDocument();
   });
 
   it("native apple: a successful sign-in exchanges the identity token and authenticates", async () => {

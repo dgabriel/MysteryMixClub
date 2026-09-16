@@ -41,7 +41,7 @@
  * differs, not what it has to look like.
  */
 const GOOGLE_BUTTON_CLASS = [
-  "relative flex h-11 items-center justify-center gap-[10px] rounded-[4px] px-3",
+  "relative flex h-11 min-w-0 items-center justify-center gap-[10px] rounded-[4px] px-3",
   "border border-[#8E918F] bg-[#131314] text-[#E3E3E3] no-underline",
   "font-[Roboto,arial,sans-serif] text-[14px] font-medium tracking-[0.25px]",
   "before:pointer-events-none before:absolute before:inset-0 before:rounded-[4px]",
@@ -71,7 +71,11 @@ function GoogleMarkAndLabel() {
           d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
         />
       </svg>
-      Sign in with Google
+      {/* truncate (not wrap): this sits in a half-width flex item next to
+        AppleSignInButton on native (MysteryMixClub-4vii.9/4vii.24) -- the
+        fixed h-11 height has no room for a wrapped second line, so a too-
+        narrow screen ellipsizes the label instead of overflowing it. */}
+      <span className="truncate">Sign in with Google</span>
     </>
   );
 }

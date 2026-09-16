@@ -134,10 +134,16 @@ async def verify_apple_identity_token(
     route) treats any of these identically: reject the sign-in, no session
     issued.
     """
+    # Every message below is a fixed, static string -- deliberately never
+    # interpolating a claim value or a wrapped library exception's own text.
+    # This is what actually gets logged (auth.py's apple_native_sign_in logs
+    # str(exc) on failure for diagnosability), and an identity token's claims
+    # (email, subject) are personal data that has no business in a log line;
+    # the failure *category* below is all a log needs.
     try:
         header = jwt.get_unverified_header(identity_token)
     except JOSEError as exc:
-        raise AppleSignInError(f"malformed identity token: {exc}") from exc
+        raise AppleSignInError("malformed identity token") from exc
     kid = header.get("kid")
     if not isinstance(kid, str) or not kid:
         raise AppleSignInError("identity token header carried no kid")
@@ -145,6 +151,9 @@ async def verify_apple_identity_token(
     try:
         key = await keys_client.get_key(kid)
     except AppleKeyFetchError as exc:
+        # Safe to pass through as-is: describes OUR OWN request to Apple's
+        # JWKS endpoint failing (network/HTTP status/malformed response),
+        # never anything derived from the caller's identity token.
         raise AppleSignInError(str(exc)) from exc
 
     try:
@@ -155,12 +164,12 @@ async def verify_apple_identity_token(
             raise AppleSignInError("identity token signature verification failed")
         claims = jwt.get_unverified_claims(identity_token)
     except JOSEError as exc:
-        raise AppleSignInError(f"could not verify identity token: {exc}") from exc
+        raise AppleSignInError("could not verify identity token") from exc
 
     if claims.get("iss") != _APPLE_ISSUER:
-        raise AppleSignInError(f"unexpected issuer: {claims.get('iss')!r}")
+        raise AppleSignInError("unexpected issuer")
     if claims.get("aud") != bundle_id:
-        raise AppleSignInError(f"unexpected audience: {claims.get('aud')!r}")
+        raise AppleSignInError("unexpected audience")
     exp = claims.get("exp")
     if not isinstance(exp, (int, float)) or exp < time.time():
         raise AppleSignInError("identity token has expired")

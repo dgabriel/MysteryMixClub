@@ -445,26 +445,30 @@ export function EmailEntryScreen({
                 </span>
                 <span className="h-px flex-1 bg-ink-hairline" />
               </div>
-              {/* Apple sits above Google when both are offered natively --
-                MysteryMixClub-4vii.9 (Guideline 4.8) requires equivalent
-                prominence for both, not a hierarchy, but Apple's own review
-                guidelines separately expect Sign in with Apple to be at
-                least as prominent as any other third-party option, so it
-                leads. */}
-              {onNativeAppleSignIn ? (
-                <div className="mt-6">
-                  <AppleSignInButton onClick={onNativeAppleSignIn} />
-                </div>
-              ) : null}
-              {googleEnabled ? (
-                <div className="mt-6">
-                  {onNativeGoogleSignIn ? (
-                    <GoogleSignInButton onClick={onNativeGoogleSignIn} />
-                  ) : (
-                    <GoogleSignInButton href={googleUrl} />
-                  )}
-                </div>
-              ) : null}
+              {/* One stable row, not two branches that swap on the async
+                googleEnabled check -- swapping subtrees remounted the Apple
+                button out from under an in-flight click (caught by
+                MysteryMixClub-4vii.24's own tests). Each present button gets
+                flex-1: side by side at equal width when both are offered
+                natively (MysteryMixClub-4vii.9, Guideline 4.8 requires
+                exactly that), or alone filling the row when only one is
+                available (e.g. web, where Apple never renders). */}
+              <div className="mt-6 flex gap-3">
+                {onNativeAppleSignIn ? (
+                  <div className="min-w-0 flex-1">
+                    <AppleSignInButton onClick={onNativeAppleSignIn} />
+                  </div>
+                ) : null}
+                {googleEnabled ? (
+                  <div className="min-w-0 flex-1">
+                    {onNativeGoogleSignIn ? (
+                      <GoogleSignInButton onClick={onNativeGoogleSignIn} />
+                    ) : (
+                      <GoogleSignInButton href={googleUrl} />
+                    )}
+                  </div>
+                ) : null}
+              </div>
             </>
           ) : null}
 

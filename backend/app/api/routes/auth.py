@@ -1420,8 +1420,12 @@ async def apple_native_sign_in(
             bundle_id=settings.apple_sign_in_bundle_id,
             keys_client=keys_client,
         )
-    except AppleSignInError:
-        logger.warning("apple sign-in: identity token failed verification")
+    except AppleSignInError as exc:
+        # The specific reason (bad signature, wrong audience/issuer, expired,
+        # malformed) never reaches the client -- "that sign-in didn't work" is
+        # deliberately generic there -- but it belongs in the log, not thrown
+        # away, or a real failure is undiagnosable without guessing.
+        logger.warning("apple sign-in: identity token failed verification: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="that sign-in didn't work"
         ) from None

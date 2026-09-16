@@ -4,11 +4,11 @@ const config: CapacitorConfig = {
   appId: 'com.mysterymixclub.app',
   appName: 'Mystery Mix Club',
   webDir: 'dist-ios',
-  // 'none' hid the real app's console entirely while it was still just the
-  // MusicKit proof; now that Capacitor runs the whole member app (ADR 0032),
-  // a blank WebView crash has nowhere else to report to -- keep this on
-  // during the milestone-2 build-out.
-  loggingBehavior: 'debug',
+  // 'debug' was useful while diagnosing blank-WebView crashes during the
+  // milestone-2 build-out; that's done now (the real app runs correctly end
+  // to end, ADR 0032), so this reverts to 'none' -- a release build
+  // shouldn't ship verbose WebView console logging (MysteryMixClub-4vii.18).
+  loggingBehavior: 'none',
 };
 
 export default config;

@@ -1652,6 +1652,35 @@ export async function getNotes(submissionId: string): Promise<Note[]> {
 }
 
 // --------------------------------------------------------------------------- //
+// Reports (MysteryMixClub-4vii.13) -- App Store Guideline 1.2's minimum bar
+// for a UGC app: a way to flag another member's content for review. v1
+// covers only notes (the one freeform, attributed surface a member sees from
+// other members) and is deliberately just persistence -- no admin UI yet.
+// --------------------------------------------------------------------------- //
+
+export type ReportReason = "inappropriate_content" | "harassment" | "spam" | "other";
+
+export async function reportNote(
+  noteId: string,
+  reason: ReportReason,
+  detail?: string,
+): Promise<void> {
+  const res = await authenticatedRequest(`/api/v1/reports`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      content_type: "note",
+      content_id: noteId,
+      reason,
+      detail: detail || undefined,
+    }),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+}
+
+// --------------------------------------------------------------------------- //
 // Platform admin (MYS-128). Every endpoint here is platform-admin-only; the
 // backend returns 403 for non-admins. The UI gates the whole page on
 // `is_platform_admin` from /users/me so these are never called by others.

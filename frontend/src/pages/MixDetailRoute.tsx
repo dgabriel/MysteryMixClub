@@ -18,6 +18,7 @@ import {
   getResults,
   getMix,
   getVoteCounts,
+  reportNote,
   submitSong,
   updateMix,
   updateSubmissionNote,
@@ -28,6 +29,7 @@ import {
   type Note,
   type PlatformKey,
   type PlaylistEntry,
+  type ReportReason,
   type ResolvedSong,
   type ResultNote,
   type ResultSubmission,
@@ -59,6 +61,7 @@ import { ConcentricRings } from "../components/ConcentricRings";
 import { SongSearchCard } from "../components/songs/SongSearchCard";
 import { SourceBadge } from "../components/SourceBadge";
 import { AppleMusicPlaylist } from "../components/AppleMusicPlaylist";
+import { ReportContentModal } from "../components/ReportContentModal";
 import { SpotifyPlaylist } from "../components/SpotifyPlaylist";
 import {
   SongsMaybeMissing,
@@ -2507,12 +2510,19 @@ function SongNotes({
   onActionError: (message: string | null) => void;
   composerHint?: string;
 }) {
+  const { userId } = useAuth();
   const [notes, setNotes] = useState<Note[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [open, setOpen] = useState(false);
   const [composing, setComposing] = useState(false);
   const [draft, setDraft] = useState("");
   const [posting, setPosting] = useState(false);
+  const [reportingNote, setReportingNote] = useState<Note | null>(null);
+
+  async function submitReport(note: Note, reason: ReportReason, detail: string) {
+    await reportNote(note.id, reason, detail);
+    setReportingNote(null);
+  }
 
   const reveal = useCallback(async () => {
     const next = !open;
@@ -2666,9 +2676,24 @@ function SongNotes({
               {notes.map((note) => (
                 <li key={note.id}>
                   <p className="text-sm leading-[1.65] text-foreground">{note.body}</p>
-                  <span className="mt-1 block font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
-                    {note.author_display_name}
-                  </span>
+                  <div className="mt-1 flex items-center gap-3">
+                    <span className="block font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
+                      {note.author_display_name}
+                    </span>
+                    {/* Reporting your own note makes no sense -- and during
+                        open_voting this list only ever holds the caller's own
+                        note anyway (MYS-67), so this only ever shows post-reveal
+                        on someone else's (MysteryMixClub-4vii.13). */}
+                    {note.author_id !== userId ? (
+                      <button
+                        type="button"
+                        onClick={() => setReportingNote(note)}
+                        className="font-mono uppercase tracking-mono-caps text-mini text-muted-foreground underline underline-offset-[3px] hover:text-foreground"
+                      >
+                        report
+                      </button>
+                    ) : null}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -2678,6 +2703,14 @@ function SongNotes({
             <p className="mt-3 text-meta leading-[1.6] text-muted-foreground">no notes yet</p>
           ) : null}
         </>
+      ) : null}
+
+      {reportingNote ? (
+        <ReportContentModal
+          contentPreview={reportingNote.body}
+          onSubmit={(reason, detail) => submitReport(reportingNote, reason, detail)}
+          onDismiss={() => setReportingNote(null)}
+        />
       ) : null}
     </div>
   );

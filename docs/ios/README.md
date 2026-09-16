@@ -107,6 +107,25 @@ validation; a reason must reflect actual use).
 
 MMC's web session is an in-memory access token plus an HttpOnly refresh cookie. The native session keeps the refresh cookie in `URLSession`'s shared store, but the proof does not yet exercise a refresh, so a session lasts only as long as the 60-minute access token. Expiry recovery, account switching, and logout-all across devices are IOS-01 work and are not proven here.
 
+## UGC moderation posture (`MysteryMixClub-4vii.13`, 2026-09-15)
+
+App Store Guideline 1.2 requires a UGC app to offer a way to report
+objectionable content. v1 is deliberately minimal: a member can report
+another member's note (`POST /api/v1/reports`), which persists a row with
+the reporter, the note's real author, the club, a reason, and optional
+detail -- there is no admin console yet. Review it by querying the table
+directly:
+
+```sql
+SELECT * FROM reports WHERE status = 'open' ORDER BY created_at DESC;
+```
+
+Mark a report reviewed with `UPDATE reports SET status = 'reviewed' WHERE
+id = '<id>';` once handled (organizer member-removal, a direct conversation,
+or no action needed). Blocking and automated content filtering were
+deliberately deferred (basic report action only, not the full system) --
+revisit if report volume or severity ever suggests they're needed.
+
 ## What still needs device evidence
 
 Physical-device runs must record, separately and honestly: native permission granted with no browser popup; denied and restricted permission; an account with no eligible subscription; an interrupted network mid-build; repeated taps; and a return to MMC after opening Apple Music. Record the outcomes on `MysteryMixClub-yyuq`. Never record tokens, private notes, or invitation URLs in diagnostics. A simulator can help with layout; it does not satisfy the PRD's physical-device acceptance gate.

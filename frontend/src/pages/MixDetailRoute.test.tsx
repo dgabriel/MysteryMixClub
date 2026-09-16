@@ -21,6 +21,7 @@ import {
   getMix,
   getSpotifyStatus,
   getVoteCounts,
+  reportNote,
   resolveSong,
   submitSong,
   updateMix,
@@ -59,6 +60,7 @@ vi.mock("../services/api", async () => {
     editNote: vi.fn(),
     getSpotifyStatus: vi.fn(),
     getVoteCounts: vi.fn(),
+    reportNote: vi.fn(),
   };
 });
 vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
@@ -81,6 +83,7 @@ const mockAddNote = vi.mocked(addNote);
 const mockEditNote = vi.mocked(editNote);
 const mockGetSpotifyStatus = vi.mocked(getSpotifyStatus);
 const mockGetVoteCounts = vi.mocked(getVoteCounts);
+const mockReportNote = vi.mocked(reportNote);
 const mockResolveSong = vi.mocked(resolveSong);
 const mockSubmitSong = vi.mocked(submitSong);
 const mockUseAuth = vi.mocked(useAuth);
@@ -320,6 +323,7 @@ describe("MixDetailRoute", () => {
       votes_per_player: 3,
     });
     mockGetNotes.mockResolvedValue([]);
+    mockReportNote.mockResolvedValue(undefined);
     mockAddNote.mockResolvedValue({
       id: "n1",
       submission_id: "p1",
@@ -2506,6 +2510,48 @@ describe("MixDetailRoute", () => {
       expect(mockGetNotes).toHaveBeenCalledWith("p1");
       expect(await within(card).findByText("this slaps")).toBeInTheDocument();
       expect(within(card).getByText("Bob")).toBeInTheDocument();
+    });
+
+    it("offers 'report' on another member's note, not the viewer's own (MysteryMixClub-4vii.13)", async () => {
+      const user = userEvent.setup();
+      setupVoting({ entries: [entry({ submission_id: "p1", title: "Debaser" })] });
+      mockGetNotes.mockResolvedValue([
+        {
+          id: "n1",
+          submission_id: "p1",
+          mix_id: "r1",
+          author_id: OTHER,
+          author_display_name: "Bob",
+          body: "this slaps",
+          created_at: "2026-01-01T00:00:00Z",
+        },
+        {
+          id: "n2",
+          submission_id: "p1",
+          mix_id: "r1",
+          author_id: ORGANIZER,
+          author_display_name: "x",
+          body: "my own note",
+          created_at: "2026-01-01T00:00:01Z",
+        },
+      ]);
+      renderMix();
+
+      await screen.findByRole("button", { name: "add a vote to Debaser" });
+      const card = cardFor("Debaser");
+      await user.click(within(card).getByRole("button", { name: /^notes$/i }));
+      await within(card).findByText("this slaps");
+
+      // Exactly one report affordance -- for Bob's note, not the viewer's own.
+      expect(within(card).getAllByRole("button", { name: "report" })).toHaveLength(1);
+
+      await user.click(within(card).getByRole("button", { name: "report" }));
+      const dialog = await screen.findByRole("dialog");
+      await user.click(within(dialog).getByRole("radio", { name: "spam" }));
+      await user.click(within(dialog).getByRole("button", { name: "submit report" }));
+
+      await waitFor(() => expect(mockReportNote).toHaveBeenCalledWith("n1", "spam", ""));
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
 
     it("revealing a submission with no notes shows the empty state", async () => {

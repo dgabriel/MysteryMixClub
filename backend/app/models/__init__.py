@@ -9,6 +9,7 @@ from app.models.note import Note
 from app.models.oauth_callback_attempt import OAuthCallbackAttempt
 from app.models.password_reset_token import PasswordResetToken
 from app.models.playlist_job import PlaylistJob
+from app.models.report import Report
 from app.models.session import Session
 from app.models.spotify_connection import SpotifyConnection
 from app.models.spotify_mix_playlist import SpotifyMixPlaylist
@@ -30,6 +31,7 @@ __all__ = [
     "OAuthCallbackAttempt",
     "PasswordResetToken",
     "PlaylistJob",
+    "Report",
     "Session",
     "SpotifyConnection",
     "SpotifyMixPlaylist",

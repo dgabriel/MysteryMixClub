@@ -41,6 +41,14 @@ public final class MMCAppleAuthPlugin: CAPPlugin, CAPBridgedPlugin, ASAuthorizat
     private var pendingCall: CAPPluginCall?
 
     @objc func signIn(_ call: CAPPluginCall) {
+        // A second tap while a sheet is already presenting would otherwise
+        // silently overwrite pendingCall, leaving the first call's promise
+        // never resolved or rejected (MysteryMixClub-4vii.24) -- reject the
+        // new call outright rather than let that happen.
+        if pendingCall != nil {
+            call.reject("A sign-in attempt is already in progress.", "ALREADY_IN_PROGRESS")
+            return
+        }
         pendingCall = call
         let request = ASAuthorizationAppleIDProvider().createRequest()
         request.requestedScopes = _requestedScopes

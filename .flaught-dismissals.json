@@ -1694,6 +1694,39 @@
         "file": "frontend/src/components/GoogleSignInButton.tsx"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:e9aea24f7b3b6b47107f2de741598c13",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T16:17:36.798Z",
+      "reason": "Addressed: signIn() now rejects outright if a call is already pending instead of silently overwriting pendingCall, so a second tap while the sheet is presenting can no longer leave the first call's promise unresolved.",
+      "context": {
+        "title": "Potential race condition with pendingCall in AppleAuthPlugin",
+        "file": "frontend/ios/App/App/AppleAuthPlugin.swift"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:5a81bedb7b3dcb210db5cb893e2ecf9c",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T16:17:36.934Z",
+      "reason": "Addressed: the margin is now gated on Capacitor.getPlatform() === 'ios' at the call site in EmailEntryScreen.tsx, so web gets no margin at all -- previously it applied unconditionally to both. Verified via a new test (LoginRoute.test.tsx) asserting the margin class is present on ios and absent on web.",
+      "context": {
+        "title": "Platform‑specific layout hack embedded in EmailEntryScreen",
+        "file": "frontend/src/pages/EmailEntryScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:3f1276fa37051c7e97ed9c8d68808083",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T16:17:37.069Z",
+      "reason": "Frontend portion addressed: added tests asserting the native-only margin behavior on both platforms. The Swift portion (AppleAuthPlugin's non-canceled-error path) is intentionally not covered by XCTest -- this codebase verifies every native Swift plugin (GoogleAuthPlugin, TipsPlugin, MusicPlugin) via a real xcodebuild archive rather than unit tests, an established, consistent convention for this project, not an oversight specific to this PR.",
+      "context": {
+        "title": "Missing tests for Apple sign‑in error handling and UI margin change",
+        "file": "frontend/ios/App/App/AppleAuthPlugin.swift"
+      },
+      "expires_at": null
     }
   ]
 }

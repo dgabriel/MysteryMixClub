@@ -38,12 +38,17 @@ class SignInState(NamedTuple):
     """Decoded sign-in OAuth-state: the anti-CSRF nonce the callback matches
     against the browser's cookie, the invite token (if any) that has to
     survive the round-trip so a brand-new account can still be invite-gated,
-    and the PKCE code_verifier (MysteryMixClub-ali8.7) the callback sends back
-    to Google alongside the authorization code."""
+    the PKCE code_verifier (MysteryMixClub-ali8.7) the callback sends back
+    to Google alongside the authorization code, and whether this flow was
+    started by the native iOS app via ASWebAuthenticationSession
+    (MysteryMixClub-4vii.21) -- which changes how the callback hands the
+    result back (a one-time exchange code via a custom URL scheme, not a
+    cookie set directly on an https redirect)."""
 
     nonce: str
     invite_token: str | None
     code_verifier: str
+    native: bool
 
 
 class GoogleLinkState(NamedTuple):
@@ -133,7 +138,9 @@ def decode_oauth_state(token: str, purpose: str) -> OAuthState:
     return OAuthState(user_id=user_id, return_to=rt if isinstance(rt, str) else None)
 
 
-def create_sign_in_state(nonce: str, code_verifier: str, invite_token: str | None = None) -> str:
+def create_sign_in_state(
+    nonce: str, code_verifier: str, invite_token: str | None = None, *, native: bool = False
+) -> str:
     """Return a signed, 10-minute state token for a sign-in OAuth round-trip
     (ADR 0007).
 
@@ -164,6 +171,8 @@ def create_sign_in_state(nonce: str, code_verifier: str, invite_token: str | Non
     }
     if invite_token:
         claims["invite"] = invite_token
+    if native:
+        claims["native"] = True
     return jwt.encode(claims, get_settings().secret_key, algorithm=_ALGORITHM)
 
 
@@ -189,6 +198,7 @@ def decode_sign_in_state(token: str) -> SignInState:
         nonce=nonce,
         invite_token=invite if isinstance(invite, str) else None,
         code_verifier=code_verifier,
+        native=claims.get("native") is True,
     )
 
 

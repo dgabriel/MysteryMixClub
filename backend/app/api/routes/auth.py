@@ -4,6 +4,7 @@ import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Literal
+from urllib.parse import urlencode
 
 from fastapi import (
     APIRouter,
@@ -46,6 +47,7 @@ from app.models.invite import Invite
 from app.models.login_attempt import LoginAttempt
 from app.models.magic_link_token import MagicLinkToken
 from app.models.oauth_callback_attempt import OAuthCallbackAttempt
+from app.models.oauth_exchange_code import OAuthExchangeCode
 from app.models.password_reset_token import PasswordResetToken
 from app.models.session import Session
 from app.models.user import User
@@ -109,6 +111,14 @@ _GOOGLE_NONCE_SAMESITE: Literal["lax"] = "lax"
 # usable nonce lying around; matches the signed state's own 10-minute TTL.
 _GOOGLE_NONCE_MAX_AGE = 600
 _GOOGLE_UNCONFIGURED_MESSAGE = "google sign-in is not configured on this server"
+
+# Native iOS hand-off (MysteryMixClub-4vii.21): the custom URL scheme
+# ASWebAuthenticationSession's callback matches, registered in
+# frontend/ios/App/App/Info.plist's CFBundleURLTypes. A one-time exchange
+# code rides in this URL rather than a session cookie -- see
+# OAuthExchangeCode's own docstring for why.
+_NATIVE_CALLBACK_SCHEME = "mysterymixclub"
+_OAUTH_EXCHANGE_CODE_TTL = timedelta(minutes=2)
 # Per-IP throttle on the callback itself (MysteryMixClub-ali8.8) — every other
 # unauthenticated auth endpoint rate-limits per email, but the callback has no
 # email until *after* exchange_code, which is exactly the call being abused.
@@ -792,20 +802,32 @@ def _log_safe(value: str | None, limit: int = 100) -> str:
     return "none" if value is None else repr(value[:limit])
 
 
-def _google_redirect(settings: Settings, outcome: str) -> RedirectResponse:
-    """Bounce back to the SPA with an outcome flag for the login screen.
+def _google_redirect(
+    settings: Settings, outcome: str, *, native: bool = False, exchange_code: str | None = None
+) -> RedirectResponse:
+    """Bounce back with an outcome flag -- to the SPA's login screen normally,
+    or to the native app via its custom URL scheme when this flow was started
+    by ASWebAuthenticationSession (MysteryMixClub-4vii.21). ``exchange_code``
+    is only ever set alongside ``native`` and only on a successful sign-in;
+    the app's own JS redeems it via POST /auth/google/native-exchange.
 
     Everything after Google's redirect is a top-level browser navigation, so
-    failures can't be JSON — they have to be a landing page the user can read.
+    failures can't be JSON — they have to be a landing page (or, for native, a
+    URL ASWebAuthenticationSession's completion handler can parse) the caller
+    can read.
 
     Always clears the nonce cookie: it authorizes exactly one callback, and
     every exit from that callback — success or any rejection — consumes it. A
     surviving nonce could satisfy a later flow.
     """
-    response = RedirectResponse(
-        url=f"{settings.app_base_url.rstrip('/')}/login?google={outcome}",
-        status_code=status.HTTP_303_SEE_OTHER,
-    )
+    if native:
+        params = {"outcome": outcome}
+        if exchange_code:
+            params["code"] = exchange_code
+        url = f"{_NATIVE_CALLBACK_SCHEME}://auth/google?{urlencode(params)}"
+    else:
+        url = f"{settings.app_base_url.rstrip('/')}/login?google={outcome}"
+    response = RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
     response.delete_cookie(
         key=_GOOGLE_NONCE_COOKIE_NAME,
         path=_GOOGLE_NONCE_COOKIE_PATH,
@@ -857,6 +879,7 @@ async def google_enabled(
 @router.get("/google/login")
 async def google_login(
     invite_token: str | None = None,
+    native: bool = False,
     settings: Settings = Depends(get_settings),
     client: GoogleOAuthClient = Depends(get_google_oauth_client),
 ) -> RedirectResponse:
@@ -869,6 +892,12 @@ async def google_login(
     ``invite_token`` rides through the round-trip inside the signed state so a
     brand-new account can still be invite-gated on the way back (ADR 0007: every
     new signup goes through the invite gate, whichever method it uses).
+
+    ``native=true`` marks a flow started by the iOS app's
+    ASWebAuthenticationSession rather than a normal browser tab
+    (MysteryMixClub-4vii.21) -- carried the same way through the signed state
+    so the callback knows to hand back a one-time exchange code via a custom
+    URL scheme instead of setting a session cookie directly.
 
     Also carries a PKCE challenge (MysteryMixClub-ali8.7) so the code
     exchange can only be completed by whoever holds the matching verifier,
@@ -883,7 +912,8 @@ async def google_login(
     code_verifier, code_challenge = generate_pkce_pair()
     response = RedirectResponse(
         url=client.authorize_url(
-            create_sign_in_state(nonce, code_verifier, invite_token), code_challenge
+            create_sign_in_state(nonce, code_verifier, invite_token, native=native),
+            code_challenge,
         ),
         status_code=status.HTTP_302_FOUND,
     )
@@ -965,10 +995,14 @@ async def google_callback(
             except JWTError:
                 pass  # neither decode worked; handled by the invalid_state check below
 
-    def _redirect(outcome: str) -> RedirectResponse:
+    def _redirect(outcome: str, *, exchange_code: str | None = None) -> RedirectResponse:
         if link_state is not None:
+            # Account-linking starts only from an already-authenticated web
+            # Profile page today, never natively -- MysteryMixClub-4vii.21
+            # scoped its fix to sign-in only.
             return _google_link_redirect(settings, outcome)
-        return _google_redirect(settings, outcome)
+        is_native = sign_in_state.native if sign_in_state is not None else False
+        return _google_redirect(settings, outcome, native=is_native, exchange_code=exchange_code)
 
     if error or not code or not state:
         logger.info("google callback: denied or missing code/state (error=%s)", _log_safe(error))
@@ -1033,11 +1067,6 @@ async def google_callback(
         return _redirect(_GOOGLE_SIGNUP_OUTCOMES.get(exc.detail, "error"))
 
     user_id = user.id
-    # The access token is deliberately discarded rather than put in the redirect
-    # URL: a query string lands in browser history, referrers, and server logs.
-    # The SPA's on-mount /auth/refresh turns the cookie into one immediately.
-    _, raw_refresh_token = await _issue_session(db, user_id, user_agent, now)
-    await db.commit()
 
     if welcome_email is not None:
         queue_club_joined(
@@ -1050,9 +1079,76 @@ async def google_callback(
             welcome_email[1],
         )
 
+    if sign_in_state.native:
+        # Don't issue the session here -- a query string lands in browser
+        # history, referrers, and server logs, and there's no cookie jar
+        # shared with the app's own WebView to set one into anyway
+        # (MysteryMixClub-4vii.21). Hand back a one-time code instead; the
+        # app's own JS redeems it via POST /auth/google/native-exchange,
+        # which is what actually issues the session.
+        raw_code = generate_token()
+        db.add(
+            OAuthExchangeCode(
+                user_id=user_id,
+                code_hash=hash_token(raw_code),
+                expires_at=now + _OAUTH_EXCHANGE_CODE_TTL,
+            )
+        )
+        await db.commit()
+        return _redirect("ok", exchange_code=raw_code)
+
+    # The access token is deliberately discarded rather than put in the redirect
+    # URL: a query string lands in browser history, referrers, and server logs.
+    # The SPA's on-mount /auth/refresh turns the cookie into one immediately.
+    _, raw_refresh_token = await _issue_session(db, user_id, user_agent, now)
+    await db.commit()
+
     response = _redirect("ok")
     _set_refresh_cookie(response, raw_refresh_token, settings)
     return response
+
+
+class GoogleNativeExchangeRequest(WireModel):
+    code: str
+
+
+@router.post("/google/native-exchange", response_model=VerifyResponse)
+async def google_native_exchange(
+    payload: GoogleNativeExchangeRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    user_agent: str | None = Header(default=None),
+) -> VerifyResponse:
+    """Redeem a one-time code from the native Google sign-in flow
+    (MysteryMixClub-4vii.21) for a real session -- called via a normal fetch
+    from the app's own WebView, the same "land on a code, fetch to redeem it"
+    shape /auth/verify already uses for magic links, so the resulting
+    refresh cookie is set in the exact context that will actually use it.
+    """
+    now = datetime.now(timezone.utc)
+
+    code_row = await db.scalar(
+        select(OAuthExchangeCode).where(OAuthExchangeCode.code_hash == hash_token(payload.code))
+    )
+    # Single-use enforcement: any matching code is hard-deleted on lookup,
+    # whether it was valid or already expired (matches /auth/verify).
+    if code_row is not None:
+        await db.delete(code_row)
+
+    if code_row is None or code_row.expires_at <= now:
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="that sign-in code is invalid or has expired",
+        )
+
+    user_id = code_row.user_id
+    access_token, raw_refresh_token = await _issue_session(db, user_id, user_agent, now)
+    await db.commit()
+
+    _set_refresh_cookie(response, raw_refresh_token, settings)
+    return VerifyResponse(access_token=access_token)
 
 
 async def _resolve_google_account(

@@ -267,6 +267,27 @@ export function googleLoginUrl(inviteToken?: string | null): string {
 }
 
 /**
+ * Redeem a one-time code from the native Google sign-in flow
+ * (MysteryMixClub-4vii.21) for a real session. Mirrors verifyToken's shape:
+ * called via a normal fetch from the app's own WebView so the resulting
+ * refresh cookie lands in the context that will actually use it, rather
+ * than relying on any cookie the ASWebAuthenticationSession's own callback
+ * response might have set.
+ */
+export async function exchangeGoogleNativeCode(code: string): Promise<{ access_token: string }> {
+  const res = await fetch(`${AUTH_BASE}/google/native-exchange`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code }),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as { access_token: string };
+}
+
+/**
  * Exchange the HttpOnly refresh cookie for a fresh access token. Returns the
  * new token on success, or null when there is no valid session (401). Any other
  * failure also resolves to null so callers can treat it as "unauthenticated".

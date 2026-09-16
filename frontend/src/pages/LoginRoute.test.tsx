@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { LoginRoute } from "./LoginRoute";
 import {
   ApiError,
+  exchangeGoogleNativeCode,
   forgotPassword,
   getGoogleEnabled,
   getWaitlistEnabled,
@@ -14,6 +15,7 @@ import {
   requestMagicLink,
 } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
+import { googleAuth, nativeGoogleAuthAvailable } from "../ios/googleAuth";
 
 // Mock only the API module so no network is touched. ApiError stays real so
 // LoginRoute's instanceof-based status mapping works.
@@ -21,6 +23,7 @@ vi.mock("../services/api", async () => {
   const actual = await vi.importActual<typeof import("../services/api")>("../services/api");
   return {
     ApiError: actual.ApiError,
+    API_BASE_URL: actual.API_BASE_URL,
     PASSWORD_MIN_LENGTH: actual.PASSWORD_MIN_LENGTH,
     PASSWORD_MAX_LENGTH: actual.PASSWORD_MAX_LENGTH,
     requestMagicLink: vi.fn(),
@@ -31,9 +34,14 @@ vi.mock("../services/api", async () => {
     forgotPassword: vi.fn(),
     googleLoginUrl: vi.fn(),
     getGoogleEnabled: vi.fn(),
+    exchangeGoogleNativeCode: vi.fn(),
   };
 });
 vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
+vi.mock("../ios/googleAuth", () => ({
+  googleAuth: { signIn: vi.fn() },
+  nativeGoogleAuthAvailable: vi.fn(),
+}));
 
 const mockRequestMagicLink = vi.mocked(requestMagicLink);
 const mockGetWaitlistEnabled = vi.mocked(getWaitlistEnabled);
@@ -42,7 +50,10 @@ const mockRegister = vi.mocked(register);
 const mockForgotPassword = vi.mocked(forgotPassword);
 const mockGoogleLoginUrl = vi.mocked(googleLoginUrl);
 const mockGetGoogleEnabled = vi.mocked(getGoogleEnabled);
+const mockExchangeGoogleNativeCode = vi.mocked(exchangeGoogleNativeCode);
 const mockUseAuth = vi.mocked(useAuth);
+const mockNativeGoogleAuthAvailable = vi.mocked(nativeGoogleAuthAvailable);
+const mockGoogleAuthSignIn = vi.mocked(googleAuth.signIn);
 const setAccessToken = vi.fn();
 
 // EmailEntryScreen links to /about (MYS-155), which needs a Router context.
@@ -86,6 +97,9 @@ describe("LoginRoute", () => {
     // default — every existing "email us" assertion in this file relies on
     // this resolving to false.
     mockGetWaitlistEnabled.mockResolvedValue({ enabled: false });
+    // Default: not native, so the existing web (<a href>) Google tests below
+    // keep exercising the ordinary redirect path unchanged.
+    mockNativeGoogleAuthAvailable.mockReturnValue(false);
   });
 
   it("redirects an already-authenticated user to /home", () => {
@@ -675,6 +689,92 @@ describe("LoginRoute", () => {
     await openPasswordTab(user);
 
     expect(screen.queryByText(/google sign-in was cancelled/i)).not.toBeInTheDocument();
+  });
+
+  // --- native google (MysteryMixClub-4vii.21) -------------------------------- //
+
+  it("native google: renders a button (not a link) that drives ASWebAuthenticationSession", async () => {
+    mockNativeGoogleAuthAvailable.mockReturnValue(true);
+    renderLogin();
+
+    expect(await screen.findByRole("button", { name: /sign in with google/i })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /sign in with google/i })).not.toBeInTheDocument();
+  });
+
+  it("native google: a successful sign-in exchanges the code and authenticates", async () => {
+    const user = userEvent.setup();
+    mockNativeGoogleAuthAvailable.mockReturnValue(true);
+    mockGoogleAuthSignIn.mockResolvedValue({ outcome: "ok", code: "one-time-code" });
+    mockExchangeGoogleNativeCode.mockResolvedValue({ access_token: "native-token" });
+    renderLogin();
+
+    await user.click(await screen.findByRole("button", { name: /sign in with google/i }));
+
+    await waitFor(() => {
+      expect(mockExchangeGoogleNativeCode).toHaveBeenCalledWith("one-time-code");
+    });
+    expect(setAccessToken).toHaveBeenCalledWith("native-token");
+  });
+
+  it("native google: carries a stashed invite token into the native sign-in call", async () => {
+    const user = userEvent.setup();
+    localStorage.setItem("pendingInvitePath", "/invite/inv-789");
+    mockNativeGoogleAuthAvailable.mockReturnValue(true);
+    mockGoogleAuthSignIn.mockResolvedValue({ outcome: "ok", code: "c" });
+    mockExchangeGoogleNativeCode.mockResolvedValue({ access_token: "t" });
+
+    try {
+      renderLogin();
+
+      await user.click(await screen.findByRole("button", { name: /sign in with google/i }));
+
+      await waitFor(() => {
+        expect(mockGoogleAuthSignIn).toHaveBeenCalledWith(
+          expect.objectContaining({ inviteToken: "inv-789" }),
+        );
+      });
+    } finally {
+      localStorage.clear();
+    }
+  });
+
+  it("native google: a cancelled sheet shows no error", async () => {
+    const user = userEvent.setup();
+    mockNativeGoogleAuthAvailable.mockReturnValue(true);
+    mockGoogleAuthSignIn.mockResolvedValue({ outcome: "cancelled", code: "" });
+    renderLogin();
+
+    await user.click(await screen.findByRole("button", { name: /sign in with google/i }));
+
+    await waitFor(() => {
+      expect(mockGoogleAuthSignIn).toHaveBeenCalled();
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(setAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("native google: a non-ok outcome shows the same calm copy as the web redirect path", async () => {
+    const user = userEvent.setup();
+    mockNativeGoogleAuthAvailable.mockReturnValue(true);
+    mockGoogleAuthSignIn.mockResolvedValue({ outcome: "invite_required", code: "" });
+    renderLogin();
+
+    await user.click(await screen.findByRole("button", { name: /sign in with google/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/you need an invite/i);
+    expect(setAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("native google: a rejected plugin call shows the generic error copy", async () => {
+    const user = userEvent.setup();
+    mockNativeGoogleAuthAvailable.mockReturnValue(true);
+    mockGoogleAuthSignIn.mockRejectedValue(new Error("native bridge exploded"));
+    renderLogin();
+
+    await user.click(await screen.findByRole("button", { name: /sign in with google/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/that sign-in didn't work/i);
+    expect(setAccessToken).not.toHaveBeenCalled();
   });
 
   // --- form semantics and validation ---------------------------------------- //

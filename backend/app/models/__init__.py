@@ -7,6 +7,7 @@ from app.models.magic_link_token import MagicLinkToken
 from app.models.mix import Mix
 from app.models.note import Note
 from app.models.oauth_callback_attempt import OAuthCallbackAttempt
+from app.models.oauth_exchange_code import OAuthExchangeCode
 from app.models.password_reset_token import PasswordResetToken
 from app.models.playlist_job import PlaylistJob
 from app.models.report import Report
@@ -29,6 +30,7 @@ __all__ = [
     "Mix",
     "Note",
     "OAuthCallbackAttempt",
+    "OAuthExchangeCode",
     "PasswordResetToken",
     "PlaylistJob",
     "Report",

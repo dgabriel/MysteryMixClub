@@ -3,9 +3,11 @@ import { Navigate, useSearchParams } from "react-router";
 import { EmailEntryScreen, type LoginMode } from "./EmailEntryScreen";
 import { CheckEmailScreen } from "./CheckEmailScreen";
 import {
+  API_BASE_URL,
   ApiError,
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
+  exchangeGoogleNativeCode,
   forgotPassword,
   googleLoginUrl,
   login,
@@ -13,6 +15,7 @@ import {
   requestMagicLink,
 } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
+import { googleAuth, nativeGoogleAuthAvailable } from "../ios/googleAuth";
 
 /**
  * Pull the invite token out of a stashed pending-invite path. The join flow
@@ -144,6 +147,31 @@ export function LoginRoute() {
     }
   }
 
+  /** Native Google sign-in (MysteryMixClub-4vii.21): drives the flow through
+   *  ASWebAuthenticationSession instead of a page navigation, since Google
+   *  blocks its own login page inside the app's embedded WebView. A
+   *  "cancelled" outcome (the user dismissed the sheet) shows no error --
+   *  same as declining on web never showing one either. */
+  async function handleNativeGoogleSignIn() {
+    clearFeedback();
+    const inviteToken = readPendingInviteToken();
+    try {
+      const { outcome, code } = await googleAuth.signIn({
+        apiBaseUrl: API_BASE_URL,
+        inviteToken: inviteToken ?? undefined,
+      });
+      if (outcome === "cancelled") return;
+      if (outcome !== "ok" || !code) {
+        setGoogleError(googleErrorCopy(outcome));
+        return;
+      }
+      const { access_token } = await exchangeGoogleNativeCode(code);
+      setAccessToken(access_token);
+    } catch {
+      setGoogleError(googleErrorCopy("error"));
+    }
+  }
+
   async function handleRegister(email: string, password: string) {
     clearFeedback();
     if (password.length < PASSWORD_MIN_LENGTH) {
@@ -236,6 +264,9 @@ export function LoginRoute() {
       resetNotice={resetNotice}
       resetDevLink={resetDevLink}
       googleUrl={googleLoginUrl(pendingInvite)}
+      onNativeGoogleSignIn={
+        nativeGoogleAuthAvailable() ? () => void handleNativeGoogleSignIn() : undefined
+      }
     />
   );
 }

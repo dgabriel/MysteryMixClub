@@ -149,6 +149,54 @@ or no action needed). Blocking and automated content filtering were
 deliberately deferred (basic report action only, not the full system) --
 revisit if report volume or severity ever suggests they're needed.
 
+## Native Google sign-in via ASWebAuthenticationSession (`MysteryMixClub-4vii.21`, 2026-09-15)
+
+Google's OAuth policy blocks its own login page inside an embedded WebView
+(`disallowed_useragent`, enforced since July 2023), which is what Capacitor's
+`WKWebView` is. On top of that, Google's login screen (password + 2FA) can
+take long enough for iOS to evict the app from memory during a cold-start
+Universal Link handoff -- a known Capacitor gap
+(`ionic-team/capacitor#6662`) where `appUrlOpen` doesn't reliably fire on
+relaunch. Together these made the original web-style redirect flow
+unworkable on native, independent of any deploy-pipeline correctness (see
+the `.well-known` / `cp -r dist/.` fix below, which was a real but separate
+bug).
+
+The fix is `ASWebAuthenticationSession` (`GoogleAuthPlugin.swift`,
+`MMCGoogleAuthPlugin`): it presents Google's login as a sheet on top of the
+still-running app, so the app is never evicted, and Google accepts it as a
+real browser context rather than an embedded WebView. It does **not**
+require registering a custom URL scheme in `Info.plist`/`CFBundleURLTypes`
+-- the bare scheme string (`mysterymixclub`, no `://`) is passed directly to
+the session initializer, and `ASWebAuthenticationSession` intercepts the
+callback itself.
+
+Because the session's callback is only a captured URL with no shared cookie
+jar guaranteed against the app's own `WKWebView`, the callback can't set the
+session cookie directly the way the web flow does. Instead the backend
+mints a short-lived (2 minute), single-use `OAuthExchangeCode` -- the exact
+same pattern the existing magic-link flow already uses for its verification
+token, not a new mechanism. `GET /google/login?native=true` carries a
+`native` flag through the signed sign-in state; on success the callback
+redirects to `mysterymixclub://auth/google?outcome=ok&code=<raw code>`
+with **no cookie set on that response at all**. The app's own JS then
+redeems the code from its own `WKWebView` context via
+`POST /auth/google/native-exchange`, which hard-deletes the matching row on
+lookup and only then sets the real refresh cookie -- guaranteeing the
+session lands in the context that will actually use it.
+
+Scope is deliberately narrow: only the sign-in flow moved. Google-account
+*linking* from an already-authenticated Profile page stays on its old
+web-only path (see the code comment in `google_callback`) -- broadening
+that was not required for launch and would have widened this change
+considerably.
+
+`GoogleSignInButton` now renders either a real `<a href>` (web, since the
+non-native endpoint still 302s and needs a top-level navigation) or a
+`<button onClick>` (native) behind a discriminated union prop type -- same
+Google-branded chrome either way, since only the interaction mechanism
+differs.
+
 ## What still needs device evidence
 
 Physical-device runs must record, separately and honestly: native permission granted with no browser popup; denied and restricted permission; an account with no eligible subscription; an interrupted network mid-build; repeated taps; and a return to MMC after opening Apple Music. Record the outcomes on `MysteryMixClub-yyuq`. Never record tokens, private notes, or invitation URLs in diagnostics. A simulator can help with layout; it does not satisfy the PRD's physical-device acceptance gate.

@@ -800,8 +800,18 @@ describe("LoginRoute", () => {
     // Both awaited (not a mix of findByRole/getByRole): the side-by-side
     // layout only settles once the async getGoogleEnabled() check resolves,
     // so Apple can render a render tick before Google does.
-    expect(await screen.findByRole("button", { name: /sign in with apple/i })).toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: /sign in with google/i })).toBeInTheDocument();
+    const apple = await screen.findByRole("button", { name: /sign in with apple/i });
+    const google = await screen.findByRole("button", { name: /sign in with google/i });
+    expect(apple).toBeInTheDocument();
+    expect(google).toBeInTheDocument();
+    // Side by side, not stacked (MysteryMixClub-4vii.24): each button sits
+    // in its own flex-1 wrapper, and those wrappers are siblings inside one
+    // shared flex row (not each in a separate full-width block).
+    expect(apple.parentElement).not.toBe(google.parentElement);
+    expect(apple.parentElement?.parentElement).toBe(google.parentElement?.parentElement);
+    expect(apple.parentElement?.parentElement?.className).toContain("flex");
+    expect(apple.parentElement?.className).toContain("flex-1");
+    expect(google.parentElement?.className).toContain("flex-1");
   });
 
   it("native apple: a successful sign-in exchanges the identity token and authenticates", async () => {

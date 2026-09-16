@@ -1628,6 +1628,72 @@
         "file": "frontend/ios/App/App/GoogleAuthPlugin.swift"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:3ad742b6072ca8aff0e652c30ddf2fc6",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T14:31:56.771Z",
+      "reason": "Addressed: AppleSignInError messages in apple_signin.py no longer interpolate claim values (aud/iss) or wrapped third-party JOSEError text -- every message is now a fixed, static string describing the failure category only. Verified no test or other code depends on the removed interpolation.",
+      "context": {
+        "title": "python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure",
+        "file": "backend/app/api/routes/auth.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:8c3371317976d1bbf801cd8b75cef14d",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T14:31:56.918Z",
+      "reason": "Addressed: same fix as D-0001. logger.warning still logs str(exc) for diagnosability, but exc's message is now always a static category string (e.g. 'unexpected audience', 'identity token has expired') with no claim values or token fragments -- nothing sensitive reaches the log.",
+      "context": {
+        "title": "Logging exception may expose sensitive Apple token data",
+        "file": "backend/app/api/routes/auth.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:aac43ed50b7458450b15184488f608a5",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T14:31:57.057Z",
+      "reason": "Addressed: same fix. The logger.warning template itself is unchanged (it has to log something to be useful), but what it interpolates is now a fixed, non-secret category string rather than claim values or wrapped library exception text.",
+      "context": {
+        "title": "Potential credential leakage via logger message template",
+        "file": "backend/app/api/routes/auth.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:f1ba228138b4bfef6d487fe93c71bfaf",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T14:31:57.194Z",
+      "reason": "Addressed: added assertions to the 'renders alongside google' test confirming both buttons sit in separate flex-1 wrappers that are siblings inside one shared flex row, not just that both buttons exist.",
+      "context": {
+        "title": "LoginRoute test does not verify side‑by‑side layout",
+        "file": "frontend/src/pages/LoginRoute.test.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:a4f291d0b0ac74127d92b157aad380b5",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T14:31:57.329Z",
+      "reason": "Factually incorrect: flex-1 was never added to the button components (GoogleSignInButton.tsx/AppleSignInButton.tsx) -- only to the wrapper divs in EmailEntryScreen.tsx that use them, which is exactly where layout decisions belong. Only min-w-0 was added to the button components themselves, which is a no-op when the button isn't inside a constrained flex parent (removes a default min-content floor, doesn't impose stretching) -- it doesn't reduce reusability in an unconstrained context.",
+      "context": {
+        "title": "Button components now embed layout constraints (min‑w‑0, flex‑1)",
+        "file": "frontend/src/components/AppleSignInButton.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:7d990aea39da334ac3d4edc427ec16e6",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T14:31:57.467Z",
+      "reason": "False positive: MysteryMixClub-<id> bead references in inline comments are this codebase's established, deliberate convention throughout -- the exact same pattern appears in dozens of already-shipped, reviewed comments across this session's own work (e.g. every existing comment citing MysteryMixClub-4vii.21, MysteryMixClub-ali8.4, etc.). Not a new or inconsistent pattern.",
+      "context": {
+        "title": "Cryptic inline comments add noise",
+        "file": "frontend/src/components/GoogleSignInButton.tsx"
+      },
+      "expires_at": null
     }
   ]
 }

@@ -1,3 +1,4 @@
+import { Capacitor } from "@capacitor/core";
 import { useEffect, useState } from "react";
 import { Navigate, useSearchParams } from "react-router";
 import { EmailEntryScreen, type LoginMode } from "./EmailEntryScreen";
@@ -301,6 +302,7 @@ export function LoginRoute() {
       onNativeAppleSignIn={
         nativeAppleAuthAvailable() ? () => void handleNativeAppleSignIn() : undefined
       }
+      isNativeIOS={Capacitor.getPlatform() === "ios"}
     />
   );
 }

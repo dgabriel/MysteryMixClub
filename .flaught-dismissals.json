@@ -1727,6 +1727,61 @@
         "file": "frontend/ios/App/App/AppleAuthPlugin.swift"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:d87e8023b2ad83a2be1268783fd113b1",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T16:23:40.626Z",
+      "reason": "Addressed: removed the direct Capacitor import from EmailEntryScreen.tsx. It now takes a new isNativeIOS boolean prop, same pattern as every other native/web difference this presentational component already takes as a prop (onNativeGoogleSignIn, onNativeAppleSignIn) -- the actual Capacitor.getPlatform() call moved to LoginRoute.tsx, which is the container that already owns platform detection for this screen.",
+      "context": {
+        "title": "UI component directly queries Capacitor platform, breaking separation of concerns",
+        "file": "frontend/src/pages/EmailEntryScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:142037eee60588dc09ef2a706fbb39f5",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T16:23:40.780Z",
+      "reason": "Re-raise of a finding already dismissed in this PR's prior round: this codebase verifies every native Swift plugin (GoogleAuthPlugin, TipsPlugin, MusicPlugin, and now AppleAuthPlugin) via a real xcodebuild archive rather than XCTest, an established, consistent convention, not an oversight specific to this change. The new guard and requestedScopes assignment were both verified this way (ARCHIVE SUCCEEDED).",
+      "context": {
+        "title": "AppleAuthPlugin lacks unit tests for new signIn guard and requestedScopes",
+        "file": "frontend/ios/App/App/AppleAuthPlugin.swift"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:543b18778091e37b12fb65534e98abbf",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T16:23:40.917Z",
+      "reason": "Re-raise of a finding already dismissed in this PR's prior round: same Swift-XCTest-convention reasoning as F-0001 above.",
+      "context": {
+        "title": "Missing tests for AppleAuthPlugin non‑canceled error path",
+        "file": "frontend/ios/App/App/AppleAuthPlugin.swift"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:06946968fb847632b9eec6e133dd8e27",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T16:23:41.054Z",
+      "reason": "Deliberate, not accidental scope: the logo nudge was explicitly requested by the user in the same conversation as the .email scope fix, and both are small native-iOS changes that need the same xcodebuild-archive verification cycle -- bundling them avoided a second unrelated native rebuild for a one-line change. Not unrelated scope creep from nowhere.",
+      "context": {
+        "title": "Login logo margin tweak unrelated to Apple .email scope fix",
+        "file": "frontend/src/pages/EmailEntryScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:d30ff80497bbc454a6cce4dbf7065927",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T16:23:41.188Z",
+      "reason": "The 10px value is a specific, deliberate device-measured offset from live TestFlight testing (not a design-system spacing token), and is used in exactly one place with a comment explaining why -- introducing a named constant for a single one-off pixel nudge would be overengineering for what it is.",
+      "context": {
+        "title": "Magic‑number CSS class \"mt-[10px]\" hard‑coded in component",
+        "file": "frontend/src/pages/EmailEntryScreen.tsx"
+      },
+      "expires_at": null
     }
   ]
 }

@@ -224,6 +224,22 @@ its signature against Apple's public keys (`app.services.apple_signin`,
 cached in-process, refetched on a cache miss or once a day) and resolves the
 account.
 
+**Requires the `.email` scope on the authorization request**
+(`MysteryMixClub-4vii.24`, caught live during TestFlight testing): Apple only
+includes an `email` claim in the identity token at all when the specific
+request that produced it asked for the `.email` scope -- this is true on
+*every* sign-in, not just the first, and applies whether the email is read
+from `credential.email` or decoded from the identity token directly. Omitting
+`requestedScopes` doesn't just skip the client-side convenience property, it
+means the backend's `verify_apple_identity_token` always rejects the token
+with "identity token carried no email" (401, generic "that sign-in didn't
+work" shown to the user) -- indistinguishable from a real verification
+failure without server-side log detail, which is what led to the fix in the
+first place (`apple_native_sign_in`'s exception logging was previously
+swallowing the specific `AppleSignInError` reason). `.fullName` is
+deliberately still not requested -- MMC never uses the name Apple would
+supply.
+
 **This needs one manual Apple Developer Portal step before it works
 on-device or in TestFlight**: enable the "Sign In with Apple" capability for
 this app's App ID (`com.mysterymixclub.app`), then regenerate/re-download

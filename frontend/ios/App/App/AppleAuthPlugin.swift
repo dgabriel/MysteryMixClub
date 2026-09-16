@@ -15,11 +15,18 @@ import Capacitor
 /// Google plugin handing back an opaque one-time code rather than deciding
 /// anything about the resulting session itself.
 ///
-/// No `.fullName`/`.email` scopes are requested: MMC never uses the name Apple
-/// would supply (every sign-in method creates an account with an empty
-/// `display_name`, see backend's `_create_invited_user`), and trusting a
-/// client-supplied email would defeat the point of verifying the identity
-/// token's own `email` claim server-side.
+/// Requests only the `.email` scope, not `.fullName`: MMC never uses the name
+/// Apple would supply (every sign-in method creates an account with an empty
+/// `display_name`, see backend's `_create_invited_user`). `.email` IS required
+/// even though the backend verifies the identity token's own `email` claim
+/// rather than trusting `credential.email` -- Apple only *includes* an email
+/// claim in the identity token at all when the request that produced it asked
+/// for the `.email` scope; leaving it off doesn't just skip the client-side
+/// convenience property, it means the token carries no email whatsoever, on
+/// every request, not just the first (MysteryMixClub-4vii.24 -- caught live:
+/// every real sign-in failed server-side with "identity token carried no
+/// email" until this was added).
+private let _requestedScopes: [ASAuthorization.Scope] = [.email]
 @objc(MMCAppleAuthPlugin)
 public final class MMCAppleAuthPlugin: CAPPlugin, CAPBridgedPlugin, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
     public let identifier = "MMCAppleAuthPlugin"
@@ -36,6 +43,7 @@ public final class MMCAppleAuthPlugin: CAPPlugin, CAPBridgedPlugin, ASAuthorizat
     @objc func signIn(_ call: CAPPluginCall) {
         pendingCall = call
         let request = ASAuthorizationAppleIDProvider().createRequest()
+        request.requestedScopes = _requestedScopes
         let controller = ASAuthorizationController(authorizationRequests: [request])
         controller.delegate = self
         controller.presentationContextProvider = self

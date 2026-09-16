@@ -267,7 +267,13 @@ export function EmailEntryScreen({
             against a two-line mark. Centred under the mark rather than flush
             left, where a lone badge would look stranded. This screen renders no
             `TopNav`, so it is the only place the badge has to come from here. */}
-          <BrandLockup as="h1">
+          {/* mt-[10px]: on native iOS the vertically-centered block sits
+            close enough to the top that the spinning disc's top edge grazes
+            the camera/Dynamic Island cutout on some devices -- a small,
+            page-local nudge down rather than a change to the shared
+            BrandLockup (used elsewhere under TopNav, where this doesn't
+            apply). */}
+          <BrandLockup as="h1" className="mt-[10px]">
             <div className="mt-3 flex justify-center sm:justify-start">
               <Badge>beta</Badge>
             </div>

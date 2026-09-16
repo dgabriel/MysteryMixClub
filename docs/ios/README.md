@@ -107,6 +107,29 @@ validation; a reason must reflect actual use).
 
 MMC's web session is an in-memory access token plus an HttpOnly refresh cookie. The native session keeps the refresh cookie in `URLSession`'s shared store, but the proof does not yet exercise a refresh, so a session lasts only as long as the 60-minute access token. Expiry recovery, account switching, and logout-all across devices are IOS-01 work and are not proven here.
 
+## Tip jar via Apple IAP (`MysteryMixClub-4vii.15`, 2026-09-15)
+
+The web app's Venmo tip link is gated out of the native build
+(`nativeTipsAvailable()`) and replaced with three StoreKit consumables via a
+new `MMCTipsPlugin.swift` -- an external payment link on iOS is a real
+Guideline 3.1.1 risk. Tips unlock nothing (no club limits, votes,
+submissions, or status change).
+
+**This needs one manual App Store Connect step before it works on-device or
+in TestFlight**: create three consumable In-App Purchase products under this
+app's record, with exactly these product ids (the plugin hardcodes them):
+
+- `com.mysterymixclub.app.tip.small`
+- `com.mysterymixclub.app.tip.medium`
+- `com.mysterymixclub.app.tip.large`
+
+Set whatever price tier and display name/description feel right for each
+(the app renders StoreKit's own `displayName`/`displayPrice`, so whatever is
+entered there is what shows). Until these exist in App Store Connect,
+`getProducts()` returns an empty list and the tip jar section on `/about`
+renders nothing (fails quietly by design, not an error state) -- that's
+expected before this step, not a bug to chase.
+
 ## UGC moderation posture (`MysteryMixClub-4vii.13`, 2026-09-15)
 
 App Store Guideline 1.2 requires a UGC app to offer a way to report

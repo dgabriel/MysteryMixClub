@@ -52,6 +52,11 @@ type EmailEntryScreenProps = {
   /** Dev/staging only: a relative reset link in place of the emailed one. */
   resetDevLink?: string | null;
   googleUrl: string;
+  /** Present only on native, where Google sign-in runs through
+   *  ASWebAuthenticationSession instead of a page navigation
+   *  (MysteryMixClub-4vii.21) -- when set, the Google button calls this
+   *  instead of linking to `googleUrl`. */
+  onNativeGoogleSignIn?: () => void;
 };
 
 /** Dev/staging convenience: a clickable link so testers don't need a delivered
@@ -104,6 +109,7 @@ export function EmailEntryScreen({
   resetNotice,
   resetDevLink,
   googleUrl,
+  onNativeGoogleSignIn,
 }: EmailEntryScreenProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -420,7 +426,11 @@ export function EmailEntryScreen({
                 <span className="h-px flex-1 bg-ink-hairline" />
               </div>
               <div className="mt-6">
-                <GoogleSignInButton href={googleUrl} />
+                {onNativeGoogleSignIn ? (
+                  <GoogleSignInButton onClick={onNativeGoogleSignIn} />
+                ) : (
+                  <GoogleSignInButton href={googleUrl} />
+                )}
               </div>
             </>
           ) : null}

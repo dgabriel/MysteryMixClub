@@ -32,21 +32,27 @@
  * dark-theme label color, 14.5:1 against the `#131314` fill. That is a value
  * from this same Google spec rather than an invented one or an app token
  * imported into a component that is exempt from app tokens.
+ *
+ * Renders as a real `<a href>` on web (the endpoint 302s to Google's consent
+ * screen, which only a top-level navigation can follow) or as a `<button
+ * onClick>` on native (MysteryMixClub-4vii.21 drives the flow through
+ * ASWebAuthenticationSession instead of a page navigation) -- same brand
+ * chrome either way, since the interaction mechanism is the only thing that
+ * differs, not what it has to look like.
  */
-export function GoogleSignInButton({ href }: { href: string }) {
+const GOOGLE_BUTTON_CLASS = [
+  "relative flex h-11 items-center justify-center gap-[10px] rounded-[4px] px-3",
+  "border border-[#8E918F] bg-[#131314] text-[#E3E3E3] no-underline",
+  "font-[Roboto,arial,sans-serif] text-[14px] font-medium tracking-[0.25px]",
+  "before:pointer-events-none before:absolute before:inset-0 before:rounded-[4px]",
+  "before:bg-white before:opacity-0 before:transition-opacity before:duration-150",
+  "hover:before:opacity-[0.08] active:before:opacity-[0.12]",
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E3E3E3]",
+].join(" ");
+
+function GoogleMarkAndLabel() {
   return (
-    <a
-      href={href}
-      className={[
-        "relative flex h-11 items-center justify-center gap-[10px] rounded-[4px] px-3",
-        "border border-[#8E918F] bg-[#131314] text-[#E3E3E3] no-underline",
-        "font-[Roboto,arial,sans-serif] text-[14px] font-medium tracking-[0.25px]",
-        "before:pointer-events-none before:absolute before:inset-0 before:rounded-[4px]",
-        "before:bg-white before:opacity-0 before:transition-opacity before:duration-150",
-        "hover:before:opacity-[0.08] active:before:opacity-[0.12]",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E3E3E3]",
-      ].join(" ")}
-    >
+    <>
       <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
         <path
           fill="#EA4335"
@@ -66,6 +72,23 @@ export function GoogleSignInButton({ href }: { href: string }) {
         />
       </svg>
       Sign in with Google
-    </a>
+    </>
+  );
+}
+
+type GoogleSignInButtonProps = { href: string } | { onClick: () => void };
+
+export function GoogleSignInButton(props: GoogleSignInButtonProps) {
+  if ("href" in props) {
+    return (
+      <a href={props.href} className={GOOGLE_BUTTON_CLASS}>
+        <GoogleMarkAndLabel />
+      </a>
+    );
+  }
+  return (
+    <button type="button" onClick={props.onClick} className={GOOGLE_BUTTON_CLASS}>
+      <GoogleMarkAndLabel />
+    </button>
   );
 }

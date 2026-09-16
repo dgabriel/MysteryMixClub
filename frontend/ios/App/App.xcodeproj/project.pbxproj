@@ -21,6 +21,7 @@
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };
 		AF018E3B0AF04114BCB753B6 /* ProofViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30A8FA1AFD934EF6BDFB825B /* ProofViewController.swift */; };
+		B5CFE5EEE0CA92096990B4C6 /* GoogleAuthPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A526A1630150137CDA89D854 /* GoogleAuthPlugin.swift */; };
 		B85B6F2501A449D986C3B0CE /* MMCAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77DCF84FB93E496B843B9386 /* MMCAPIClient.swift */; };
 		C52149A3783C462081AFE1AF /* ProofError.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9D50CEAD59247B0835A4A75 /* ProofError.swift */; };
 		FA1B92E06D34AC556268ABF3 /* MMCAPIClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0B57B8C6174FADEFA5D7F39 /* MMCAPIClientTests.swift */; };
@@ -54,6 +55,7 @@
 		9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 		99E51AB52C6373C0620362D8 /* MockURLProtocol.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = MockURLProtocol.swift; sourceTree = "<group>"; };
+		A526A1630150137CDA89D854 /* GoogleAuthPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GoogleAuthPlugin.swift; sourceTree = "<group>"; };
 		A9D50CEAD59247B0835A4A75 /* ProofError.swift */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; path = ProofError.swift; sourceTree = "<group>"; };
 		F0B57B8C6174FADEFA5D7F39 /* MMCAPIClientTests.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = MMCAPIClientTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -114,6 +116,7 @@
 				A9D50CEAD59247B0835A4A75 /* ProofError.swift */,
 				30A8FA1AFD934EF6BDFB825B /* ProofViewController.swift */,
 				4DC7A4BA8F31533705B5F4DB /* TipsPlugin.swift */,
+				A526A1630150137CDA89D854 /* GoogleAuthPlugin.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -274,6 +277,7 @@
 				C52149A3783C462081AFE1AF /* ProofError.swift in Sources */,
 				AF018E3B0AF04114BCB753B6 /* ProofViewController.swift in Sources */,
 				4DD97F31DBF41152B7AC0E1A /* TipsPlugin.swift in Sources */,
+				B5CFE5EEE0CA92096990B4C6 /* GoogleAuthPlugin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

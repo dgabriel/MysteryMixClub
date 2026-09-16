@@ -1551,6 +1551,83 @@
         "file": "frontend/src/components/NativeTipJar.test.tsx"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:829bb7d059275aa01d1858d58cb3cf5a",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T03:31:55.895Z",
+      "reason": "False positive: this is a pre-existing negative test (test_state_signed_elsewhere_is_rejected, unrelated to this PR's diff) that deliberately signs a JWT with the WRONG secret ('not-the-secret') to verify the callback rejects a forged state. It is a test fixture demonstrating rejection, not a real credential.",
+      "context": {
+        "title": "python.jwt.security.jwt-hardcode.jwt-python-hardcoded-secret",
+        "file": "backend/tests/test_auth_google.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:58610d6e121f38fd607347cd8b74c24c",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T03:31:56.055Z",
+      "reason": "Same underlying line as D-0001 (LLM's quoted snippet doesn't match the actual file content -- hallucinated). test_state_signed_elsewhere_is_rejected intentionally signs with a wrong secret to prove signature verification rejects it; not a real secret, and not part of this PR's diff at all.",
+      "context": {
+        "title": "Hardcoded JWT secret in test suite",
+        "file": "backend/tests/test_auth_google.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:c3f0a34f6bb3f59d2c7f0ae8aa2e9931",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T03:31:56.194Z",
+      "reason": "SignInState.native is a keyword-only parameter with a default (native: bool = False) on create_sign_in_state, and decode_sign_in_state always constructs the tuple explicitly by name. Every consumer in the codebase accesses fields by attribute (.native, .nonce, .code_verifier), never positional unpacking, so there is no breaking-change risk.",
+      "context": {
+        "title": "SignInState tuple signature changed, risk of breaking callers",
+        "file": "backend/app/auth/jwt.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:2b73d74df5578d74498ab0de452371bd",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T03:31:56.331Z",
+      "reason": "The exchange code is generated via secrets.token_urlsafe(32) (app/auth/tokens.py), the same cryptographically-random, 256-bit token already used for magic-link and password-reset tokens elsewhere in this codebase with no additional rate limiting -- brute-forcing it within the 2-minute TTL is infeasible. Consistent with existing precedent, not a new gap.",
+      "context": {
+        "title": "OAuthExchangeCode exchange endpoint lacks rate limiting",
+        "file": "backend/app/api/routes/auth.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:2650a399209465d9394cb975daa34ba6",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T03:31:56.466Z",
+      "reason": "This test already exists: test_native_failure_also_redirects_to_the_custom_scheme (backend/tests/test_auth_google.py, added in this PR) asserts an invite_required failure redirects to the mysterymixclub:// scheme with outcome=invite_required and no code param. The finding's claim that this path is untested is incorrect.",
+      "context": {
+        "title": "Missing test for native error redirect path",
+        "file": "backend/tests/test_auth_google.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:73afb069132495ea9970e428dc967c9d",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T03:31:56.605Z",
+      "reason": "The UI changes (GoogleSignInButton onClick variant, EmailEntryScreen wiring, LoginRoute native handler, iOS plugin registration) are the client half of the same native sign-in fix, not incidental scope creep -- the backend exchange-code endpoint has no caller without them. Docs updates document this same change per repo convention (every other fix this cycle added a corresponding docs/ios/README.md section).",
+      "context": {
+        "title": "Extensive UI changes beyond core auth fix",
+        "file": "frontend/src/components/GoogleSignInButton.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:5b17663c3f91bd9fb4bfbf55e09d8502",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T03:32:35.345Z",
+      "reason": "Addressed: added cross-reference comments in both GoogleAuthPlugin.swift (callbackScheme) and auth.py (_NATIVE_CALLBACK_SCHEME) pointing at each other, so a future edit to one is flagged for the other. Also corrected a stale comment claiming Info.plist CFBundleURLTypes registration was needed (verified false during this fix's development -- ASWebAuthenticationSession intercepts the scheme itself).",
+      "context": {
+        "title": "Duplicate native callback scheme string in Swift and Python",
+        "file": "frontend/ios/App/App/GoogleAuthPlugin.swift"
+      },
+      "expires_at": null
     }
   ]
 }

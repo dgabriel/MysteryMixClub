@@ -1276,6 +1276,160 @@
         "file": "frontend/src/pages/ClubHomeRoute.tsx"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:47802c294038a535f42ed6ae4f9de4e0",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T23:36:26.042Z",
+      "reason": "Verified: frontend/public/ (the only source of dotfiles in dist/, alongside Vite's own compiled output) currently contains only fonts/, llms.txt, manifest.json, robots.txt, service-worker.js, and .well-known/ -- no .env, no .git, nothing sensitive. More importantly, frontend/public/ is Vite's publicDir by design: everything placed there is meant to be served verbatim at the site root, dotfile or not (that's the entire point of this PR -- we WANT .well-known/apple-app-site-association served). A stray secret dropped into public/ would already be equally exposed via a non-dotted filename; the previous dist/* bug only ever provided accidental, unintended protection that nothing relied on -- it's what was silently breaking Universal Links.",
+      "context": {
+        "title": "Potential exposure of sensitive dotfiles via blanket copy",
+        "file": "scripts/deploy-prod.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:9f57363731531474861357465c47b52a",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T23:36:26.174Z",
+      "reason": "Same reasoning as F-0001 -- staging's public/ directory is the identical source tree as prod's, both fully public by design, nothing sensitive present today.",
+      "context": {
+        "title": "Same dotfile exposure risk introduced to staging deployment",
+        "file": "scripts/deploy-staging.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:8e0d704fc423e84e79d7d395a551ff06",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T23:36:26.313Z",
+      "reason": "A whitelist would change the script's fundamental design, not fix a defect in this one-line change -- 'copy the whole build output' is the pre-existing, intended behavior (that's why the script already does find -delete + cp -r dist/* on the ENTIRE tree, not a curated subset). This fix makes that already-intended behavior actually correct rather than accidentally partial.",
+      "context": {
+        "title": "Tight coupling to build artifact layout without validation",
+        "file": "scripts/deploy-prod.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:3233473d6492438e685b01cfce314d43",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T23:36:26.465Z",
+      "reason": "Reasonable future idea, but out of scope for a one-line bash bug fix -- these deploy scripts have no existing test suite of any kind (they're ops scripts, not application code), and a live-deploy smoke test is a different, larger piece of infrastructure than this PR touches.",
+      "context": {
+        "title": "No automated verification for dotfile inclusion",
+        "file": "scripts/deploy-prod.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:3153af2b39b18589c5484a0b1ae678ae",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T23:41:13.777Z",
+      "reason": "Same reasoning as the prior round: frontend/public/ (the only source of dotfiles alongside Vite's own compiled output) currently contains nothing sensitive, and it's Vite's publicDir by design -- everything placed there is meant to be publicly served, dotfile or not. That is the entire point of this fix (we WANT .well-known served). A stray secret in public/ would be equally exposed via a non-dotted filename; this isn't a new class of risk the dist/. change introduces.",
+      "context": {
+        "title": "Unrestricted deployment of any dotfile may expose future secrets",
+        "file": "scripts/deploy-prod.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:36a94a9621c73a2e09f8e4cc0186b2b0",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T23:41:13.913Z",
+      "reason": "Committing .flaught-dismissals.json is the tool's own required workflow, not scope creep -- its own CLI output says verbatim 'Commit .flaught-dismissals.json so CI picks up this dismissal' after every dismiss. Every PR in this repo that has needed a dismissal has committed the updated file in the same PR all session.",
+      "context": {
+        "title": "Bulk addition of Flaught dismissals unrelated to the deploy fix",
+        "file": ".flaught-dismissals.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:3e830c1f86af49ead18d58a81bba5b19",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T23:41:14.056Z",
+      "reason": "Both scripts are shebanged #!/usr/bin/env bash explicitly (verified), not /bin/sh -- there is no dash/POSIX-sh portability concern here, they already commit to bash throughout (set -euo pipefail, [[ ]], etc. elsewhere in both files).",
+      "context": {
+        "title": "Bash‑specific glob semantics make the script non‑portable",
+        "file": "scripts/deploy-prod.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:8832c008536ab4a552dc36f67f2fb512",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T23:41:14.193Z",
+      "reason": "Real but pre-existing duplication -- deploy-staging.sh and deploy-prod.sh were already near-identical scripts with the same structure before this PR (same find -delete pattern, same comment style, etc. throughout both files). This fix corrects the same bug in both already-duplicated locations rather than introducing new duplication; extracting a shared helper is a legitimate but separate refactor, out of scope for a targeted one-line bug fix in two places.",
+      "context": {
+        "title": "Duplicated copy logic across prod and staging scripts",
+        "file": "scripts/deploy-staging.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:6ac763f2dce5d7944ef6482f20e594d6",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T23:41:14.329Z",
+      "reason": "Factually incorrect -- verified directly: 'cp -r src/. dest/' does NOT create a literal '.' entry in the destination. find dest -maxdepth 1 after the copy shows exactly dest, dest/index.html, dest/.well-known -- no spurious '.' directory. This is standard, well-known cp/rsync/tar idiom for including dotfiles, not a bug.",
+      "context": {
+        "title": "`cp -r dist/.` may create an extra `.` directory entry in the target",
+        "file": "scripts/deploy-prod.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:49f03647b497b9b7aced291661d2e018",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T23:58:33.126Z",
+      "reason": "Pre-existing characteristic of the script, not introduced by this fix -- the find -delete then cp -r dist/* pattern (non-atomic by construction) already existed in both scripts before this PR; the only change here is dist/* -> dist/. to stop dropping dotfiles. Atomicity/rollback is a legitimate but separate improvement to the deploy strategy as a whole, out of scope for a targeted one-line bug fix.",
+      "context": {
+        "title": "Non‑atomic deploy can leave web root empty on copy failure",
+        "file": "scripts/deploy-prod.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:cc5c160fbcb0e74f7752b51553e2f1de",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T23:58:33.265Z",
+      "reason": "Same pre-existing duplication raised in two prior rounds of this same review -- deploy-staging.sh and deploy-prod.sh were already near-identical scripts before this PR. This fix corrects the same bug in both already-duplicated locations; extracting a shared helper is a legitimate but separate refactor.",
+      "context": {
+        "title": "Duplicated deployment logic across prod and staging scripts",
+        "file": "scripts/deploy-staging.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:63773b06fc222c8aa9dfebd4b222ec35",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T00:14:41.387Z",
+      "reason": "Repeat of a finding already dismissed twice in this same review chain (rounds 1 and 2) -- frontend/public/ (the only source of dotfiles in dist/ besides Vite's own compiled output) is verified clean of anything sensitive today, and is Vite's publicDir by design: everything there is meant to be publicly served. This is not a new risk class introduced by dist/* -> dist/., it's the deploy script finally doing what it was always meant to do.",
+      "context": {
+        "title": "Accidental deployment of hidden VCS metadata (e.g., .git) if present in dist",
+        "file": "scripts/deploy-prod.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:7c78dded9bd30aced2e2ed6dbb18e8a6",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T00:14:41.521Z",
+      "reason": "'dist' is Vite's own actual, already-hardcoded output directory name -- both scripts already reference it by name multiple times elsewhere (npm run build, cd into frontend, etc.), predating this PR entirely. This one-line fix doesn't introduce a new coupling to the path; it fixes a glob bug within an already-dist-specific script.",
+      "context": {
+        "title": "Hard‑coded build artifact path couples deployment scripts to Vite output layout",
+        "file": "scripts/deploy-staging.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:ee16e501cdd062f30d2592c163a262d5",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T00:14:41.662Z",
+      "reason": "Stylistic opinion, not a defect -- this project's own CLAUDE.md calls for comments capturing non-obvious WHY context (a hidden constraint, a subtle bug), which is exactly what this comment does for a bug that was genuinely non-obvious (a silent bash glob gap that broke Universal Links for days without any error anywhere).",
+      "context": {
+        "title": "Verbose inline comment duplicates dismissal rationale, adding noise",
+        "file": "scripts/deploy-prod.sh"
+      },
+      "expires_at": null
     }
   ]
 }

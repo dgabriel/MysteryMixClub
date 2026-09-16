@@ -80,10 +80,13 @@ export function PrivacyRoute() {
                 subprocessors
               </h2>
               <p className="mt-3">
-                two services process personal data on our behalf, each under its own data processing
-                agreement: resend (your email address, to deliver sign-in links and notifications)
-                and digitalocean (hosting our servers and database, so everything you store in the
-                app).
+                three services process personal data on our behalf: resend (your email address, to
+                deliver sign-in links and notifications), digitalocean (hosting our servers and
+                database, so everything you store in the app), and google (if you choose to sign in
+                with google, we receive your google account id, name, and email address to create or
+                sign in to your account). resend and digitalocean operate under their own data
+                processing agreements; google's terms govern what it does with your data on its own
+                side.
               </p>
               <p className="mt-3">
                 spotify, youtube, apple music, and deezer help us look up and play the songs you

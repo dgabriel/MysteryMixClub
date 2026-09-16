@@ -15,6 +15,7 @@ import {
   requestMagicLink,
   signInWithApple,
 } from "../services/api";
+import { Capacitor } from "@capacitor/core";
 import { useAuth } from "../hooks/useAuth";
 import { appleAuth, nativeAppleAuthAvailable } from "../ios/appleAuth";
 import { googleAuth, nativeGoogleAuthAvailable } from "../ios/googleAuth";
@@ -49,6 +50,10 @@ vi.mock("../ios/appleAuth", () => ({
   appleAuth: { signIn: vi.fn() },
   nativeAppleAuthAvailable: vi.fn(),
 }));
+// EmailEntryScreen checks Capacitor.getPlatform() directly (not through the
+// ios/*Auth wrappers above, which are mocked wholesale) to gate the login
+// logo's native-only top margin (MysteryMixClub-4vii.24).
+vi.mock("@capacitor/core", () => ({ Capacitor: { getPlatform: vi.fn() } }));
 
 const mockRequestMagicLink = vi.mocked(requestMagicLink);
 const mockGetWaitlistEnabled = vi.mocked(getWaitlistEnabled);
@@ -62,6 +67,7 @@ const mockSignInWithApple = vi.mocked(signInWithApple);
 const mockUseAuth = vi.mocked(useAuth);
 const mockNativeGoogleAuthAvailable = vi.mocked(nativeGoogleAuthAvailable);
 const mockNativeAppleAuthAvailable = vi.mocked(nativeAppleAuthAvailable);
+const mockGetPlatform = vi.mocked(Capacitor.getPlatform);
 const mockAppleAuthSignIn = vi.mocked(appleAuth.signIn);
 const mockGoogleAuthSignIn = vi.mocked(googleAuth.signIn);
 const setAccessToken = vi.fn();
@@ -113,6 +119,9 @@ describe("LoginRoute", () => {
     // Apple is native-only in every case, so this stays false unless a test
     // opts in.
     mockNativeAppleAuthAvailable.mockReturnValue(false);
+    // Default: web, so the login logo's native-only top margin test below is
+    // the only place this needs to be "ios".
+    mockGetPlatform.mockReturnValue("web");
   });
 
   it("redirects an already-authenticated user to /home", () => {
@@ -892,6 +901,24 @@ describe("LoginRoute", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/that sign-in didn't work/i);
     expect(setAccessToken).not.toHaveBeenCalled();
+  });
+
+  // --- login logo native-only top margin (MysteryMixClub-4vii.24) ----------- //
+
+  it("nudges the login logo down on native iOS to clear the camera cutout", () => {
+    mockGetPlatform.mockReturnValue("ios");
+    renderLogin();
+
+    const heading = screen.getByRole("heading", { level: 1 });
+    expect(heading.parentElement?.parentElement?.className).toContain("mt-[10px]");
+  });
+
+  it("does not add the native camera-cutout margin on web", () => {
+    mockGetPlatform.mockReturnValue("web");
+    renderLogin();
+
+    const heading = screen.getByRole("heading", { level: 1 });
+    expect(heading.parentElement?.parentElement?.className).not.toContain("mt-[10px]");
   });
 
   // --- form semantics and validation ---------------------------------------- //

@@ -66,6 +66,12 @@ type EmailEntryScreenProps = {
    *  alongside Google at equal prominence (MysteryMixClub-4vii.9, Guideline
    *  4.8) -- absent entirely on web, where Apple's flow isn't built. */
   onNativeAppleSignIn?: () => void;
+  /** True only on native iOS (MysteryMixClub-4vii.24) -- this screen stays
+   *  presentational and takes platform state as a prop like every other
+   *  native/web difference here, rather than querying Capacitor itself.
+   *  Drives the login logo's camera-cutout-clearing top margin, which
+   *  web (no cutout) shouldn't get. */
+  isNativeIOS?: boolean;
 };
 
 /** Dev/staging convenience: a clickable link so testers don't need a delivered
@@ -121,6 +127,7 @@ export function EmailEntryScreen({
   googleUrl,
   onNativeGoogleSignIn,
   onNativeAppleSignIn,
+  isNativeIOS,
 }: EmailEntryScreenProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -267,7 +274,17 @@ export function EmailEntryScreen({
             against a two-line mark. Centred under the mark rather than flush
             left, where a lone badge would look stranded. This screen renders no
             `TopNav`, so it is the only place the badge has to come from here. */}
-          <BrandLockup as="h1">
+          {/* mt-[10px] on native iOS only (MysteryMixClub-4vii.24): the
+            vertically-centered block sits close enough to the top that the
+            spinning disc's top edge grazes the camera/Dynamic Island cutout
+            on some devices. Web has no such cutout and gets no margin --
+            gated on the isNativeIOS prop (LoginRoute owns the actual
+            Capacitor.getPlatform() check, same as every other native/web
+            difference this screen takes as a prop) rather than applied
+            unconditionally, and scoped to this page's own className rather
+            than a change to the shared BrandLockup (used elsewhere under
+            TopNav, where this doesn't apply either way). */}
+          <BrandLockup as="h1" className={isNativeIOS ? "mt-[10px]" : ""}>
             <div className="mt-3 flex justify-center sm:justify-start">
               <Badge>beta</Badge>
             </div>

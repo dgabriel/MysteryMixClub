@@ -60,6 +60,34 @@ by native `URLSession` -- that means CORS applies, and the target backend's
 `ALLOWED_ORIGINS` must include `capacitor://localhost` (already true for
 staging and prod; see `scripts/staging.env.example` / `scripts/prod.env.example`).
 
+## Privacy manifest audit (`MysteryMixClub-4vii.17`, 2026-09-15)
+
+Apple requires a `PrivacyInfo.xcprivacy` manifest for any linked framework
+that uses a "Required Reason" API (file timestamps, disk space, system boot
+time, or `UserDefaults`), and lists Capacitor among SDKs subject to this.
+Audited and verified, not just inferred:
+
+- Capacitor's own `Capacitor.xcframework` and `Cordova.xcframework` (pulled
+  in via `capacitor-swift-pm`) already ship their own clean manifests
+  (`NSPrivacyAccessedAPITypes` empty, `NSPrivacyTracking` false).
+- `@capacitor/app`'s native Swift (`AppPlugin.swift`) uses only
+  `NotificationCenter`, `UIApplication` state, and `Bundle.main` -- none of
+  which are Required Reason APIs -- so it needs no manifest of its own.
+- This app's own Swift (`MusicPlugin.swift`, `MMCAPIClient.swift`,
+  `ProofViewController.swift`, `AppDelegate.swift`, `SceneDelegate.swift`)
+  was grepped for the same API patterns: no matches.
+- Confirmed end to end with a real `xcodebuild archive`: the build log shows
+  Xcode's own privacy-manifest scan (`-scanforprivacyfile` against both
+  frameworks) running as part of `builtin-infoPlistUtility`, and
+  `-validate-for-store` passing. **ARCHIVE SUCCEEDED**, no privacy-manifest
+  warnings or failures anywhere in the log.
+
+**No `PrivacyInfo.xcprivacy` is needed for this app today.** Re-audit if a
+new native plugin or dependency is added later -- particularly anything
+touching `UserDefaults`, file metadata, or disk space, which would need its
+own declared manifest at that point (never invent a reason merely to satisfy
+validation; a reason must reflect actual use).
+
 ## What the proof does
 
 1. **Sign in** to MMC with email and password. The access token stays in Swift; JavaScript never receives it.

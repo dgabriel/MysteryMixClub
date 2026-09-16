@@ -25,7 +25,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSAppleMusicUsageDescription</key>
-	<string>Mystery Mix Club uses Apple Music to build this mix's playlist in your library. Your Apple Music credentials stay on your iPhone.</string>
+	<string>Mystery Mix Club uses Apple Music access to create Mystery Mix playlists in your Apple Music library.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

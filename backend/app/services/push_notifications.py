@@ -49,7 +49,7 @@ from app.models.device_push_token import DevicePushToken
 from app.models.mix import Mix
 from app.models.user import User
 from app.services.apple_push_token import ApplePushTokenError, ApplePushTokenService
-from app.services.notifications import MixEvent
+from app.services.notifications import DeadlinePhase, MixEvent
 
 logger = logging.getLogger("app.services.push_notifications")
 
@@ -148,6 +148,20 @@ def _title_and_body(event: MixEvent, club: Club, mix_: Mix) -> tuple[str, str]:
         return (club.name, f"{label} needs a theme before it can open.")
     # club_complete
     return (club.name, f"{club.name} has wrapped after its final mystery mix.")
+
+
+def _reminder_title_and_body(
+    phase: DeadlinePhase, club: Club, mix_: Mix, *, far: bool
+) -> tuple[str, str]:
+    """Restrained lock-screen copy for a deadline reminder -- same rules as
+    `_title_and_body`. `far` distinguishes the ~24h-out push-only reminder
+    (MysteryMixClub-4vii.26) from the closer-in 1-12h one email also sends;
+    same wording shape as `notifications.send_deadline_warning`'s own
+    subject line, just without the HTML body."""
+    label = _mix_label(mix_)
+    action = "submit to" if phase == "submission" else "vote in"
+    when = "About a day left" if far else "About 12 hours left"
+    return (club.name, f"{when} to {action} {label}.")
 
 
 async def send_push(
@@ -271,6 +285,26 @@ async def _queue_one_push(
         await _dispatch_one(client, token_service, bundle_id, recipient, title, body, data)
 
 
+async def _send_to_all(
+    token_service: ApplePushTokenService,
+    settings: Settings,
+    recipients: list[PushRecipient],
+    title: str,
+    body: str,
+    data: dict[str, str],
+) -> None:
+    """Shared synchronous-path dispatch loop: one short-lived HTTP client,
+    one send per recipient. No-ops when unconfigured or empty -- the actual
+    graceful-degradation check callers rely on."""
+    if not recipients or not token_service.is_configured:
+        return
+    async with httpx.AsyncClient(http2=True, timeout=_REQUEST_TIMEOUT) as client:
+        for r in recipients:
+            await _dispatch_one(
+                client, token_service, settings.apple_sign_in_bundle_id, r, title, body, data
+            )
+
+
 async def send_push_event(
     token_service: ApplePushTokenService,
     settings: Settings,
@@ -281,12 +315,27 @@ async def send_push_event(
 ) -> None:
     """Synchronous twin of `queue_push_event`, for the deadline job (no
     BackgroundTasks available there). No-ops when unconfigured or empty."""
-    if not recipients or not token_service.is_configured:
-        return
     title, body = _title_and_body(event, club, mix_)
     data = {"club_id": str(club.id), "mix_id": str(mix_.id), "event": event}
-    async with httpx.AsyncClient(http2=True, timeout=_REQUEST_TIMEOUT) as client:
-        for r in recipients:
-            await _dispatch_one(
-                client, token_service, settings.apple_sign_in_bundle_id, r, title, body, data
-            )
+    await _send_to_all(token_service, settings, recipients, title, body, data)
+
+
+async def send_push_reminder(
+    token_service: ApplePushTokenService,
+    settings: Settings,
+    recipients: list[PushRecipient],
+    club: Club,
+    mix_: Mix,
+    phase: DeadlinePhase,
+    *,
+    far: bool,
+) -> None:
+    """Deadline-reminder push (MysteryMixClub-4vii.26) -- the push
+    counterpart of `notifications.send_deadline_warning`, but keyed on
+    `DeadlinePhase` rather than `MixEvent` since a reminder isn't one of the
+    six lifecycle events. `far` selects the ~24h-out copy vs. the 1-12h-out
+    one; the deadline job calls this twice, independently, for the two
+    cadences (MysteryMixClub-4vii.26's own "both" cadence decision)."""
+    title, body = _reminder_title_and_body(phase, club, mix_, far=far)
+    data = {"club_id": str(club.id), "mix_id": str(mix_.id), "event": f"{phase}_deadline"}
+    await _send_to_all(token_service, settings, recipients, title, body, data)

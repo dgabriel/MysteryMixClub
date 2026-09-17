@@ -75,3 +75,15 @@ class Mix(Base):
     empty_round_notice_sent_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Same bookkeeping shape as submission_warning_sent_at/voting_warning_sent_at,
+    # for push's own additional far-out reminder (MysteryMixClub-4vii.26, IOS-04):
+    # push sends a reminder at both ~24h before a deadline AND the same 1-12h
+    # window email already uses -- these two columns cover only the *extra*
+    # 24h one, since the 1-12h push reminder reuses the email columns' own
+    # "already warned" check (one warning event, two channels).
+    push_submission_reminder_sent_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    push_voting_reminder_sent_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

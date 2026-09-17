@@ -44,6 +44,7 @@ from app.models.club import Club
 from app.models.mix import Mix
 from app.models.submission import Submission
 from app.models.vote import Vote
+from app.services.apple_push_token import ApplePushTokenService, build_apple_push_token_service
 from app.services.deadline_scheduling import compute_phase_deadline
 from app.services.email import EmailSender, build_email_sender
 from app.services.notifications import (
@@ -56,6 +57,14 @@ from app.services.notifications import (
     send_mix_event,
 )
 from app.services.playlist_jobs import enqueue_playlist_job
+from app.services.push_notifications import (
+    PushRecipient,
+    gather_push_deadline_recipients,
+    gather_push_recipients,
+    organizer_push_recipients,
+    send_push_event,
+    send_push_reminder,
+)
 
 logger = logging.getLogger("app.jobs.advance_mixes")
 
@@ -68,6 +77,17 @@ _WARNING_MIN_WINDOW_HOURS = 12
 _WARNING_LEAD_MIN = timedelta(hours=1)
 _WARNING_LEAD_MAX = timedelta(hours=12)
 
+# Push's own additional far-out reminder (MysteryMixClub-4vii.26, IOS-04):
+# fires once more at ~24h before a deadline, on top of (not instead of) the
+# same 1-12h window email already uses -- Dawn confirmed both cadences.
+# Requires a longer window than the 1-12h warning does (there's no "24 hours
+# left" worth announcing for a phase shorter than a day), and uses its own
+# sent-at columns since it's a genuinely separate notice, not a duplicate of
+# the 1-12h one.
+_PUSH_FAR_REMINDER_MIN_WINDOW_HOURS = 24
+_PUSH_FAR_REMINDER_LEAD_MIN = timedelta(hours=23)
+_PUSH_FAR_REMINDER_LEAD_MAX = timedelta(hours=24)
+
 
 @dataclass
 class AdvanceReport:
@@ -75,6 +95,7 @@ class AdvanceReport:
 
     stamped: int = 0
     warned: int = 0
+    pushed_far: int = 0
     empty_notices: int = 0
     advanced_to_voting: int = 0
     closed: int = 0
@@ -82,15 +103,16 @@ class AdvanceReport:
     errors: int = 0
 
 
-async def _warning_recipients(
+async def _outstanding_user_ids(
     db: AsyncSession, club: Club, mix_: Mix, phase: DeadlinePhase
-) -> list[Recipient]:
-    """The subset of email-enabled members who still need to act this phase.
+) -> set[uuid.UUID]:
+    """Who still needs to act this phase, by user id -- shared by the email
+    and push warning-recipient queries (MysteryMixClub-4vii.26) so the two
+    channels can never disagree about who's outstanding.
 
     Submission: members whose distinct-song count in the mix is below the
     club's ``songs_per_submission`` cap (zero included). Voting: playing
     submitters (a member with a ``playing`` submission) who have not voted."""
-    recipients = await gather_recipients(db, club.id)
     if phase == "submission":
         rows = await db.execute(
             select(Submission.user_id, func.count())
@@ -99,7 +121,8 @@ async def _warning_recipients(
         )
         counts = {user_id: count for user_id, count in rows.all()}
         cap = club.songs_per_submission
-        return [r for r in recipients if counts.get(r.user_id, 0) < cap]
+        members = await gather_recipients(db, club.id)
+        return {r.user_id for r in members if counts.get(r.user_id, 0) < cap}
     playing_ids = set(
         await db.scalars(
             select(Submission.user_id)
@@ -110,7 +133,27 @@ async def _warning_recipients(
     voter_ids = set(
         await db.scalars(select(Vote.voter_id).where(Vote.mix_id == mix_.id).distinct())
     )
-    outstanding = playing_ids - voter_ids
+    return playing_ids - voter_ids
+
+
+async def _warning_recipients(
+    db: AsyncSession, club: Club, mix_: Mix, phase: DeadlinePhase
+) -> list[Recipient]:
+    """The subset of email-enabled members who still need to act this phase."""
+    recipients = await gather_recipients(db, club.id)
+    outstanding = await _outstanding_user_ids(db, club, mix_, phase)
+    return [r for r in recipients if r.user_id in outstanding]
+
+
+async def _warning_push_recipients(
+    db: AsyncSession, club: Club, mix_: Mix, phase: DeadlinePhase
+) -> list[PushRecipient]:
+    """Push counterpart of :func:`_warning_recipients` -- same outstanding-
+    action set, gated on ``push_deadline_reminders_enabled`` instead of
+    ``email_notifications`` (:func:`gather_push_deadline_recipients`), one
+    row per device. Shared by both the 1-12h and the ~24h push reminder."""
+    recipients = await gather_push_deadline_recipients(db, club.id)
+    outstanding = await _outstanding_user_ids(db, club, mix_, phase)
     return [r for r in recipients if r.user_id in outstanding]
 
 
@@ -120,6 +163,7 @@ async def _process_mix(
     now: datetime,
     settings: Settings,
     sender: EmailSender,
+    push_token_service: ApplePushTokenService,
     report: AdvanceReport,
 ) -> None:
     """Process a single mix under a row lock, in the caller's transaction.
@@ -159,26 +203,56 @@ async def _process_mix(
         report.stamped += 1
         return
 
-    # Branch 2: deadline still ahead — maybe send the 12h warning.
+    # Branch 2: deadline still ahead — maybe send the 12h warning, and/or
+    # push's own additional ~24h-out reminder (independent checks: different
+    # windows, different sent-at columns, both can fire across a mix's life,
+    # never on the same run since the windows don't overlap).
     if deadline > now:
+        phase: DeadlinePhase = "submission" if is_submission else "voting"
+        remaining = deadline - now
+
         warning_sent = (
             mix_.submission_warning_sent_at if is_submission else mix_.voting_warning_sent_at
         )
-        remaining = deadline - now
         if (
             window_hours > _WARNING_MIN_WINDOW_HOURS
             and warning_sent is None
             and _WARNING_LEAD_MIN <= remaining <= _WARNING_LEAD_MAX
         ):
-            phase: DeadlinePhase = "submission" if is_submission else "voting"
             recipients = await _warning_recipients(db, club, mix_, phase)
+            push_recipients = await _warning_push_recipients(db, club, mix_, phase)
             if is_submission:
                 mix_.submission_warning_sent_at = now
             else:
                 mix_.voting_warning_sent_at = now
             await db.commit()
             send_deadline_warning(sender, settings, recipients, club, mix_, phase)
+            await send_push_reminder(
+                push_token_service, settings, push_recipients, club, mix_, phase, far=False
+            )
             report.warned += 1
+            return
+
+        far_reminder_sent = (
+            mix_.push_submission_reminder_sent_at
+            if is_submission
+            else mix_.push_voting_reminder_sent_at
+        )
+        if (
+            window_hours > _PUSH_FAR_REMINDER_MIN_WINDOW_HOURS
+            and far_reminder_sent is None
+            and _PUSH_FAR_REMINDER_LEAD_MIN <= remaining <= _PUSH_FAR_REMINDER_LEAD_MAX
+        ):
+            push_recipients = await _warning_push_recipients(db, club, mix_, phase)
+            if is_submission:
+                mix_.push_submission_reminder_sent_at = now
+            else:
+                mix_.push_voting_reminder_sent_at = now
+            await db.commit()
+            await send_push_reminder(
+                push_token_service, settings, push_recipients, club, mix_, phase, far=True
+            )
+            report.pushed_far += 1
         return
 
     # Deadline has passed (deadline <= now).
@@ -201,6 +275,7 @@ async def _process_mix(
         # Branch 4: submissions are in — advance to voting.
         events = await advance_mix_state(mix_, club, "open_voting", db)
         recipients = await gather_recipients(db, club.id)
+        push_recipients = await gather_push_recipients(db, club.id)
         # Queue the shared-account Spotify playlist generation the moment
         # voting opens (MYS-176/MYS-258) — no admin click needed.
         # enqueue_playlist_job only inserts a row + NOTIFYs; it must land in
@@ -215,24 +290,31 @@ async def _process_mix(
         await db.commit()
         for event_mix, event in events:
             send_mix_event(sender, settings, recipients, club, event_mix, event)
+            await send_push_event(
+                push_token_service, settings, push_recipients, club, event_mix, event
+            )
         report.advanced_to_voting += 1
         return
 
     # Branch 5: voting deadline passed — close the mix (zero votes still closes).
     events = await advance_mix_state(mix_, club, "closed", db)
     recipients = await gather_recipients(db, club.id)
+    push_recipients = await gather_push_recipients(db, club.id)
     # needs_theme (MYS-211) is organizer-only, never the whole club.
-    theme_notice_recipients = (
-        await organizer_recipient(db, club)
-        if any(event == "needs_theme" for _, event in events)
-        else []
+    needs_theme_present = any(event == "needs_theme" for _, event in events)
+    theme_notice_recipients = await organizer_recipient(db, club) if needs_theme_present else []
+    theme_notice_push_recipients = (
+        await organizer_push_recipients(db, club) if needs_theme_present else []
     )
     await db.commit()
     for event_mix, event in events:
-        if event == "needs_theme":
-            send_mix_event(sender, settings, theme_notice_recipients, club, event_mix, event)
-        else:
-            send_mix_event(sender, settings, recipients, club, event_mix, event)
+        is_needs_theme = event == "needs_theme"
+        event_recipients = theme_notice_recipients if is_needs_theme else recipients
+        event_push_recipients = theme_notice_push_recipients if is_needs_theme else push_recipients
+        send_mix_event(sender, settings, event_recipients, club, event_mix, event)
+        await send_push_event(
+            push_token_service, settings, event_push_recipients, club, event_mix, event
+        )
     report.closed += 1
 
 
@@ -241,6 +323,7 @@ async def advance_due_mixes(
     now: datetime | None = None,
     settings: Settings | None = None,
     sender: EmailSender | None = None,
+    push_token_service: ApplePushTokenService | None = None,
 ) -> AdvanceReport:
     """Scan live mixes and process each in its own locked transaction.
 
@@ -248,6 +331,7 @@ async def advance_due_mixes(
     counted, never fatal; only a failure of the initial scan propagates."""
     settings = settings or get_settings()
     sender = sender or build_email_sender(settings)
+    push_token_service = push_token_service or build_apple_push_token_service(settings)
     now = now or datetime.now(timezone.utc)
 
     # Read-only scan in its own short-lived session; each mix is then locked and
@@ -259,7 +343,7 @@ async def advance_due_mixes(
     for mix_id in mix_ids:
         try:
             async with async_session_factory() as db:
-                await _process_mix(db, mix_id, now, settings, sender, report)
+                await _process_mix(db, mix_id, now, settings, sender, push_token_service, report)
         except Exception:  # noqa: BLE001 — isolate one mix's failure from the rest
             logger.exception("advance_mixes: failed processing mix %s", mix_id)
             report.errors += 1
@@ -269,10 +353,11 @@ async def advance_due_mixes(
 async def _run() -> None:
     report = await advance_due_mixes()
     logger.info(
-        "advance_mixes: stamped=%d warned=%d empty_notices=%d advanced=%d closed=%d "
-        "skipped=%d errors=%d",
+        "advance_mixes: stamped=%d warned=%d pushed_far=%d empty_notices=%d advanced=%d "
+        "closed=%d skipped=%d errors=%d",
         report.stamped,
         report.warned,
+        report.pushed_far,
         report.empty_notices,
         report.advanced_to_voting,
         report.closed,
@@ -281,8 +366,9 @@ async def _run() -> None:
     )
     print(
         f"advance_mixes: stamped={report.stamped} warned={report.warned} "
-        f"empty_notices={report.empty_notices} advanced={report.advanced_to_voting} "
-        f"closed={report.closed} skipped={report.skipped} errors={report.errors}"
+        f"pushed_far={report.pushed_far} empty_notices={report.empty_notices} "
+        f"advanced={report.advanced_to_voting} closed={report.closed} "
+        f"skipped={report.skipped} errors={report.errors}"
     )
 
 

@@ -20,6 +20,7 @@
     "@capacitor/app": "^8.1.1",
     "@capacitor/core": "8.5.2",
     "@capacitor/ios": "8.5.2",
+    "@capacitor/push-notifications": "^8.1.2",
     "d3": "^7.9.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

@@ -23,5 +23,17 @@
 	<array>
 		<string>Default</string>
 	</array>
+	<!-- Push notifications (MysteryMixClub-4vii.27, IOS-04). Requires the
+	     "Push Notifications" capability enabled for this App ID in the Apple
+	     Developer portal (a manual, one-time step -- see docs/ios/README.md)
+	     plus an APNs Auth Key configured server-side, and a provisioning
+	     profile regenerated after enabling the capability; without that,
+	     code signing with this entitlement present fails or registration
+	     silently never completes on-device. "production" (not "development")
+	     since every build this project ships -- TestFlight included -- is
+	     Release-signed, and Release-signed builds always use APNs'
+	     production environment regardless of pre-release status. -->
+	<key>aps-environment</key>
+	<string>production</string>
 </dict>
 </plist>

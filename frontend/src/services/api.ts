@@ -403,6 +403,28 @@ export async function authenticatedRequest(
   });
 }
 
+/** Register this device for push notifications (MysteryMixClub-4vii.27,
+ *  IOS-04). Upsert by device_token server-side -- safe to call every time
+ *  the native registration listener fires, including on every app launch. */
+export async function registerPushToken(deviceToken: string): Promise<void> {
+  await authenticatedRequest("/api/v1/users/me/push-token", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ device_token: deviceToken }),
+  });
+}
+
+/** Remove this device's push registration (called on logout -- PRD IOS-04:
+ *  "remove account associations on logout or deletion"). Best-effort: a
+ *  failure here just means a stale registration lingers server-side until
+ *  APNs itself reports the token dead, not a user-facing error. */
+export async function unregisterPushToken(deviceToken: string): Promise<void> {
+  const params = new URLSearchParams({ device_token: deviceToken });
+  await authenticatedRequest(`/api/v1/users/me/push-token?${params.toString()}`, {
+    method: "DELETE",
+  });
+}
+
 /** Fetch the current user's profile. Bearer-auth via authenticatedRequest. */
 export async function getMe(): Promise<UserProfile> {
   const res = await authenticatedRequest("/api/v1/users/me");

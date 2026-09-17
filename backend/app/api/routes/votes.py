@@ -38,7 +38,9 @@ from app.models.submission import Submission
 from app.models.user import User
 from app.models.vote import Vote
 from app.services.email import EmailSender, get_email_sender
+from app.services.apple_push_token import ApplePushTokenService, get_apple_push_token_service
 from app.services.notifications import gather_recipients, queue_mix_event
+from app.services.push_notifications import gather_push_recipients, queue_push_event
 
 router = APIRouter(tags=["votes"])
 
@@ -63,6 +65,7 @@ async def cast_votes(
     db: AsyncSession = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
     settings: Settings = Depends(get_settings),
+    push_token_service: ApplePushTokenService = Depends(get_apple_push_token_service),
 ) -> VotesResponse:
     mix_ = await _load_mix(round_id, db)
     await _load_club_as_member(mix_.club_id, current_user, db)
@@ -184,9 +187,19 @@ async def cast_votes(
         if club is not None:
             events = await advance_mix_state(mix_, club, "closed", db)
             recipients = await gather_recipients(db, mix_.club_id)
+            push_recipients = await gather_push_recipients(db, mix_.club_id)
             for event_mix, event in events:
                 queue_mix_event(
                     background_tasks, sender, settings, recipients, club, event_mix, event
+                )
+                queue_push_event(
+                    background_tasks,
+                    push_token_service,
+                    settings,
+                    push_recipients,
+                    club,
+                    event_mix,
+                    event,
                 )
 
     await db.commit()

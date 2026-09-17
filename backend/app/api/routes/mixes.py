@@ -47,11 +47,17 @@ from app.services.playlist_jobs import enqueue_playlist_job
 from app.models.vote import Vote
 from app.services.email import EmailSender, get_email_sender
 from app.services.most_noted import compute_most_noted
+from app.services.apple_push_token import ApplePushTokenService, get_apple_push_token_service
 from app.services.notifications import (
     MixEvent,
     gather_recipients,
     organizer_recipient,
     queue_mix_event,
+)
+from app.services.push_notifications import (
+    gather_push_recipients,
+    organizer_push_recipients,
+    queue_push_event,
 )
 from app.services.youtube_backfill import has_pending
 from app.services.youtube_playlist import build_watch_videos_url, normalize_video_ids
@@ -668,6 +674,7 @@ async def update_mix(
     db: AsyncSession = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
     settings: Settings = Depends(get_settings),
+    push_token_service: ApplePushTokenService = Depends(get_apple_push_token_service),
 ) -> MixResponse:
     mix_ = await _load_mix(round_id, db)
     club = await _load_club_as_organizer(
@@ -791,16 +798,30 @@ async def update_mix(
     # so a failed commit below means no emails go out.
     if events:
         recipients = await gather_recipients(db, mix_.club_id)
+        push_recipients = await gather_push_recipients(db, mix_.club_id)
         # needs_theme (MYS-211) is organizer-only, never the whole club.
-        theme_notice_recipients = (
-            await organizer_recipient(db, club)
-            if any(event == "needs_theme" for _, event in events)
-            else []
+        needs_theme_present = any(event == "needs_theme" for _, event in events)
+        theme_notice_recipients = await organizer_recipient(db, club) if needs_theme_present else []
+        theme_notice_push_recipients = (
+            await organizer_push_recipients(db, club) if needs_theme_present else []
         )
         for event_mix, event in events:
-            event_recipients = theme_notice_recipients if event == "needs_theme" else recipients
+            is_needs_theme = event == "needs_theme"
+            event_recipients = theme_notice_recipients if is_needs_theme else recipients
+            event_push_recipients = (
+                theme_notice_push_recipients if is_needs_theme else push_recipients
+            )
             queue_mix_event(
                 background_tasks, sender, settings, event_recipients, club, event_mix, event
+            )
+            queue_push_event(
+                background_tasks,
+                push_token_service,
+                settings,
+                event_push_recipients,
+                club,
+                event_mix,
+                event,
             )
 
     # Queue the shared-account Spotify playlist generation the moment voting
@@ -845,6 +866,7 @@ async def extend_voting_deadline(
     db: AsyncSession = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
     settings: Settings = Depends(get_settings),
+    push_token_service: ApplePushTokenService = Depends(get_apple_push_token_service),
 ) -> MixResponse:
     """Push a mix's voting deadline to an organizer-chosen time, up to 48h past
     the current deadline (MYS-180).
@@ -892,6 +914,16 @@ async def extend_voting_deadline(
 
     recipients = await gather_recipients(db, club.id)
     queue_mix_event(background_tasks, sender, settings, recipients, club, locked, "voting_extended")
+    push_recipients = await gather_push_recipients(db, club.id)
+    queue_push_event(
+        background_tasks,
+        push_token_service,
+        settings,
+        push_recipients,
+        club,
+        locked,
+        "voting_extended",
+    )
 
     await db.commit()
     await db.refresh(locked)

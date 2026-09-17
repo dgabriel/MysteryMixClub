@@ -1969,6 +1969,61 @@
         "file": "scripts/staging.env.example"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:64dc66188fffbdfb22a1c70263dfbd68",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:58:25.702Z",
+      "reason": "Already refuted by the skeptic pass itself at 10% confidence: this is the same env-var secret storage pattern APPLE_MUSIC_PRIVATE_KEY already uses in this exact codebase, not a new approach. Real values never live in git -- only in each Droplet's own env file, per docs/git-hygiene.md.",
+      "context": {
+        "title": "Storing APNs private key in environment variable risks secret leakage",
+        "file": ".env.example"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:fb06e161ccca68a1df68109c46c10a7a",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:58:25.836Z",
+      "reason": "Same restated finding as the previous round, already dismissed: APPLE_MUSIC_TEAM_ID is a stable Apple Developer account identifier, not a feature flag tied to Apple Music being enabled -- it can be set with zero Apple Music configuration (documented explicitly in this same PR). This reuse was implemented and merged in Phase 1 (PR #349, apple_push_token.py); this docs PR describes already-shipped code, it doesn't introduce the coupling.",
+      "context": {
+        "title": "Hidden coupling between Push service and Apple Music team ID",
+        "file": "docs/ci-cd.md"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:09614e06e86e89c8e654dc2f04d6505b",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:58:25.988Z",
+      "reason": "Same restated finding as the previous round, already dismissed: this is exactly docs/ci-cd.md's own documented 'Adding a new secret' routine, followed identically by every other secret in this codebase (APPLE_MUSIC_*, GOOGLE_CLIENT_*, RESEND_*), and explicitly scoped as in-work by this PR's own bd issue (MysteryMixClub-4vii.29: 'document the same keys in .env.example, staging.env.example, prod.env.example').",
+      "context": {
+        "title": "Env template changes extend beyond iOS docs scope",
+        "file": "scripts/staging.env.example"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:507028ab2d1307070d5bb10924cc67ed",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:58:26.130Z",
+      "reason": "Generic verbosity nitpick with no concrete failure scenario, and matches this repo's own established documentation density -- the pre-existing 'Sign in with Apple' and 'Enabling Apple Music'/'Enabling Google Sign-In' sections in these same two files are comparably long and detailed. Length here isn't duplication; each subsection documents a distinct concern (auth mechanism, gateway environment, manual portal steps, data model, preferences, cadence, deep-linking, copy restraint, retirement).",
+      "context": {
+        "title": "Excessively verbose documentation increases risk of drift",
+        "file": "docs/ios/README.md"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:31f06280b545fc2874334e1c527deb5b",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:58:26.269Z",
+      "reason": "No such doc-generation/doc-accuracy test convention exists anywhere in this codebase to extend -- this asks for infrastructure this project has never built, for a markdown/env-example documentation PR. Env var name mismatches degrade gracefully already (an unrecognized/renamed key just leaves the pydantic-settings field at its default, i.e. push reports unconfigured), not a runtime crash, which is the documented intended behavior.",
+      "context": {
+        "title": "No tests added to verify documentation accuracy",
+        "file": "docs/ci-cd.md"
+      },
+      "expires_at": null
     }
   ]
 }

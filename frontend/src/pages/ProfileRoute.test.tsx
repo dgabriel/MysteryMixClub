@@ -500,6 +500,25 @@ describe("ProfileRoute", () => {
         ).not.toBeInTheDocument();
       });
 
+      it("prompt: shows an error and re-enables the button if the request unexpectedly rejects", async () => {
+        const user = userEvent.setup();
+        mockNativePushAvailable.mockReturnValue(true);
+        mockPushPermissionStatus.mockResolvedValue("prompt");
+        mockRequestPushPermissionAndRegister.mockRejectedValue(new Error("native bridge error"));
+
+        renderProfile();
+        await screen.findByText(/archived/i);
+
+        const button = await screen.findByRole("button", { name: /turn on push notifications/i });
+        await user.click(button);
+
+        expect(await screen.findByText("that didn't work. try again.")).toBeInTheDocument();
+        const retryButton = await screen.findByRole("button", {
+          name: /turn on push notifications/i,
+        });
+        expect(retryButton).not.toBeDisabled();
+      });
+
       it("granted: shows a status line, no button", async () => {
         mockNativePushAvailable.mockReturnValue(true);
         mockPushPermissionStatus.mockResolvedValue("granted");

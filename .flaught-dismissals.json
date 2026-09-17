@@ -2079,6 +2079,39 @@
         "file": "frontend/src/pages/ProfileRoute.test.tsx"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:57c0da1c0ac93a84c036f485b555255c",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T23:45:10.227Z",
+      "reason": "Already refuted by the skeptic pass itself at 10% confidence: this restates the PR's own explicit, stated intent (merging the permission button into this section) as if it were an accidental architectural violation. It's a deliberate design decision made specifically to fix the confusion two separately-titled sections caused during real device testing.",
+      "context": {
+        "title": "NotificationPreferencesSection now handles both permission UI and preference toggles, violating separation of concerns",
+        "file": "frontend/src/pages/ProfileScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:f09cdd00cc16f81878d26f4bcd4f7332",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T23:45:10.359Z",
+      "reason": "Already refuted by the skeptic pass itself at 10% confidence: the expanded prop list is a direct, necessary consequence of the intentional merge this PR describes, not unplanned API growth.",
+      "context": {
+        "title": "Expanded prop list for NotificationPreferencesSection increases component surface area",
+        "file": "frontend/src/pages/ProfileScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:dafcd8a7a0c6fac39185f8621a895dbf",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T23:45:10.500Z",
+      "reason": "This is the required, sanctioned mechanism for this exact CI tool: dismissing a false positive on the same branch/PR where it was raised, and committing .flaught-dismissals.json, is literally what the tool's own error message instructs ('Commit .flaught-dismissals.json so CI picks up this dismissal'). Not scope creep -- necessary plumbing for the adversarial-review system this repo already uses.",
+      "context": {
+        "title": "Unrelated .flaught-dismissals.json entry added",
+        "file": ".flaught-dismissals.json"
+      },
+      "expires_at": null
     }
   ]
 }

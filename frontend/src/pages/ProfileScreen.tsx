@@ -53,6 +53,7 @@ type ProfileScreenProps = {
   pushStatus?: PushPermissionStatus | null;
   onEnablePush?: () => void;
   enablingPush?: boolean;
+  enablePushError?: string | null;
   /** Whether push notifications exist on this platform at all (native iOS) --
    *  gates whether the two push preference toggles below render, same
    *  fail-safe-hide reasoning as `googleEnabled`/`pushStatus`. */
@@ -136,6 +137,7 @@ export function ProfileScreen({
   pushStatus,
   onEnablePush,
   enablingPush = false,
+  enablePushError,
   pushAvailable = false,
   notificationPrefs,
   onTogglePreference,
@@ -241,6 +243,7 @@ export function ProfileScreen({
                 pushStatus={pushStatus}
                 onEnablePush={onEnablePush}
                 enablingPush={enablingPush}
+                enablePushError={enablePushError}
               />
             ) : null}
 
@@ -531,6 +534,7 @@ function NotificationPreferencesSection({
   pushStatus,
   onEnablePush,
   enablingPush = false,
+  enablePushError,
 }: {
   prefs: Record<NotificationPreferenceKey, boolean>;
   onTogglePreference?: (key: NotificationPreferenceKey, value: boolean) => void;
@@ -540,6 +544,7 @@ function NotificationPreferencesSection({
   pushStatus?: PushPermissionStatus | null;
   onEnablePush?: () => void;
   enablingPush?: boolean;
+  enablePushError?: string | null;
 }) {
   return (
     <section className="mt-12 border-t border-ink-hairline pt-10">
@@ -572,6 +577,11 @@ function NotificationPreferencesSection({
                   {enablingPush ? "enabling…" : "turn on push notifications"}
                 </Button>
               </div>
+              {enablePushError ? (
+                <div className="mt-3">
+                  <FormError onPaper>{enablePushError}</FormError>
+                </div>
+              ) : null}
             </>
           )}
         </div>

@@ -1782,6 +1782,138 @@
         "file": "frontend/src/pages/EmailEntryScreen.tsx"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:c808944375cb3ec10838dac486fde9fd",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:23:54.532Z",
+      "reason": "Factually incorrect about the backend: UserProfileUpdate (backend/app/api/routes/users.py) has every field Optional with default None, and update_me only applies fields explicitly provided (partial PATCH semantics). This exact pattern is already used by updateDisplayName, updatePreferredService, and acceptTerms in this same file -- sending a partial body to PATCH /users/me is the established, safe convention, not new risk.",
+      "context": {
+        "title": "`updateNotificationPreferences` PATCH may unintentionally overwrite other profile fields",
+        "file": "frontend/src/services/api.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:53042a835c9068b1c6c0677828c00f63",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:23:54.667Z",
+      "reason": "Not a real vulnerability: GET/PATCH /users/me is authenticated via get_current_user and returns only the calling user's own profile -- there is no cross-user enumeration path. The same reasoning would flag every other boolean already on this response (has_password, google_linked, tos_accepted, email_notifications), none of which were flagged when they shipped.",
+      "context": {
+        "title": "New notification preference fields exposed to web client may leak user privacy preferences",
+        "file": "frontend/src/services/api.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:12e72157e414d1721a4f37707b729a58",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:31:02.652Z",
+      "reason": "Not exploitable: updateNotificationPreferences is only ever called internally with a hardcoded whitelisted key (see handleTogglePreference), never with user-controlled property names. Even if it were, the backend's UserProfileUpdate (Pydantic) already strictly whitelists fields server-side -- TypeScript's Partial<> was never the enforcement boundary. This reasoning would flag every typed API call in the codebase.",
+      "context": {
+        "title": "Client‑side type enforcement may allow arbitrary fields in PATCH",
+        "file": "frontend/src/services/api.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:7904b75662dbbdced07f3c86f0055d08",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:31:02.787Z",
+      "reason": "Based on a mistaken premise: pushAvailable (platform capability) and the OS permission status are intentionally independent -- the preferences toggles reflect an ACCOUNT-level setting that exists regardless of whether OS permission was ever granted (matches the separate NotificationsSection component, which already owns the permission-status UI on its own). Nothing in NotificationPreferencesSection reads pushPermissionStatus, so there is no gating behavior to test here. Also cites a nonexistent file (ProfileScreen.test.tsx does not exist; ProfileScreen is tested via ProfileRoute.test.tsx).",
+      "context": {
+        "title": "Missing tests for push‑availability gating logic",
+        "file": "frontend/src/pages/ProfileScreen.test.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:b2b871ab615c4874cccc7497be3d46ab",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:31:02.923Z",
+      "reason": "Factually wrong: the dependency is unidirectional, not bidirectional. ProfileRoute.tsx imports the type from ProfileScreen.tsx; ProfileScreen.tsx imports nothing from ProfileRoute.tsx. A presentational component exporting its own prop-type contract for its container to import is a standard, idiomatic React pattern, not tight coupling.",
+      "context": {
+        "title": "Cross‑module type export creates tight coupling between UI and container",
+        "file": "frontend/src/pages/ProfileRoute.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:728e871df910d7d11bfed0e2b7bd808b",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:31:03.059Z",
+      "reason": "Generic size nitpick with no concrete failure scenario. ProfileScreen.tsx already held multiple analogous section components (ArchivedClubs, AccountSettingsSection, SetPasswordForm, NotificationsSection) before this PR -- NotificationPreferencesSection/PreferenceCheckbox follow the exact same established per-section-component pattern, not a new concern.",
+      "context": {
+        "title": "ProfileScreen component now exceeds typical size, mixing concerns",
+        "file": "frontend/src/pages/ProfileScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:b49d2fc538628b106ac4c3936d10c515",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:31:03.196Z",
+      "reason": "Factually incorrect about vitest semantics: toHaveBeenCalledWith already performs an exact deep-equal match on the arguments (not a subset/partial match like expect.objectContaining) -- an extra field in the payload would already fail this assertion.",
+      "context": {
+        "title": "Mocks for updateNotificationPreferences do not assert exact payload shape",
+        "file": "frontend/src/pages/ProfileRoute.test.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:40fdb672e32eea36f03dd3762d3ef596",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:36:30.773Z",
+      "reason": "Same as previous round's finding: factually the dependency is unidirectional (ProfileRoute imports from ProfileScreen; ProfileScreen imports nothing from ProfileRoute). A presentational component exporting its own prop-type contract for its container to import is standard, idiomatic React, not reverse coupling.",
+      "context": {
+        "title": "Container imports UI type, creating reverse dependency",
+        "file": "frontend/src/pages/ProfileRoute.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:4aef0e7ba5a6f186c4b249b02ae30d0d",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:36:30.907Z",
+      "reason": "Doesn't apply to this system's deployment topology: frontend and backend are a single monorepo deployed atomically by the same CI/CD pipeline to one Droplet per environment (docs/ci-cd.md) -- there is no independent-version-skew scenario where this frontend build runs against a backend lacking these fields. UserProfileResponse also declares all three fields as required (non-Optional), not nullable, so the backend itself guarantees their presence on every response.",
+      "context": {
+        "title": "Assumes new profile fields are always present, risking runtime errors",
+        "file": "frontend/src/pages/ProfileRoute.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:b34030e15105b1a7300ba8c030334205",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:36:31.042Z",
+      "reason": "Same reasoning as F-002: this project has no independent frontend/backend version-skew path (single monorepo, atomic deploy per docs/ci-cd.md), and the backend schema declares these three fields as required, not optional -- there is no real scenario for a profile payload missing them to test against.",
+      "context": {
+        "title": "Missing test for missing notification fields in backend response",
+        "file": "frontend/src/pages/ProfileRoute.test.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:6d94cfa8ca9461536e8893443f0d0e01",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:36:31.177Z",
+      "reason": "Same generic size nitpick as the previous round, no concrete failure scenario. ProfileScreen.tsx already held multiple analogous section components (ArchivedClubs, AccountSettingsSection, SetPasswordForm, NotificationsSection) before this PR; NotificationPreferencesSection/PreferenceCheckbox follow that exact established pattern.",
+      "context": {
+        "title": "Large inline NotificationPreferencesSection bloats ProfileScreen",
+        "file": "frontend/src/pages/ProfileScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:b318d8490b18858f5f353ebd3707f8d4",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:36:31.320Z",
+      "reason": "Same theme as the previous round's F-003: TypeScript's Partial<> was never the enforcement boundary. updateNotificationPreferences is only ever called internally with hardcoded whitelisted keys, and the backend's Pydantic model already strictly whitelists fields server-side regardless of what the client sends.",
+      "context": {
+        "title": "Potential over‑permissive PATCH payload if future callers misuse updateNotificationPreferences",
+        "file": "frontend/src/services/api.ts"
+      },
+      "expires_at": null
     }
   ]
 }

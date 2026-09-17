@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { ProfileScreen } from "./ProfileScreen";
+import { ProfileScreen, type NotificationPreferenceKey } from "./ProfileScreen";
 import {
   ApiError,
   deleteAccount,
@@ -13,6 +13,7 @@ import {
   setPassword as apiSetPassword,
   startGoogleLink,
   updateDisplayName,
+  updateNotificationPreferences,
   type Club,
 } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
@@ -104,6 +105,16 @@ export function ProfileRoute() {
   const [pushStatus, setPushStatus] = useState<PushPermissionStatus | null>(null);
   const [enablingPush, setEnablingPush] = useState(false);
 
+  // Three independent toggles (MysteryMixClub-4vii.28, IOS-04): email
+  // lifecycle/reminder emails, push lifecycle updates, push deadline
+  // reminders. null until the initial profile load resolves.
+  const [notificationPrefs, setNotificationPrefs] = useState<Record<
+    NotificationPreferenceKey,
+    boolean
+  > | null>(null);
+  const [savingPref, setSavingPref] = useState<NotificationPreferenceKey | null>(null);
+  const [prefsError, setPrefsError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!nativePushAvailable()) return;
     let cancelled = false;
@@ -154,6 +165,11 @@ export function ProfileRoute() {
         }
         setHasPassword(latestProfile.has_password);
         setGoogleLinked(latestProfile.google_linked);
+        setNotificationPrefs({
+          email_notifications: latestProfile.email_notifications,
+          push_lifecycle_enabled: latestProfile.push_lifecycle_enabled,
+          push_deadline_reminders_enabled: latestProfile.push_deadline_reminders_enabled,
+        });
       } catch (err) {
         if (!cancelled) {
           setError(
@@ -243,6 +259,40 @@ export function ProfileRoute() {
       setPasswordFormError(err instanceof ApiError ? err.message : "that didn't save. try again.");
     } finally {
       setSettingPassword(false);
+    }
+  }
+
+  // Optimistic: flips the toggle immediately, reverts + surfaces an error if
+  // the save fails, rather than waiting on the round trip to reflect a click
+  // (MysteryMixClub-4vii.28, IOS-04). One save in flight at a time -- all
+  // three checkboxes disable while `savingPref` is set (not just the one
+  // being saved), so a second click can't fire a second PATCH whose response
+  // could race the first and land its optimistic update on a stale `previous`
+  // snapshot. The guard below is redundant with that render-driven disable in
+  // the normal case; it stays as the actual invariant in case a click ever
+  // reaches this handler before the disabled state has painted.
+  async function handleTogglePreference(key: NotificationPreferenceKey, value: boolean) {
+    if (!notificationPrefs || savingPref) return;
+    const previous = notificationPrefs;
+    setNotificationPrefs({ ...previous, [key]: value });
+    setSavingPref(key);
+    setPrefsError(null);
+    try {
+      // Reconcile with what the server actually persisted, same as
+      // handleSaveName below -- the optimistic value is a guess; the
+      // response is the truth, in case the backend ever normalizes or
+      // rejects a combination differently than the click assumed.
+      const profile = await updateNotificationPreferences({ [key]: value });
+      setNotificationPrefs({
+        email_notifications: profile.email_notifications,
+        push_lifecycle_enabled: profile.push_lifecycle_enabled,
+        push_deadline_reminders_enabled: profile.push_deadline_reminders_enabled,
+      });
+    } catch (err) {
+      setNotificationPrefs(previous);
+      setPrefsError(err instanceof ApiError ? err.message : "that didn't save. try again.");
+    } finally {
+      setSavingPref(null);
     }
   }
 
@@ -338,6 +388,11 @@ export function ProfileRoute() {
       pushStatus={pushStatus}
       onEnablePush={handleEnablePush}
       enablingPush={enablingPush}
+      pushAvailable={nativePushAvailable()}
+      notificationPrefs={notificationPrefs}
+      onTogglePreference={handleTogglePreference}
+      savingPref={savingPref}
+      prefsError={prefsError}
       onLogoutAll={handleLogoutAll}
       logoutAllBusy={logoutAllBusy}
       onExportData={handleExportData}

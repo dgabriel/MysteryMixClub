@@ -13,6 +13,7 @@ import {
   setPassword,
   startGoogleLink,
   updateDisplayName,
+  updateNotificationPreferences,
 } from "../services/api";
 import type { Club, UserProfile } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
@@ -30,6 +31,7 @@ vi.mock("../services/api", async () => {
     getGoogleEnabled: vi.fn(),
     setPassword: vi.fn(),
     startGoogleLink: vi.fn(),
+    updateNotificationPreferences: vi.fn(),
   };
 });
 
@@ -51,6 +53,7 @@ const mockExportMyData = vi.mocked(exportMyData);
 const mockGetGoogleEnabled = vi.mocked(getGoogleEnabled);
 const mockSetPassword = vi.mocked(setPassword);
 const mockStartGoogleLink = vi.mocked(startGoogleLink);
+const mockUpdateNotificationPreferences = vi.mocked(updateNotificationPreferences);
 const mockNativePushAvailable = vi.mocked(nativePushAvailable);
 const mockPushPermissionStatus = vi.mocked(pushPermissionStatus);
 const mockRequestPushPermissionAndRegister = vi.mocked(requestPushPermissionAndRegister);
@@ -108,7 +111,16 @@ function clubWith(overrides: Partial<Club> = {}): Club {
 
 function profileWith(
   displayName: string,
-  overrides: Partial<Pick<UserProfile, "has_password" | "google_linked">> = {},
+  overrides: Partial<
+    Pick<
+      UserProfile,
+      | "has_password"
+      | "google_linked"
+      | "email_notifications"
+      | "push_lifecycle_enabled"
+      | "push_deadline_reminders_enabled"
+    >
+  > = {},
 ): UserProfile {
   return {
     id: "user-1",
@@ -119,6 +131,9 @@ function profileWith(
     tos_accepted: true,
     has_password: false,
     google_linked: false,
+    email_notifications: true,
+    push_lifecycle_enabled: true,
+    push_deadline_reminders_enabled: true,
     ...overrides,
   };
 }
@@ -496,6 +511,154 @@ describe("ProfileRoute", () => {
       expect(await screen.findByText(/enable them in ios settings/i)).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /enable notifications/i })).not.toBeInTheDocument();
       expect(mockRequestPushPermissionAndRegister).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("notification preferences (MysteryMixClub-4vii.28, IOS-04)", () => {
+    it("web: shows only the email toggle, checked from the loaded profile", async () => {
+      mockNativePushAvailable.mockReturnValue(false);
+      mockGetMe.mockResolvedValue(
+        profileWith("Ada", {
+          email_notifications: true,
+          push_lifecycle_enabled: false,
+          push_deadline_reminders_enabled: false,
+        }),
+      );
+
+      renderProfile();
+      await screen.findByText(/archived/i);
+
+      expect(await screen.findByText("notification preferences")).toBeInTheDocument();
+      const emailToggle = screen.getByRole("checkbox", { name: /email/i });
+      expect(emailToggle).toBeChecked();
+      expect(screen.queryByRole("checkbox", { name: /push: updates/i })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("checkbox", { name: /push: reminders/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("native: shows all three toggles, each reflecting the loaded profile", async () => {
+      mockNativePushAvailable.mockReturnValue(true);
+      mockPushPermissionStatus.mockResolvedValue("granted");
+      mockGetMe.mockResolvedValue(
+        profileWith("Ada", {
+          email_notifications: false,
+          push_lifecycle_enabled: true,
+          push_deadline_reminders_enabled: false,
+        }),
+      );
+
+      renderProfile();
+      await screen.findByText(/archived/i);
+
+      expect(await screen.findByText("notification preferences")).toBeInTheDocument();
+      expect(screen.getByRole("checkbox", { name: /email/i })).not.toBeChecked();
+      expect(screen.getByRole("checkbox", { name: /push: updates/i })).toBeChecked();
+      expect(screen.getByRole("checkbox", { name: /push: reminders/i })).not.toBeChecked();
+    });
+
+    it("toggling a preference saves immediately, no separate save step", async () => {
+      const user = userEvent.setup();
+      mockNativePushAvailable.mockReturnValue(false);
+      mockGetMe.mockResolvedValue(profileWith("Ada", { email_notifications: true }));
+      mockUpdateNotificationPreferences.mockResolvedValue(
+        profileWith("Ada", { email_notifications: false }),
+      );
+
+      renderProfile();
+      await screen.findByText(/archived/i);
+
+      const emailToggle = await screen.findByRole("checkbox", { name: /email/i });
+      await user.click(emailToggle);
+
+      expect(mockUpdateNotificationPreferences).toHaveBeenCalledWith({
+        email_notifications: false,
+      });
+      await waitFor(() => expect(emailToggle).not.toBeChecked());
+    });
+
+    it("reverts the checkbox and shows an error when the save fails", async () => {
+      const user = userEvent.setup();
+      mockNativePushAvailable.mockReturnValue(false);
+      mockGetMe.mockResolvedValue(profileWith("Ada", { email_notifications: true }));
+      mockUpdateNotificationPreferences.mockRejectedValue(new Error("network error"));
+
+      renderProfile();
+      await screen.findByText(/archived/i);
+
+      const emailToggle = await screen.findByRole("checkbox", { name: /email/i });
+      await user.click(emailToggle);
+
+      expect(await screen.findByText("that didn't save. try again.")).toBeInTheDocument();
+      await waitFor(() => expect(emailToggle).toBeChecked());
+    });
+
+    it("saving a push toggle is optimistic too, and reverts on failure", async () => {
+      const user = userEvent.setup();
+      mockNativePushAvailable.mockReturnValue(true);
+      mockPushPermissionStatus.mockResolvedValue("granted");
+      mockGetMe.mockResolvedValue(profileWith("Ada", { push_lifecycle_enabled: true }));
+      mockUpdateNotificationPreferences.mockResolvedValue(
+        profileWith("Ada", { push_lifecycle_enabled: false }),
+      );
+
+      renderProfile();
+      await screen.findByText(/archived/i);
+
+      const pushToggle = await screen.findByRole("checkbox", { name: /push: updates/i });
+      await user.click(pushToggle);
+
+      expect(mockUpdateNotificationPreferences).toHaveBeenCalledWith({
+        push_lifecycle_enabled: false,
+      });
+      await waitFor(() => expect(pushToggle).not.toBeChecked());
+
+      // Now the revert-on-failure path, same toggle -- it reverts to its
+      // last known-good state (now unchecked, from the successful save
+      // above), not to whatever it was on the very first page load.
+      mockUpdateNotificationPreferences.mockRejectedValue(new Error("network error"));
+      await user.click(pushToggle);
+
+      expect(await screen.findByText("that didn't save. try again.")).toBeInTheDocument();
+      await waitFor(() => expect(pushToggle).not.toBeChecked());
+    });
+
+    it("disables every toggle while one save is in flight, so a second click can't race the first", async () => {
+      const user = userEvent.setup();
+      mockNativePushAvailable.mockReturnValue(true);
+      mockPushPermissionStatus.mockResolvedValue("granted");
+      mockGetMe.mockResolvedValue(
+        profileWith("Ada", { email_notifications: true, push_lifecycle_enabled: true }),
+      );
+      let resolveFirst!: (p: UserProfile) => void;
+      mockUpdateNotificationPreferences.mockReturnValue(
+        new Promise<UserProfile>((r) => {
+          resolveFirst = r;
+        }),
+      );
+
+      renderProfile();
+      await screen.findByText(/archived/i);
+
+      const emailToggle = await screen.findByRole("checkbox", { name: /email/i });
+      const pushToggle = await screen.findByRole("checkbox", { name: /push: updates/i });
+      await user.click(emailToggle);
+
+      // The first save is still in flight: every toggle is disabled, and a
+      // click on a DIFFERENT preference must not fire a second, overlapping
+      // PATCH that could race the first (MysteryMixClub-4vii.28 Flaught
+      // finding F-001).
+      expect(emailToggle).toBeDisabled();
+      expect(pushToggle).toBeDisabled();
+      await user.click(pushToggle);
+      expect(mockUpdateNotificationPreferences).toHaveBeenCalledTimes(1);
+      expect(mockUpdateNotificationPreferences).toHaveBeenCalledWith({
+        email_notifications: false,
+      });
+
+      resolveFirst(profileWith("Ada", { email_notifications: false, push_lifecycle_enabled: true }));
+      await waitFor(() => expect(emailToggle).not.toBeDisabled());
+      expect(pushToggle).toBeChecked();
     });
   });
 });

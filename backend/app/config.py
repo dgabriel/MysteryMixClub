@@ -51,6 +51,18 @@ class Settings(BaseSettings):
     # Apple's identity token's `aud` claim must match, which is public, the
     # same value hardcoded in the iOS project's product ids and entitlements.
     apple_sign_in_bundle_id: str = Field(default="com.mysterymixclub.app")
+    # Push notifications / APNs (MysteryMixClub-4vii.25, IOS-04). Server-side
+    # only: the .p8 private key signs the ES256 provider-authentication JWT
+    # APNs requires on every push request. Reuses apple_music_team_id for the
+    # Team ID rather than a separate field -- it's account-wide, not specific
+    # to either key. Empty (either of these two, or the team id) = push is off
+    # and registration/send calls no-op, same "hidden when unconfigured"
+    # pattern as Apple Music and Google Sign-In.
+    apple_push_key_id: str = Field(default="")
+    # PEM contents of the APNs Auth Key (.p8). Deploy secrets may store it
+    # single-line with literal "\n" escapes; the token service normalizes
+    # both forms (same as apple_music_private_key).
+    apple_push_private_key: str = Field(default="")
     allowed_origins: str = Field(default="")
     environment: Literal["development", "staging", "production"] = "development"
     app_base_url: str = Field(default="https://mysterymixclub.com")

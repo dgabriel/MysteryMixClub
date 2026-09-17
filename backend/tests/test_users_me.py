@@ -146,6 +146,8 @@ async def test_get_me_returns_exact_profile_shape(client, db_session):
         "has_password",
         "google_linked",
         "apple_linked",
+        "push_lifecycle_enabled",
+        "push_deadline_reminders_enabled",
     }
     assert body["id"] == str(user_id)
     assert body["display_name"] == "Bob"
@@ -159,6 +161,9 @@ async def test_get_me_returns_exact_profile_shape(client, db_session):
     assert body["has_password"] is False
     assert body["google_linked"] is False
     assert body["apple_linked"] is False
+    # Both push preferences default on, same as email_notifications.
+    assert body["push_lifecycle_enabled"] is True
+    assert body["push_deadline_reminders_enabled"] is True
 
 
 async def test_get_me_includes_user_id(client, db_session):

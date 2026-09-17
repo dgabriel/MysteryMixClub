@@ -278,7 +278,16 @@ export function ProfileRoute() {
     setSavingPref(key);
     setPrefsError(null);
     try {
-      await updateNotificationPreferences({ [key]: value });
+      // Reconcile with what the server actually persisted, same as
+      // handleSaveName below -- the optimistic value is a guess; the
+      // response is the truth, in case the backend ever normalizes or
+      // rejects a combination differently than the click assumed.
+      const profile = await updateNotificationPreferences({ [key]: value });
+      setNotificationPrefs({
+        email_notifications: profile.email_notifications,
+        push_lifecycle_enabled: profile.push_lifecycle_enabled,
+        push_deadline_reminders_enabled: profile.push_deadline_reminders_enabled,
+      });
     } catch (err) {
       setNotificationPrefs(previous);
       setPrefsError(err instanceof ApiError ? err.message : "that didn't save. try again.");

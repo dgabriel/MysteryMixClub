@@ -1804,6 +1804,61 @@
         "file": "frontend/src/services/api.ts"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:12e72157e414d1721a4f37707b729a58",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:31:02.652Z",
+      "reason": "Not exploitable: updateNotificationPreferences is only ever called internally with a hardcoded whitelisted key (see handleTogglePreference), never with user-controlled property names. Even if it were, the backend's UserProfileUpdate (Pydantic) already strictly whitelists fields server-side -- TypeScript's Partial<> was never the enforcement boundary. This reasoning would flag every typed API call in the codebase.",
+      "context": {
+        "title": "Client‑side type enforcement may allow arbitrary fields in PATCH",
+        "file": "frontend/src/services/api.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:7904b75662dbbdced07f3c86f0055d08",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:31:02.787Z",
+      "reason": "Based on a mistaken premise: pushAvailable (platform capability) and the OS permission status are intentionally independent -- the preferences toggles reflect an ACCOUNT-level setting that exists regardless of whether OS permission was ever granted (matches the separate NotificationsSection component, which already owns the permission-status UI on its own). Nothing in NotificationPreferencesSection reads pushPermissionStatus, so there is no gating behavior to test here. Also cites a nonexistent file (ProfileScreen.test.tsx does not exist; ProfileScreen is tested via ProfileRoute.test.tsx).",
+      "context": {
+        "title": "Missing tests for push‑availability gating logic",
+        "file": "frontend/src/pages/ProfileScreen.test.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:b2b871ab615c4874cccc7497be3d46ab",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:31:02.923Z",
+      "reason": "Factually wrong: the dependency is unidirectional, not bidirectional. ProfileRoute.tsx imports the type from ProfileScreen.tsx; ProfileScreen.tsx imports nothing from ProfileRoute.tsx. A presentational component exporting its own prop-type contract for its container to import is a standard, idiomatic React pattern, not tight coupling.",
+      "context": {
+        "title": "Cross‑module type export creates tight coupling between UI and container",
+        "file": "frontend/src/pages/ProfileRoute.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:728e871df910d7d11bfed0e2b7bd808b",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:31:03.059Z",
+      "reason": "Generic size nitpick with no concrete failure scenario. ProfileScreen.tsx already held multiple analogous section components (ArchivedClubs, AccountSettingsSection, SetPasswordForm, NotificationsSection) before this PR -- NotificationPreferencesSection/PreferenceCheckbox follow the exact same established per-section-component pattern, not a new concern.",
+      "context": {
+        "title": "ProfileScreen component now exceeds typical size, mixing concerns",
+        "file": "frontend/src/pages/ProfileScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:b49d2fc538628b106ac4c3936d10c515",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:31:03.196Z",
+      "reason": "Factually incorrect about vitest semantics: toHaveBeenCalledWith already performs an exact deep-equal match on the arguments (not a subset/partial match like expect.objectContaining) -- an extra field in the payload would already fail this assertion.",
+      "context": {
+        "title": "Mocks for updateNotificationPreferences do not assert exact payload shape",
+        "file": "frontend/src/pages/ProfileRoute.test.tsx"
+      },
+      "expires_at": null
     }
   ]
 }

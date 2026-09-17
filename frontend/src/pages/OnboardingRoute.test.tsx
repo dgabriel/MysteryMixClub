@@ -6,6 +6,11 @@ import { OnboardingRoute } from "./OnboardingRoute";
 import { ApiError, acceptTerms } from "../services/api";
 import type { UserProfile } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
+import {
+  nativePushAvailable,
+  pushPermissionStatus,
+  requestPushPermissionAndRegister,
+} from "../ios/push";
 
 // Mock the API module (no network).
 vi.mock("../services/api", async () => {
@@ -23,8 +28,20 @@ vi.mock("../hooks/useAuth", () => ({
   useAuth: vi.fn(),
 }));
 
+// MysteryMixClub-4vii.27 (IOS-04): the push auto-prompt fires right after a
+// successful save, on native iOS only -- default to "not native" so the
+// existing web-flow tests above stay unaffected.
+vi.mock("../ios/push", () => ({
+  nativePushAvailable: vi.fn(),
+  pushPermissionStatus: vi.fn(),
+  requestPushPermissionAndRegister: vi.fn(),
+}));
+
 const mockAcceptTerms = vi.mocked(acceptTerms);
 const mockUseAuth = vi.mocked(useAuth);
+const mockNativePushAvailable = vi.mocked(nativePushAvailable);
+const mockPushPermissionStatus = vi.mocked(pushPermissionStatus);
+const mockRequestPushPermissionAndRegister = vi.mocked(requestPushPermissionAndRegister);
 const applyDisplayName = vi.fn();
 const applyTosAccepted = vi.fn();
 
@@ -72,6 +89,9 @@ function profileWith(displayName: string): UserProfile {
     tos_accepted: true,
     has_password: false,
     google_linked: false,
+    email_notifications: true,
+    push_lifecycle_enabled: true,
+    push_deadline_reminders_enabled: true,
   };
 }
 
@@ -90,6 +110,8 @@ function renderOnboarding() {
 describe("OnboardingRoute", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockNativePushAvailable.mockReturnValue(false);
+    mockPushPermissionStatus.mockResolvedValue("prompt");
   });
 
   describe("brand-new user (no display name, no consent)", () => {
@@ -254,5 +276,60 @@ describe("OnboardingRoute", () => {
     // Resolve so the trailing navigation flushes inside act().
     resolve(profileWith("Cleo"));
     expect(await screen.findByText("HOME CONTENT")).toBeInTheDocument();
+  });
+
+  describe("push auto-prompt (MysteryMixClub-4vii.27, IOS-04)", () => {
+    it("prompts for push on native iOS right after a successful save", async () => {
+      setAuth("authenticated", { needsOnboarding: true, displayName: "", tosAccepted: false });
+      mockAcceptTerms.mockResolvedValue(profileWith("Alice"));
+      mockNativePushAvailable.mockReturnValue(true);
+      mockPushPermissionStatus.mockResolvedValue("prompt");
+      mockRequestPushPermissionAndRegister.mockResolvedValue("granted");
+      const user = userEvent.setup();
+
+      renderOnboarding();
+
+      await user.type(screen.getByLabelText(/display name/i), "Alice");
+      await user.click(screen.getByRole("checkbox"));
+      await user.click(screen.getByRole("button", { name: /continue/i }));
+
+      expect(await screen.findByText("HOME CONTENT")).toBeInTheDocument();
+      await waitFor(() => expect(mockRequestPushPermissionAndRegister).toHaveBeenCalledOnce());
+    });
+
+    it("does not prompt on web", async () => {
+      setAuth("authenticated", { needsOnboarding: true, displayName: "", tosAccepted: false });
+      mockAcceptTerms.mockResolvedValue(profileWith("Alice"));
+      mockNativePushAvailable.mockReturnValue(false);
+      const user = userEvent.setup();
+
+      renderOnboarding();
+
+      await user.type(screen.getByLabelText(/display name/i), "Alice");
+      await user.click(screen.getByRole("checkbox"));
+      await user.click(screen.getByRole("button", { name: /continue/i }));
+
+      expect(await screen.findByText("HOME CONTENT")).toBeInTheDocument();
+      expect(mockPushPermissionStatus).not.toHaveBeenCalled();
+      expect(mockRequestPushPermissionAndRegister).not.toHaveBeenCalled();
+    });
+
+    it("does not re-prompt on native iOS when the OS has already answered", async () => {
+      setAuth("authenticated", { needsOnboarding: true, displayName: "", tosAccepted: false });
+      mockAcceptTerms.mockResolvedValue(profileWith("Alice"));
+      mockNativePushAvailable.mockReturnValue(true);
+      mockPushPermissionStatus.mockResolvedValue("denied");
+      const user = userEvent.setup();
+
+      renderOnboarding();
+
+      await user.type(screen.getByLabelText(/display name/i), "Alice");
+      await user.click(screen.getByRole("checkbox"));
+      await user.click(screen.getByRole("button", { name: /continue/i }));
+
+      expect(await screen.findByText("HOME CONTENT")).toBeInTheDocument();
+      await waitFor(() => expect(mockPushPermissionStatus).toHaveBeenCalledOnce());
+      expect(mockRequestPushPermissionAndRegister).not.toHaveBeenCalled();
+    });
   });
 });

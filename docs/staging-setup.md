@@ -58,6 +58,14 @@ It is idempotent — safe to re-run.
 > Optional overrides (env vars): `STAGING_DB_NAME`, `STAGING_DB_USER`,
 > `REPO_URL`, `REPO_BRANCH`, `APP_ROOT`, `WEB_ROOT`.
 
+The bootstrap also creates a 2GB swap file if the Droplet has none. This
+$6/mo box only has ~1GB RAM, and `npm ci` for the frontend has been observed
+to get OOM-killed outright without swap (`MysteryMixClub-jrm2`,
+2026-09-15) -- which aborts `deploy-staging.sh` mid-way through publishing
+the frontend, since `set -euo pipefail` means the failed `npm ci` takes the
+whole deploy down with it. Check `free -h` after bootstrapping a new Droplet
+if you ever see a deploy fail with `npm ci ... Killed`.
+
 ---
 
 ## 2. Populate the runtime env file
@@ -251,6 +259,29 @@ Confirm it's online: `gh api repos/dgabriel/MysteryMixClub/actions/runners --jq 
 The workflow targets it via `runs-on: [self-hosted, staging]` — the `staging`
 label is what scopes deploy jobs to this specific runner, separate from
 prod's `prod`-labeled one.
+
+**Make the runner service auto-restart (`MysteryMixClub-jrm2`, 2026-09-15).**
+`./svc.sh install` generates a unit with no `Restart=` directive, so a runner
+process killed by anything (the OOM kill this bead traces, a bad deploy step,
+a Droplet hiccup) stays dead until someone notices and restarts it by hand --
+which is exactly what happened here: the runner sat crashed for 7 hours,
+silently queuing every deploy with nothing to pick them up. Add a drop-in
+rather than editing the generated unit file directly (`svc.sh` may
+regenerate it):
+
+```bash
+sudo mkdir -p /etc/systemd/system/actions.runner.dgabriel-MysteryMixClub.mysterymixclub-staging.service.d
+sudo tee /etc/systemd/system/actions.runner.dgabriel-MysteryMixClub.mysterymixclub-staging.service.d/override.conf <<'EOF'
+[Service]
+Restart=on-failure
+RestartSec=10
+EOF
+sudo systemctl daemon-reload
+```
+
+Do this once per runner install (it doesn't survive `svc.sh uninstall` +
+reinstall). Verify with
+`systemctl show actions.runner.<name>.service -p Restart`.
 
 **No SSH secrets needed** — `STAGING_HOST`/`STAGING_SSH_USER`/`STAGING_SSH_KEY`
 were used by the old SSH-based workflow and are no longer referenced. Safe to
@@ -524,6 +555,90 @@ file alone changes nothing.
 **Use a separate OAuth client per environment** — never share
 `GOOGLE_CLIENT_SECRET` across staging and prod, and each needs its own
 Authorized redirect URI registered on its own client (see `prod.env.example`).
+
+---
+
+## Enabling push notifications (MysteryMixClub-4vii.25/27, IOS-04)
+
+Push is **off** until both credentials are present, the same "gap is a
+supported state" pattern as Apple Music and Google above: `send_push` returns
+`"failed"` for every recipient without ever calling APNs, no user-visible
+error, no crash. So this can be done any time after the code ships,
+independently of it, and skipping it breaks nothing except the notifications
+themselves.
+
+**Credentials come from the Apple Developer portal** (the same paid
+membership Apple Music and Sign in with Apple already need — no new
+enrollment). Two separate one-time steps, both required:
+
+1. **Certificates, Identifiers & Profiles → Identifiers →** this app's App ID
+   (`com.mysterymixclub.app`) **→ check "Push Notifications" →** Save. Without
+   this, code signing with the `aps-environment` entitlement `App.entitlements`
+   already carries fails (or silently does nothing on-device), the same
+   category of gotcha Sign in with Apple's own capability step has.
+   Regenerate/re-download the provisioning profile afterward.
+2. **Keys → ＋ → check "Apple Push Notifications service (APNs)" →** download
+   the `.p8`. **This download is one-time and non-recoverable** — store the
+   original in a password manager before doing anything else. Use a
+   **separate** key from Apple Music's MusicKit key (different service,
+   don't reuse); each environment can share one key or use its own,
+   but never share the `.p8` file itself the way `SECRET_KEY` must never be
+   shared.
+
+- `APPLE_PUSH_KEY_ID` — the 10 chars in the downloaded `AuthKey_XXXXXXXXXX.p8`
+  filename
+- `APPLE_PUSH_PRIVATE_KEY` — the `.p8` PEM contents
+- Team ID is **not** a separate value here — the push token service reuses
+  `APPLE_MUSIC_TEAM_ID` (already on the box if Apple Music is enabled;
+  otherwise it's still just the membership details page's Team ID, no Apple
+  Music setup required to fill it in).
+
+On the Droplet, add both to the env file. Same one-line, `\n`-escaped PEM
+convention as `APPLE_MUSIC_PRIVATE_KEY`:
+
+```bash
+sudo nano /etc/mysterymixclub/staging.env
+# APPLE_MUSIC_TEAM_ID=A1B2C3D4E5    # already present if Apple Music is on
+# APPLE_PUSH_KEY_ID=YYYYYYYYYY
+# APPLE_PUSH_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIGT...\n-----END PRIVATE KEY-----"
+
+sudo systemctl restart mysterymixclub-api
+```
+
+**Verify** — there is no client-facing endpoint to curl (unlike Apple Music's
+developer-token route: a provider token is only ever used server-to-APNs,
+never handed to the frontend). Two levels of check:
+
+1. **Config sanity**, without a real device: confirms the credentials mint a
+   signed JWT at all, not that APNs accepts it.
+   ```bash
+   cd /home/mysterymixclub/app/backend && source .venv/bin/activate
+   python3 -c "
+   import asyncio
+   from app.config import get_settings
+   from app.services.apple_push_token import build_apple_push_token_service
+   svc = build_apple_push_token_service(get_settings())
+   print('configured:', svc.is_configured)
+   print(asyncio.run(svc.get_provider_token())[:20] + '...')
+   "
+   ```
+   Raises `ApplePushTokenError` on a bad key/PEM; prints a token prefix on
+   success.
+2. **The real signal**: register a device via the app (Settings → enable
+   notifications, or the onboarding auto-prompt), then trigger any mix
+   lifecycle event (submit, vote, or wait for a deadline reminder) and check
+   the journal:
+   ```bash
+   sudo journalctl -u mysterymixclub-api --since "5 min ago" | grep "push send"
+   ```
+   No matching line means every send returned `"ok"` — `send_push` only logs
+   on `"failed"`/`"retire"`. A `push send: apns returned 403` means the
+   `aps-environment` entitlement, the Push Notifications capability, or the
+   provisioning profile don't actually match; `401` means the key/Team ID
+   pairing is wrong.
+
+A restart is required: settings and the token service are cached per
+process, so editing the env file alone changes nothing.
 
 ---
 

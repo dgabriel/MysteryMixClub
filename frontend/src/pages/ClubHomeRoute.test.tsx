@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { ClubHomeRoute } from "./ClubHomeRoute";
@@ -16,9 +16,12 @@ import {
   removeMember,
   updateClub,
   updateMemberRole,
+  updateMix,
 } from "../services/api";
 import type { Invite, Club, LeaderboardEntry, ClubMember, Mix, MixResults } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
+import { dismissGuide, isGuideDismissed, markJustJoinedClub } from "../data/onboardingGuides";
+import { markLatestReleaseSeen } from "../data/releaseNotes";
 
 // Mock the API module (no network). Keep ApiError real.
 vi.mock("../services/api", async () => {
@@ -32,6 +35,7 @@ vi.mock("../services/api", async () => {
     getResults: vi.fn(),
     createMix: vi.fn(),
     updateClub: vi.fn(),
+    updateMix: vi.fn(),
     removeMember: vi.fn(),
     createInvite: vi.fn(),
     deleteClub: vi.fn(),
@@ -50,6 +54,7 @@ const mockGetClubMembers = vi.mocked(getClubMembers);
 const mockGetMixes = vi.mocked(getMixes);
 const mockGetResults = vi.mocked(getResults);
 const mockUpdateClub = vi.mocked(updateClub);
+const mockUpdateMix = vi.mocked(updateMix);
 const mockRemoveMember = vi.mocked(removeMember);
 const mockCreateInvite = vi.mocked(createInvite);
 const mockDeleteClub = vi.mocked(deleteClub);
@@ -627,7 +632,7 @@ describe("ClubHomeRoute", () => {
     await screen.findByRole("heading", { name: "Friday Mixtape" });
 
     // Two "home" controls in the TopNav (ring mark + text link); either routes home.
-    await user.click(screen.getAllByRole("button", { name: /^home$/i })[1]);
+    await user.click(screen.getAllByRole("button", { name: /^my clubs$/i })[1]);
 
     expect(await screen.findByText("HOME CONTENT")).toBeInTheDocument();
   });
@@ -823,5 +828,205 @@ describe("ClubHomeRoute", () => {
     renderClub();
     await screen.findByRole("heading", { name: "Friday Mixtape" });
     expect(screen.queryByText(/of 0 voted/i)).not.toBeInTheDocument();
+  });
+
+  describe("open mix from the club home list (MysteryMixClub-4vii.4)", () => {
+    it("a themed pending mix's 'open mix' button opens it for submissions", async () => {
+      const pending = closedMix({ id: "mix-pending", state: "pending", theme: "late summer feels" });
+      mockGetMixes.mockResolvedValue([pending]);
+      mockUpdateMix.mockResolvedValue({ ...pending, state: "open_submission" });
+
+      renderClub();
+      await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+      await userEvent.click(screen.getByRole("button", { name: /^open mix$/i }));
+
+      expect(mockUpdateMix).toHaveBeenCalledWith("mix-pending", { state: "open_submission" });
+      // Reflects the server's returned state (patched into local state)
+      // rather than a refetch — "upcoming" is gone, its open_submission
+      // label is showing.
+      expect(await screen.findByText(/^submissions open$/i)).toBeInTheDocument();
+      expect(screen.queryByText(/^upcoming$/i)).not.toBeInTheDocument();
+    });
+
+    it("an untitled pending mix has no 'open mix' button, and explains why", async () => {
+      mockGetMixes.mockResolvedValue([
+        closedMix({ id: "mix-untitled", state: "pending", theme: null }),
+      ]);
+
+      renderClub();
+      await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+      expect(screen.queryByRole("button", { name: /^open mix$/i })).not.toBeInTheDocument();
+      expect(
+        screen.getByText(/add a theme before you can open this mystery mix/i),
+      ).toBeInTheDocument();
+    });
+
+    it("a failed open shows a calm error without navigating away", async () => {
+      mockGetMixes.mockResolvedValue([
+        closedMix({ id: "mix-pending", state: "pending", theme: "late summer feels" }),
+      ]);
+      mockUpdateMix.mockRejectedValue(new ApiError(409, "set a theme before opening this mystery mix"));
+
+      renderClub();
+      await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+      await userEvent.click(screen.getByRole("button", { name: /^open mix$/i }));
+
+      expect(
+        await screen.findByText(/set a theme before opening this mystery mix/i),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Friday Mixtape" })).toBeInTheDocument();
+    });
+
+    it("a themed mix #2 has no 'open mix' button while mix #1 is still pending, and explains why", async () => {
+      mockGetMixes.mockResolvedValue([
+        closedMix({ id: "mix-1", mix_number: 1, state: "pending", theme: "mix one" }),
+        closedMix({ id: "mix-2", mix_number: 2, state: "pending", theme: "mix two" }),
+      ]);
+
+      renderClub();
+      await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+      // Only mix #1 (the first mix) is eligible — one "open mix" button, not two.
+      expect(screen.getAllByRole("button", { name: /^open mix$/i })).toHaveLength(1);
+      expect(
+        screen.getByText(/mystery mix 1 must close before this one can open/i),
+      ).toBeInTheDocument();
+    });
+
+    it("mix #2's 'open mix' button appears once mix #1 has closed", async () => {
+      mockGetMixes.mockResolvedValue([
+        closedMix({ id: "mix-1", mix_number: 1, state: "closed" }),
+        closedMix({ id: "mix-2", mix_number: 2, state: "pending", theme: "mix two" }),
+      ]);
+
+      renderClub();
+      await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+      expect(screen.getAllByRole("button", { name: /^open mix$/i })).toHaveLength(1);
+    });
+  });
+
+  describe("club-invite welcome guide (MysteryMixClub-6eo8)", () => {
+    beforeEach(() => {
+      localStorage.clear();
+      // Global setup's own beforeEach marks the release-notes popup seen
+      // before this one runs; the clear() above wipes that back out, so redo
+      // it here or that unrelated modal renders too and getByRole("dialog")
+      // stops being unambiguous.
+      markLatestReleaseSeen();
+    });
+
+    it("auto-shows when the caller just joined this club via invite", async () => {
+      markJustJoinedClub("club-1");
+      renderClub("club-1");
+
+      const dialog = await screen.findByRole("dialog");
+      expect(dialog).toHaveAccessibleName(/you're in/i);
+      // The real club name replaces the mockup's placeholder "the listening room".
+      expect(within(dialog).getByText(/friday/i)).toBeInTheDocument();
+      expect(within(dialog).getByText(/mixtape/i)).toBeInTheDocument();
+      for (const step of [
+        "join your friends",
+        "submit your songs",
+        "listen to the mix",
+        "vote for your favorites",
+      ]) {
+        expect(within(dialog).getByText(step)).toBeInTheDocument();
+      }
+    });
+
+    it("does not show on an ordinary visit (no just-joined flag set)", async () => {
+      renderClub("club-1");
+
+      await screen.findByRole("heading", { name: "Friday Mixtape" });
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("does not show while the club is still loading", async () => {
+      let resolveClub: (club: Club) => void = () => {};
+      mockGetClub.mockReturnValue(
+        new Promise((resolve) => {
+          resolveClub = resolve;
+        }),
+      );
+      markJustJoinedClub("club-1");
+      renderClub("club-1");
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      resolveClub(clubWith());
+      expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    });
+
+    it("does not show when the club fails to load", async () => {
+      mockGetClub.mockRejectedValue(new ApiError(500, "boom"));
+      markJustJoinedClub("club-1");
+      renderClub("club-1");
+
+      await screen.findByText("boom");
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("the just-joined flag is one-shot: a second club-home mount never auto-shows from the same flag", async () => {
+      markJustJoinedClub("club-1");
+      const { unmount } = renderClub("club-1");
+      await screen.findByRole("dialog");
+      unmount();
+
+      renderClub("club-1");
+      await screen.findByRole("heading", { name: "Friday Mixtape" });
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("dismissing (close button) persists per account and leaves the member in the club", async () => {
+      const user = userEvent.setup();
+      markJustJoinedClub("club-1");
+      renderClub("club-1");
+
+      await screen.findByRole("dialog");
+      await user.click(screen.getByRole("button", { name: /dismiss welcome guide/i }));
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Friday Mixtape" })).toBeInTheDocument();
+      expect(isGuideDismissed("invite", ORGANIZER_ID)).toBe(true);
+    });
+
+    it("the primary CTA ('let's go') dismisses without navigating away", async () => {
+      const user = userEvent.setup();
+      markJustJoinedClub("club-1");
+      renderClub("club-1");
+
+      const dialog = await screen.findByRole("dialog");
+      await user.click(within(dialog).getByRole("button", { name: "let's go" }));
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Friday Mixtape" })).toBeInTheDocument();
+    });
+
+    it("Escape dismisses the guide", async () => {
+      const user = userEvent.setup();
+      markJustJoinedClub("club-1");
+      renderClub("club-1");
+
+      await screen.findByRole("dialog");
+      await user.keyboard("{Escape}");
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("'how it works' reopens the guide at any time, even without ever having joined via invite", async () => {
+      const user = userEvent.setup();
+      dismissGuide("invite", ORGANIZER_ID);
+      renderClub("club-1");
+
+      await screen.findByRole("heading", { name: "Friday Mixtape" });
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: /how it works/i }));
+
+      expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    });
   });
 });

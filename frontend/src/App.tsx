@@ -5,6 +5,9 @@ import { Navigate, createBrowserRouter, useParams } from "react-router";
 // package export is for non-DOM contexts like tests instead.
 import { RouterProvider } from "react-router/dom";
 import { AuthProvider } from "./hooks/AuthProvider";
+import { IS_NATIVE_BUILD } from "./lib/platform";
+import { registerDeepLinkHandler } from "./native/deepLinks";
+import { registerPushDeepLinkHandler } from "./native/pushDeepLinks";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { LoginRoute } from "./pages/LoginRoute";
 import { AuthedLayout } from "./components/AuthedLayout";
@@ -77,8 +80,7 @@ const SubmissionHistoryRoute = lazy(() =>
  *                    TopNav, and the onboarding/consent gate
  *   /privacy       → public Privacy Policy (MYS-183); linked from /login,
  *                    TopNav, and the onboarding/consent gate
- *   /help          → public help/FAQ (MYS-222); linked from /login, TopNav, and
- *                    context-help "?" icons elsewhere in the app (HelpLink.tsx)
+ *   /help          → public help/FAQ (MYS-222); linked from /login and TopNav
  *
  *   Authed shell (ProtectedRoute + AuthedLayout, which renders the shared TopNav):
  *     /home        → My Clubs landing
@@ -154,8 +156,12 @@ const router = createBrowserRouter([
       { path: "/rounds/:id", element: <LegacyPathRedirect prefix="mixes" /> },
       { path: "/profile", element: withSuspense(<ProfileRoute />) },
       { path: "/profile/history", element: withSuspense(<SubmissionHistoryRoute />) },
-      { path: "/admin", element: withSuspense(<AdminRoute />) },
-      { path: "/admin/metrics", element: withSuspense(<AdminMetricsRoute />) },
+      ...(IS_NATIVE_BUILD
+        ? []
+        : [
+            { path: "/admin", element: withSuspense(<AdminRoute />) },
+            { path: "/admin/metrics", element: withSuspense(<AdminMetricsRoute />) },
+          ]),
       // /clubs/new used to sit outside this layout as a "focused" form with no
       // nav. In practice that read as a broken page — you land on it from the
       // nav shell and the toolbar vanishes — so it joins the shell like every
@@ -170,6 +176,17 @@ const router = createBrowserRouter([
   { path: "/join/:token", element: withSuspense(<JoinClubRoute />) },
   { path: "*", element: <Navigate to="/login" replace /> },
 ]);
+
+// Universal Link taps (magic-link email, Google's redirect landing, an
+// invite link) land here instead of Safari once tapped from another app --
+// no-op on web (MysteryMixClub-4vii.10).
+registerDeepLinkHandler(router);
+
+// A tapped push notification (any app state: foreground/background/
+// terminated) lands on the relevant club's home screen -- no-op on web
+// (MysteryMixClub-4vii.27, IOS-04). Also wires the registration listener
+// that forwards a device's APNs token to the backend.
+registerPushDeepLinkHandler(router);
 
 export default function App() {
   return (

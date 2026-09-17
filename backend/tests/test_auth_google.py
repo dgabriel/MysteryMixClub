@@ -18,7 +18,7 @@ import logging
 import uuid
 from collections.abc import AsyncGenerator
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qs, urlparse
 
 import pytest_asyncio
@@ -30,6 +30,7 @@ from app.auth.jwt import create_access_token, create_oauth_state, create_sign_in
 from app.config import Settings, get_settings
 from app.db.session import get_db
 from app.main import create_app
+from app.models.auth_identity import AuthIdentity
 from app.models.club import Club
 from app.models.club_member import ClubMember
 from app.models.invite import Invite
@@ -140,8 +141,16 @@ async def google_client(
 
 
 async def _seed_user(db_session, email: str, **overrides) -> User:
+    google_id = overrides.get("google_id")
     user = User(email=email, display_name="", **overrides)
     db_session.add(user)
+    await db_session.flush()
+    if google_id is not None:
+        # Mirrors the real write path (MysteryMixClub-4vii.9): every
+        # google_id write is now paired with an auth_identities row, so a
+        # fixture setting the legacy column alone would under-represent real
+        # post-migration state and let account-resolution tests miss it.
+        db_session.add(AuthIdentity(user_id=user.id, provider="google", subject=google_id))
     await db_session.commit()
     await db_session.refresh(user)
     return user
@@ -827,3 +836,133 @@ async def test_a_consumed_nonce_cannot_be_replayed(google_client, db_session):
     replay = await google_client.get(CALLBACK_URL, params={"code": "auth-code", "state": state})
 
     assert _outcome(replay) == "invalid_state"
+
+
+# --------------------------------------------------------------------------- #
+# Native iOS hand-off (MysteryMixClub-4vii.21): ASWebAuthenticationSession
+# --------------------------------------------------------------------------- #
+
+NATIVE_EXCHANGE_URL = "/api/v1/auth/google/native-exchange"
+
+
+async def _start_native_flow(client, invite_token: str | None = None) -> str:
+    params: dict[str, str] = {"native": "true"}
+    if invite_token:
+        params["invite_token"] = invite_token
+    resp = await client.get(LOGIN_URL, params=params)
+    assert resp.status_code == 302, resp.text
+    return _state_from(resp)
+
+
+async def _native_round_trip(client, invite_token: str | None = None, code: str = "auth-code"):
+    state = await _start_native_flow(client, invite_token)
+    return await client.get(CALLBACK_URL, params={"code": code, "state": state})
+
+
+def _native_callback_url(resp):
+    return urlparse(resp.headers["location"])
+
+
+async def test_login_native_flag_is_carried_in_the_signed_state():
+    from app.auth.jwt import decode_sign_in_state
+
+    state = create_sign_in_state("nonce", "verifier", native=True)
+
+    assert decode_sign_in_state(state).native is True
+
+
+async def test_login_without_native_flag_decodes_as_non_native():
+    from app.auth.jwt import decode_sign_in_state
+
+    state = create_sign_in_state("nonce", "verifier")
+
+    assert decode_sign_in_state(state).native is False
+
+
+async def test_native_success_redirects_to_the_custom_scheme_with_a_code(google_client, db_session):
+    invite_token = await _seed_club_invite(db_session)
+
+    resp = await _native_round_trip(google_client, invite_token)
+
+    assert resp.status_code == 303, resp.text
+    url = _native_callback_url(resp)
+    assert url.scheme == "mysterymixclub"
+    query = parse_qs(url.query)
+    assert query["outcome"] == ["ok"]
+    assert len(query["code"][0]) > 0
+
+
+async def test_native_success_sets_no_refresh_cookie_on_the_callback_response(
+    google_client, db_session
+):
+    # The whole point: the session is issued later, at exchange time, in the
+    # app's own WebView context -- not here.
+    invite_token = await _seed_club_invite(db_session)
+
+    resp = await _native_round_trip(google_client, invite_token)
+
+    assert "refresh_token" not in resp.cookies
+
+
+async def test_native_failure_also_redirects_to_the_custom_scheme(google_client, db_session):
+    # No invite -- same invite_required rejection as the web flow, but must
+    # still land back in the app, not on a web URL ASWebAuthenticationSession
+    # was never told to match.
+    resp = await _native_round_trip(google_client)
+
+    url = _native_callback_url(resp)
+    assert url.scheme == "mysterymixclub"
+    assert parse_qs(url.query)["outcome"] == ["invite_required"]
+    assert "code" not in parse_qs(url.query)
+
+
+async def test_native_exchange_redeems_a_valid_code_for_a_session(google_client, db_session):
+    invite_token = await _seed_club_invite(db_session)
+    callback_resp = await _native_round_trip(google_client, invite_token)
+    code = parse_qs(_native_callback_url(callback_resp).query)["code"][0]
+
+    resp = await google_client.post(NATIVE_EXCHANGE_URL, json={"code": code})
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["access_token"]
+    assert resp.cookies.get("refresh_token")
+
+
+async def test_native_exchange_code_is_single_use(google_client, db_session):
+    invite_token = await _seed_club_invite(db_session)
+    callback_resp = await _native_round_trip(google_client, invite_token)
+    code = parse_qs(_native_callback_url(callback_resp).query)["code"][0]
+
+    first = await google_client.post(NATIVE_EXCHANGE_URL, json={"code": code})
+    assert first.status_code == 200, first.text
+
+    replay = await google_client.post(NATIVE_EXCHANGE_URL, json={"code": code})
+    assert replay.status_code == 401
+    assert replay.json()["detail"] == "that sign-in code is invalid or has expired"
+
+
+async def test_native_exchange_rejects_an_unknown_code(google_client):
+    resp = await google_client.post(NATIVE_EXCHANGE_URL, json={"code": "not-a-real-code"})
+
+    assert resp.status_code == 401
+    assert resp.json()["detail"] == "that sign-in code is invalid or has expired"
+
+
+async def test_native_exchange_rejects_an_expired_code(google_client, db_session):
+    from app.auth.tokens import hash_token
+    from app.models.oauth_exchange_code import OAuthExchangeCode
+
+    user = await _seed_user(db_session, "expired-code@example.com")
+    db_session.add(
+        OAuthExchangeCode(
+            user_id=user.id,
+            code_hash=hash_token("stale-code"),
+            expires_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+        )
+    )
+    await db_session.commit()
+
+    resp = await google_client.post(NATIVE_EXCHANGE_URL, json={"code": "stale-code"})
+
+    assert resp.status_code == 401
+    assert resp.json()["detail"] == "that sign-in code is invalid or has expired"

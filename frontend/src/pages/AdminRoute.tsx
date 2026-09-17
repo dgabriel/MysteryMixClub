@@ -10,6 +10,7 @@ import {
   adminSearchUsers,
   connectSpotify,
   getSpotifyStatus,
+  shareableOrigin,
   type AdminUser,
   type SpotifyStatus,
   type WaitlistEntry,
@@ -186,7 +187,7 @@ export function AdminRoute() {
     try {
       const invite = await adminCreateInvite();
       // Canonical invite path is /invite/:token (matches the per-club flow).
-      setPlatformInviteUrl(`${window.location.origin}/invite/${invite.token}`);
+      setPlatformInviteUrl(`${shareableOrigin()}/invite/${invite.token}`);
     } catch (err) {
       setInviteError(
         err instanceof ApiError ? err.message : "couldn't generate an invite. try again.",

@@ -449,7 +449,11 @@ async def test_generate_401_when_apple_rejects_user_token(apple_app, db_session)
         _url(mix_.id), json={"music_user_token": "stale"}, headers=_auth(organizer.id)
     )
     assert r.status_code == 401
-    assert "reconnect" in r.json()["detail"]
+    # Structured, not a plain string (MysteryMixClub-6x45): `code` is what a
+    # client discriminates on, so it can't drift out of sync with a copy edit.
+    detail = r.json()["detail"]
+    assert detail["code"] == "apple_auth_expired"
+    assert "reconnect" in detail["message"]
 
 
 async def test_generate_502_on_apple_failure(apple_app, db_session):

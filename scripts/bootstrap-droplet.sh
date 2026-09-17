@@ -68,6 +68,21 @@ EOF
   apt-get install -y nodejs
 fi
 
+# A $6/mo Droplet has ~1GB RAM and no swap by default -- `npm ci` for the
+# frontend (Vite, TypeScript, Capacitor, testing libs) has been observed to
+# get OOM-killed outright on that alone, aborting every deploy from that point
+# on (MysteryMixClub-jrm2, 2026-09-15: dmesg confirmed `Out of memory: Killed
+# process ... (npm ci)`). Guarded so re-runs and Droplets that already have
+# swap are no-ops.
+if ! swapon --show | grep -q .; then
+  echo "==> Creating a 2GB swap file (no swap configured by default)"
+  fallocate -l 2G /swapfile
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >>/etc/fstab
+fi
+
 echo "==> Creating system user '${APP_USER}'"
 if id -u "${APP_USER}" >/dev/null 2>&1; then
   echo "    user already exists, skipping"

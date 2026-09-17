@@ -27,8 +27,9 @@ Related: branch model in `docs/ci-cd.md`. Hook PATH gotcha at the bottom of this
    (`scripts/bead-start.sh <bd-id>` does exactly this — sync, branch, claim —
    in one step; use it instead of the manual sequence above when starting
    work on a bd issue.)
-   If a branch ends up based on anything other than current `develop`, rebase it
-   onto `develop` before continuing (`git rebase origin/develop`).
+   To bring an existing branch current, rebase unpublished work onto
+   `origin/develop`; for a published/shared branch, merge `origin/develop`
+   into it to preserve published history.
    **Create the branch before writing a single line of code.** Never edit files
    on `develop` and branch after — you will end up with uncommitted changes on a
    shared branch. Branch first, then code.
@@ -123,13 +124,10 @@ Related: branch model in `docs/ci-cd.md`. Hook PATH gotcha at the bottom of this
 - **Conventional Commits**, enforced by commitlint: `type(scope): subject`
   (`feat`, `fix`, `chore`, `docs`, `refactor`, `test`, …). Imperative subject,
   no trailing period.
-- **End commit messages with the Claude co-author trailer**, naming whichever
-  model is actually running the session — e.g.:
-  ```
-  Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
-  ```
-  Don't pin a specific model name here as a hardcoded example to copy
-  verbatim; it'll go stale the next time the underlying model changes.
+- **Attribute agent assistance accurately.** If adding a `Co-Authored-By`
+  trailer, use the actual assisting agent's documented identity. Do not label
+  Codex work as Claude work, guess a model version, or invent an email address.
+  This does not replace the required `Bead: <id>` trailer for applicable commits.
 - **Only commit/push when the user asks** (or under a standing autonomy grant
   explicitly given for that scope of work). Flag risky changes even then.
 - **Stage intentionally.** Prefer naming paths over `git add -A`. Never commit
@@ -170,8 +168,8 @@ Related: branch model in `docs/ci-cd.md`. Hook PATH gotcha at the bottom of this
   promotions must be a real merge" below for what happens if this is skipped.
 - **Always target `develop`** when creating a PR. Pass `--base develop` explicitly
   (`gh pr create --base develop …`) — never let the CLI default to `main`.
-- Keep the branch current with `git pull --rebase` (your own branch) or a merge
-  from `develop`; don't let it drift far behind.
+- Keep the branch current with `origin/develop`: rebase unpublished work, or
+  merge into a published/shared branch. Do not rewrite open-PR history.
 - **Feature/fix → `develop`: green CI is enough to merge.** Staging (what
   `develop` deploys to) has no real users anymore — only testers — since the
   app went live in prod. Once `ruff · mypy · pytest` + frontend typecheck all
@@ -190,9 +188,10 @@ hunk you fail to carry over leaves **no trace** in `develop`'s history — the
 branch looks merged, the code is gone. Rules:
 
 1. **Never hand-resolve a squash conflict.** If `gh pr merge --squash` reports a
-   conflict, stop. Rebase the feature branch onto the latest `develop` first
-   (`git rebase origin/develop`, resolve there with full context), push, and let
-   the squash apply cleanly with zero manual resolution at merge time.
+   conflict, stop the merge attempt. Merge `origin/develop` into the published
+   feature branch, resolve and validate the conflicts there with full context,
+   then push when authorized. Let the squash apply cleanly with zero manual
+   resolution at merge time. Rebase is only for unpublished work.
 2. **Mandatory post-merge reconciliation gate.** Before deleting any branch,
    prove nothing was lost:
    ```

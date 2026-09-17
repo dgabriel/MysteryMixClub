@@ -1,0 +1,17 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["QFY64RHPNG.com.mysterymixclub.app"],
+        "components": [
+          { "/": "/auth/verify", "comment": "Magic-link sign-in" },
+          { "/": "/auth/reset-password", "comment": "Password reset" },
+          { "/": "/invite/*", "comment": "Club invite link" },
+          { "/": "/join/*", "comment": "Legacy invite alias" },
+          { "/": "/login", "comment": "Google sign-in redirect landing" },
+          { "/": "/profile", "comment": "Google account-link redirect landing" }
+        ]
+      }
+    ]
+  }
+}

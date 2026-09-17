@@ -141,6 +141,10 @@ fi
 # Replace the web root contents rather than overlaying — Vite emits content-hashed
 # asset names, so a plain copy would leave stale bundles behind to accumulate.
 find "${WEB_ROOT}" -mindepth 1 -delete
-cp -r dist/* "${WEB_ROOT}/"
+# dist/. (the directory's contents), not dist/* -- bash's unquoted glob does not
+# match dotfiles/dot-directories by default, so dist/* silently skipped
+# .well-known (apple-app-site-association) on every real deploy until now
+# (MysteryMixClub-bik4) even though it was present in every build output.
+cp -r dist/. "${WEB_ROOT}/"
 
 echo "==> Deploy complete"

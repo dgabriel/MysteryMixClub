@@ -4,6 +4,7 @@ import { Badge } from "../components/Badge";
 import { Button } from "../components/Button";
 import { ContactEmail } from "../components/ContactEmail";
 import { FormError } from "../components/FormError";
+import { AppleSignInButton } from "../components/AppleSignInButton";
 import { GoogleSignInButton } from "../components/GoogleSignInButton";
 import { TextField } from "../components/TextField";
 import { BrandLockup } from "../components/BrandLockup";
@@ -46,12 +47,31 @@ type EmailEntryScreenProps = {
    *  (invite_required, at_capacity, club_full) and the split is by source, not
    *  by text. */
   googleError?: string | null;
+  /** Outcome of a failed native Apple sign-in (MysteryMixClub-4vii.9). Same
+   *  plain-copy treatment as googleError, for the same reason: a third
+   *  party's outcome, not a claim about the user's own attempt. */
+  appleError?: string | null;
   /** Neutral confirmation after a reset request. Says nothing about whether the
    *  address is registered, so it is never phrased as "sent". */
   resetNotice?: string | null;
   /** Dev/staging only: a relative reset link in place of the emailed one. */
   resetDevLink?: string | null;
   googleUrl: string;
+  /** Present only on native, where Google sign-in runs through
+   *  ASWebAuthenticationSession instead of a page navigation
+   *  (MysteryMixClub-4vii.21) -- when set, the Google button calls this
+   *  instead of linking to `googleUrl`. */
+  onNativeGoogleSignIn?: () => void;
+  /** Present only on native iOS, where Sign in with Apple is offered
+   *  alongside Google at equal prominence (MysteryMixClub-4vii.9, Guideline
+   *  4.8) -- absent entirely on web, where Apple's flow isn't built. */
+  onNativeAppleSignIn?: () => void;
+  /** True only on native iOS (MysteryMixClub-4vii.24) -- this screen stays
+   *  presentational and takes platform state as a prop like every other
+   *  native/web difference here, rather than querying Capacitor itself.
+   *  Drives the login logo's camera-cutout-clearing top margin, which
+   *  web (no cutout) shouldn't get. */
+  isNativeIOS?: boolean;
 };
 
 /** Dev/staging convenience: a clickable link so testers don't need a delivered
@@ -101,9 +121,13 @@ export function EmailEntryScreen({
   canRegister,
   passwordError,
   googleError,
+  appleError,
   resetNotice,
   resetDevLink,
   googleUrl,
+  onNativeGoogleSignIn,
+  onNativeAppleSignIn,
+  isNativeIOS,
 }: EmailEntryScreenProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -250,7 +274,17 @@ export function EmailEntryScreen({
             against a two-line mark. Centred under the mark rather than flush
             left, where a lone badge would look stranded. This screen renders no
             `TopNav`, so it is the only place the badge has to come from here. */}
-          <BrandLockup as="h1">
+          {/* mt-[10px] on native iOS only (MysteryMixClub-4vii.24): the
+            vertically-centered block sits close enough to the top that the
+            spinning disc's top edge grazes the camera/Dynamic Island cutout
+            on some devices. Web has no such cutout and gets no margin --
+            gated on the isNativeIOS prop (LoginRoute owns the actual
+            Capacitor.getPlatform() check, same as every other native/web
+            difference this screen takes as a prop) rather than applied
+            unconditionally, and scoped to this page's own className rather
+            than a change to the shared BrandLockup (used elsewhere under
+            TopNav, where this doesn't apply either way). */}
+          <BrandLockup as="h1" className={isNativeIOS ? "mt-[10px]" : ""}>
             <div className="mt-3 flex justify-center sm:justify-start">
               <Badge>beta</Badge>
             </div>
@@ -265,6 +299,15 @@ export function EmailEntryScreen({
           {googleError ? (
             <p role="alert" className="mt-6 text-center text-sm leading-[1.72] text-ink">
               {googleError}
+            </p>
+          ) : null}
+
+          {/* Same treatment as googleError, for a failed native Apple sign-in
+            (MysteryMixClub-4vii.9) -- an external system's outcome, not a
+            form error. */}
+          {appleError ? (
+            <p role="alert" className="mt-6 text-center text-sm leading-[1.72] text-ink">
+              {appleError}
             </p>
           ) : null}
 
@@ -410,7 +453,7 @@ export function EmailEntryScreen({
             <DevLink href={resetDevLink} label="set a new password with this link" />
           ) : null}
 
-          {googleEnabled ? (
+          {googleEnabled || onNativeAppleSignIn ? (
             <>
               <div className="mt-12 flex items-center gap-4">
                 <span className="h-px flex-1 bg-ink-hairline" />
@@ -419,8 +462,29 @@ export function EmailEntryScreen({
                 </span>
                 <span className="h-px flex-1 bg-ink-hairline" />
               </div>
-              <div className="mt-6">
-                <GoogleSignInButton href={googleUrl} />
+              {/* One stable row, not two branches that swap on the async
+                googleEnabled check -- swapping subtrees remounted the Apple
+                button out from under an in-flight click (caught by
+                MysteryMixClub-4vii.24's own tests). Each present button gets
+                flex-1: side by side at equal width when both are offered
+                natively (MysteryMixClub-4vii.9, Guideline 4.8 requires
+                exactly that), or alone filling the row when only one is
+                available (e.g. web, where Apple never renders). */}
+              <div className="mt-6 flex gap-3">
+                {onNativeAppleSignIn ? (
+                  <div className="min-w-0 flex-1">
+                    <AppleSignInButton onClick={onNativeAppleSignIn} />
+                  </div>
+                ) : null}
+                {googleEnabled ? (
+                  <div className="min-w-0 flex-1">
+                    {onNativeGoogleSignIn ? (
+                      <GoogleSignInButton onClick={onNativeGoogleSignIn} />
+                    ) : (
+                      <GoogleSignInButton href={googleUrl} />
+                    )}
+                  </div>
+                ) : null}
               </div>
             </>
           ) : null}

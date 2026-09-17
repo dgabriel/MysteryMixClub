@@ -10,11 +10,31 @@
  *    cookie is sent on the cross-origin (but same-site) request to :8000.
  */
 
+import { IS_NATIVE_BUILD } from "../lib/platform";
+
 // Default to the 127.0.0.1 loopback (not "localhost"): the app keeps every
 // origin on one host so the session cookie survives the Spotify OAuth redirect
 // (MYS-85), and Spotify rejects "localhost" redirect URIs.
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+// Exported for the native iOS bridge (ADR 0032): MMCMusicPlugin.createPlaylist
+// needs the same base URL this WebView is already talking to, since it
+// adopts this session's access token rather than maintaining its own.
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 const AUTH_BASE = `${API_BASE_URL}/api/v1/auth`;
+
+/**
+ * The origin to build a real, externally-shareable URL from -- an invite
+ * link, or anything else meant to be pasted somewhere else entirely
+ * (MysteryMixClub-jrm2). `window.location.origin` is wrong on native: it's
+ * the WebView's own bundled-content address (`capacitor://localhost`), not a
+ * real web URL anyone else's device or browser could open. On web,
+ * `API_BASE_URL` is empty/relative by design (deploy-staging.sh builds the
+ * SPA to call its own API same-origin), so `window.location.origin` is the
+ * only correct source there -- and it's already exactly right, since web is
+ * actually served from that origin.
+ */
+export function shareableOrigin(): string {
+  return IS_NATIVE_BUILD ? API_BASE_URL : window.location.origin;
+}
 
 /** Password bounds the backend enforces on register/reset. Mirrored here only so
  *  the UI can hint before a round-trip — the server stays authoritative. */
@@ -57,6 +77,16 @@ export type UserProfile = {
   has_password: boolean;
   /** Whether a Google identity is already linked (MysteryMixClub-ali8.6). */
   google_linked: boolean;
+  /** Whether the account has email lifecycle/reminder notifications on
+   *  (existing backend field; no frontend control has ever existed for it --
+   *  today it's unsubscribe-link-only). */
+  email_notifications: boolean;
+  /** Push equivalents of email_notifications, independent of it and of each
+   *  other (MysteryMixClub-4vii.25/28, IOS-04). Present regardless of
+   *  whether the account has any registered device -- these are the
+   *  preference, not "can this account currently receive a push." */
+  push_lifecycle_enabled: boolean;
+  push_deadline_reminders_enabled: boolean;
 };
 
 class ApiError extends Error {
@@ -247,6 +277,55 @@ export function googleLoginUrl(inviteToken?: string | null): string {
 }
 
 /**
+ * Redeem a one-time code from the native Google sign-in flow
+ * (MysteryMixClub-4vii.21) for a real session. Mirrors verifyToken's shape:
+ * called via a normal fetch from the app's own WebView so the resulting
+ * refresh cookie lands in the context that will actually use it, rather
+ * than relying on any cookie the ASWebAuthenticationSession's own callback
+ * response might have set.
+ */
+export async function exchangeGoogleNativeCode(code: string): Promise<{ access_token: string }> {
+  const res = await fetch(`${AUTH_BASE}/google/native-exchange`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code }),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as { access_token: string };
+}
+
+/**
+ * Sign in (or invite-gated sign up) with Apple (MysteryMixClub-4vii.9,
+ * Guideline 4.8). Unlike Google's native fix, there's no one-time exchange
+ * code here: `ASAuthorizationController` runs entirely inside the app with
+ * no browser hand-off, so this call itself is already the app's own fetch
+ * from its own WebView — the session is issued directly. Thrown ApiErrors
+ * carry the backend's real detail string (invite-required, account-exists
+ * conflict, or a generic verification failure) for the caller to show.
+ */
+export async function signInWithApple(
+  identityToken: string,
+  inviteToken?: string | null,
+): Promise<{ access_token: string }> {
+  const res = await fetch(`${AUTH_BASE}/apple/native-verify`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      identity_token: identityToken,
+      invite_token: inviteToken ?? undefined,
+    }),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as { access_token: string };
+}
+
+/**
  * Exchange the HttpOnly refresh cookie for a fresh access token. Returns the
  * new token on success, or null when there is no valid session (401). Any other
  * failure also resolves to null so callers can treat it as "unauthenticated".
@@ -334,6 +413,28 @@ export async function authenticatedRequest(
   });
 }
 
+/** Register this device for push notifications (MysteryMixClub-4vii.27,
+ *  IOS-04). Upsert by device_token server-side -- safe to call every time
+ *  the native registration listener fires, including on every app launch. */
+export async function registerPushToken(deviceToken: string): Promise<void> {
+  await authenticatedRequest("/api/v1/users/me/push-token", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ device_token: deviceToken }),
+  });
+}
+
+/** Remove this device's push registration (called on logout -- PRD IOS-04:
+ *  "remove account associations on logout or deletion"). Best-effort: a
+ *  failure here just means a stale registration lingers server-side until
+ *  APNs itself reports the token dead, not a user-facing error. */
+export async function unregisterPushToken(deviceToken: string): Promise<void> {
+  const params = new URLSearchParams({ device_token: deviceToken });
+  await authenticatedRequest(`/api/v1/users/me/push-token?${params.toString()}`, {
+    method: "DELETE",
+  });
+}
+
 /** Fetch the current user's profile. Bearer-auth via authenticatedRequest. */
 export async function getMe(): Promise<UserProfile> {
   const res = await authenticatedRequest("/api/v1/users/me");
@@ -388,6 +489,28 @@ export async function updatePreferredService(
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ preferred_service: service }),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as UserProfile;
+}
+
+/** Update any subset of the three independent notification toggles
+ *  (MysteryMixClub-4vii.28, IOS-04) -- email lifecycle/reminder emails, push
+ *  lifecycle updates, push deadline reminders. Each omitted field is left
+ *  untouched server-side. Returns the updated profile. */
+export async function updateNotificationPreferences(
+  updates: Partial<{
+    email_notifications: boolean;
+    push_lifecycle_enabled: boolean;
+    push_deadline_reminders_enabled: boolean;
+  }>,
+): Promise<UserProfile> {
+  const res = await authenticatedRequest("/api/v1/users/me", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(updates),
   });
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
@@ -1629,6 +1752,35 @@ export async function getNotes(submissionId: string): Promise<Note[]> {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
   return (await res.json()) as Note[];
+}
+
+// --------------------------------------------------------------------------- //
+// Reports (MysteryMixClub-4vii.13) -- App Store Guideline 1.2's minimum bar
+// for a UGC app: a way to flag another member's content for review. v1
+// covers only notes (the one freeform, attributed surface a member sees from
+// other members) and is deliberately just persistence -- no admin UI yet.
+// --------------------------------------------------------------------------- //
+
+export type ReportReason = "inappropriate_content" | "harassment" | "spam" | "other";
+
+export async function reportNote(
+  noteId: string,
+  reason: ReportReason,
+  detail?: string,
+): Promise<void> {
+  const res = await authenticatedRequest(`/api/v1/reports`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      content_type: "note",
+      content_id: noteId,
+      reason,
+      detail: detail || undefined,
+    }),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
 }
 
 // --------------------------------------------------------------------------- //

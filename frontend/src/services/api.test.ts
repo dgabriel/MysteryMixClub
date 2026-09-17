@@ -26,10 +26,12 @@ import {
   requestMagicLink,
   setPassword,
   setStoredAccessToken,
+  shareableOrigin,
   startGoogleLink,
   updateDisplayName,
   updateClub,
   updateMemberRole,
+  updateNotificationPreferences,
   verifyToken,
 } from "./api";
 import type {
@@ -374,6 +376,9 @@ describe("api.ts", () => {
       tos_accepted: true,
       has_password: false,
       google_linked: false,
+      email_notifications: true,
+      push_lifecycle_enabled: true,
+      push_deadline_reminders_enabled: true,
     };
 
     it("GETs /api/v1/users/me (Bearer + credentials) and resolves the parsed profile on 200", async () => {
@@ -439,6 +444,9 @@ describe("api.ts", () => {
       tos_accepted: true,
       has_password: false,
       google_linked: false,
+      email_notifications: true,
+      push_lifecycle_enabled: true,
+      push_deadline_reminders_enabled: true,
     };
 
     it("PATCHes /api/v1/users/me with a JSON body and returns the parsed profile on 200", async () => {
@@ -467,6 +475,71 @@ describe("api.ts", () => {
       const err = await updateDisplayName("x".repeat(100)).catch((e: unknown) => e);
       expect(err).toBeInstanceOf(ApiError);
       expect(err).toMatchObject({ status: 422, message: "display name too long" });
+    });
+  });
+
+  describe("updateNotificationPreferences (MysteryMixClub-4vii.28, IOS-04)", () => {
+    const profile: UserProfile = {
+      id: "11111111-1111-1111-1111-111111111111",
+      display_name: "Alice",
+      email: "alice@example.com",
+      preferred_service: null,
+      is_platform_admin: false,
+      tos_accepted: true,
+      has_password: false,
+      google_linked: false,
+      email_notifications: false,
+      push_lifecycle_enabled: true,
+      push_deadline_reminders_enabled: true,
+    };
+
+    it("PATCHes /api/v1/users/me with only the given fields and returns the parsed profile on 200", async () => {
+      setStoredAccessToken("my-token");
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, profile));
+
+      await expect(
+        updateNotificationPreferences({ email_notifications: false }),
+      ).resolves.toEqual(profile);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(`${API_BASE}/api/v1/users/me`);
+      expect(init?.method).toBe("PATCH");
+      expect(init?.credentials).toBe("include");
+      // Exactly the given field, no others -- this call never sends the two
+      // fields it wasn't asked to change.
+      expect(init?.body).toBe(JSON.stringify({ email_notifications: false }));
+      const headers = new Headers(init?.headers);
+      expect(headers.get("Content-Type")).toBe("application/json");
+      expect(headers.get("Authorization")).toBe("Bearer my-token");
+    });
+
+    it("can update more than one field in a single call", async () => {
+      setStoredAccessToken("my-token");
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, profile));
+
+      await updateNotificationPreferences({
+        push_lifecycle_enabled: false,
+        push_deadline_reminders_enabled: false,
+      });
+
+      const [, init] = fetchMock.mock.calls[0];
+      expect(init?.body).toBe(
+        JSON.stringify({ push_lifecycle_enabled: false, push_deadline_reminders_enabled: false }),
+      );
+    });
+
+    it("throws ApiError with the backend detail on a non-2xx response", async () => {
+      setStoredAccessToken("my-token");
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse(422, { detail: "email_notifications may not be null" }),
+      );
+
+      const err = await updateNotificationPreferences({ email_notifications: false }).catch(
+        (e: unknown) => e,
+      );
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err).toMatchObject({ status: 422, message: "email_notifications may not be null" });
     });
   });
 
@@ -1546,6 +1619,25 @@ describe("api.ts", () => {
         status: 500,
         message: "request failed (500)",
       });
+    });
+  });
+
+  describe("shareableOrigin (MysteryMixClub-jrm2)", () => {
+    it("uses window.location.origin on web", () => {
+      expect(shareableOrigin()).toBe(window.location.origin);
+    });
+
+    it("uses the real API base URL on native, never window.location.origin", async () => {
+      vi.resetModules();
+      vi.doMock("../lib/platform", () => ({ IS_NATIVE_BUILD: true }));
+
+      const nativeApi = await import("./api");
+
+      expect(nativeApi.shareableOrigin()).toBe(nativeApi.API_BASE_URL);
+      expect(nativeApi.shareableOrigin()).not.toBe(window.location.origin);
+
+      vi.doUnmock("../lib/platform");
+      vi.resetModules();
     });
   });
 });

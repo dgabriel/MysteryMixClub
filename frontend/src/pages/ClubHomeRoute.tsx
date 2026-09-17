@@ -11,6 +11,7 @@ import {
   getResults,
   getMixes,
   removeMember,
+  shareableOrigin,
   updateClub,
   updateMemberRole,
   updateMix,
@@ -23,6 +24,7 @@ import {
 } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 import { usePolling } from "../hooks/usePolling";
+import { consumeJustJoinedClub, dismissGuide, isGuideDismissed } from "../data/onboardingGuides";
 
 /**
  * Protected club-home route. Loads the club and its members in parallel,
@@ -50,6 +52,14 @@ export function ClubHomeRoute() {
 
   const [savingMixId, setSavingMixId] = useState<string | null>(null);
   const [updateMixError, setUpdateMixError] = useState<string | null>(null);
+  const [openingMixId, setOpeningMixId] = useState<string | null>(null);
+  // Separate from openingMixId on purpose: both the catch's setOpenMixError
+  // and the finally's setOpeningMixId(null) fire in the same synchronous
+  // continuation, which React 18 batches into one render -- scoping the error
+  // to openingMixId would make it clear itself the instant it's set, since
+  // openingMixId is already back to null by the render that would show it.
+  const [openErrorMixId, setOpenErrorMixId] = useState<string | null>(null);
+  const [openMixError, setOpenMixError] = useState<string | null>(null);
 
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [generatingInvite, setGeneratingInvite] = useState(false);
@@ -72,6 +82,29 @@ export function ClubHomeRoute() {
   // Member self-leave (MYS-97).
   const [leavingClub, setLeavingClub] = useState(false);
   const [leaveClubError, setLeaveClubError] = useState<string | null>(null);
+
+  // Club-invite welcome guide (MysteryMixClub-6eo8). The lazy initializer
+  // reads-and-clears the one-shot "just joined" flag exactly once at mount,
+  // regardless of when `userId` below resolves -- consumeJustJoinedClub
+  // removes its localStorage key on read, so calling it again on a later
+  // re-render (e.g. once userId loads) would always read false.
+  const [justJoinedThisClub] = useState(() => (id ? consumeJustJoinedClub(id) : false));
+  const [showInviteGuide, setShowInviteGuide] = useState(false);
+
+  useEffect(() => {
+    if (!justJoinedThisClub || !userId) return;
+    if (!isGuideDismissed("invite", userId)) {
+      // Syncing from external state (localStorage), same pattern the rule
+      // already accepts elsewhere (see MixDetailRoute's load() effect).
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setShowInviteGuide(true);
+    }
+  }, [justJoinedThisClub, userId]);
+
+  function dismissInviteGuide() {
+    if (userId) dismissGuide("invite", userId);
+    setShowInviteGuide(false);
+  }
 
   useEffect(() => {
     if (!id) return;
@@ -181,7 +214,7 @@ export function ClubHomeRoute() {
       const invite = await createInvite(id);
       // Canonical invite path is /invite/:token (what the backend emails too);
       // /join/:token still resolves as a legacy alias.
-      setInviteUrl(`${window.location.origin}/invite/${invite.token}`);
+      setInviteUrl(`${shareableOrigin()}/invite/${invite.token}`);
     } catch (err) {
       setInviteError(
         err instanceof ApiError ? err.message : "couldn't generate an invite. try again.",
@@ -212,6 +245,33 @@ export function ClubHomeRoute() {
       return false;
     } finally {
       setSavingMixId(null);
+    }
+  }
+
+  // Open a pending mix for submissions, from the club home list itself
+  // (MysteryMixClub-4vii.4) rather than only from the mix's own detail page's
+  // collapsed tools panel — that was real, reported organizer confusion, not
+  // a missing feature: opening has always been this one manual PATCH, just
+  // hard to find. Own saving/error state, separate from theme-editing above,
+  // since the two are different actions that can be mid-flight on different
+  // rows at once.
+  async function handleOpenMix(mixId: string): Promise<boolean> {
+    if (!id) return false;
+    setOpeningMixId(mixId);
+    setOpenErrorMixId(null);
+    setOpenMixError(null);
+    try {
+      const updated = await updateMix(mixId, { state: "open_submission" });
+      setMixes((current) => current.map((r) => (r.id === mixId ? updated : r)));
+      return true;
+    } catch (err) {
+      setOpenErrorMixId(mixId);
+      setOpenMixError(
+        err instanceof ApiError ? err.message : "couldn't open this mystery mix. try again.",
+      );
+      return false;
+    } finally {
+      setOpeningMixId(null);
     }
   }
 
@@ -341,6 +401,10 @@ export function ClubHomeRoute() {
       onUpdateMix={handleUpdateMix}
       savingMixId={savingMixId}
       updateMixError={updateMixError}
+      onOpenSubmissions={handleOpenMix}
+      openingMixId={openingMixId}
+      openErrorMixId={openErrorMixId}
+      openMixError={openMixError}
       inviteUrl={inviteUrl}
       onGenerateInvite={handleGenerateInvite}
       generatingInvite={generatingInvite}
@@ -361,6 +425,9 @@ export function ClubHomeRoute() {
       leavingClub={leavingClub}
       leaveClubError={leaveClubError}
       onOpenClubSongs={() => navigate(`/clubs/${id}/songs`)}
+      showInviteGuide={showInviteGuide}
+      onDismissInviteGuide={dismissInviteGuide}
+      onReopenInviteGuide={() => setShowInviteGuide(true)}
     />
   );
 }

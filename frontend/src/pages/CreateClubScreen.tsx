@@ -3,7 +3,6 @@ import { Button } from "../components/Button";
 import { PaperSurface } from "../components/PaperSurface";
 import { FormError } from "../components/FormError";
 import { TextField } from "../components/TextField";
-import { HelpLink } from "../components/HelpLink";
 import { DeadlineWindowField } from "../components/DeadlineWindowField";
 import { DeadlineAnchorField, TimezoneField } from "../components/DeadlineAnchorField";
 import { DeadlineModeToggle } from "../components/DeadlineModeToggle";
@@ -251,14 +250,9 @@ export function CreateClubScreen({ onSubmit, submitting, error, onCancel }: Crea
           {/* Left-aligned like every other screen in the nav shell. Centring
               was for the standalone version of this page, which had no
               toolbar to align to. */}
-          <div className="flex items-center gap-3">
-            <h1 className="font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
-              new club
-            </h1>
-            {/* Beside the heading, the same place every other screen puts it —
-                a lone `?` under a paragraph has nothing to be "about". */}
-            <HelpLink anchor="clubs" onPaper />
-          </div>
+          <h1 className="font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
+            new club
+          </h1>
           {/* Actual help, not a tagline. Two things a first-time organizer
               cannot work out from the fields themselves: what a club *is*, and
               that votes-per-player and songs-per-submission are the only

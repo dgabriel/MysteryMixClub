@@ -8,6 +8,7 @@ import {
   type InvitePreview,
 } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
+import { markJustJoinedClub } from "../data/onboardingGuides";
 
 /**
  * Public join route. The invite preview is visible to anyone with the link, so
@@ -38,6 +39,12 @@ export function JoinClubRoute() {
   const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
 
+  // `fromPendingInvite` (set by HomeRoute only for the stashed-before-sign-in
+  // redirect) is read here, outside the effect, so it's a plain boolean
+  // dependency rather than the whole `location` object.
+  const cameFromPendingInvite =
+    (location.state as { fromPendingInvite?: boolean } | null)?.fromPendingInvite === true;
+
   useEffect(() => {
     if (!token) return;
     // Wait for the on-mount silent-refresh to resolve before fetching the
@@ -52,6 +59,16 @@ export function JoinClubRoute() {
         // Already a member (most relevant on an otherwise-expired link, MYS-181)
         // — skip the join screen entirely and land them in the club.
         if (result.already_member) {
+          // This same branch also covers a brand-new join: when a logged-out
+          // visitor signs in via magic link, the backend auto-joins them
+          // during /auth/verify, so by the time this preview runs it already
+          // reads already_member. `cameFromPendingInvite` is what tells that
+          // apart from an existing member revisiting an old invite link --
+          // only the former should auto-show the invite-welcome guide
+          // (MysteryMixClub-6eo8).
+          if (cameFromPendingInvite && result.club_id) {
+            markJustJoinedClub(result.club_id);
+          }
           navigate(`/clubs/${result.club_id}`, { replace: true });
           return;
         }
@@ -76,7 +93,7 @@ export function JoinClubRoute() {
         setLoading(false);
       }
     })();
-  }, [token, status, isAuthenticated, navigate]);
+  }, [token, status, isAuthenticated, navigate, cameFromPendingInvite]);
 
   async function handleJoin() {
     if (!token) return;
@@ -84,6 +101,9 @@ export function JoinClubRoute() {
     setJoinError(null);
     try {
       const club = await acceptInvite(token);
+      // Unambiguous fresh join -- an explicit accept always means "just
+      // joined," unlike the already_member fast path above.
+      markJustJoinedClub(club.id);
       navigate(`/clubs/${club.id}`, { replace: true });
     } catch (err) {
       // A link that expired between preview and accept flips to the expired state.

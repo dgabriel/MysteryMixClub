@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Universal Links (MysteryMixClub-4vii.10): lets magic-link email,
+	     Google's OAuth redirect, and invite links open inside the app
+	     instead of Safari when tapped, degrading gracefully to a normal
+	     page load when the app isn't installed. Requires a matching
+	     apple-app-site-association hosted at each domain's root -- inert
+	     without one. Requires the Associated Domains capability enabled
+	     for this App ID in the Apple Developer portal. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:staging.mysterymixclub.com</string>
+	</array>
+	<!-- Sign in with Apple (MysteryMixClub-4vii.9, Guideline 4.8). Requires the
+	     "Sign In with Apple" capability enabled for this App ID in the Apple
+	     Developer portal (a manual, one-time step -- see docs/ios/README.md)
+	     and a provisioning profile regenerated after enabling it; without
+	     that, code signing with this entitlement present fails or the
+	     capability silently does nothing on-device. -->
+	<key>com.apple.developer.applesignin</key>
+	<array>
+		<string>Default</string>
+	</array>
+	<!-- Push notifications (MysteryMixClub-4vii.27, IOS-04). Requires the
+	     "Push Notifications" capability enabled for this App ID in the Apple
+	     Developer portal (a manual, one-time step -- see docs/ios/README.md)
+	     plus an APNs Auth Key configured server-side, and a provisioning
+	     profile regenerated after enabling the capability; without that,
+	     code signing with this entitlement present fails or registration
+	     silently never completes on-device. "production" (not "development")
+	     since every build this project ships -- TestFlight included -- is
+	     Release-signed, and Release-signed builds always use APNs'
+	     production environment regardless of pre-release status. -->
+	<key>aps-environment</key>
+	<string>production</string>
+</dict>
+</plist>

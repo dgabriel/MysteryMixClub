@@ -238,11 +238,6 @@ export function ProfileScreen({
                 savingPref={savingPref}
                 prefsError={prefsError}
                 pushAvailable={pushAvailable}
-              />
-            ) : null}
-
-            {pushStatus ? (
-              <NotificationsSection
                 pushStatus={pushStatus}
                 onEnablePush={onEnablePush}
                 enablingPush={enablingPush}
@@ -500,20 +495,32 @@ function AccountSettingsSection({
 }
 
 /**
- * Three independent notification channels (MysteryMixClub-4vii.28, IOS-04):
- * email lifecycle/reminder emails (the `email_notifications` backend field
+ * Notifications: email + the two push preference toggles, plus -- when push
+ * exists on this platform at all (native iOS) -- the OS permission status
+ * and enable action, in the SAME section as the toggles it gates.
+ *
+ * MysteryMixClub-4vii.31 folded a separate "notifications" section (holding
+ * only the permission button) into this one after a real device test showed
+ * exactly the confusion two similarly-worded, separately-titled sections
+ * invites: toggling "push: updates" here does nothing to iOS permission by
+ * itself (it only PATCHes an account preference) and was easy to mistake for
+ * "the" way to enable push, since the two sections described themselves in
+ * nearly the same words. Now there is one place on the page for push, with
+ * the permission step ordered first -- it's the thing that has to happen
+ * before the toggles below it can matter at all.
+ *
+ * Email (MysteryMixClub-4vii.28): the `email_notifications` backend field
  * has existed since email notifications shipped, but this is the first
  * frontend control for it -- until now, unsubscribing meant the email's own
- * unsubscribe link), and the two push equivalents added alongside it. Each
- * saves independently and immediately on click (no separate "save" step,
- * unlike the name/password forms above) -- optimistic in the container, so a
- * failed save reverts the checkbox and surfaces `prefsError` rather than
- * leaving a stale, unsent state checked.
+ * unsubscribe link. Every toggle here saves independently and immediately on
+ * click (no separate "save" step, unlike the name/password forms above) --
+ * optimistic in the container, so a failed save reverts the checkbox and
+ * surfaces `prefsError` rather than leaving a stale, unsent state checked.
  *
- * The two push toggles only render when push exists on this platform at all
- * (native iOS) -- same fail-safe-hide reasoning as `googleEnabled` and
- * `pushStatus` above: a toggle for a channel that can never deliver on this
- * platform is confusing UI, not a neutral no-op.
+ * The two push toggles, and the permission block above them, only render
+ * when push exists on this platform at all -- same fail-safe-hide reasoning
+ * as `googleEnabled`: a toggle (or a permission button) for a channel that
+ * can never deliver on this platform is confusing UI, not a neutral no-op.
  */
 function NotificationPreferencesSection({
   prefs,
@@ -521,19 +528,56 @@ function NotificationPreferencesSection({
   savingPref,
   prefsError,
   pushAvailable,
+  pushStatus,
+  onEnablePush,
+  enablingPush = false,
 }: {
   prefs: Record<NotificationPreferenceKey, boolean>;
   onTogglePreference?: (key: NotificationPreferenceKey, value: boolean) => void;
   savingPref?: NotificationPreferenceKey | null;
   prefsError?: string | null;
   pushAvailable: boolean;
+  pushStatus?: PushPermissionStatus | null;
+  onEnablePush?: () => void;
+  enablingPush?: boolean;
 }) {
   return (
     <section className="mt-12 border-t border-ink-hairline pt-10">
       <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-accent">
-        notification preferences
+        notifications
       </h2>
-      <div className="mt-4 space-y-5">
+
+      {pushAvailable && pushStatus ? (
+        <div className="mt-4">
+          {pushStatus === "granted" ? (
+            <p className="font-mono text-sm text-ink-muted">push is on for this device</p>
+          ) : pushStatus === "denied" ? (
+            <p className="text-sm leading-[1.72] text-ink-muted">
+              push is off at the iOS level, so the push toggles below won&apos;t do anything
+              until you turn it back on in iOS settings &gt; notifications &gt; mysterymixclub.
+            </p>
+          ) : (
+            <>
+              <p className="text-sm leading-[1.72] text-ink-muted">
+                turn on push to get these on your phone&apos;s lock screen, not just by email.
+              </p>
+              <div className="mt-3">
+                <Button
+                  onPaper
+                  variant="ghost"
+                  type="button"
+                  onClick={onEnablePush}
+                  disabled={enablingPush}
+                >
+                  {enablingPush ? "enabling…" : "turn on push notifications"}
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+      ) : null}
+
+      <div className="mt-6 space-y-5">
         <PreferenceCheckbox
           id="pref-email-notifications"
           label="email"
@@ -614,56 +658,6 @@ function PreferenceCheckbox({
         <span className="mt-1 block text-meta leading-[1.6] text-ink-muted">{description}</span>
       </span>
     </label>
-  );
-}
-
-/**
- * Manual "enable notifications" path (MysteryMixClub-4vii.27, IOS-04) --
- * native iOS only (the container never passes `pushStatus` on web, so this
- * never renders there). The onboarding auto-prompt only ever gets one shot at
- * the real system dialog; this is how anyone who denied it, dismissed it, or
- * joined before it existed gets back in.
- *
- * `granted` and `denied` both render a status line rather than a button --
- * a second `requestPermissions()` call after a denial silently reflects
- * "denied" again without ever showing the OS dialog, so the only way out of
- * that state is iOS Settings, not this screen.
- */
-function NotificationsSection({
-  pushStatus,
-  onEnablePush,
-  enablingPush,
-}: {
-  pushStatus: PushPermissionStatus;
-  onEnablePush?: () => void;
-  enablingPush: boolean;
-}) {
-  return (
-    <section className="mt-12 border-t border-ink-hairline pt-10">
-      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-accent">
-        notifications
-      </h2>
-      {pushStatus === "granted" ? (
-        <p className="mt-2 font-mono text-sm text-ink-muted">notifications are on</p>
-      ) : pushStatus === "denied" ? (
-        <p className="mt-2 text-sm leading-[1.72] text-ink-muted">
-          notifications are off. enable them in iOS settings &gt; notifications &gt;
-          mysterymixclub to get mix reminders and updates.
-        </p>
-      ) : (
-        <>
-          <p className="mt-2 text-sm leading-[1.72] text-ink-muted">
-            get a nudge when it&apos;s your turn to submit or vote, and when a mystery mix
-            wraps up.
-          </p>
-          <div className="mt-4">
-            <Button onPaper variant="ghost" type="button" onClick={onEnablePush} disabled={enablingPush}>
-              {enablingPush ? "enabling…" : "enable notifications"}
-            </Button>
-          </div>
-        </>
-      )}
-    </section>
   );
 }
 

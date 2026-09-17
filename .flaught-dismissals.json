@@ -2068,6 +2068,17 @@
         "file": "docs/ios/README.md"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:4e199a5ed5a23bf1ffb7897735adf28e",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T21:56:56.097Z",
+      "reason": "False positive from the test_weakening heuristic reacting to re-indentation, not a real weakening: this whole test was nested one level deeper inside a new describe block (indentation shifted every line), and the diff tool's line-matching saw the pre-existing 'await user.click(button)' line shift down past a newly ADDED assertion+comment and misread it as a deletion. No assertion was removed -- every original expect() in this test is still present and unchanged; a new expect() for the toggle's presence was added, not swapped in for a deleted one.",
+      "context": {
+        "title": "A test body was replaced with comments",
+        "file": "frontend/src/pages/ProfileRoute.test.tsx"
+      },
+      "expires_at": null
     }
   ]
 }

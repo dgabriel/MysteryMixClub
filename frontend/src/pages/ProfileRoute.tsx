@@ -104,6 +104,7 @@ export function ProfileRoute() {
   // anyone who denied/skipped the onboarding auto-prompt).
   const [pushStatus, setPushStatus] = useState<PushPermissionStatus | null>(null);
   const [enablingPush, setEnablingPush] = useState(false);
+  const [enablePushError, setEnablePushError] = useState<string | null>(null);
 
   // Three independent toggles (MysteryMixClub-4vii.28, IOS-04): email
   // lifecycle/reminder emails, push lifecycle updates, push deadline
@@ -128,9 +129,17 @@ export function ProfileRoute() {
 
   async function handleEnablePush() {
     setEnablingPush(true);
+    setEnablePushError(null);
     try {
       const status = await requestPushPermissionAndRegister();
       setPushStatus(status);
+    } catch {
+      // The underlying Capacitor calls resolve with a status object rather
+      // than rejecting in normal use (a real registration failure surfaces
+      // as the separate, best-effort 'registrationError' event, not a
+      // thrown promise) -- this only catches the unexpected case, so the
+      // button re-enables for a retry instead of getting stuck.
+      setEnablePushError("that didn't work. try again.");
     } finally {
       setEnablingPush(false);
     }
@@ -388,6 +397,7 @@ export function ProfileRoute() {
       pushStatus={pushStatus}
       onEnablePush={handleEnablePush}
       enablingPush={enablingPush}
+      enablePushError={enablePushError}
       pushAvailable={nativePushAvailable()}
       notificationPrefs={notificationPrefs}
       onTogglePreference={handleTogglePreference}

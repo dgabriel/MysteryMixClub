@@ -29,6 +29,7 @@ from app.db.session import get_db
 from app.models.club import Club
 from app.models.auth_identity import AuthIdentity
 from app.models.club_member import ClubMember
+from app.models.device_push_token import DevicePushToken
 from app.models.login_attempt import LoginAttempt
 from app.models.mix import Mix
 from app.models.note import Note
@@ -66,6 +67,12 @@ class UserProfileResponse(WireModel):
     has_password: bool
     google_linked: bool
     apple_linked: bool
+    # Push equivalents of email_notifications, independent of it and of each
+    # other (MysteryMixClub-4vii.25, IOS-04). Present regardless of whether
+    # the account has any registered device -- these are the preference, not
+    # "can this account currently receive a push."
+    push_lifecycle_enabled: bool
+    push_deadline_reminders_enabled: bool
 
 
 class UserProfileUpdate(WireModel):
@@ -74,19 +81,26 @@ class UserProfileUpdate(WireModel):
     display_name: DisplayName | None = None
     preferred_service: PreferredService | None = None
     email_notifications: bool | None = None
+    push_lifecycle_enabled: bool | None = None
+    push_deadline_reminders_enabled: bool | None = None
     # Accepting the Terms of Service / Privacy Policy (MYS-183). Only `true` is
     # a meaningful value — there's no client-initiated "unaccept" — so this is
     # the sole literal accepted; the server stamps its own timestamp below,
     # never trusting one from the client.
     accept_terms: Literal[True] | None = None
 
-    # display_name and email_notifications map to NOT NULL columns: allow omission
-    # (partial update) but reject an explicit null (422).
+    # These map to NOT NULL columns: allow omission (partial update) but
+    # reject an explicit null (422).
     @model_validator(mode="before")
     @classmethod
     def _reject_explicit_null(cls, data):
         if isinstance(data, dict):
-            for field in ("display_name", "email_notifications"):
+            for field in (
+                "display_name",
+                "email_notifications",
+                "push_lifecycle_enabled",
+                "push_deadline_reminders_enabled",
+            ):
                 if field in data and data[field] is None:
                     raise ValueError(f"{field} may not be null")
         return data
@@ -160,6 +174,8 @@ async def _to_profile(user: User, settings: Settings, db: AsyncSession) -> UserP
         has_password=user.password_hash is not None,
         google_linked=user.google_id is not None,
         apple_linked=apple_linked,
+        push_lifecycle_enabled=user.push_lifecycle_enabled,
+        push_deadline_reminders_enabled=user.push_deadline_reminders_enabled,
     )
 
 
@@ -439,6 +455,9 @@ async def delete_me(
     current_user.password_hash = None
     current_user.google_id = None
     await db.execute(delete(AuthIdentity).where(AuthIdentity.user_id == current_user.id))
+    # Same reasoning as AuthIdentity above -- a forgotten account's device
+    # shouldn't keep receiving its old club's pushes (MysteryMixClub-4vii.25).
+    await db.execute(delete(DevicePushToken).where(DevicePushToken.user_id == current_user.id))
     await db.execute(delete(PasswordResetToken).where(PasswordResetToken.email == former_email))
     await db.execute(delete(LoginAttempt).where(LoginAttempt.email == former_email))
 
@@ -449,6 +468,65 @@ async def delete_me(
         .values(invalidated_at=now)
     )
 
+    await db.commit()
+
+
+# --------------------------------------------------------------------------- #
+# Push notification device registration (MysteryMixClub-4vii.25, IOS-04).
+# --------------------------------------------------------------------------- #
+
+
+class RegisterPushTokenRequest(WireModel):
+    device_token: str = Field(min_length=1, max_length=512)
+
+
+class RegisterPushTokenResponse(WireModel):
+    message: str = "registered"
+
+
+@router.post("/me/push-token", response_model=RegisterPushTokenResponse)
+async def register_push_token(
+    payload: RegisterPushTokenRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> RegisterPushTokenResponse:
+    """Register (or re-register) a device for push notifications.
+
+    Upsert by `device_token`, not by (user, token): a device can only ever
+    receive push for one account at a time, so a token that already exists --
+    same device signing in as someone else, or simply re-registering on
+    launch -- gets reassigned to the caller rather than erroring or leaving a
+    stale second row. One user can have many rows (many devices); this never
+    touches any row but the one matching this exact token.
+    """
+    existing = await db.scalar(
+        select(DevicePushToken).where(DevicePushToken.device_token == payload.device_token)
+    )
+    if existing is not None:
+        existing.user_id = current_user.id
+    else:
+        db.add(DevicePushToken(user_id=current_user.id, device_token=payload.device_token))
+    await db.commit()
+    return RegisterPushTokenResponse()
+
+
+@router.delete("/me/push-token", status_code=status.HTTP_204_NO_CONTENT)
+async def unregister_push_token(
+    device_token: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Remove a device's push registration (called on logout, MysteryMixClub-
+    4vii.25/PRD IOS-04: "remove account associations on logout or deletion").
+    Scoped to the caller's own rows -- deleting a token registered to a
+    different account is a no-op, not an error, since the caller has no way
+    to know that happened and there's nothing actionable to tell them."""
+    await db.execute(
+        delete(DevicePushToken).where(
+            DevicePushToken.device_token == device_token,
+            DevicePushToken.user_id == current_user.id,
+        )
+    )
     await db.commit()
 
 

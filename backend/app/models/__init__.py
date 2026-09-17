@@ -2,6 +2,7 @@ from app.models.apple_mix_playlist import AppleMixPlaylist
 from app.models.auth_identity import AuthIdentity
 from app.models.club import Club
 from app.models.club_member import ClubMember
+from app.models.device_push_token import DevicePushToken
 from app.models.invite import Invite
 from app.models.login_attempt import LoginAttempt
 from app.models.magic_link_token import MagicLinkToken
@@ -26,6 +27,7 @@ __all__ = [
     "AuthIdentity",
     "Club",
     "ClubMember",
+    "DevicePushToken",
     "Invite",
     "LoginAttempt",
     "MagicLinkToken",

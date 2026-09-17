@@ -285,6 +285,107 @@ already-authenticated user (mirrors Google's own account-link flow, but
 wasn't required for launch). `apple_linked` on the profile response only
 ever becomes `true` via signing in with Apple itself.
 
+## Push notifications (`MysteryMixClub-4vii.25/26/27/28`, IOS-04)
+
+Push reuses the official **`@capacitor/push-notifications` plugin** rather
+than a custom Swift plugin like Google/Apple/Tips needed -- Capacitor ships
+first-party APNs registration, permission, and token-capture support
+already, so this needed only `AppDelegate.swift` boilerplate forwarding
+`didRegisterForRemoteNotificationsWithDeviceToken`/
+`didFailToRegisterForRemoteNotificationsWithError` into `NotificationCenter`
+so the plugin's JS `'registration'`/`'registrationError'` events fire.
+
+**APNs auth is token-based (`.p8` key)**, mirroring
+`apple_music_token.py`'s exact ES256-JWT pattern (same library, same PEM
+normalization, same in-process cache-with-refresh-margin, same
+`is_configured` graceful-degradation gate) -- `apple_push_token.py` is close
+enough to Apple Music's own service to have been copied structurally.
+Unlike Apple Music's developer token, the provider-authentication token
+carries no `exp` claim (Apple's guidance: mint it, reuse it under an hour,
+re-mint rather than attach an expiry).
+
+**The gateway is always production** (`api.push.apple.com`), never sandbox.
+Every build this project ships -- TestFlight included -- is Release-signed,
+and a Release-signed build always talks to APNs' production environment
+regardless of pre-release status; sandbox only applies to a debug build run
+straight from Xcode, which isn't part of this project's shipped-build
+workflow. No environment toggle exists.
+
+**This needs two manual Apple Developer Portal steps before it works
+on-device or in TestFlight**, both under Certificates, Identifiers &
+Profiles: enable the **"Push Notifications" capability** for this app's App
+ID (`com.mysterymixclub.app`) and regenerate/re-download its provisioning
+profile (same category of step Sign in with Apple's own capability enable
+needed, just a different capability), and create a **separate APNs
+Authentication Key** (Keys → ＋ → check "Apple Push Notifications service
+(APNs)") -- a different key from Apple Music's MusicKit key, even though
+both reuse the same account-wide Team ID. `App.entitlements` already carries
+`aps-environment=production`; without the portal capability enabled to
+match, code signing with that entitlement present fails the same way Sign
+in with Apple's entitlement does without its own capability enabled.
+Provisioning walkthrough: `docs/staging-setup.md` → "Enabling push
+notifications".
+
+**Device tokens are per-device, not per-user.** `DevicePushToken` (one row
+per registration, `device_token` unique) lets a user with several devices
+receive the same event on each; `POST /users/me/push-token` upserts by
+token (a token reassigns to whoever registers it, handling device reuse or
+a different user signing into the same phone), `DELETE` scopes to the
+caller's own rows. Both logout and account deletion drop the caller's
+tokens, mirroring `AuthIdentity`'s own cleanup-on-logout/deletion pattern.
+
+**Two independent preferences**, `push_lifecycle_enabled` and
+`push_deadline_reminders_enabled` (both default on), separate from each
+other and from `email_notifications` -- the PRD's explicit requirement that
+a user be able to turn off deadline nudges without losing lifecycle updates
+or email entirely. Editable from Profile's "notification preferences"
+section (`MysteryMixClub-4vii.28`); the two push toggles only render on
+native iOS, since a toggle for a channel that can never deliver on web
+would be confusing UI, not a neutral no-op.
+
+**Dual reminder cadence** (`MysteryMixClub-4vii.26`, resolved from the
+PRD's own open question: "confirm cadence before implementation" → both):
+push sends at roughly 24 hours before a deadline (new, push-only, its own
+`push_submission_reminder_sent_at`/`push_voting_reminder_sent_at` markers on
+`Mix`) *and* at the existing 1-12-hour window email already uses (a new
+push channel added alongside the existing warning, not a replacement).
+
+**Permission timing is also both**, resolved the same way: an automatic OS
+prompt fires once, right after onboarding completes, checked against
+`pushPermissionStatus()` first so a user who already answered (denied or
+granted) is never re-asked -- iOS only shows the real system dialog once
+per app installation. Profile's notification-preferences section carries
+the second path: a manual "enable notifications" explainer/button for
+anyone who denied or dismissed the auto-prompt, or joined before it
+existed. A denial can only be undone in iOS Settings, not by asking again
+from inside the app -- the manual path explains that rather than pretending
+a second in-app prompt would work.
+
+**Deep-linking.** A tapped notification (foreground, background, or
+terminated) lands on the relevant club's home screen (`/clubs/:id`) --
+deliberately not the specific mix's own detail page, matching
+`notifications.py`'s own email CTA destination (`_club_url`) for the exact
+same events, so a late or stale notification always opens somewhere
+sensible even if the mix has since advanced past the state the notification
+described.
+
+**Lock-screen copy is restrained**, matching the PRD's requirement: never
+names a submitter, participation mode, or hidden result (e.g. "Voting is
+open for The Mystery Mix Club", never "3 new songs to vote on").
+
+**Invalid-token retirement.** APNs' `400 BadDeviceToken`/`410 Unregistered`
+responses delete the matching `DevicePushToken` row (its own fresh DB
+session, since the background-task dispatch path may run after a
+request-scoped session has already closed); every other outcome is
+swallowed the same way `notifications._safe_send` treats one bad recipient
+-- it never blocks the rest of a batch.
+
+**Still needs device evidence**, blocked on the two manual Developer Portal
+steps above: permission granted/denied/dismissed, a real push received in
+foreground/background/terminated app states, tap-to-deep-link, each
+preference toggle actually suppressing its channel, and logout clearing the
+device's registration. Record outcomes on `MysteryMixClub-4vii.30`.
+
 ## What still needs device evidence
 
 Physical-device runs must record, separately and honestly: native permission granted with no browser popup; denied and restricted permission; an account with no eligible subscription; an interrupted network mid-build; repeated taps; and a return to MMC after opening Apple Music. Record the outcomes on `MysteryMixClub-yyuq`. Never record tokens, private notes, or invitation URLs in diagnostics. A simulator can help with layout; it does not satisfy the PRD's physical-device acceptance gate.

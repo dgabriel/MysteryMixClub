@@ -9,14 +9,14 @@ import { Card } from "../components/Card";
 import { ClubName } from "../components/ClubName";
 import { FormError } from "../components/FormError";
 import { CheckmarkIcon } from "../components/CheckmarkIcon";
+import { ConcentricRings } from "../components/ConcentricRings";
+import { CrownIcon } from "../components/CrownIcon";
+import { UserAvatar } from "../components/avatars/UserAvatar";
 
 export type NotificationPreferenceKey =
   | "email_notifications"
   | "push_lifecycle_enabled"
   | "push_deadline_reminders_enabled";
-import { ConcentricRings } from "../components/ConcentricRings";
-import { CrownIcon } from "../components/CrownIcon";
-import { UserAvatar } from "../components/avatars/UserAvatar";
 
 type ProfileScreenProps = {
   userId: string | null;
@@ -539,7 +539,7 @@ function NotificationPreferencesSection({
           label="email"
           description="submission and voting reminders, and mix updates, by email."
           checked={prefs.email_notifications}
-          disabled={savingPref === "email_notifications"}
+          disabled={Boolean(savingPref)}
           onChange={(checked) => onTogglePreference?.("email_notifications", checked)}
         />
         {pushAvailable ? (
@@ -549,7 +549,7 @@ function NotificationPreferencesSection({
               label="push: updates"
               description="a nudge when it's your turn to submit or vote, and when a mystery mix wraps up."
               checked={prefs.push_lifecycle_enabled}
-              disabled={savingPref === "push_lifecycle_enabled"}
+              disabled={Boolean(savingPref)}
               onChange={(checked) => onTogglePreference?.("push_lifecycle_enabled", checked)}
             />
             <PreferenceCheckbox
@@ -557,7 +557,7 @@ function NotificationPreferencesSection({
               label="push: reminders"
               description="an extra nudge as a submission or voting deadline approaches."
               checked={prefs.push_deadline_reminders_enabled}
-              disabled={savingPref === "push_deadline_reminders_enabled"}
+              disabled={Boolean(savingPref)}
               onChange={(checked) =>
                 onTogglePreference?.("push_deadline_reminders_enabled", checked)
               }

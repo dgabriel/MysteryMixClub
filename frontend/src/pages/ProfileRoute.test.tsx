@@ -592,5 +592,73 @@ describe("ProfileRoute", () => {
       expect(await screen.findByText("that didn't save. try again.")).toBeInTheDocument();
       await waitFor(() => expect(emailToggle).toBeChecked());
     });
+
+    it("saving a push toggle is optimistic too, and reverts on failure", async () => {
+      const user = userEvent.setup();
+      mockNativePushAvailable.mockReturnValue(true);
+      mockPushPermissionStatus.mockResolvedValue("granted");
+      mockGetMe.mockResolvedValue(profileWith("Ada", { push_lifecycle_enabled: true }));
+      mockUpdateNotificationPreferences.mockResolvedValue(
+        profileWith("Ada", { push_lifecycle_enabled: false }),
+      );
+
+      renderProfile();
+      await screen.findByText(/archived/i);
+
+      const pushToggle = await screen.findByRole("checkbox", { name: /push: updates/i });
+      await user.click(pushToggle);
+
+      expect(mockUpdateNotificationPreferences).toHaveBeenCalledWith({
+        push_lifecycle_enabled: false,
+      });
+      await waitFor(() => expect(pushToggle).not.toBeChecked());
+
+      // Now the revert-on-failure path, same toggle -- it reverts to its
+      // last known-good state (now unchecked, from the successful save
+      // above), not to whatever it was on the very first page load.
+      mockUpdateNotificationPreferences.mockRejectedValue(new Error("network error"));
+      await user.click(pushToggle);
+
+      expect(await screen.findByText("that didn't save. try again.")).toBeInTheDocument();
+      await waitFor(() => expect(pushToggle).not.toBeChecked());
+    });
+
+    it("disables every toggle while one save is in flight, so a second click can't race the first", async () => {
+      const user = userEvent.setup();
+      mockNativePushAvailable.mockReturnValue(true);
+      mockPushPermissionStatus.mockResolvedValue("granted");
+      mockGetMe.mockResolvedValue(
+        profileWith("Ada", { email_notifications: true, push_lifecycle_enabled: true }),
+      );
+      let resolveFirst!: (p: UserProfile) => void;
+      mockUpdateNotificationPreferences.mockReturnValue(
+        new Promise<UserProfile>((r) => {
+          resolveFirst = r;
+        }),
+      );
+
+      renderProfile();
+      await screen.findByText(/archived/i);
+
+      const emailToggle = await screen.findByRole("checkbox", { name: /email/i });
+      const pushToggle = await screen.findByRole("checkbox", { name: /push: updates/i });
+      await user.click(emailToggle);
+
+      // The first save is still in flight: every toggle is disabled, and a
+      // click on a DIFFERENT preference must not fire a second, overlapping
+      // PATCH that could race the first (MysteryMixClub-4vii.28 Flaught
+      // finding F-001).
+      expect(emailToggle).toBeDisabled();
+      expect(pushToggle).toBeDisabled();
+      await user.click(pushToggle);
+      expect(mockUpdateNotificationPreferences).toHaveBeenCalledTimes(1);
+      expect(mockUpdateNotificationPreferences).toHaveBeenCalledWith({
+        email_notifications: false,
+      });
+
+      resolveFirst(profileWith("Ada", { email_notifications: false, push_lifecycle_enabled: true }));
+      await waitFor(() => expect(emailToggle).not.toBeDisabled());
+      expect(pushToggle).toBeChecked();
+    });
   });
 });

@@ -1782,6 +1782,28 @@
         "file": "frontend/src/pages/EmailEntryScreen.tsx"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:c808944375cb3ec10838dac486fde9fd",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:23:54.532Z",
+      "reason": "Factually incorrect about the backend: UserProfileUpdate (backend/app/api/routes/users.py) has every field Optional with default None, and update_me only applies fields explicitly provided (partial PATCH semantics). This exact pattern is already used by updateDisplayName, updatePreferredService, and acceptTerms in this same file -- sending a partial body to PATCH /users/me is the established, safe convention, not new risk.",
+      "context": {
+        "title": "`updateNotificationPreferences` PATCH may unintentionally overwrite other profile fields",
+        "file": "frontend/src/services/api.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:53042a835c9068b1c6c0677828c00f63",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:23:54.667Z",
+      "reason": "Not a real vulnerability: GET/PATCH /users/me is authenticated via get_current_user and returns only the calling user's own profile -- there is no cross-user enumeration path. The same reasoning would flag every other boolean already on this response (has_password, google_linked, tos_accepted, email_notifications), none of which were flagged when they shipped.",
+      "context": {
+        "title": "New notification preference fields exposed to web client may leak user privacy preferences",
+        "file": "frontend/src/services/api.ts"
+      },
+      "expires_at": null
     }
   ]
 }

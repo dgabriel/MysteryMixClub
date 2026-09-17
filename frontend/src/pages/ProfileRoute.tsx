@@ -264,9 +264,15 @@ export function ProfileRoute() {
 
   // Optimistic: flips the toggle immediately, reverts + surfaces an error if
   // the save fails, rather than waiting on the round trip to reflect a click
-  // (MysteryMixClub-4vii.28, IOS-04).
+  // (MysteryMixClub-4vii.28, IOS-04). One save in flight at a time -- all
+  // three checkboxes disable while `savingPref` is set (not just the one
+  // being saved), so a second click can't fire a second PATCH whose response
+  // could race the first and land its optimistic update on a stale `previous`
+  // snapshot. The guard below is redundant with that render-driven disable in
+  // the normal case; it stays as the actual invariant in case a click ever
+  // reaches this handler before the disabled state has painted.
   async function handleTogglePreference(key: NotificationPreferenceKey, value: boolean) {
-    if (!notificationPrefs) return;
+    if (!notificationPrefs || savingPref) return;
     const previous = notificationPrefs;
     setNotificationPrefs({ ...previous, [key]: value });
     setSavingPref(key);

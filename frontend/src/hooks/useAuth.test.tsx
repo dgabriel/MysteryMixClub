@@ -12,6 +12,7 @@ import {
   setStoredAccessToken,
 } from "../services/api";
 import type { UserProfile } from "../services/api";
+import { nativePushAvailable, unregisterCurrentDevice } from "../ios/push";
 
 vi.mock("../services/api", () => ({
   refresh: vi.fn(),
@@ -21,11 +22,21 @@ vi.mock("../services/api", () => ({
   setStoredAccessToken: vi.fn(),
 }));
 
+// MysteryMixClub-4vii.27 (IOS-04): logout/logoutAll drop this device's push
+// registration first, native-iOS only -- default to "not native" so the
+// pre-existing tests above stay unaffected.
+vi.mock("../ios/push", () => ({
+  nativePushAvailable: vi.fn(),
+  unregisterCurrentDevice: vi.fn(),
+}));
+
 const mockRefresh = vi.mocked(apiRefresh);
 const mockGetMe = vi.mocked(apiGetMe);
 const mockLogout = vi.mocked(apiLogout);
 const mockLogoutAll = vi.mocked(apiLogoutAll);
 const mockSetStored = vi.mocked(setStoredAccessToken);
+const mockNativePushAvailable = vi.mocked(nativePushAvailable);
+const mockUnregisterCurrentDevice = vi.mocked(unregisterCurrentDevice);
 
 function profileWith(displayName: string): UserProfile {
   return {
@@ -100,6 +111,7 @@ describe("AuthProvider / useAuth", () => {
     // the profile-load effect that follows a successful refresh resolves to a
     // ready, non-empty name. Tests that care about onboarding override this.
     mockGetMe.mockResolvedValue(profileWith("ada"));
+    mockNativePushAvailable.mockReturnValue(false);
   });
 
   it("calls refresh exactly once on mount", async () => {
@@ -350,5 +362,88 @@ describe("AuthProvider / useAuth", () => {
       /useAuth must be used within an AuthProvider/,
     );
     spy.mockRestore();
+  });
+
+  describe("push registration cleanup on logout (MysteryMixClub-4vii.27, IOS-04)", () => {
+    it("logout() drops this device's push registration before calling the API, on native iOS", async () => {
+      mockRefresh.mockResolvedValue({ access_token: "tok" });
+      mockLogout.mockResolvedValue(undefined);
+      mockNativePushAvailable.mockReturnValue(true);
+      mockUnregisterCurrentDevice.mockResolvedValue(undefined);
+      const user = userEvent.setup();
+
+      renderWithProvider();
+      await waitFor(() =>
+        expect(screen.getByTestId("status")).toHaveTextContent("authenticated"),
+      );
+
+      await user.click(screen.getByRole("button", { name: "do-logout" }));
+
+      await waitFor(() =>
+        expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated"),
+      );
+      expect(mockUnregisterCurrentDevice).toHaveBeenCalledOnce();
+      expect(mockLogout).toHaveBeenCalledTimes(1);
+    });
+
+    it("logout() never touches push on web", async () => {
+      mockRefresh.mockResolvedValue({ access_token: "tok" });
+      mockLogout.mockResolvedValue(undefined);
+      mockNativePushAvailable.mockReturnValue(false);
+      const user = userEvent.setup();
+
+      renderWithProvider();
+      await waitFor(() =>
+        expect(screen.getByTestId("status")).toHaveTextContent("authenticated"),
+      );
+
+      await user.click(screen.getByRole("button", { name: "do-logout" }));
+
+      await waitFor(() =>
+        expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated"),
+      );
+      expect(mockUnregisterCurrentDevice).not.toHaveBeenCalled();
+    });
+
+    it("logout() still completes even when the push cleanup rejects", async () => {
+      mockRefresh.mockResolvedValue({ access_token: "tok" });
+      mockLogout.mockResolvedValue(undefined);
+      mockNativePushAvailable.mockReturnValue(true);
+      mockUnregisterCurrentDevice.mockRejectedValue(new Error("network error"));
+      const user = userEvent.setup();
+
+      renderWithProvider();
+      await waitFor(() =>
+        expect(screen.getByTestId("status")).toHaveTextContent("authenticated"),
+      );
+
+      await user.click(screen.getByRole("button", { name: "do-logout" }));
+
+      await waitFor(() =>
+        expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated"),
+      );
+      expect(mockLogout).toHaveBeenCalledTimes(1);
+    });
+
+    it("logoutAll() drops this device's push registration before calling the API, on native iOS", async () => {
+      mockRefresh.mockResolvedValue({ access_token: "tok" });
+      mockLogoutAll.mockResolvedValue(undefined);
+      mockNativePushAvailable.mockReturnValue(true);
+      mockUnregisterCurrentDevice.mockResolvedValue(undefined);
+      const user = userEvent.setup();
+
+      renderWithProvider();
+      await waitFor(() =>
+        expect(screen.getByTestId("status")).toHaveTextContent("authenticated"),
+      );
+
+      await user.click(screen.getByRole("button", { name: "do-logout-all" }));
+
+      await waitFor(() =>
+        expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated"),
+      );
+      expect(mockUnregisterCurrentDevice).toHaveBeenCalledOnce();
+      expect(mockLogoutAll).toHaveBeenCalledTimes(1);
+    });
   });
 });

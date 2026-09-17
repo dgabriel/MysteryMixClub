@@ -16,6 +16,12 @@ import {
   type Club,
 } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
+import {
+  nativePushAvailable,
+  pushPermissionStatus,
+  requestPushPermissionAndRegister,
+  type PushPermissionStatus,
+} from "../ios/push";
 
 /** Calm copy for the outcome flag Google's link callback redirects back with
  *  (?google_link=<outcome>, MysteryMixClub-ali8.6). `isError` only changes
@@ -90,6 +96,34 @@ export function ProfileRoute() {
 
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null);
+
+  // null on web (section hides entirely, mirroring googleEnabled's
+  // fail-safe-hide shape) -- on native iOS, whatever the OS already knows
+  // (MysteryMixClub-4vii.27, IOS-04's manual "enable notifications" path for
+  // anyone who denied/skipped the onboarding auto-prompt).
+  const [pushStatus, setPushStatus] = useState<PushPermissionStatus | null>(null);
+  const [enablingPush, setEnablingPush] = useState(false);
+
+  useEffect(() => {
+    if (!nativePushAvailable()) return;
+    let cancelled = false;
+    void pushPermissionStatus().then((status) => {
+      if (!cancelled) setPushStatus(status);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function handleEnablePush() {
+    setEnablingPush(true);
+    try {
+      const status = await requestPushPermissionAndRegister();
+      setPushStatus(status);
+    } finally {
+      setEnablingPush(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -301,6 +335,9 @@ export function ProfileRoute() {
       linkingGoogle={linkingGoogle}
       linkGoogleError={linkGoogleError}
       googleLinkNotice={googleLinkNotice}
+      pushStatus={pushStatus}
+      onEnablePush={handleEnablePush}
+      enablingPush={enablingPush}
       onLogoutAll={handleLogoutAll}
       logoutAllBusy={logoutAllBusy}
       onExportData={handleExportData}

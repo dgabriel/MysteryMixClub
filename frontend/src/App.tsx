@@ -7,6 +7,7 @@ import { RouterProvider } from "react-router/dom";
 import { AuthProvider } from "./hooks/AuthProvider";
 import { IS_NATIVE_BUILD } from "./lib/platform";
 import { registerDeepLinkHandler } from "./native/deepLinks";
+import { registerPushDeepLinkHandler } from "./native/pushDeepLinks";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { LoginRoute } from "./pages/LoginRoute";
 import { AuthedLayout } from "./components/AuthedLayout";
@@ -180,6 +181,12 @@ const router = createBrowserRouter([
 // invite link) land here instead of Safari once tapped from another app --
 // no-op on web (MysteryMixClub-4vii.10).
 registerDeepLinkHandler(router);
+
+// A tapped push notification (any app state: foreground/background/
+// terminated) lands on the relevant club's home screen -- no-op on web
+// (MysteryMixClub-4vii.27, IOS-04). Also wires the registration listener
+// that forwards a device's APNs token to the backend.
+registerPushDeepLinkHandler(router);
 
 export default function App() {
   return (

@@ -1,5 +1,6 @@
 import { type FormEvent, useState } from "react";
 import { PASSWORD_MIN_LENGTH, type Club } from "../services/api";
+import type { PushPermissionStatus } from "../ios/push";
 import { Button } from "../components/Button";
 import { PaperSurface } from "../components/PaperSurface";
 import { TextField } from "../components/TextField";
@@ -39,6 +40,13 @@ type ProfileScreenProps = {
    *  as a problem; it never takes the form-error color (ADR 0004 excludes a
    *  third-party outcome the user didn't do anything invalid to cause). */
   googleLinkNotice?: { message: string; isError: boolean } | null;
+  /** null on web (section hides entirely) -- on native iOS, whatever the OS
+   *  already knows about this device's permission (MysteryMixClub-4vii.27,
+   *  IOS-04). Covers anyone who denied or dismissed the onboarding
+   *  auto-prompt, or joined before it existed. */
+  pushStatus?: PushPermissionStatus | null;
+  onEnablePush?: () => void;
+  enablingPush?: boolean;
   onLogoutAll: () => void;
   logoutAllBusy?: boolean;
   onExportData: () => void;
@@ -110,6 +118,9 @@ export function ProfileScreen({
   linkingGoogle,
   linkGoogleError,
   googleLinkNotice,
+  pushStatus,
+  onEnablePush,
+  enablingPush = false,
   onLogoutAll,
   logoutAllBusy = false,
   onExportData,
@@ -199,6 +210,14 @@ export function ProfileScreen({
               linkGoogleError={linkGoogleError}
               googleLinkNotice={googleLinkNotice}
             />
+
+            {pushStatus ? (
+              <NotificationsSection
+                pushStatus={pushStatus}
+                onEnablePush={onEnablePush}
+                enablingPush={enablingPush}
+              />
+            ) : null}
 
             <section className="mt-12 border-t border-ink-hairline pt-10">
               <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-accent">
@@ -446,6 +465,56 @@ function AccountSettingsSection({
           )}
         </div>
       ) : null}
+    </section>
+  );
+}
+
+/**
+ * Manual "enable notifications" path (MysteryMixClub-4vii.27, IOS-04) --
+ * native iOS only (the container never passes `pushStatus` on web, so this
+ * never renders there). The onboarding auto-prompt only ever gets one shot at
+ * the real system dialog; this is how anyone who denied it, dismissed it, or
+ * joined before it existed gets back in.
+ *
+ * `granted` and `denied` both render a status line rather than a button --
+ * a second `requestPermissions()` call after a denial silently reflects
+ * "denied" again without ever showing the OS dialog, so the only way out of
+ * that state is iOS Settings, not this screen.
+ */
+function NotificationsSection({
+  pushStatus,
+  onEnablePush,
+  enablingPush,
+}: {
+  pushStatus: PushPermissionStatus;
+  onEnablePush?: () => void;
+  enablingPush: boolean;
+}) {
+  return (
+    <section className="mt-12 border-t border-ink-hairline pt-10">
+      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-accent">
+        notifications
+      </h2>
+      {pushStatus === "granted" ? (
+        <p className="mt-2 font-mono text-sm text-ink-muted">notifications are on</p>
+      ) : pushStatus === "denied" ? (
+        <p className="mt-2 text-sm leading-[1.72] text-ink-muted">
+          notifications are off. enable them in iOS settings &gt; notifications &gt;
+          mysterymixclub to get mix reminders and updates.
+        </p>
+      ) : (
+        <>
+          <p className="mt-2 text-sm leading-[1.72] text-ink-muted">
+            get a nudge when it&apos;s your turn to submit or vote, and when a mystery mix
+            wraps up.
+          </p>
+          <div className="mt-4">
+            <Button onPaper variant="ghost" type="button" onClick={onEnablePush} disabled={enablingPush}>
+              {enablingPush ? "enabling…" : "enable notifications"}
+            </Button>
+          </div>
+        </>
+      )}
     </section>
   );
 }

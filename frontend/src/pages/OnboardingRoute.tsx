@@ -4,6 +4,7 @@ import { OnboardingScreen } from "./OnboardingScreen";
 import { VerifyScreen } from "./VerifyScreen";
 import { acceptTerms } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
+import { nativePushAvailable, pushPermissionStatus, requestPushPermissionAndRegister } from "../ios/push";
 
 /**
  * First-login / consent onboarding route. Captures the display name for
@@ -46,6 +47,17 @@ export function OnboardingRoute() {
       const profile = await acceptTerms(name);
       applyDisplayName(profile.display_name);
       applyTosAccepted();
+      // Auto-prompt for push right after onboarding (MysteryMixClub-4vii.27,
+      // IOS-04) -- the first moment the user has an account and has seen
+      // what the app is, before they've necessarily joined/seen a specific
+      // club yet. Only when the prompt hasn't been shown before: iOS shows
+      // the real system dialog exactly once, so re-asking after a denial
+      // would just silently no-op anyway -- checking first avoids a pointless
+      // call and keeps this from ever masking the manual "enable
+      // notifications" path in Profile as the only way back in after a deny.
+      if (nativePushAvailable() && (await pushPermissionStatus()) === "prompt") {
+        void requestPushPermissionAndRegister();
+      }
       navigate("/home", { replace: true });
     } catch {
       // acceptTerms throws ApiError on a non-2xx response (and the wrapper

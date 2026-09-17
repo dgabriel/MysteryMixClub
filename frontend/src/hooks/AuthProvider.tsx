@@ -7,6 +7,7 @@ import {
   setStoredAccessToken,
 } from "../services/api";
 import { AuthContext, type AuthContextValue, type AuthStatus, type ProfileStatus } from "./useAuth";
+import { nativePushAvailable, unregisterCurrentDevice } from "../ios/push";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
@@ -104,6 +105,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
+      // Best-effort, before the session that authenticates it is gone
+      // (PRD IOS-04: "remove account associations on logout"). One call
+      // site for every caller of logout(), rather than remembering this at
+      // each (TopNav, account deletion) -- a missed unregister just leaves
+      // a stale row until APNs itself reports the token dead, never a
+      // user-facing failure, so it's never allowed to block the real logout.
+      if (nativePushAvailable()) {
+        await unregisterCurrentDevice().catch(() => {});
+      }
       await apiLogout();
     } finally {
       clear();
@@ -112,6 +122,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logoutAll = useCallback(async () => {
     try {
+      if (nativePushAvailable()) {
+        await unregisterCurrentDevice().catch(() => {});
+      }
       await apiLogoutAll();
     } finally {
       clear();

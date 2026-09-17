@@ -16,6 +16,7 @@ import {
 } from "../services/api";
 import type { Club, UserProfile } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
+import { nativePushAvailable, pushPermissionStatus, requestPushPermissionAndRegister } from "../ios/push";
 
 // Mock the API module (no network). Keep ApiError real.
 vi.mock("../services/api", async () => {
@@ -33,6 +34,15 @@ vi.mock("../services/api", async () => {
 });
 
 vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
+// MysteryMixClub-4vii.27 (IOS-04): the manual "enable notifications" section
+// is native-only, gated the same way EmailEntryScreen's camera-cutout margin
+// and LoginRoute's native sign-in buttons are -- mock the wrapper wholesale,
+// default to "not native" so every pre-existing test stays unaffected.
+vi.mock("../ios/push", () => ({
+  nativePushAvailable: vi.fn(),
+  pushPermissionStatus: vi.fn(),
+  requestPushPermissionAndRegister: vi.fn(),
+}));
 
 const mockGetClubs = vi.mocked(getClubs);
 const mockGetMe = vi.mocked(getMe);
@@ -41,6 +51,9 @@ const mockExportMyData = vi.mocked(exportMyData);
 const mockGetGoogleEnabled = vi.mocked(getGoogleEnabled);
 const mockSetPassword = vi.mocked(setPassword);
 const mockStartGoogleLink = vi.mocked(startGoogleLink);
+const mockNativePushAvailable = vi.mocked(nativePushAvailable);
+const mockPushPermissionStatus = vi.mocked(pushPermissionStatus);
+const mockRequestPushPermissionAndRegister = vi.mocked(requestPushPermissionAndRegister);
 const mockUseAuth = vi.mocked(useAuth);
 const applyDisplayName = vi.fn();
 const mockLogoutAll = vi.fn();
@@ -133,6 +146,8 @@ describe("ProfileRoute", () => {
     mockGetClubs.mockResolvedValue([]);
     mockGetMe.mockResolvedValue(profileWith("Ada"));
     mockGetGoogleEnabled.mockResolvedValue({ enabled: false });
+    mockNativePushAvailable.mockReturnValue(false);
+    mockPushPermissionStatus.mockResolvedValue("prompt");
   });
 
   it("renders the current display name and only the completed clubs, newest first", async () => {
@@ -430,6 +445,57 @@ describe("ProfileRoute", () => {
       // Only the one profile fetch from the initial load -- "already_linked_elsewhere"
       // doesn't warrant a re-fetch since nothing changed.
       expect(mockGetMe).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe("notifications (MysteryMixClub-4vii.27, IOS-04)", () => {
+    it("hides the section entirely on web", async () => {
+      mockNativePushAvailable.mockReturnValue(false);
+
+      renderProfile();
+      await screen.findByText(/archived/i);
+
+      expect(screen.queryByText(/notifications/i)).not.toBeInTheDocument();
+    });
+
+    it("prompt: shows the manual enable button, and clicking it requests + registers", async () => {
+      const user = userEvent.setup();
+      mockNativePushAvailable.mockReturnValue(true);
+      mockPushPermissionStatus.mockResolvedValue("prompt");
+      mockRequestPushPermissionAndRegister.mockResolvedValue("granted");
+
+      renderProfile();
+      await screen.findByText(/archived/i);
+
+      const button = await screen.findByRole("button", { name: /enable notifications/i });
+      await user.click(button);
+
+      expect(mockRequestPushPermissionAndRegister).toHaveBeenCalledOnce();
+      expect(await screen.findByText(/notifications are on/i)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /enable notifications/i })).not.toBeInTheDocument();
+    });
+
+    it("granted: shows a status line, no button", async () => {
+      mockNativePushAvailable.mockReturnValue(true);
+      mockPushPermissionStatus.mockResolvedValue("granted");
+
+      renderProfile();
+      await screen.findByText(/archived/i);
+
+      expect(await screen.findByText(/notifications are on/i)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /enable notifications/i })).not.toBeInTheDocument();
+    });
+
+    it("denied: points to iOS Settings instead of re-prompting", async () => {
+      mockNativePushAvailable.mockReturnValue(true);
+      mockPushPermissionStatus.mockResolvedValue("denied");
+
+      renderProfile();
+      await screen.findByText(/archived/i);
+
+      expect(await screen.findByText(/enable them in ios settings/i)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /enable notifications/i })).not.toBeInTheDocument();
+      expect(mockRequestPushPermissionAndRegister).not.toHaveBeenCalled();
     });
   });
 });

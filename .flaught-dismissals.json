@@ -1859,6 +1859,61 @@
         "file": "frontend/src/pages/ProfileRoute.test.tsx"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:40fdb672e32eea36f03dd3762d3ef596",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:36:30.773Z",
+      "reason": "Same as previous round's finding: factually the dependency is unidirectional (ProfileRoute imports from ProfileScreen; ProfileScreen imports nothing from ProfileRoute). A presentational component exporting its own prop-type contract for its container to import is standard, idiomatic React, not reverse coupling.",
+      "context": {
+        "title": "Container imports UI type, creating reverse dependency",
+        "file": "frontend/src/pages/ProfileRoute.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:4aef0e7ba5a6f186c4b249b02ae30d0d",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:36:30.907Z",
+      "reason": "Doesn't apply to this system's deployment topology: frontend and backend are a single monorepo deployed atomically by the same CI/CD pipeline to one Droplet per environment (docs/ci-cd.md) -- there is no independent-version-skew scenario where this frontend build runs against a backend lacking these fields. UserProfileResponse also declares all three fields as required (non-Optional), not nullable, so the backend itself guarantees their presence on every response.",
+      "context": {
+        "title": "Assumes new profile fields are always present, risking runtime errors",
+        "file": "frontend/src/pages/ProfileRoute.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:b34030e15105b1a7300ba8c030334205",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:36:31.042Z",
+      "reason": "Same reasoning as F-002: this project has no independent frontend/backend version-skew path (single monorepo, atomic deploy per docs/ci-cd.md), and the backend schema declares these three fields as required, not optional -- there is no real scenario for a profile payload missing them to test against.",
+      "context": {
+        "title": "Missing test for missing notification fields in backend response",
+        "file": "frontend/src/pages/ProfileRoute.test.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:6d94cfa8ca9461536e8893443f0d0e01",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:36:31.177Z",
+      "reason": "Same generic size nitpick as the previous round, no concrete failure scenario. ProfileScreen.tsx already held multiple analogous section components (ArchivedClubs, AccountSettingsSection, SetPasswordForm, NotificationsSection) before this PR; NotificationPreferencesSection/PreferenceCheckbox follow that exact established pattern.",
+      "context": {
+        "title": "Large inline NotificationPreferencesSection bloats ProfileScreen",
+        "file": "frontend/src/pages/ProfileScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:b318d8490b18858f5f353ebd3707f8d4",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:36:31.320Z",
+      "reason": "Same theme as the previous round's F-003: TypeScript's Partial<> was never the enforcement boundary. updateNotificationPreferences is only ever called internally with hardcoded whitelisted keys, and the backend's Pydantic model already strictly whitelists fields server-side regardless of what the client sends.",
+      "context": {
+        "title": "Potential over‑permissive PATCH payload if future callers misuse updateNotificationPreferences",
+        "file": "frontend/src/services/api.ts"
+      },
+      "expires_at": null
     }
   ]
 }

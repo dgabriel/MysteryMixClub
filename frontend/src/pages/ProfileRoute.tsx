@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { ProfileScreen } from "./ProfileScreen";
+import { ProfileScreen, type NotificationPreferenceKey } from "./ProfileScreen";
 import {
   ApiError,
   deleteAccount,
@@ -13,6 +13,7 @@ import {
   setPassword as apiSetPassword,
   startGoogleLink,
   updateDisplayName,
+  updateNotificationPreferences,
   type Club,
 } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
@@ -104,6 +105,16 @@ export function ProfileRoute() {
   const [pushStatus, setPushStatus] = useState<PushPermissionStatus | null>(null);
   const [enablingPush, setEnablingPush] = useState(false);
 
+  // Three independent toggles (MysteryMixClub-4vii.28, IOS-04): email
+  // lifecycle/reminder emails, push lifecycle updates, push deadline
+  // reminders. null until the initial profile load resolves.
+  const [notificationPrefs, setNotificationPrefs] = useState<Record<
+    NotificationPreferenceKey,
+    boolean
+  > | null>(null);
+  const [savingPref, setSavingPref] = useState<NotificationPreferenceKey | null>(null);
+  const [prefsError, setPrefsError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!nativePushAvailable()) return;
     let cancelled = false;
@@ -154,6 +165,11 @@ export function ProfileRoute() {
         }
         setHasPassword(latestProfile.has_password);
         setGoogleLinked(latestProfile.google_linked);
+        setNotificationPrefs({
+          email_notifications: latestProfile.email_notifications,
+          push_lifecycle_enabled: latestProfile.push_lifecycle_enabled,
+          push_deadline_reminders_enabled: latestProfile.push_deadline_reminders_enabled,
+        });
       } catch (err) {
         if (!cancelled) {
           setError(
@@ -243,6 +259,25 @@ export function ProfileRoute() {
       setPasswordFormError(err instanceof ApiError ? err.message : "that didn't save. try again.");
     } finally {
       setSettingPassword(false);
+    }
+  }
+
+  // Optimistic: flips the toggle immediately, reverts + surfaces an error if
+  // the save fails, rather than waiting on the round trip to reflect a click
+  // (MysteryMixClub-4vii.28, IOS-04).
+  async function handleTogglePreference(key: NotificationPreferenceKey, value: boolean) {
+    if (!notificationPrefs) return;
+    const previous = notificationPrefs;
+    setNotificationPrefs({ ...previous, [key]: value });
+    setSavingPref(key);
+    setPrefsError(null);
+    try {
+      await updateNotificationPreferences({ [key]: value });
+    } catch (err) {
+      setNotificationPrefs(previous);
+      setPrefsError(err instanceof ApiError ? err.message : "that didn't save. try again.");
+    } finally {
+      setSavingPref(null);
     }
   }
 
@@ -338,6 +373,11 @@ export function ProfileRoute() {
       pushStatus={pushStatus}
       onEnablePush={handleEnablePush}
       enablingPush={enablingPush}
+      pushAvailable={nativePushAvailable()}
+      notificationPrefs={notificationPrefs}
+      onTogglePreference={handleTogglePreference}
+      savingPref={savingPref}
+      prefsError={prefsError}
       onLogoutAll={handleLogoutAll}
       logoutAllBusy={logoutAllBusy}
       onExportData={handleExportData}

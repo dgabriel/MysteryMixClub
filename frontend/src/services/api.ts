@@ -77,6 +77,16 @@ export type UserProfile = {
   has_password: boolean;
   /** Whether a Google identity is already linked (MysteryMixClub-ali8.6). */
   google_linked: boolean;
+  /** Whether the account has email lifecycle/reminder notifications on
+   *  (existing backend field; no frontend control has ever existed for it --
+   *  today it's unsubscribe-link-only). */
+  email_notifications: boolean;
+  /** Push equivalents of email_notifications, independent of it and of each
+   *  other (MysteryMixClub-4vii.25/28, IOS-04). Present regardless of
+   *  whether the account has any registered device -- these are the
+   *  preference, not "can this account currently receive a push." */
+  push_lifecycle_enabled: boolean;
+  push_deadline_reminders_enabled: boolean;
 };
 
 class ApiError extends Error {
@@ -479,6 +489,28 @@ export async function updatePreferredService(
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ preferred_service: service }),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as UserProfile;
+}
+
+/** Update any subset of the three independent notification toggles
+ *  (MysteryMixClub-4vii.28, IOS-04) -- email lifecycle/reminder emails, push
+ *  lifecycle updates, push deadline reminders. Each omitted field is left
+ *  untouched server-side. Returns the updated profile. */
+export async function updateNotificationPreferences(
+  updates: Partial<{
+    email_notifications: boolean;
+    push_lifecycle_enabled: boolean;
+    push_deadline_reminders_enabled: boolean;
+  }>,
+): Promise<UserProfile> {
+  const res = await authenticatedRequest("/api/v1/users/me", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(updates),
   });
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));

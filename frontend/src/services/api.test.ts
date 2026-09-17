@@ -375,6 +375,9 @@ describe("api.ts", () => {
       tos_accepted: true,
       has_password: false,
       google_linked: false,
+      email_notifications: true,
+      push_lifecycle_enabled: true,
+      push_deadline_reminders_enabled: true,
     };
 
     it("GETs /api/v1/users/me (Bearer + credentials) and resolves the parsed profile on 200", async () => {
@@ -440,6 +443,9 @@ describe("api.ts", () => {
       tos_accepted: true,
       has_password: false,
       google_linked: false,
+      email_notifications: true,
+      push_lifecycle_enabled: true,
+      push_deadline_reminders_enabled: true,
     };
 
     it("PATCHes /api/v1/users/me with a JSON body and returns the parsed profile on 200", async () => {

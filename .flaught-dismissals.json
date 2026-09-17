@@ -1914,6 +1914,61 @@
         "file": "frontend/src/services/api.ts"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:180434a7ef210e9c50bb6dadd82c7b34",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:53:02.346Z",
+      "reason": "Not a new pattern: this is the exact secret-management convention this entire project already uses for every credential (SECRET_KEY, DATABASE_URL, GOOGLE_CLIENT_SECRET, and APPLE_MUSIC_PRIVATE_KEY itself, same one-line \\\\n-escaped PEM). .env.example files ship with blank placeholders only, never real values; the actual secret lives solely in /etc/mysterymixclub/{staging,prod}.env on each Droplet, never in git. This is standard 12-factor config, not the anti-pattern described, and matches docs/git-hygiene.md's own 'never commit real secret values' rule this doc explicitly restates.",
+      "context": {
+        "title": "Guidance to store PEM key in env may encourage secret leakage",
+        "file": "docs/staging-setup.md"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:2d3c8263c2f8da014acdcc9eaaa0b73f",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:53:02.479Z",
+      "reason": "Intentional, not accidental: this triplication (.env.example + staging.env.example + prod.env.example) is exactly docs/ci-cd.md's own documented 'Adding a new secret' 4-step routine, followed identically by every other secret already in this codebase (APPLE_MUSIC_*, GOOGLE_CLIENT_*, RESEND_*). Staging and prod are separate Droplets that must never share secret values, so genuinely separate templates are required, not consolidatable.",
+      "context": {
+        "title": "Duplicate push‑notification env entries across multiple files",
+        "file": ".env.example"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:e8f75cfa4eaeff419759f439cceaa45a",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:53:02.619Z",
+      "reason": "Factually incorrect about the architecture: APPLE_MUSIC_TEAM_ID is not an Apple-Music-specific setting removed when Apple Music is 'disabled' -- Apple Music is hidden by omitting APPLE_MUSIC_KEY_ID/APPLE_MUSIC_PRIVATE_KEY per the already-documented 'all three or none' gate; the Team ID is a stable Apple Developer account identifier that can be set with zero Apple Music configuration otherwise (explicitly documented in this same PR: 'no Apple Music setup required to fill it in'). This reuse was also implemented and merged in Phase 1 (PR #349, apple_push_token.py) -- this docs PR describes already-shipped code, it doesn't introduce the coupling.",
+      "context": {
+        "title": "Push service reuses Apple Music team ID, creating hidden coupling",
+        "file": "docs/ios/README.md"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:3bd308b26a29c451d58cda870539ebc5",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:53:02.755Z",
+      "reason": "Skeptic already refuted this at 10% confidence: prod.env.example is a template with no real values, not a runtime deployment artifact, and this PR's own bd issue (MysteryMixClub-4vii.29) explicitly scopes 'document the same keys in .env.example, staging.env.example, prod.env.example' as in-scope work, following docs/ci-cd.md's routine.",
+      "context": {
+        "title": "Env example changes exceed documentation scope",
+        "file": "scripts/prod.env.example"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:17d2bf4113bc92a25ca8d4f375fa4594",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:53:02.890Z",
+      "reason": "Same as F-0001, also already refuted by the skeptic at 10% confidence: staging.env.example is a documentation template with no real values; adding the new keys here is explicitly in this PR's scoped bd issue and follows the existing 'Adding a new secret' routine.",
+      "context": {
+        "title": "Staging env example modified for push notifications",
+        "file": "scripts/staging.env.example"
+      },
+      "expires_at": null
     }
   ]
 }

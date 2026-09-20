@@ -1590,7 +1590,7 @@ async def logout(
     # cookie is missing, unmatched, or already invalidated (TD 5). Only an
     # active session for the presented token is invalidated.
     if refresh_token is not None:
-        # FOR UPDATE: a device registration for this session takes FOR SHARE on
+        # FOR UPDATE: a device registration for this session takes FOR UPDATE on
         # the same row, so it either commits first (and is deleted just below)
         # or runs after this commits and sees the session as logged out and is
         # refused -- an upload already in flight can never recreate the row

@@ -564,3 +564,91 @@ async def test_password_reset_drops_the_devices_of_every_session_it_signs_out(cl
 
     assert resp.status_code == 200, resp.text
     assert await _rows(db_session) == {"someone-elses": (other_id, other_sid)}
+
+
+# --------------------------------------------------------------------------- #
+# Token rotation: one device token per login session (MysteryMixClub-4vii.37)
+# --------------------------------------------------------------------------- #
+
+
+async def test_a_new_token_from_the_same_session_replaces_the_one_it_supersedes(client, db_session):
+    user_id = await _user(db_session, "a@example.com")
+    sid, _raw, headers = await _login(db_session, user_id)
+    assert (await _register(client, headers, "token-1")).status_code == 200
+
+    assert (await _register(client, headers, "token-2")).status_code == 200
+
+    assert await _rows(db_session) == {"token-2": (user_id, sid)}
+
+
+async def test_rotating_a_token_leaves_every_other_session_and_account_alone(client, db_session):
+    a_id = await _user(db_session, "a@example.com")
+    b_id = await _user(db_session, "b@example.com")
+    a_sid, _ra, a_headers = await _login(db_session, a_id)
+    a2_sid, _ra2, a2_headers = await _login(db_session, a_id)  # the same user's other device
+    b_sid, _rb, b_headers = await _login(db_session, b_id)
+    await _register(client, a_headers, "a-token-1")
+    await _register(client, a2_headers, "a2-token")
+    await _register(client, b_headers, "b-token")
+
+    await _register(client, a_headers, "a-token-2")
+
+    assert await _rows(db_session) == {
+        "a-token-2": (a_id, a_sid),
+        "a2-token": (a_id, a2_sid),
+        "b-token": (b_id, b_sid),
+    }
+
+
+async def test_re_registering_the_same_token_never_deletes_it(client, db_session):
+    user_id = await _user(db_session, "a@example.com")
+    sid, _raw, headers = await _login(db_session, user_id)
+
+    for _ in range(3):
+        assert (await _register(client, headers, "token-1")).status_code == 200
+
+    assert await _rows(db_session) == {"token-1": (user_id, sid)}
+
+
+async def test_a_refused_stale_registration_does_not_delete_anything(client, db_session):
+    # The older login's late upload is refused (409) BEFORE any supersede delete,
+    # so it cannot remove the newer login's device either.
+    a_id = await _user(db_session, "a@example.com")
+    b_id = await _user(db_session, "b@example.com")
+    a_sid, _ra, a_headers = await _login(db_session, a_id, age=timedelta(minutes=10))
+    b_sid, _rb, b_headers = await _login(db_session, b_id)
+    await _register(client, a_headers, "a-own-token")
+    await _register(client, b_headers, "the-phone")
+
+    late = await _register(client, a_headers, "the-phone")  # A is older than the owner B
+
+    assert late.status_code == 409
+    assert await _rows(db_session) == {
+        "a-own-token": (a_id, a_sid),
+        "the-phone": (b_id, b_sid),
+    }
+
+
+async def test_a_session_less_token_never_supersedes_anything(client, db_session):
+    user_id = await _user(db_session, "a@example.com")
+    sid, _raw, headers = await _login(db_session, user_id)
+    await _register(client, headers, "bound-token")
+    legacy = {"Authorization": f"Bearer {create_access_token(user_id)}"}
+
+    assert (await _register(client, legacy, "legacy-token")).status_code == 200
+
+    assert await _rows(db_session) == {
+        "bound-token": (user_id, sid),
+        "legacy-token": (user_id, None),
+    }
+
+
+async def test_logout_after_rotations_leaves_nothing_behind(client, db_session):
+    user_id = await _user(db_session, "a@example.com")
+    _sid, raw, headers = await _login(db_session, user_id)
+    for token in ("t1", "t2", "t3"):
+        await _register(client, headers, token)
+
+    await client.post(LOGOUT_URL, cookies={"refresh_token": raw})
+
+    assert await _rows(db_session) == {}

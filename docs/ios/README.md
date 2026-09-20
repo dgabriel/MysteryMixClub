@@ -423,6 +423,27 @@ after the update), and a token minted before this shipped carries no session, so
 register new or unbound devices, never take one a session owns, until it expires
 (at most an hour); a session that merely expires (30 days) is not swept.
 
+**Token rotation** (`MysteryMixClub-4vii.37`). Apple documents that a device's
+push token can change while the app is running, and the app is then told again.
+Registration used to listen for that event only while an attempt was waiting for
+its token, so a changed token was silently dropped and the backend kept the dead
+one. Now a token event nobody asked for is handled: if this session has already
+registered the device and the token differs from the one the backend accepted,
+it is uploaded (same guards as a first registration: a live session and epoch,
+a bounded upload, logout waits for it, the newest token is the one remembered
+for logout). The registration state stays `registered` during the swap; a
+failed upload makes it `failed`, which the next foreground or the Profile retry
+recovers by asking the OS for the current token. Repeats of the same token are
+ignored, several changes during one upload collapse to the newest, and an event
+with no session, or for a device that never registered, is ignored. **The server
+keeps one device token per login session**: registering a new token deletes the
+token that session had before, in the same transaction, so the superseded one
+does not linger (it is also deleted with the session on logout). Registrations of one session are serialized by a
+row lock, so two racing registrations of different tokens cannot deadlock over
+each other's rows; the last one wins. A client-timed-out upload is not aborted,
+so if an old token's upload lands after the retry's, the server can hold the old
+token until the next launch or login registers again (rare and bounded).
+
 **Deep-linking.** A tapped notification (foreground, background, or
 terminated) lands on the relevant club's home screen (`/clubs/:id`) --
 deliberately not the specific mix's own detail page, matching

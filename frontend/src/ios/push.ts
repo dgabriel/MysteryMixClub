@@ -134,7 +134,14 @@ async function ensureNativeListeners(): Promise<void> {
   await Promise.all([
     attachOnce("registration", () =>
       PushNotifications.addListener("registration", (token) => {
-        tokenWaiters.forEach((waiter) => waiter.resolve(token.value));
+        if (tokenWaiters.size > 0) {
+          // An attempt of ours asked for this token.
+          tokenWaiters.forEach((waiter) => waiter.resolve(token.value));
+        } else {
+          // Nobody asked: APNs changed this device's token while the app was
+          // running (MysteryMixClub-4vii.37).
+          handleTokenChange(token.value);
+        }
       }),
     ),
     attachOnce("registrationError", () =>
@@ -197,6 +204,16 @@ function withTimeout<T>(work: Promise<T>, ms: number, what: string): Promise<T> 
   });
 }
 
+/** The token the backend last accepted for the signed-in account, or null.
+ *  Compared against every native token event so a repeat of the same token is
+ *  never re-uploaded. Cleared with the session. */
+let registeredToken: string | null = null;
+/** A token change that arrived while an upload was already in flight; uploaded
+ *  when that attempt settles, so the newest token always wins. Tagged with the
+ *  session epoch it belongs to: an attempt from an EARLIER session that settles
+ *  late must never consume (or discard) the current session's pending token. */
+let pendingRotation: { epoch: number; token: string } | null = null;
+
 /** The most recent attempt, kept after it settles until replaced so logout can
  *  wait for one that is mid-upload. */
 type Attempt = {
@@ -230,6 +247,70 @@ async function performRegistration(attempt: Attempt): Promise<void> {
   storeDeviceToken(token);
   attempt.uploading = true;
   await withTimeout(registerPushToken(token), UPLOAD_TIMEOUT_MS, "push token upload");
+  if (attempt.epoch === sessionEpoch) registeredToken = token;
+}
+
+/** Uploads a token that replaces the one already registered. The state stays
+ *  "registered" throughout (the old token keeps working until the swap); a failed
+ *  upload makes it "failed", which the next foreground or the Profile retry
+ *  recovers through the normal path (register() re-emits the current token).
+ *  Same guards as a first registration: session/epoch, bounded upload, and logout
+ *  waits for it. */
+function rotateToken(token: string): void {
+  const epoch = sessionEpoch;
+  const attempt: Attempt = { epoch, running: true, uploading: false, promise: Promise.resolve() };
+  attempt.promise = (async () => {
+    try {
+      // Remembered from the moment the upload is sent, exactly as in a first
+      // registration, so logout removes the newest token.
+      storeDeviceToken(token);
+      attempt.uploading = true;
+      await withTimeout(registerPushToken(token), UPLOAD_TIMEOUT_MS, "push token upload");
+      if (epoch === sessionEpoch) registeredToken = token;
+    } catch (error) {
+      console.error(
+        "push token rotation failed",
+        error instanceof Error ? error.message : "unknown error",
+      );
+      if (epoch === sessionEpoch) setRegistrationState("failed");
+    } finally {
+      attempt.running = false;
+      flushPendingRotation(epoch);
+    }
+  })();
+  latestAttempt = attempt;
+}
+
+/** A native token event nobody asked for. Only a device this session has already
+ *  registered has anything to rotate: with no session, or before a registration
+ *  succeeded (including after a failed one, which the retry handles by asking
+ *  for the token itself), the event is ignored. */
+function handleTokenChange(token: string): void {
+  if (!sessionOpen) return;
+  const epoch = sessionEpoch;
+  if (latestAttempt?.running && latestAttempt.epoch === epoch) {
+    // Mid-upload: remember it and let the attempt finish first.
+    pendingRotation = { epoch, token };
+    return;
+  }
+  if (registrationState !== "registered" || token === registeredToken) return;
+  rotateToken(token);
+}
+
+function flushPendingRotation(epoch: number): void {
+  const pending = pendingRotation;
+  // Only ever this epoch's own token: a stale attempt's `finally` leaves another
+  // session's pending token alone.
+  if (pending === null || pending.epoch !== epoch) return;
+  pendingRotation = null;
+  if (
+    epoch === sessionEpoch &&
+    sessionOpen &&
+    registrationState === "registered" &&
+    pending.token !== registeredToken
+  ) {
+    rotateToken(pending.token);
+  }
 }
 
 /** Captures this device's APNs token and registers it with the backend for the
@@ -256,6 +337,7 @@ export function registerCurrentDevice(): Promise<PushRegistrationState> {
       if (epoch === sessionEpoch) setRegistrationState("failed");
     } finally {
       attempt.running = false;
+      flushPendingRotation(epoch);
     }
   })();
   latestAttempt = attempt;
@@ -301,6 +383,8 @@ export async function syncPushRegistration(): Promise<PushRegistrationState> {
 export function invalidatePushSession(): void {
   sessionEpoch += 1;
   sessionOpen = false;
+  registeredToken = null;
+  pendingRotation = null;
   setRegistrationState("idle");
 }
 

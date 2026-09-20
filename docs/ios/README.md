@@ -549,11 +549,28 @@ build: `ios-check-push-entitlement.sh` on the exported `.ipa`, then the probe
 with `--email` after it registers, then the notification appearing
 (`MysteryMixClub-4vii.30`).
 
-**Still needs device evidence**, blocked on the two manual Developer Portal
-steps above: permission granted/denied/dismissed, a real push received in
-foreground/background/terminated app states, tap-to-deep-link, each
-preference toggle actually suppressing its channel, and logout clearing the
-device's registration. Record outcomes on `MysteryMixClub-4vii.30`.
+**Device evidence (`MysteryMixClub-4vii.30`, 2026-09-20).** Verified on a real
+iPhone with a TestFlight build against staging, reported by the maintainer and
+cross-checked on the server: a push arrives with the app closed (swiped away);
+tapping it opens the right club; a push that arrives while the app is open shows
+as a banner; each preference toggle suppresses its channel; signing out, signing
+in and switching account on the phone work; and Profile reads "push is on for
+this device". Server side: one device row, bound to a login session, and a
+**production** token (the production gateway accepts it, the sandbox gateway does
+not), so the TestFlight build is distribution-signed; no rejected, skipped or
+retired sends. **Not observed on a device:** a token rotation (APNs changes tokens
+rarely and it cannot be forced), and a real push after a network loss.
+
+**Caveat: on iOS the server-side logout cleanup does not run yet**
+(`MysteryMixClub-kw2u`). The refresh cookie is `SameSite=Lax` and the app calls
+the API from another origin (`capacitor://localhost`), so the cookie is not sent:
+the phone's `POST /auth/refresh` returns 401 (a session is never restored after a
+relaunch, so the user signs in again) and `POST /auth/logout` invalidates nothing
+on the server. Everything above that says logout deletes the session's devices, or
+that a late upload after logout is refused, is true only where the cookie reaches
+the server (the web, and every test); on iOS the client's own
+`DELETE /users/me/push-token` is what removes the device on logout (observed: it
+did). Push delivery is unaffected.
 
 ## What still needs device evidence
 

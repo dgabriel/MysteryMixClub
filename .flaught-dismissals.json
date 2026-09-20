@@ -2112,6 +2112,39 @@
         "file": ".flaught-dismissals.json"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:99a79736f432c80a90cf1fdeee183933",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-20T15:15:57.417Z",
+      "reason": "False positive: cutoff = min(apns_timestamp, sent_at) only ever NARROWS what may be deleted. If the APNs timestamp T is earlier than the send start, a row registered after the send began has updated_at > sent_at > T and is kept, not deleted; if T is later, sent_at is used. Covered by test_dispatch_keeps_a_registration_made_after_the_send_began and test_dispatch_never_retires_a_registration_made_after_the_send_even_if_apns_says_later.",
+      "context": {
+        "title": "Incorrect cutoff calculation can delete newer token registrations",
+        "file": "backend/app/services/push_notifications.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:1d85ee12bec36a72dd00813cc3bdea5c",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-20T15:15:57.565Z",
+      "reason": "False positive: no caller of send_push/_dispatch_one/_retire_device_token exists outside push_notifications.py (grepped app, jobs, scripts), no string-outcome comparison remains anywhere, every in-module caller and the test fakes were updated in this PR, and mypy over the whole app passes.",
+      "context": {
+        "title": "`send_push` now returns `PushResult` but callers may still expect a string",
+        "file": "backend/app/services/push_notifications.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:086d36b739023b704e0f2527871f1402",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-20T15:15:57.711Z",
+      "reason": "False positive (already refuted by the skeptic): _accepted_topics is deliberately per-process state, documented as such; set add/contains are atomic under the GIL and one asyncio loop, and a missing entry only makes retirement more conservative, never less.",
+      "context": {
+        "title": "Process‑wide mutable `_accepted_topics` set is not thread‑safe",
+        "file": "backend/app/services/push_notifications.py"
+      },
+      "expires_at": null
     }
   ]
 }

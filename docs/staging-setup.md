@@ -561,9 +561,10 @@ Authorized redirect URI registered on its own client (see `prod.env.example`).
 ## Enabling push notifications (MysteryMixClub-4vii.25/27, IOS-04)
 
 Push is **off** until both credentials are present, the same "gap is a
-supported state" pattern as Apple Music and Google above: `send_push` returns
-`"failed"` for every recipient without ever calling APNs, no user-visible
-error, no crash. So this can be done any time after the code ships,
+supported state" pattern as Apple Music and Google above: every recipient's
+send is skipped without ever calling APNs (with one `push send: skipped N
+recipient(s), apns credentials are not configured` warning in the journal),
+no user-visible error, no crash. So this can be done any time after the code ships,
 independently of it, and skipping it breaks nothing except the notifications
 themselves.
 
@@ -629,13 +630,48 @@ never handed to the frontend). Two levels of check:
    lifecycle event (submit, vote, or wait for a deadline reminder) and check
    the journal:
    ```bash
-   sudo journalctl -u mysterymixclub-api --since "5 min ago" | grep "push send"
+   sudo journalctl -u mysterymixclub-api -u mysterymixclub-advance-mixes --since "5 min ago" | grep "push send"
    ```
-   No matching line means every send returned `"ok"` — `send_push` only logs
-   on `"failed"`/`"retire"`. A `push send: apns returned 403` means the
-   `aps-environment` entitlement, the Push Notifications capability, or the
-   provisioning profile don't actually match; `401` means the key/Team ID
-   pairing is wrong.
+   Two units send pushes: the API (`mysterymixclub-api`, lifecycle events
+   triggered by a request) and the deadline job (`mysterymixclub-advance-mixes`,
+   reminders and deadline advances), so grep both. **The API unit surfaces only
+   WARNING-and-above records** (its INFO logging is switched on in development
+   only), so its journal shows sends that were *skipped, rejected or retired*
+   and cannot show one that succeeded. The deadline job's unit does run at INFO
+   and also logs `push send: accepted by apns` for each accepted request.
+   **A missing line in the API journal therefore proves nothing**: it can mean
+   APNs accepted the request, or that no send was attempted at all (no
+   recipient had a registered device, or the event never fired). And even a 200
+   from APNs is acceptance, not delivery -- the phone may be offline, in a Focus
+   mode, or have notifications switched off. The confirmation that push works
+   is the notification appearing on the device.
+
+   | Journal line | Meaning |
+   |---|---|
+   | `push send: accepted by apns` (deadline job unit only) | APNs returned 200. Acceptance, not delivery. |
+   | `push send: skipped N recipient(s), apns credentials are not configured` | The key/Key ID are missing from the running process. |
+   | `push send: no apns topic (bundle id) is configured` | `APPLE_SIGN_IN_BUNDLE_ID` resolved to an empty string. |
+   | `push send: apns rejected the request (status=403 reason=InvalidProviderToken)` | The key / Key ID / Team ID pairing is wrong (`ExpiredProviderToken`, `Forbidden` and similar 403 reasons are the same family). |
+   | `push send: apns rejected the request (status=400 reason=BadTopic)` (or `TopicDisallowed`, `PayloadEmpty`, ...) | A request or configuration problem -- the topic, payload or headers. **The device token is left alone.** |
+   | `push send: apns rejected the request (status=429 ...)` / `status=5xx` | Throttling or an APNs outage. Nothing is retired. |
+   | `push send: apns rejected the request (status=400 reason=unreadable)` | The response body was not a readable APNs error. Nothing is retired. |
+   | `push send: apns answered BadDeviceToken but has not yet accepted this topic in this process, so the token is kept` | APNs rejected the token, but this process has not yet seen a 200 for the topic, so a wrong topic or credentials cannot be ruled out. Nothing is deleted. |
+   | `push send: retired a registration apns reports as dead (status=410 reason=Unregistered)` | APNs said the token is no longer active for this app (a `BadDeviceToken` also retires once the topic has been accepted). The registration was deleted. |
+   | `push send: did not retire: the registration was newer than the verdict, reassigned to another account, or already removed` | A dead-token verdict arrived but the row it named was not the one to delete; nothing was removed. |
+
+   Two caveats on `BadDeviceToken`. The "topic accepted" memory is **per
+   process** -- each API worker process, each run of the deadline job and every
+   restart or deploy starts without it -- so whether a dead token is retired
+   on a given send depends on whether that process has already had a send
+   accepted. That errs on the safe side (rows are kept, never wrongly
+   deleted). And it proves the topic and credentials line up, **not** the
+   token's environment: APNs answers `BadDeviceToken` for a token minted for
+   the other environment too, so once a process has an accepted send, a
+   sandbox token (from an Xcode debug build) is retired as well. That is
+   right for a backend that only ever talks to the production gateway, but it
+   means such tokens never receive anything; see `MysteryMixClub-4vii.35`.
+
+   No device token, provider JWT or notification payload is ever logged.
 
 A restart is required: settings and the token service are cached per
 process, so editing the env file alone changes nothing.

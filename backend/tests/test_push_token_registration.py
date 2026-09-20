@@ -4,7 +4,7 @@ PKs are captured into locals before any expire_all (project MissingGreenlet
 gotcha).
 """
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.auth.jwt import create_access_token
 from app.models.device_push_token import DevicePushToken
@@ -67,6 +67,57 @@ async def test_register_is_idempotent_for_the_same_user(client, db_session):
         )
     ).all()
     assert len(rows) == 1
+
+
+async def test_re_registering_restamps_updated_at_even_for_the_same_user(client, db_session):
+    # A dead-token verdict from APNs only retires a registration that predates
+    # it (MysteryMixClub-4vii.33), so a device that just re-registered must
+    # read as newer -- even though nothing else about the row changed.
+    user = await _seed_user(db_session, "member@example.com")
+    user_id = user.id
+    await client.post(
+        REGISTER_URL, json={"device_token": "device-abc"}, headers=_auth_header(user_id)
+    )
+    first = await db_session.scalar(
+        select(DevicePushToken.updated_at).where(DevicePushToken.device_token == "device-abc")
+    )
+    assert first is not None
+
+    resp = await client.post(
+        REGISTER_URL, json={"device_token": "device-abc"}, headers=_auth_header(user_id)
+    )
+
+    assert resp.status_code == 200, resp.text
+    db_session.expire_all()
+    second = await db_session.scalar(
+        select(DevicePushToken.updated_at).where(DevicePushToken.device_token == "device-abc")
+    )
+    assert second is not None and second > first
+
+
+async def test_register_after_the_row_was_retired_registers_again(client, db_session):
+    # A registration that follows a retire (row already gone) simply inserts,
+    # rather than updating nothing or raising. This pins that behaviour; it is
+    # sequential, so it cannot itself reproduce the concurrent race the single
+    # INSERT ... ON CONFLICT statement exists to close.
+    user = await _seed_user(db_session, "member@example.com")
+    user_id = user.id
+    await client.post(
+        REGISTER_URL, json={"device_token": "device-abc"}, headers=_auth_header(user_id)
+    )
+    await db_session.execute(delete(DevicePushToken))
+    await db_session.commit()
+
+    resp = await client.post(
+        REGISTER_URL, json={"device_token": "device-abc"}, headers=_auth_header(user_id)
+    )
+
+    assert resp.status_code == 200, resp.text
+    db_session.expire_all()
+    row = await db_session.scalar(
+        select(DevicePushToken).where(DevicePushToken.device_token == "device-abc")
+    )
+    assert row is not None and row.user_id == user_id
 
 
 async def test_register_reassigns_a_token_from_a_different_user(client, db_session):

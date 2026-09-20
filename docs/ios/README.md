@@ -373,12 +373,32 @@ described.
 names a submitter, participation mode, or hidden result (e.g. "Voting is
 open for The Mystery Mix Club", never "3 new songs to vote on").
 
-**Invalid-token retirement.** APNs' `400 BadDeviceToken`/`410 Unregistered`
-responses delete the matching `DevicePushToken` row (its own fresh DB
+**Invalid-token retirement** (`MysteryMixClub-4vii.33`). The response's
+`reason` is read, not just its status. Only APNs' `410 Unregistered`, and
+`400 BadDeviceToken` once this process has seen APNs accept the topic (APNs
+checks the device token *before* the topic, and answers `BadDeviceToken` for
+a token minted for the other environment too, so on its own it proves
+nothing), delete the matching `DevicePushToken` row (its own fresh DB
 session, since the background-task dispatch path may run after a
-request-scoped session has already closed); every other outcome is
-swallowed the same way `notifications._safe_send` treats one bad recipient
--- it never blocks the rest of a batch.
+request-scoped session has already closed). The delete is scoped to the
+exact `(token, user)` association that was sent to and to a row not
+registered after the verdict (APNs' own `timestamp` on a 410), so a device
+that re-registered, or a phone handed to another account, in the meantime
+keeps its newer registration. Every other outcome -- a bad topic, `403`,
+`429`, `5xx`, a network error, an unreadable body -- leaves the row alone and
+is swallowed the same way `notifications._safe_send` treats one bad
+recipient, so it never blocks the rest of a batch. Each rejected or retired
+send logs its HTTP status and APNs reason at WARNING, and a skipped one (no
+credentials, no topic) logs why (never a token, JWT or payload); the table in
+`docs/staging-setup.md` → "Enabling push notifications" decodes them. **The
+API's journal cannot show a successful send** -- it runs without INFO logging
+outside development, so a missing `push send` line there means either APNs
+accepted it or nothing was attempted (the deadline job's own unit does log
+accepted sends at INFO) -- and a 200 is APNs' acceptance, not proof the phone
+received anything. The `BadDeviceToken` gate is per process and proves the
+topic and credentials, not the token's environment (a sandbox token is retired
+like any other once a send has been accepted); environment handling is
+`MysteryMixClub-4vii.35`.
 
 **Still needs device evidence**, blocked on the two manual Developer Portal
 steps above: permission granted/denied/dismissed, a real push received in

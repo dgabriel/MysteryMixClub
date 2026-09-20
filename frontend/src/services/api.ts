@@ -414,25 +414,36 @@ export async function authenticatedRequest(
 }
 
 /** Register this device for push notifications (MysteryMixClub-4vii.27,
- *  IOS-04). Upsert by device_token server-side -- safe to call every time
- *  the native registration listener fires, including on every app launch. */
+ *  IOS-04). Upsert by device_token server-side -- safe to call on every app
+ *  launch and login. Throws on any non-2xx (including a 401 from an expired
+ *  session): the caller reports a device as registered only if this resolves
+ *  (MysteryMixClub-4vii.32). */
 export async function registerPushToken(deviceToken: string): Promise<void> {
-  await authenticatedRequest("/api/v1/users/me/push-token", {
+  const res = await authenticatedRequest("/api/v1/users/me/push-token", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ device_token: deviceToken }),
   });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
 }
 
 /** Remove this device's push registration (called on logout -- PRD IOS-04:
- *  "remove account associations on logout or deletion"). Best-effort: a
- *  failure here just means a stale registration lingers server-side until
- *  APNs itself reports the token dead, not a user-facing error. */
+ *  "remove account associations on logout or deletion"). Throws on any non-2xx
+ *  so the caller can tell the registration was NOT removed (the server does not
+ *  drop it on logout by itself); a stale registration would otherwise keep
+ *  delivering a signed-out account's pushes until APNs reports the token dead.
+ *  Never a user-facing error: logout proceeds either way
+ *  (MysteryMixClub-4vii.32). */
 export async function unregisterPushToken(deviceToken: string): Promise<void> {
   const params = new URLSearchParams({ device_token: deviceToken });
-  await authenticatedRequest(`/api/v1/users/me/push-token?${params.toString()}`, {
+  const res = await authenticatedRequest(`/api/v1/users/me/push-token?${params.toString()}`, {
     method: "DELETE",
   });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
 }
 
 /** Fetch the current user's profile. Bearer-auth via authenticatedRequest. */

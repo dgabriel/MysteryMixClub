@@ -17,7 +17,14 @@ import {
 } from "../services/api";
 import type { Club, UserProfile } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
-import { nativePushAvailable, pushPermissionStatus, requestPushPermissionAndRegister } from "../ios/push";
+import {
+  nativePushAvailable,
+  onAppResume,
+  pushPermissionStatus,
+  requestPushPermissionAndRegister,
+  syncPushRegistration,
+} from "../ios/push";
+import { usePushRegistration } from "../hooks/usePushRegistration";
 
 // Mock the API module (no network). Keep ApiError real.
 vi.mock("../services/api", async () => {
@@ -44,7 +51,12 @@ vi.mock("../ios/push", () => ({
   nativePushAvailable: vi.fn(),
   pushPermissionStatus: vi.fn(),
   requestPushPermissionAndRegister: vi.fn(),
+  syncPushRegistration: vi.fn(),
+  onAppResume: vi.fn(),
 }));
+// MysteryMixClub-4vii.32: whether the backend has this device's token is its
+// own state, separate from OS permission.
+vi.mock("../hooks/usePushRegistration", () => ({ usePushRegistration: vi.fn() }));
 
 const mockGetClubs = vi.mocked(getClubs);
 const mockGetMe = vi.mocked(getMe);
@@ -57,6 +69,9 @@ const mockUpdateNotificationPreferences = vi.mocked(updateNotificationPreference
 const mockNativePushAvailable = vi.mocked(nativePushAvailable);
 const mockPushPermissionStatus = vi.mocked(pushPermissionStatus);
 const mockRequestPushPermissionAndRegister = vi.mocked(requestPushPermissionAndRegister);
+const mockSyncPushRegistration = vi.mocked(syncPushRegistration);
+const mockOnAppResume = vi.mocked(onAppResume);
+const mockUsePushRegistration = vi.mocked(usePushRegistration);
 const mockUseAuth = vi.mocked(useAuth);
 const applyDisplayName = vi.fn();
 const mockLogoutAll = vi.fn();
@@ -163,6 +178,9 @@ describe("ProfileRoute", () => {
     mockGetGoogleEnabled.mockResolvedValue({ enabled: false });
     mockNativePushAvailable.mockReturnValue(false);
     mockPushPermissionStatus.mockResolvedValue("prompt");
+    mockSyncPushRegistration.mockResolvedValue("idle");
+    mockOnAppResume.mockReturnValue(() => {});
+    mockUsePushRegistration.mockReturnValue("registered");
   });
 
   it("renders the current display name and only the completed clubs, newest first", async () => {
@@ -554,6 +572,105 @@ describe("ProfileRoute", () => {
         expect(
           screen.queryByRole("button", { name: /turn on push notifications/i }),
         ).not.toBeInTheDocument();
+      });
+
+      describe("registration is not permission (MysteryMixClub-4vii.32)", () => {
+        it("granted but still connecting: does not claim push is on", async () => {
+          mockNativePushAvailable.mockReturnValue(true);
+          mockPushPermissionStatus.mockResolvedValue("granted");
+          mockUsePushRegistration.mockReturnValue("registering");
+
+          renderProfile();
+          await screen.findByText(/archived/i);
+
+          expect(await screen.findByText(/connecting this device for push/i)).toBeInTheDocument();
+          expect(screen.queryByText(/push is on for this device/i)).not.toBeInTheDocument();
+        });
+
+        it("granted but no registration attempt yet: reads as connecting, never as on", async () => {
+          mockNativePushAvailable.mockReturnValue(true);
+          mockPushPermissionStatus.mockResolvedValue("granted");
+          mockUsePushRegistration.mockReturnValue("idle");
+
+          renderProfile();
+          await screen.findByText(/archived/i);
+
+          expect(await screen.findByText(/connecting this device for push/i)).toBeInTheDocument();
+          expect(screen.queryByText(/push is on for this device/i)).not.toBeInTheDocument();
+        });
+
+        it("granted but the registration failed: says so plainly and offers a retry", async () => {
+          const user = userEvent.setup();
+          mockNativePushAvailable.mockReturnValue(true);
+          mockPushPermissionStatus.mockResolvedValue("granted");
+          mockUsePushRegistration.mockReturnValue("failed");
+
+          renderProfile();
+          await screen.findByText(/archived/i);
+
+          expect(await screen.findByText(/isn't connected to mystery mix club yet/i)).toBeInTheDocument();
+          expect(screen.queryByText(/push is on for this device/i)).not.toBeInTheDocument();
+          mockSyncPushRegistration.mockClear();
+
+          await user.click(screen.getByRole("button", { name: /try again/i }));
+
+          expect(mockSyncPushRegistration).toHaveBeenCalledOnce();
+        });
+
+        it("makes sure a registration is under way when permission is already granted", async () => {
+          mockNativePushAvailable.mockReturnValue(true);
+          mockPushPermissionStatus.mockResolvedValue("granted");
+
+          renderProfile();
+          await screen.findByText(/archived/i);
+
+          await waitFor(() => expect(mockSyncPushRegistration).toHaveBeenCalled());
+        });
+
+        it("does not try to register when permission is not granted", async () => {
+          mockNativePushAvailable.mockReturnValue(true);
+          for (const status of ["prompt", "denied"] as const) {
+            mockPushPermissionStatus.mockResolvedValue(status);
+            mockSyncPushRegistration.mockClear();
+
+            const { unmount } = renderProfile();
+            await screen.findByText(/archived/i);
+            await screen.findByText("notifications");
+
+            expect(mockSyncPushRegistration).not.toHaveBeenCalled();
+            unmount();
+          }
+        });
+
+        it("picks up a permission granted in iOS Settings when the app returns to the foreground", async () => {
+          mockNativePushAvailable.mockReturnValue(true);
+          mockPushPermissionStatus.mockResolvedValueOnce("denied");
+          let resumed: () => void = () => {};
+          mockOnAppResume.mockImplementation((callback) => {
+            resumed = callback;
+            return () => {};
+          });
+
+          renderProfile();
+          await screen.findByText(/archived/i);
+          expect(await screen.findByText(/won't do anything until you turn it back on/i)).toBeInTheDocument();
+
+          mockPushPermissionStatus.mockResolvedValue("granted");
+          resumed();
+
+          expect(await screen.findByText(/push is on for this device/i)).toBeInTheDocument();
+          expect(mockSyncPushRegistration).toHaveBeenCalled();
+        });
+
+        it("on web: no push status and no registration work at all", async () => {
+          mockNativePushAvailable.mockReturnValue(false);
+
+          renderProfile();
+          await screen.findByText(/archived/i);
+
+          expect(mockSyncPushRegistration).not.toHaveBeenCalled();
+          expect(mockOnAppResume).not.toHaveBeenCalled();
+        });
       });
 
       it("denied: points to iOS Settings instead of re-prompting, but still shows the toggles", async () => {

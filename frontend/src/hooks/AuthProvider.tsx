@@ -7,7 +7,14 @@ import {
   setStoredAccessToken,
 } from "../services/api";
 import { AuthContext, type AuthContextValue, type AuthStatus, type ProfileStatus } from "./useAuth";
-import { nativePushAvailable, unregisterCurrentDevice } from "../ios/push";
+import {
+  invalidatePushSession,
+  nativePushAvailable,
+  onAppResume,
+  openPushSession,
+  syncPushRegistration,
+  unregisterCurrentDevice,
+} from "../ios/push";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
@@ -21,14 +28,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profileStatus, setProfileStatus] = useState<ProfileStatus>("idle");
   const didInit = useRef(false);
   const didLoadProfile = useRef(false);
+  // Identifies the current profile load. clear() bumps it so a getMe() still in
+  // flight when the session ends cannot apply its result to the next session.
+  const profileLoadId = useRef(0);
 
   const setAccessToken = useCallback((next: string) => {
+    // Every login is a new session with its own profile. Usually clear() has
+    // already reset this, but a login that replaces a live session (a magic
+    // link opened while another account is signed in) would otherwise keep the
+    // previous account's profile and user id (MysteryMixClub-4vii.32).
+    didLoadProfile.current = false;
+    profileLoadId.current += 1;
     setStoredAccessToken(next);
     setToken(next);
     setStatus("authenticated");
   }, []);
 
   const clear = useCallback(() => {
+    // A later login in the same launch (logout is client-side navigation, not a
+    // reload) must load its own profile: without this reset the guard below
+    // stays set forever and the new session never gets a userId, a display
+    // name, or an onboarding check (MysteryMixClub-4vii.32).
+    didLoadProfile.current = false;
+    profileLoadId.current += 1;
     setStoredAccessToken(null);
     setToken(null);
     setStatus("unauthenticated");
@@ -79,16 +101,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // ref still keeps us to a single fetch per session. On failure we treat the
   // session as unauthenticated — authenticatedRequest already attempted a silent
   // refresh, so a failure here means there is no recoverable session. clear()
-  // resets the profile refs implicitly via its state changes; the guard below
-  // prevents a stale resolution from overwriting a session we've since cleared.
+  // resets the once-per-session guard and bumps profileLoadId, so a later login
+  // loads its own profile and a stale resolution from a session we've since
+  // cleared is dropped.
   useEffect(() => {
     if (token === null || didLoadProfile.current) return;
     didLoadProfile.current = true;
+    const loadId = profileLoadId.current;
     setProfileStatus("loading");
 
     void (async () => {
       try {
         const profile = await getMe();
+        // The session that asked for this profile has ended (or been replaced).
+        if (loadId !== profileLoadId.current) return;
         setDisplayName(profile.display_name);
         setEmail(profile.email);
         setUserId(profile.id);
@@ -97,7 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setTosAccepted(profile.tos_accepted);
         setProfileStatus("ready");
       } catch {
-        didLoadProfile.current = false;
+        if (loadId !== profileLoadId.current) return;
         clear();
       }
     })();
@@ -132,9 +158,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [clear]);
 
   const needsOnboarding =
-    status === "authenticated" &&
-    profileStatus === "ready" &&
-    (displayName === "" || !tosAccepted);
+    status === "authenticated" && profileStatus === "ready" && (displayName === "" || !tosAccepted);
+
+  // The push session lives exactly as long as the signed-in session it belongs
+  // to. Keyed on the in-memory access token, which changes on login, restore
+  // and any account change (never on the silent background refreshes, which
+  // only touch the api module), so its cleanup -- run on logout and before
+  // the next account's session opens -- abandons any registration still in
+  // flight for the account that is leaving and closes the gate so nothing can
+  // start a new one for it (MysteryMixClub-4vii.32). Declared before the
+  // effect below: on a fresh session React runs them in order.
+  useEffect(() => {
+    if (!nativePushAvailable() || token === null) return;
+    openPushSession();
+    return () => {
+      invalidatePushSession();
+    };
+  }, [token]);
+
+  // Attach this device to the signed-in account for push once the session is
+  // ready -- a fresh login, a session restored from the cookie at launch, or
+  // the same phone signing in as someone else -- and again each time the app
+  // returns to the foreground (the user may have just granted permission in iOS
+  // Settings). Only ever registers when the OS permission is already granted;
+  // the one-time permission prompt stays with onboarding/Profile, so this holds
+  // off until onboarding is done.
+  useEffect(() => {
+    if (
+      !nativePushAvailable() ||
+      status !== "authenticated" ||
+      profileStatus !== "ready" ||
+      userId === null ||
+      needsOnboarding
+    ) {
+      return;
+    }
+    void syncPushRegistration();
+    return onAppResume(() => {
+      void syncPushRegistration();
+    });
+  }, [status, profileStatus, userId, needsOnboarding]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

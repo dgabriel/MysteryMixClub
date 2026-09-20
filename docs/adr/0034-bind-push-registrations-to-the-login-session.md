@@ -139,6 +139,18 @@ deliberately hold several bound rows; reintroducing the bug fails four of them.
 
 ## Known limits
 
+- **On iOS the server-side logout guarantees do not run yet
+  (`MysteryMixClub-kw2u`, P1).** Logout finds its session through the refresh
+  cookie, which the iOS app does not send (`SameSite=Lax`, cross-origin
+  `capacitor://localhost`; observed on a device: `/auth/refresh` returns 401 and
+  `/auth/logout` invalidates nothing). So on iOS a logout neither deletes the
+  session's devices nor makes a late registration refused; the client's own
+  `DELETE /users/me/push-token` is the only working cleanup there (it did remove
+  the device on a real logout). The design and its tests are right where the
+  cookie reaches the server; closing the iOS gap needs logout (and refresh) to
+  identify the session without that cookie, for example from the access token's
+  `sid`, or a native-held refresh token. Not addressed by this ADR.
+
 - **Lock-order gaps this work does not close** (found by review, reproduced,
   none involve device rows, and all predate it): a password login that clears
   *pre-existing* failed-attempt rows takes them before the session insert (which

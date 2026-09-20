@@ -177,6 +177,17 @@ async def test_probe_reads_only_a_plain_word_reason_from_a_hostile_body():
     assert production.reason is None  # not a plain word: dropped
 
 
+async def test_probe_treats_a_non_json_error_page_as_no_reason_not_a_crash():
+    def dispatch(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(502, content=b"<html>bad gateway</html>")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(dispatch)) as client:
+        production, sandbox = await probe_gateways(_service(), _TOPIC, _DEVICE_TOKEN, client=client)
+
+    assert production == sandbox == GatewayAnswer(502, None)
+    assert interpret_environment(production, sandbox) == "inconclusive"
+
+
 async def test_probe_without_credentials_raises_rather_than_sending():
     unconfigured = ApplePushTokenService("", "", "")
     with pytest.raises(ApplePushTokenError):

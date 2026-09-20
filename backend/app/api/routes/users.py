@@ -514,7 +514,7 @@ async def register_push_token(
     under (MysteryMixClub-4vii.36), because an access token stays valid for up
     to an hour after logout and an upload can be in flight when logout runs:
 
-    - The session must be live. It is read FOR SHARE, and /auth/logout takes the
+    - The session must be live. It is read FOR UPDATE, and /auth/logout takes the
       same row FOR UPDATE, so a registration either commits before logout (and
       logout deletes it) or runs after and is refused -- it can never recreate a
       row for an account that has signed out. Refused with the same neutral 401
@@ -532,14 +532,14 @@ async def register_push_token(
     # Lock order matters: USERS row first, then the session. Account deletion
     # (`delete_me`) takes the users row exclusively (a key update on the unique
     # email) and only afterwards touches sessions. Registration used to take the
-    # session row (FOR SHARE) and only reach the users row later, through the
+    # session row and only reach the users row later, through the
     # device insert's foreign key; those opposite orders deadlock (reproduced
     # with two connections). So take the user row first, in the weakest mode that
     # still conflicts with that: FOR KEY SHARE. (The admin eject of a LIVE account,
     # `hard_delete_users`, deletes sessions and reaches the users row last, so it
     # can still deadlock with a registration racing it; see ADR 0034 "Known
-    # limits". It is admin-initiated and one of the two requests fails cleanly.) It does NOT conflict with
-    # changes to non-key columns (a profile edit, a password change, a ToS
+    # limits". It is admin-initiated and one of the two requests fails cleanly.)
+    # FOR KEY SHARE does NOT conflict with changes to non-key columns (a profile edit, a password change, a ToS
     # acceptance), so ordinary account activity never blocks a registration.
     # SQLAlchemy needs BOTH flags for that mode: `key_share=True` alone compiles
     # to FOR NO KEY UPDATE, which does. Re-reading under the lock means a user
@@ -560,7 +560,7 @@ async def register_push_token(
         session = await db.scalar(
             select(Session)
             .where(Session.id == session_id, Session.user_id == current_user.id)
-            .with_for_update(read=True)
+            .with_for_update()
         )
         if session is None or not session_is_live(session, datetime.now(timezone.utc)):
             raise HTTPException(
@@ -623,6 +623,25 @@ async def register_push_token(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="this device was registered by a newer sign-in",
+        )
+    if session_id is not None:
+        # One device token per login session: APNs can change a device's token
+        # while the app runs (the app then registers the new one), and the token
+        # it replaces is dead. Dropping it here, in the same transaction and with
+        # no cooperation from the client, keeps a stale registration from
+        # lingering until APNs reports it, and it is deleted with the session on
+        # logout either way (MysteryMixClub-4vii.37). A session is one login on one
+        # install, so it never legitimately holds two. Registrations of ONE session
+        # are serialized by the session row lock above (FOR UPDATE, not FOR SHARE):
+        # with only a shared lock, two concurrent registrations of different tokens
+        # whose rows both already exist each lock their own row through the upsert
+        # and then wait on the other's in this delete, a deadlock (reproduced).
+        # Different sessions and accounts are unaffected.
+        await db.execute(
+            delete(DevicePushToken).where(
+                DevicePushToken.session_id == session_id,
+                DevicePushToken.device_token != payload.device_token,
+            )
         )
     await db.commit()
     return RegisterPushTokenResponse()

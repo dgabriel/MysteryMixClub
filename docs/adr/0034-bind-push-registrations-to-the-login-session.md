@@ -36,7 +36,7 @@ it is scoped to `Path=/api/v1/auth` on purpose and is not sent to
 - `POST /users/me/push-token` requires the `sid` session to belong to the caller
   and be live (not invalidated, inside the refresh lifetime -- one shared rule,
   `session_is_live`, also used by `/auth/refresh`). It reads the session
-  `FOR SHARE`; `/auth/logout` reads the same row `FOR UPDATE`, invalidates it and
+  `FOR UPDATE`; `/auth/logout` reads the same row `FOR UPDATE`, invalidates it and
   deletes that session's `device_push_tokens` rows in one transaction. So a
   registration either commits before logout (and logout deletes it) or runs after
   and is refused with the neutral 401. It cannot recreate a row after logout.
@@ -50,7 +50,7 @@ it is scoped to `Path=/api/v1/auth` on purpose and is not sent to
   narrower and is tested:
   - Registration takes `FOR KEY SHARE` on the caller's `users` row (re-reading
     it under the lock: a soft-deleted user, or a hard-deleted one whose row is
-    gone, is refused with the neutral 401), then the session `FOR SHARE`, then the
+    gone, is refused with the neutral 401), then the session `FOR UPDATE`, then the
     device row. The first version took the session first and reached the users row
     later through the device insert's foreign key, and deadlocked with account
     deletion.
@@ -68,6 +68,18 @@ it is scoped to `Path=/api/v1/auth` on purpose and is not sent to
     predates this work and that the stress test exposed).
   - A reset whose token row a racing request already consumed now gets the
     neutral 401 (it used to raise `StaleDataError`, a 500).
+- **One device token per session.** After a successful upsert bound to a session,
+  registration deletes that session's other device rows in the same transaction
+  (`MysteryMixClub-4vii.37`). APNs can change a device's token while the app runs
+  and the app registers the new one; the token it replaces is dead, and a session
+  (one login on one install) never legitimately holds two. This is server-side so
+  it needs no client cooperation, and it sits after the takeover check, so a
+  refused (409) request deletes nothing. Session-less tokens never supersede.
+  Because that delete makes two registrations of the *same* session contend for
+  each other's device rows (a deadlock, reproduced, when both rows already exist:
+  the dead token plus the live one), registration locks its session row `FOR
+  UPDATE` rather than `FOR SHARE`, which serializes registrations of one session
+  and leaves other sessions and accounts unaffected.
 - A token already held by another session is only taken over by a session at
   least as new (compared on `sessions.created_at`, a server clock). An older
   login's late upload gets 409 and cannot take a device back from a newer one.
@@ -96,7 +108,7 @@ is exercised on **two real connections** (`test_push_token_session_concurrency.p
 the `real_*` fixtures ADR 0005 keeps for exactly this): each ordering is forced
 (a second connection holds the lock, the request under test is shown to block,
 then the outcome is asserted), plus an unforced register-vs-logout race. Removing
-the registration's `FOR SHARE` fails three of them.
+the registration's session lock fails three of them.
 
 Each ordering above is pinned by a deterministic test that follows the reported
 interleaving through the real route or the real function (a third connection
@@ -155,6 +167,18 @@ deliberately hold several bound rows; reintroducing the bug fails four of them.
   only unbound rows, so its device is not removed by logout until the app
   re-registers with a token that names a session. Transitional and self-healing
   (the next refresh mints a `sid`).
+- **A timed-out upload is not aborted, so the newest-arriving token wins on the
+  server.** If a client-timed-out upload of an old token lands after the retry's
+  upload of the live one, the server ends up holding the old token while the
+  client believes the new one is registered, until the next launch or login
+  registers again (a fresh state re-asks the OS for the current token). Rare (it
+  needs a rotation plus a hung upload) and bounded, but note it is worse than it
+  used to be: before the supersede delete, a late upload of an old token only
+  added a stale row and the live token kept working; now it removes the live
+  token, so the device receives nothing until that next registration. Aborting
+  the in-flight request on a client timeout would narrow the window but cannot
+  close it (a request already on the wire still lands), and needs an abort path
+  through `services/api.ts`, so it is left as a follow-up if it ever matters.
 - **`sessions.created_at` is the start of the login transaction**, so two logins
   on one phone within the same instant compare arbitrarily. Theoretical, and the
   outcome (which of two simultaneous logins keeps the device) is harmless.

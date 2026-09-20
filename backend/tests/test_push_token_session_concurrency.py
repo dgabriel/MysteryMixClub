@@ -3,7 +3,7 @@
 The rest of the suite runs each test inside one shared, rolled-back transaction
 (ADR 0005), where two requests cannot genuinely contend for a row lock. The
 guarantee "a registration can never recreate a row after logout" rests on exactly
-that lock -- registration reads its session FOR SHARE, logout / logout-all take
+that lock -- registration reads its session FOR UPDATE, logout / logout-all take
 the same row FOR UPDATE -- so it is exercised here with the ``real_*`` fixtures
 (real commits, real cross-connection blocking; ADR 0005 keeps these for this
 purpose and pays a small TRUNCATE to clean up).
@@ -13,7 +13,7 @@ the request under test is started and shown to BLOCK behind it, then the lock is
 released and the outcome asserted.
 
 Two of the "registration commits first" tests stand in for the registration with
-a hand-written FOR SHARE plus insert: a request cannot be paused halfway through
+a hand-written FOR UPDATE plus insert: a request cannot be paused halfway through
 its own transaction. The route itself is exercised by the tests where it is the
 request that blocks, and by the unforced races.
 """
@@ -67,10 +67,8 @@ async def test_registration_that_commits_first_is_deleted_by_the_logout_that_wai
     user_id, session_id, raw, _headers = await _login(real_db_session, "a@example.com")
     async with real_session_factory() as registering:
         # The registration has passed its liveness check and holds the session
-        # row FOR SHARE, but has not committed yet.
-        await registering.scalar(
-            select(Session).where(Session.id == session_id).with_for_update(read=True)
-        )
+        # row FOR UPDATE, but has not committed yet.
+        await registering.scalar(select(Session).where(Session.id == session_id).with_for_update())
         logout = asyncio.create_task(real_client.post(LOGOUT_URL, cookies={"refresh_token": raw}))
         await asyncio.sleep(_BLOCKED_FOR)
         assert not logout.done(), "logout must wait for the in-flight registration"
@@ -140,9 +138,7 @@ async def test_registration_that_commits_first_is_deleted_by_the_logout_all_that
 ):
     user_id, session_id, raw, _headers = await _login(real_db_session, "a@example.com")
     async with real_session_factory() as registering:
-        await registering.scalar(
-            select(Session).where(Session.id == session_id).with_for_update(read=True)
-        )
+        await registering.scalar(select(Session).where(Session.id == session_id).with_for_update())
         logout_all = asyncio.create_task(
             real_client.post(LOGOUT_ALL_URL, cookies={"refresh_token": raw})
         )
@@ -561,3 +557,42 @@ async def _login_for(db, user_id):
     session_id = session.id
     headers = {"Authorization": f"Bearer {create_access_token(user_id, session_id)}"}
     return user_id, session_id, raw, headers
+
+
+async def test_concurrent_registrations_of_different_tokens_from_one_session_never_deadlock(
+    real_client, real_db_session, real_session_factory
+):
+    # Token rotation: registering a new token deletes the session's other rows. With
+    # two rows for one session ALREADY present (the dead token plus the live one, the
+    # very pair rotation exists to fix), two concurrent registrations of different
+    # tokens each locked their own row through the upsert and then waited on the
+    # other's in the delete: a deadlock, a 500 for one of them. Registrations of one
+    # session are serialized by the session row lock, so the last one simply wins.
+    for round_no in range(12):
+        user_id, session_id, _raw, headers = await _login(
+            real_db_session, f"rot{round_no}@example.com"
+        )
+        await _seed_bound_device(real_db_session, user_id, session_id, token=f"a{round_no}")
+        await _seed_bound_device(real_db_session, user_id, session_id, token=f"b{round_no}")
+        first = asyncio.create_task(
+            real_client.post(REGISTER_URL, json={"device_token": f"a{round_no}"}, headers=headers)
+        )
+        second = asyncio.create_task(
+            real_client.post(REGISTER_URL, json={"device_token": f"b{round_no}"}, headers=headers)
+        )
+        responses = await _drain(first, second)
+
+        assert [r.status_code for r in responses] == [200, 200], (round_no, responses)
+
+    # Whichever won each round, a session ends up with exactly one token.
+    async with real_session_factory() as check:
+        counts = (
+            (
+                await check.execute(
+                    text("SELECT count(*) FROM device_push_tokens GROUP BY session_id")
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert counts == [1] * 12

@@ -739,3 +739,267 @@ describe("unregisterCurrentDevice cleanup guarantees (MysteryMixClub-4vii.32)", 
     expect(logged).toContain("push unregister failed");
   });
 });
+
+describe("token rotation after registration (MysteryMixClub-4vii.37)", () => {
+  /** A device that is registered with `first`, ready for a token change. */
+  async function registered(first = "token-1") {
+    const push = await loadPush();
+    const done = push.syncPushRegistration();
+    await settle();
+    emitToken(first);
+    await done;
+    registerPushTokenMock.mockClear();
+    registerMock.mockClear();
+    requestPermissionsMock.mockClear();
+    return push;
+  }
+
+  it("uploads a changed token for the signed-in account, stores it, and stays registered", async () => {
+    const { getPushRegistrationState } = await registered("token-1");
+
+    emitToken("token-2");
+    await settle();
+
+    expect(registerPushTokenMock).toHaveBeenCalledOnce();
+    expect(registerPushTokenMock).toHaveBeenCalledWith("token-2");
+    expect(localStorage.getItem("mmcDevicePushToken")).toBe("token-2");
+    expect(getPushRegistrationState()).toBe("registered");
+  });
+
+  it("does not touch the OS or ask for a token again: a rotation is just an upload", async () => {
+    await registered();
+
+    emitToken("token-2");
+    await settle();
+
+    expect(registerMock).not.toHaveBeenCalled();
+    expect(requestPermissionsMock).not.toHaveBeenCalled();
+  });
+
+  it("ignores a repeat of the token it already registered (duplicate callbacks are idempotent)", async () => {
+    await registered("token-1");
+
+    emitToken("token-1");
+    emitToken("token-1");
+    await settle();
+
+    expect(registerPushTokenMock).not.toHaveBeenCalled();
+  });
+
+  it("ignores a repeat of a token it just rotated to", async () => {
+    await registered("token-1");
+    emitToken("token-2");
+    await settle();
+    registerPushTokenMock.mockClear();
+
+    emitToken("token-2");
+    await settle();
+
+    expect(registerPushTokenMock).not.toHaveBeenCalled();
+  });
+
+  it("logout after a rotation removes the NEW token", async () => {
+    const { unregisterCurrentDevice } = await registered("token-1");
+    emitToken("token-2");
+    await settle();
+
+    await unregisterCurrentDevice();
+
+    expect(unregisterPushTokenMock).toHaveBeenCalledWith("token-2");
+    expect(unregisterPushTokenMock).not.toHaveBeenCalledWith("token-1");
+  });
+
+  it("does not upload a token change after logout (the session is closed)", async () => {
+    const { invalidatePushSession } = await registered();
+    invalidatePushSession();
+
+    emitToken("token-2");
+    await settle();
+
+    expect(registerPushTokenMock).not.toHaveBeenCalled();
+  });
+
+  it("does not upload a token change for a device that never registered", async () => {
+    const { initializePushListeners } = await loadPush(); // session open, nothing registered yet
+    initializePushListeners(vi.fn()); // as the app does at startup
+    await settle();
+
+    emitToken("token-1");
+    await settle();
+
+    expect(registerPushTokenMock).not.toHaveBeenCalled();
+  });
+
+  it("does not turn a failed registration into a silent upload: the retry asks for the token itself", async () => {
+    const { syncPushRegistration } = await loadPush();
+    registerPushTokenMock.mockRejectedValueOnce(new Error("HTTP 503"));
+    const first = syncPushRegistration();
+    await settle();
+    emitToken("token-1");
+    expect(await first).toBe("failed");
+    registerPushTokenMock.mockClear();
+
+    emitToken("token-2"); // arrives while failed
+    await settle();
+    expect(registerPushTokenMock).not.toHaveBeenCalled();
+
+    const retry = syncPushRegistration();
+    await settle();
+    emitToken("token-2");
+    expect(await retry).toBe("registered");
+    expect(registerPushTokenMock).toHaveBeenCalledWith("token-2");
+  });
+
+  it("reports failed, retryably, when the rotation upload is rejected", async () => {
+    const { getPushRegistrationState, syncPushRegistration } = await registered("token-1");
+    registerPushTokenMock.mockRejectedValueOnce(new Error("HTTP 500"));
+
+    emitToken("token-2");
+    await settle();
+    expect(getPushRegistrationState()).toBe("failed");
+
+    const retry = syncPushRegistration();
+    await settle();
+    emitToken("token-2");
+    expect(await retry).toBe("registered");
+  });
+
+  it("reports failed when the rotation upload hangs", async () => {
+    const { getPushRegistrationState } = await registered();
+    registerPushTokenMock.mockReturnValue(new Promise(() => {}));
+
+    emitToken("token-2");
+    await vi.advanceTimersByTimeAsync(15_000);
+
+    expect(getPushRegistrationState()).toBe("failed");
+  });
+
+  it("a session that ends mid-rotation is not marked registered, and logout still cleans up", async () => {
+    const { getPushRegistrationState, unregisterCurrentDevice } = await registered("token-1");
+    let finishUpload: () => void = () => {};
+    registerPushTokenMock.mockReturnValue(
+      new Promise<void>((resolve) => {
+        finishUpload = resolve;
+      }),
+    );
+
+    emitToken("token-2"); // upload now in flight
+    await settle();
+    const loggingOut = unregisterCurrentDevice(); // logout lands mid-upload
+    await settle();
+    expect(unregisterPushTokenMock).not.toHaveBeenCalled(); // waiting on the upload
+    finishUpload();
+    await loggingOut;
+
+    expect(getPushRegistrationState()).toBe("idle");
+    expect(unregisterPushTokenMock).toHaveBeenCalledWith("token-2");
+  });
+
+  it("uploads the newest token when several changes arrive while one is still uploading", async () => {
+    await registered("token-1");
+    const finishers: Array<() => void> = [];
+    registerPushTokenMock.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishers.push(resolve);
+        }),
+    );
+
+    emitToken("token-2"); // starts uploading
+    await settle();
+    emitToken("token-3"); // queued behind it
+    emitToken("token-4"); // replaces the queued one
+    await settle();
+    expect(registerPushTokenMock).toHaveBeenCalledTimes(1); // never two uploads at once
+
+    finishers[0]();
+    await settle();
+
+    expect(registerPushTokenMock).toHaveBeenCalledTimes(2);
+    expect(registerPushTokenMock).toHaveBeenLastCalledWith("token-4");
+    finishers[1]();
+    await settle();
+    expect(localStorage.getItem("mmcDevicePushToken")).toBe("token-4");
+  });
+
+  it("a token that arrives while the FIRST registration is still uploading is picked up after it", async () => {
+    const { syncPushRegistration, getPushRegistrationState } = await loadPush();
+    const finishers: Array<() => void> = [];
+    registerPushTokenMock.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishers.push(resolve);
+        }),
+    );
+    const done = syncPushRegistration();
+    await settle();
+    emitToken("token-1"); // resolves the waiting attempt; upload begins
+    await settle();
+
+    emitToken("token-1b"); // the token changes mid-upload
+    await settle();
+    finishers[0]();
+    await settle();
+
+    expect(getPushRegistrationState()).toBe("registered");
+    expect(registerPushTokenMock).toHaveBeenLastCalledWith("token-1b");
+    finishers[1]();
+    await done;
+  });
+
+  it("a stale session's late-settling attempt neither consumes nor discards the current session's pending rotation", async () => {
+    const { syncPushRegistration, invalidatePushSession, openPushSession } = await loadPush();
+    const finishers: Array<() => void> = [];
+    registerPushTokenMock.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishers.push(resolve);
+        }),
+    );
+
+    // Session 0: an upload is in flight and outlives the logout.
+    const stale = syncPushRegistration();
+    await settle();
+    emitToken("t-a0");
+    await settle();
+    // The account switches (invalidate + open); session 1 registers.
+    invalidatePushSession();
+    openPushSession();
+    const current = syncPushRegistration();
+    await settle();
+    emitToken("t-a1");
+    await settle();
+    // The token changes while session 1's upload is still in flight: queued.
+    emitToken("t-a1-rotated");
+    await settle();
+
+    // Session 0's upload now settles; its `finally` must not touch the queue.
+    finishers[0]();
+    await settle();
+    // Session 1's upload settles; the queued rotation must be uploaded.
+    finishers[1]();
+    await settle();
+
+    expect(registerPushTokenMock).toHaveBeenLastCalledWith("t-a1-rotated");
+    expect(registerPushTokenMock.mock.calls.map((c) => c[0])).toEqual([
+      "t-a0",
+      "t-a1",
+      "t-a1-rotated",
+    ]);
+    finishers[2]();
+    await Promise.all([stale, current]);
+    expect(localStorage.getItem("mmcDevicePushToken")).toBe("t-a1-rotated");
+  });
+
+  it("never logs the token when a rotation fails", async () => {
+    await registered("token-1");
+    registerPushTokenMock.mockRejectedValueOnce(new Error("HTTP 500"));
+
+    emitToken("secret-token-value-2");
+    await settle();
+
+    const logged = JSON.stringify(vi.mocked(console.error).mock.calls);
+    expect(logged).not.toContain("secret-token-value-2");
+    expect(logged).toContain("push token rotation failed");
+  });
+});

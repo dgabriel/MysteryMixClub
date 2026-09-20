@@ -24,8 +24,10 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import async_session_factory
+from app.models.auth_identity import AuthIdentity
 from app.models.club import Club
 from app.models.club_member import ClubMember
+from app.models.device_push_token import DevicePushToken
 from app.models.invite import Invite
 from app.models.login_attempt import LoginAttempt
 from app.models.magic_link_token import MagicLinkToken
@@ -47,6 +49,13 @@ async def hard_delete_users(
     Shared by the scheduled purge (right to be forgotten, TD 10) and the
     platform-admin eject endpoint (MYS-128). Does NOT commit — the caller owns
     the transaction boundary.
+
+    Concurrency: the scheduled purge only ever touches soft-deleted accounts,
+    which cannot sign in, so nothing races it. The admin eject of a LIVE account
+    can race that user's own in-flight request and fail one of the two (an FK
+    error, or a deadlock victim); retrying succeeds. That is not new and is not
+    made a guarantee here (MysteryMixClub-4vii.36 only ordered sessions before
+    devices so it cannot deadlock with logout).
     """
     if not user_ids:
         return
@@ -65,6 +74,15 @@ async def hard_delete_users(
     await db.execute(delete(ClubMember).where(ClubMember.user_id.in_(user_ids)))
     await db.execute(delete(Invite).where(Invite.created_by.in_(user_ids)))
     await db.execute(delete(Session).where(Session.user_id.in_(user_ids)))
+    # Devices and linked identities have no ON DELETE on their users FK, so a LIVE
+    # account (the admin eject) that still has either would fail the user delete
+    # with an IntegrityError (the purge of a soft-deleted account never hit this:
+    # `delete_me` already removed them). Devices come after the sessions, the same
+    # session-then-device order as logout and push registration; deleting the
+    # sessions also nulls their session_id (ON DELETE SET NULL)
+    # (MysteryMixClub-4vii.36).
+    await db.execute(delete(DevicePushToken).where(DevicePushToken.user_id.in_(user_ids)))
+    await db.execute(delete(AuthIdentity).where(AuthIdentity.user_id.in_(user_ids)))
     await db.execute(delete(MagicLinkToken).where(MagicLinkToken.email.in_(emails)))
     await db.execute(delete(PasswordResetToken).where(PasswordResetToken.email.in_(emails)))
     await db.execute(delete(LoginAttempt).where(LoginAttempt.email.in_(emails)))

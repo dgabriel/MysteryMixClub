@@ -181,6 +181,12 @@ this cross-site return; the nonce cookie is Lax for the same reason.
 - Sessions store: user ID, refresh token hash, device hint (user agent), created at, last used at, invalidated at
 - "Log out of all devices" sets `invalidated_at` on all active sessions for that user
 - All subsequent refresh attempts against invalidated sessions return 401
+- Access tokens carry the session they were issued under as a `sid` claim. Almost every route ignores it
+  (an access token stays valid until it expires, by design), but a route whose effect must not outlive a
+  logout checks that session is still live. Device push registration (`POST /users/me/push-token`) is the
+  first: it needs a live session, `/auth/logout` deletes that session's `device_push_tokens` rows in the same
+  transaction, and a token already held by a newer session cannot be taken back by an older one
+  (ADR 0034). Tokens issued before the claim existed have no `sid` and are unaffected until they expire.
 
 ### Security Rules
 

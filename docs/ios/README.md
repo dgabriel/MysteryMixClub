@@ -344,7 +344,7 @@ receive the same event on each; `POST /users/me/push-token` upserts by
 token (a token reassigns to whoever registers it, handling device reuse or
 a different user signing into the same phone), `DELETE` scopes to the
 caller's own rows. Account deletion drops the caller's tokens server-side;
-logout relies on the client calling that `DELETE` first (see below).
+logout drops the ones registered under that login session (see below).
 
 **Two independent preferences**, `push_lifecycle_enabled` and
 `push_deadline_reminders_enabled` (both default on), separate from each
@@ -404,12 +404,24 @@ session never uploads, however late its callback lands. Logout closes the
 session first and then waits (up to 5 seconds) only for an upload that has
 already been sent, so the row it may have created is usually removed too; the
 token is remembered from the moment the upload is sent, so even a request that
-timed out client-side can be cleaned up. **The backend does not drop a device on
-logout by itself** -- the client's `DELETE /users/me/push-token` is the only
-cleanup -- so a failed DELETE is logged (the failure's message only, never the token), the
-token stays stored, and logout still completes; the row then remains until it
-is re-registered under whoever uses the phone next or APNs reports the token
-dead. The token, JWTs and payloads are never logged.
+timed out client-side can be cleaned up. None of that client work can undo an
+upload the server has already accepted, so **the server enforces it**
+([ADR 0034](../adr/0034-bind-push-registrations-to-the-login-session.md),
+`MysteryMixClub-4vii.36`): the access token carries the login session it was
+issued under (`sid`), a registration is only accepted from a live session, and
+`/auth/logout` invalidates the session and deletes that session's device rows in
+one transaction (`/auth/logout-all` and a password reset drop the account's
+signed-out devices). An
+upload that lands after logout is refused with a neutral 401, and an upload from
+an older login cannot take a device back from a newer one (409). The client's
+own `DELETE /users/me/push-token` stays as belt and braces; a failed one is
+logged (the failure's message only, never the token), the token stays stored,
+and logout still completes. The token, JWTs and payloads are never logged.
+Known limits: a device row that already exists when this ships has no session,
+so logout removes it only after the app re-registers and binds it (next launch
+after the update), and a token minted before this shipped carries no session and
+keeps the old unconditional behaviour until it expires (at most an hour); a
+session that merely expires (30 days) is not swept.
 
 **Deep-linking.** A tapped notification (foreground, background, or
 terminated) lands on the relevant club's home screen (`/clubs/:id`) --

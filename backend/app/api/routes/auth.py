@@ -21,7 +21,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import EmailStr, Field
 
 from app.api.wire import WireModel
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.invites import (
@@ -50,6 +50,7 @@ from app.models.magic_link_token import MagicLinkToken
 from app.models.oauth_callback_attempt import OAuthCallbackAttempt
 from app.models.oauth_exchange_code import OAuthExchangeCode
 from app.models.password_reset_token import PasswordResetToken
+from app.models.device_push_token import DevicePushToken
 from app.models.session import Session
 from app.models.user import User
 from app.services.apple_signin import (
@@ -366,8 +367,12 @@ async def _issue_session(
     refresh token to :func:`_set_refresh_cookie`. Shared by every endpoint that
     logs someone in, so all of them issue sessions identically (TD 5)."""
     raw_refresh_token = generate_token()
+    # Named up front so the access token can carry it as its `sid` claim
+    # (MysteryMixClub-4vii.36) before the row is flushed.
+    session_id = uuid.uuid4()
     db.add(
         Session(
+            id=session_id,
             user_id=user_id,
             refresh_token_hash=hash_token(raw_refresh_token),
             device_hint=user_agent[:_DEVICE_HINT_MAX_LENGTH] if user_agent else None,
@@ -376,7 +381,7 @@ async def _issue_session(
             invalidated_at=None,
         )
     )
-    return create_access_token(user_id), raw_refresh_token
+    return create_access_token(user_id, session_id), raw_refresh_token
 
 
 def _set_refresh_cookie(response: Response, raw_refresh_token: str, settings: Settings) -> None:
@@ -393,15 +398,43 @@ def _set_refresh_cookie(response: Response, raw_refresh_token: str, settings: Se
     )
 
 
+async def _drop_signed_out_devices(db: AsyncSession, user_id: uuid.UUID) -> None:
+    """Delete this user's push devices that belong to a signed-out session, or to
+    no session at all (registered before sessions were tracked). A device bound
+    to a session that is still live is kept: a brand-new login can register one
+    between the sessions UPDATE and this DELETE, and that must not be lost.
+    The caller commits (MysteryMixClub-4vii.36)."""
+    await db.execute(
+        delete(DevicePushToken).where(
+            DevicePushToken.user_id == user_id,
+            or_(
+                DevicePushToken.session_id.is_(None),
+                DevicePushToken.session_id.in_(
+                    select(Session.id).where(
+                        Session.user_id == user_id, Session.invalidated_at.is_not(None)
+                    )
+                ),
+            ),
+        )
+    )
+
+
 async def _invalidate_all_sessions(db: AsyncSession, user_id: uuid.UUID, now: datetime) -> None:
     """Invalidate every currently-active session for one user; other users'
     sessions and already-invalidated rows are untouched (TD 5, security 9).
-    The caller commits."""
+    The caller commits.
+
+    Also drops the devices registered for push under the signed-out sessions
+    (:func:`_drop_signed_out_devices`): signed out everywhere means no phone
+    keeps receiving this account's pushes -- logout-all and a password reset
+    alike (MysteryMixClub-4vii.36). The UPDATE's row locks serialize this
+    against an in-flight registration exactly as in /auth/logout."""
     await db.execute(
         update(Session)
         .where(Session.user_id == user_id, Session.invalidated_at.is_(None))
         .values(invalidated_at=now)
     )
+    await _drop_signed_out_devices(db, user_id)
 
 
 @router.post("/request", response_model=MagicLinkResponse, response_model_exclude_none=True)
@@ -767,7 +800,18 @@ async def reset_password(
     # enforces single use (same as magic link, TD 5).
     email = token_row.email if token_row is not None else None
     if token_row is not None:
-        await db.delete(token_row)
+        # A Core DELETE, not `db.delete(token_row)`: if a racing request (another
+        # reset with the same link, or the account's deletion, which removes its
+        # tokens) already consumed the row, the ORM delete matches nothing and
+        # raises StaleDataError (a 500). Losing that race means the link is spent,
+        # the same neutral 401 as any other bad token.
+        consumed = await db.scalar(
+            delete(PasswordResetToken)
+            .where(PasswordResetToken.id == token_row.id)
+            .returning(PasswordResetToken.id)
+        )
+        if consumed is None:
+            token_row = None
 
     if token_row is None or email is None or token_row.expires_at <= now:
         await db.commit()
@@ -1476,6 +1520,19 @@ async def apple_native_sign_in(
     return VerifyResponse(access_token=access_token)
 
 
+def session_is_live(session: Session | None, now: datetime) -> bool:
+    """Whether a session may still authenticate: it exists, has not been logged
+    out, and is inside the refresh-token lifetime (the sessions table has no
+    expires_at, so expiry derives from created_at). The single definition used by
+    /auth/refresh and by the routes that must not outlive a logout
+    (MysteryMixClub-4vii.36)."""
+    return (
+        session is not None
+        and session.invalidated_at is None
+        and session.created_at > now - _REFRESH_TOKEN_TTL
+    )
+
+
 @router.post("/refresh", response_model=VerifyResponse)
 async def refresh_access_token(
     refresh_token: str | None = Cookie(default=None, alias=_REFRESH_COOKIE_NAME),
@@ -1496,18 +1553,14 @@ async def refresh_access_token(
     # Neutral 401 for any failure mode (no session / logged out / expired) so the
     # caller can't distinguish the reasons (TD 5). Expiry derives from created_at
     # since the sessions table has no expires_at column.
-    if (
-        session is None
-        or session.invalidated_at is not None
-        or session.created_at <= now - _REFRESH_TOKEN_TTL
-    ):
+    if session is None or not session_is_live(session, now):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=_INVALID_SESSION_MESSAGE,
         )
 
     session.last_used_at = now
-    access_token = create_access_token(session.user_id)
+    access_token = create_access_token(session.user_id, session.id)
     await db.commit()
 
     return VerifyResponse(access_token=access_token)
@@ -1537,11 +1590,23 @@ async def logout(
     # cookie is missing, unmatched, or already invalidated (TD 5). Only an
     # active session for the presented token is invalidated.
     if refresh_token is not None:
+        # FOR UPDATE: a device registration for this session takes FOR SHARE on
+        # the same row, so it either commits first (and is deleted just below)
+        # or runs after this commits and sees the session as logged out and is
+        # refused -- an upload already in flight can never recreate the row
+        # afterwards (MysteryMixClub-4vii.36).
         session = await db.scalar(
-            select(Session).where(Session.refresh_token_hash == hash_token(refresh_token))
+            select(Session)
+            .where(Session.refresh_token_hash == hash_token(refresh_token))
+            .with_for_update()
         )
         if session is not None and session.invalidated_at is None:
             session.invalidated_at = datetime.now(timezone.utc)
+            # The devices registered under this login go with it, whether or not
+            # the client's own DELETE ever ran or reached us.
+            await db.execute(
+                delete(DevicePushToken).where(DevicePushToken.session_id == session.id)
+            )
             await db.commit()
 
     _clear_refresh_cookie(response, settings)

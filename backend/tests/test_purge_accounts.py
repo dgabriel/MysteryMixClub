@@ -415,3 +415,35 @@ def test_module_has_script_entrypoint():
 
     assert callable(job.purge_deleted_accounts)
     assert callable(job._run)
+
+
+async def test_hard_delete_of_a_live_account_removes_its_devices_and_linked_identities(db_session):
+    # The admin eject hard-deletes a LIVE account. auth_identities.user_id and
+    # device_push_tokens.user_id have no ON DELETE, so leaving either behind
+    # failed the user delete with an IntegrityError (MysteryMixClub-4vii.36).
+    from app.jobs.purge_accounts import hard_delete_users
+    from app.models.auth_identity import AuthIdentity
+    from app.models.device_push_token import DevicePushToken
+
+    user = User(email="live@example.com", display_name="Live")
+    other = User(email="other@example.com", display_name="Other")
+    db_session.add_all([user, other])
+    await db_session.flush()
+    user_id, other_id = user.id, other.id
+    db_session.add_all(
+        [
+            AuthIdentity(user_id=user_id, provider="apple", subject="apple-sub-1"),
+            DevicePushToken(user_id=user_id, device_token="live-device"),
+            DevicePushToken(user_id=other_id, device_token="other-device"),
+        ]
+    )
+    await db_session.commit()
+
+    await hard_delete_users(db_session, [user_id], ["live@example.com"])
+    await db_session.commit()
+
+    db_session.expire_all()
+    assert await db_session.get(User, user_id) is None
+    remaining = (await db_session.execute(select(DevicePushToken.device_token))).scalars().all()
+    assert remaining == ["other-device"]  # someone else's device is untouched
+    assert (await db_session.execute(select(AuthIdentity))).scalars().all() == []

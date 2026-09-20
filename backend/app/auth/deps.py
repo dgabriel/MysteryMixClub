@@ -1,9 +1,11 @@
+import uuid
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.jwt import JWTError, decode_access_token
+from app.auth.jwt import JWTError, decode_access_token, decode_access_token_session_id
 from app.config import Settings, get_settings
 from app.db.session import get_db
 from app.models.user import User
@@ -82,3 +84,26 @@ async def get_platform_admin(
             detail="not authorized",
         )
     return current_user
+
+
+async def get_current_session_id(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+) -> uuid.UUID | None:
+    """The login session the presented access token was issued under (its
+    ``sid`` claim), or None for a token issued without one. Only meaningful
+    alongside :func:`get_current_user` -- which is what actually authenticates
+    the request; this just names the session for routes that must check it is
+    still live (MysteryMixClub-4vii.36). A missing or invalid token yields the
+    same neutral 401 as everywhere else."""
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=_UNAUTHENTICATED_MESSAGE,
+        )
+    try:
+        return decode_access_token_session_id(credentials.credentials)
+    except JWTError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=_UNAUTHENTICATED_MESSAGE,
+        ) from exc

@@ -362,6 +362,51 @@ push sends at roughly 24 hours before a deadline (new, push-only, its own
 `Mix`) *and* at the existing 1-12-hour window email already uses (a new
 push channel added alongside the existing warning, not a replacement).
 
+**Three more reminders, push only** (`MysteryMixClub-bfqo`). All go to members
+who still need to act (submission: under the club's songs-per-submission cap;
+voting: playing submitters who have not voted), only if they have "push:
+reminders" on. There is no email version and no new toggle. Each fires once
+per phase, from the deadline job, so it lands within about 15 minutes of its
+moment. Copy never names anyone.
+
+- **Halfway.** The midpoint between the phase opening and its deadline ("Half
+  the time is gone to submit to ..."). Measured from the real stamps
+  (`submission_opened_at` / `voting_opened_at` and the deadline), not from the
+  club's configured window, so weekly-anchor clubs and organizer-set deadlines
+  get the true midpoint. Not sent for a phase under 6 hours. A mix that was
+  already voting when `voting_opened_at` shipped has none and gets no voting
+  halfway nudge. Not re-armed by an extension (half the original time has
+  passed).
+- **Due today.** 08:00 in the **club's** timezone on the club-local day the
+  phase is due ("Due today: vote in ..."). Skipped when the phase opened after
+  that 08:00 or the deadline is less than an hour after it. An extension of
+  voting re-arms it for the new due day. **Weekly-anchor clubs only:** a
+  duration-mode club never chooses a timezone (its `timezone` is the "UTC"
+  placeholder, which would make this 03:00-04:00 for a US club), so it gets no
+  due-today nudge until the create/edit flow captures a real one
+  (`MysteryMixClub-bfqo` follow-up).
+- **3 or fewer left** (submission phase only). The first time at least one
+  submission is in and 3 or fewer members are still outstanding, only those
+  members hear "Only 2 people, including you, still need to submit ...", or
+  "Only you still need to submit ..." for one. A count, never names. Nothing
+  when no one has submitted yet (in a 3-member club that would just be
+  everyone). One per mix.
+
+"Still needs to act" is a fact about the club, not about a channel: a member
+with email off and push on is outstanding and counts in the head count.
+
+Rules that keep this from becoming noise: one nudge per job pass (the
+others follow on a later pass); a nudge whose moment passed more than an hour
+ago is dropped, not sent late (so a job outage or the first run after a
+deploy stays quiet); and a time-pinned nudge that lands within an hour of the
+12-hour warning, the ~24-hour push (at the moment the job really fires them,
+which for a phase shorter than their lead is when it opens), or a due-today
+nudge that is itself sent is suppressed so only the established one goes out.
+A voting extension or a rollback re-arms the ~24-hour push along with the
+12-hour warning. Markers are the `push_*_halfway_sent_at`,
+`push_*_due_morning_sent_at` and `push_submission_last_few_sent_at` columns on
+`Mix`; a rollback to submission re-arms all of them.
+
 **Permission timing is also both**, resolved the same way: an automatic OS
 prompt fires once, right after onboarding completes, checked against
 `pushPermissionStatus()` first so a user who already answered (denied or

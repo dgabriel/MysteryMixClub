@@ -87,3 +87,32 @@ class Mix(Base):
     push_voting_reminder_sent_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # When the mix entered open_voting. Only voting needs its own stamp (the
+    # submission phase already has submission_opened_at): the halfway nudge
+    # measures from a phase's opening to its deadline, and the voting deadline
+    # alone cannot say when voting began in weekly_anchor mode. NULL for a mix
+    # that was already voting when this column shipped, which simply gets no
+    # voting halfway nudge.
+    voting_opened_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Once-per-phase bookkeeping for the push-only nudges (MysteryMixClub-bfqo),
+    # same shape as the reminder markers above. "Halfway" and "due morning" are
+    # per phase; "last few" is a submission-phase notice only (voting has no
+    # equivalent). Kept apart from the reminder columns because each is a
+    # genuinely separate notice that must be able to fire after the others.
+    push_submission_halfway_sent_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    push_voting_halfway_sent_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    push_submission_due_morning_sent_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    push_voting_due_morning_sent_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    push_submission_last_few_sent_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

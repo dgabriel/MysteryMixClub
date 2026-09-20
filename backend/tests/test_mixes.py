@@ -549,6 +549,19 @@ async def test_rollback_preserves_notes(client, db_session):
     assert notes[0].body == "banger"
 
 
+async def test_advancing_to_voting_stamps_voting_opened_at(client, db_session):
+    organizer = await _seed_user(db_session, "org@example.com")
+    club = await _seed_club(db_session, organizer)
+    rid = (await _create_mix(client, club.id, organizer.id)).json()["id"]
+    mix_id = uuid.UUID(rid)
+    assert (await db_session.get(Mix, mix_id)).voting_opened_at is None
+
+    assert (await _advance(client, rid, organizer.id, "open_voting")).status_code == 200
+
+    db_session.expire_all()
+    assert (await db_session.get(Mix, mix_id)).voting_opened_at is not None
+
+
 async def test_rollback_rearms_warning_and_notice_timestamps(client, db_session):
     organizer = await _seed_user(db_session, "org@example.com")
     organizer_id = organizer.id  # capture before expire_all (MissingGreenlet trap)
@@ -564,6 +577,15 @@ async def test_rollback_rearms_warning_and_notice_timestamps(client, db_session)
     mix_.submission_warning_sent_at = now
     mix_.voting_warning_sent_at = now
     mix_.empty_round_notice_sent_at = now
+    # The push nudges (MysteryMixClub-bfqo) re-arm with them.
+    mix_.push_submission_halfway_sent_at = now
+    mix_.push_voting_halfway_sent_at = now
+    mix_.push_submission_due_morning_sent_at = now
+    mix_.push_voting_due_morning_sent_at = now
+    mix_.push_submission_last_few_sent_at = now
+    mix_.push_submission_reminder_sent_at = now
+    mix_.push_voting_reminder_sent_at = now
+    assert mix_.voting_opened_at is not None  # stamped by the advance above
     db_session.add(mix_)
     await db_session.commit()
 
@@ -575,6 +597,14 @@ async def test_rollback_rearms_warning_and_notice_timestamps(client, db_session)
     assert after.submission_warning_sent_at is None
     assert after.voting_warning_sent_at is None
     assert after.empty_round_notice_sent_at is None
+    assert after.voting_opened_at is None
+    assert after.push_submission_reminder_sent_at is None
+    assert after.push_voting_reminder_sent_at is None
+    assert after.push_submission_halfway_sent_at is None
+    assert after.push_voting_halfway_sent_at is None
+    assert after.push_submission_due_morning_sent_at is None
+    assert after.push_voting_due_morning_sent_at is None
+    assert after.push_submission_last_few_sent_at is None
 
 
 async def test_rollback_rejected_when_mix_is_closed(client, db_session):
@@ -1182,6 +1212,10 @@ async def test_extend_voting_resets_warning_marker(client, db_session):
 
     mix_ = await db_session.get(Mix, mix_id)
     mix_.voting_warning_sent_at = datetime.now(timezone.utc)
+    halfway_sent = datetime.now(timezone.utc)
+    mix_.push_voting_halfway_sent_at = halfway_sent
+    mix_.push_voting_due_morning_sent_at = halfway_sent
+    mix_.push_voting_reminder_sent_at = halfway_sent
     await db_session.commit()
 
     before = (await client.get(f"/api/v1/mixes/{rid}", headers=_auth(organizer.id))).json()
@@ -1196,3 +1230,9 @@ async def test_extend_voting_resets_warning_marker(client, db_session):
     db_session.expire_all()
     refreshed = await db_session.get(Mix, mix_id)
     assert refreshed.voting_warning_sent_at is None
+    # The due-morning nudge re-arms for the new due day; halfway does not (half
+    # the original time really has passed).
+    assert refreshed.push_voting_due_morning_sent_at is None
+    # The ~24h push re-arms with the 12h warning, for the new deadline.
+    assert refreshed.push_voting_reminder_sent_at is None
+    assert refreshed.push_voting_halfway_sent_at == halfway_sent

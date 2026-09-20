@@ -2167,6 +2167,61 @@
         "file": "frontend/src/ios/capacitorConfig.test.ts"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:fdbbcd0f61283d9c5f3a178c78962d61",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-20T16:33:33.062Z",
+      "reason": "Not a defect: in scope. Bead MysteryMixClub-4vii.35 explicitly requires establishing the effective APNs environment through evidence and 'ultimately an APNs response', and JWT minting alone is not acceptance. The PR title said 'docs' for a change that also adds tooling; it is retitled feat. The service is a self-contained, tested, read-only diagnostic with no new dependency.",
+      "context": {
+        "title": "Introduces new backend service and CLI script unrelated to documentation intent",
+        "file": "backend/app/services/apns_probe.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:ea11e57128901a44be184334c2636195",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-20T16:33:33.205Z",
+      "reason": "Not a defect: an operator-run diagnostic (python -m scripts.probe_apns_environment), not wired into any deploy pipeline or timer; it sends a silent background push or a fake-token request and only reads the database. Covered by tests of every exit code, no token/key in the output, no-devices and unsignable-key paths, and independently reviewed twice.",
+      "context": {
+        "title": "CLI script `probe_apns_environment.py` adds operational tooling not covered by docs PR",
+        "file": "backend/scripts/probe_apns_environment.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:61cb09707959185b69993dea941b4f1a",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-20T16:33:33.345Z",
+      "reason": "Design opinion, not a defect: parse_apns_error is the single bounded parser (size cap, plain-word reason only, no log injection) for untrusted APNs bodies. Making it public so the probe reuses it, rather than duplicating or importing a private name, keeps one place that defines how those bodies are read. No other module referenced the old private name.",
+      "context": {
+        "title": "`parse_apns_error` made public, breaking encapsulation",
+        "file": "backend/app/services/push_notifications.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:9c89d6879d2009f9a28a590261e466ac",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-20T16:33:33.488Z",
+      "reason": "False positive: the tool prints a fixed status line (HTTP status, an APNs reason word, and the topic, which is the public bundle id) to the terminal of the operator who ran it on the box. No key, JWT or device token is ever printed (asserted by tests), and anyone able to run it already holds the credentials. Whether Apple accepts the key is not a secret to its holder.",
+      "context": {
+        "title": "Potential leakage of APNs credential validation outcome via stdout",
+        "file": "backend/scripts/probe_apns_environment.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:0e046d6ac1c42cf8235fbefe0a81fa5b",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-20T16:33:33.635Z",
+      "reason": "Design opinion, not a defect: the probe deliberately shares the push sender's APNs error parser so both interpret Apple's responses identically; divergent parsing of the same untrusted bodies would be the maintenance risk. The dependency is one-way (probe -> push_notifications) and there is no cycle.",
+      "context": {
+        "title": "`apns_probe` tightly couples to `push_notifications` via `parse_apns_error` import",
+        "file": "backend/app/services/apns_probe.py"
+      },
+      "expires_at": null
     }
   ]
 }

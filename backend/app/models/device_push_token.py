@@ -37,6 +37,19 @@ class DevicePushToken(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
     )
+    # The login session this registration was made under (MysteryMixClub-4vii.36).
+    # Logout invalidates the session and deletes its rows in one transaction, and
+    # a registration is only accepted from a live session, so a POST that lands
+    # after logout cannot recreate a row. NULL for a registration made with a
+    # token that carried no session (issued before the claim existed) or whose
+    # session row has since been deleted; SET NULL rather than CASCADE so purging
+    # an old session never silently removes a device that is still registered.
+    session_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sessions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     device_token: Mapped[str] = mapped_column(String, nullable=False, unique=True, index=True)
     platform: Mapped[str] = mapped_column(String, nullable=False, default="ios")
     created_at: Mapped[datetime] = mapped_column(

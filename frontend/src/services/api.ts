@@ -431,11 +431,11 @@ export async function registerPushToken(deviceToken: string): Promise<void> {
 
 /** Remove this device's push registration (called on logout -- PRD IOS-04:
  *  "remove account associations on logout or deletion"). Throws on any non-2xx
- *  so the caller can tell the registration was NOT removed (the server does not
- *  drop it on logout by itself); a stale registration would otherwise keep
- *  delivering a signed-out account's pushes until APNs reports the token dead.
- *  Never a user-facing error: logout proceeds either way
- *  (MysteryMixClub-4vii.32). */
+ *  so the caller can tell the registration was NOT removed. Belt and braces:
+ *  the server itself drops a session's devices when that session logs out
+ *  (MysteryMixClub-4vii.36, ADR 0034), so this covers a device the server's own
+ *  cleanup does not reach (a row with no session). Never a user-facing error:
+ *  logout proceeds either way (MysteryMixClub-4vii.32). */
 export async function unregisterPushToken(deviceToken: string): Promise<void> {
   const params = new URLSearchParams({ device_token: deviceToken });
   const res = await authenticatedRequest(`/api/v1/users/me/push-token?${params.toString()}`, {

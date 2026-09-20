@@ -2145,6 +2145,17 @@
         "file": "backend/app/services/push_notifications.py"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:b2343e493130d178ea2bee7babe81e89",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-20T15:50:17.042Z",
+      "reason": "False positive: the flagged line is a comment inside the loadPush() test HELPER (frontend/src/ios/push.test.ts), which also calls vi.resetModules(), imports the module and opens the push session. It is not a test body and no test was removed or weakened; this PR adds ~30 tests to the file.",
+      "context": {
+        "title": "A test body was replaced with comments",
+        "file": "frontend/src/ios/push.test.ts"
+      },
+      "expires_at": null
     }
   ]
 }

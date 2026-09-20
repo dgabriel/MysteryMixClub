@@ -204,6 +204,27 @@ def _reminder_title_and_body(
     return (club.name, f"{when} to {action} {label}.")
 
 
+NudgeKind = Literal["halfway", "due_morning", "last_few"]
+
+
+def _nudge_title_and_body(
+    kind: NudgeKind, phase: DeadlinePhase, club: Club, mix_: Mix, remaining: int | None
+) -> tuple[str, str]:
+    """Restrained lock-screen copy for a push-only nudge (MysteryMixClub-bfqo),
+    same rules as `_title_and_body`: never names anyone, and the "last few"
+    copy carries only a head count. `remaining` is that count (`last_few`)."""
+    label = _mix_label(mix_)
+    action = "submit to" if phase == "submission" else "vote in"
+    if kind == "halfway":
+        return (club.name, f"Half the time is gone to {action} {label}.")
+    if kind == "due_morning":
+        return (club.name, f"Due today: {action} {label}.")
+    # last_few is a submission-phase notice, sent only to those still outstanding.
+    if remaining == 1:
+        return (club.name, f"Only you still need to submit to {label}.")
+    return (club.name, f"Only {remaining} people, including you, still need to submit to {label}.")
+
+
 def parse_apns_error(response: httpx.Response) -> tuple[str | None, datetime | None]:
     """Pull APNs' machine-readable ``reason`` (and, on a 410, its ``timestamp``)
     out of an error body. Bounded and defensive: an oversized, non-JSON or
@@ -483,4 +504,24 @@ async def send_push_reminder(
     cadences (MysteryMixClub-4vii.26's own "both" cadence decision)."""
     title, body = _reminder_title_and_body(phase, club, mix_, far=far)
     data = {"club_id": str(club.id), "mix_id": str(mix_.id), "event": f"{phase}_deadline"}
+    await _send_to_all(token_service, settings, recipients, title, body, data)
+
+
+async def send_push_nudge(
+    token_service: ApplePushTokenService,
+    settings: Settings,
+    recipients: list[PushRecipient],
+    club: Club,
+    mix_: Mix,
+    phase: DeadlinePhase,
+    kind: NudgeKind,
+    *,
+    remaining: int | None = None,
+) -> None:
+    """One of the push-only nudges (MysteryMixClub-bfqo): halfway through a
+    phase, the morning it is due, or the last few outstanding submitters.
+    The caller has already narrowed `recipients` to those who still need to
+    act. The tap payload reuses the reminders' shape, so it opens the club."""
+    title, body = _nudge_title_and_body(kind, phase, club, mix_, remaining)
+    data = {"club_id": str(club.id), "mix_id": str(mix_.id), "event": f"{phase}_{kind}"}
     await _send_to_all(token_service, settings, recipients, title, body, data)

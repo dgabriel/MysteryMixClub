@@ -2222,6 +2222,39 @@
         "file": "backend/app/services/apns_probe.py"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:396bd650d621a403821745c7785feda3",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-20T23:01:44.312Z",
+      "reason": "False positive: Literal is imported (from typing import Literal, push_notifications.py line 44) and NudgeKind is used by mypy-clean code. The module imports in every test; the full backend suite (1625 tests) and CI's Backend job pass.",
+      "context": {
+        "title": "Missing import for Literal causes NameError",
+        "file": "backend/app/services/push_notifications.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:43e61aa88f9f3866bc6490b400c4c6a0",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-20T23:01:44.458Z",
+      "reason": "Intended design, not a defect: a job pass sends at most one push per mix, and the far/12h reminders take precedence. The nudge is not lost: it stays due for an hour after its moment (NUDGE_GRACE), so the next 15-minute pass sends it, unless it lands within an hour of that reminder, where suppressing it is the documented rule (test_halfway_is_suppressed_when_it_lands_on_the_24h_push).",
+      "context": {
+        "title": "`_process_mix` returns early after far push, suppressing nudges",
+        "file": "backend/app/jobs/advance_mixes.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:6833258d625f5e36e86f689c5326f7c9",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-20T23:01:44.599Z",
+      "reason": "Deliberate at-most-once semantics, the job's established pattern (_process_mix docstring: 'Commits its own mutation before sending ... so a send failure can never re-fire an already-recorded advance/warning'). The 12h warning and ~24h push stamp-then-send the same way. Re-sending on failure would risk duplicate pushes to every device, which is worse than a rare dropped nudge; per-device failures are already isolated in _dispatch_one.",
+      "context": {
+        "title": "Marker is persisted before push is sent, risking lost nudges on failure",
+        "file": "backend/app/jobs/advance_mixes.py"
+      },
+      "expires_at": null
     }
   ]
 }

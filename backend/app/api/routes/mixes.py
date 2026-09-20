@@ -346,6 +346,8 @@ async def advance_mix_state(
         club.current_mix = mix_.mix_number
         events.append((mix_, "submission_open"))
     elif new_state == "open_voting":
+        # When voting began: the halfway nudge measures from here to the deadline.
+        mix_.voting_opened_at = func.now()
         # Stamp the voting deadline from the club window (MYS-159), unless the
         # organizer already set one explicitly — don't clobber a manual value.
         if mix_.voting_deadline is None:
@@ -418,6 +420,17 @@ async def rollback_mix_to_submission(mix_: Mix, club: Club, db: AsyncSession) ->
     mix_.submission_warning_sent_at = None
     mix_.voting_warning_sent_at = None
     mix_.empty_round_notice_sent_at = None
+    # So do the push nudges (MysteryMixClub-bfqo): the reopened submission
+    # phase gets its own halfway / due-morning / last-few, and voting, when it
+    # reopens, is stamped and nudged afresh.
+    mix_.voting_opened_at = None
+    mix_.push_submission_reminder_sent_at = None
+    mix_.push_voting_reminder_sent_at = None
+    mix_.push_submission_halfway_sent_at = None
+    mix_.push_voting_halfway_sent_at = None
+    mix_.push_submission_due_morning_sent_at = None
+    mix_.push_voting_due_morning_sent_at = None
+    mix_.push_submission_last_few_sent_at = None
     # The ballot set may change under a reopened submission phase; stale votes
     # would poison results and could insta-satisfy the voting quorum on the
     # next pass. Notes are kept — they're appreciation, remain state-gated, and
@@ -911,6 +924,12 @@ async def extend_voting_deadline(
     # Let the deadline job send a fresh "12h left" warning against the new
     # deadline — the old marker refers to a deadline that no longer applies.
     locked.voting_warning_sent_at = None
+    # Likewise the due-morning nudge: it was (or will be) aimed at the old due
+    # day. Halfway is left alone: half the original time really has passed.
+    locked.push_voting_due_morning_sent_at = None
+    # ...and the ~24h push, its twin of the warning reset just above, so the
+    # new deadline gets its own "about a day left" too.
+    locked.push_voting_reminder_sent_at = None
 
     recipients = await gather_recipients(db, club.id)
     queue_mix_event(background_tasks, sender, settings, recipients, club, locked, "voting_extended")

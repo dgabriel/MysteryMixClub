@@ -29,10 +29,13 @@
 	     plus an APNs Auth Key configured server-side, and a provisioning
 	     profile regenerated after enabling the capability; without that,
 	     code signing with this entitlement present fails or registration
-	     silently never completes on-device. "production" (not "development")
-	     since every build this project ships -- TestFlight included -- is
-	     Release-signed, and Release-signed builds always use APNs'
-	     production environment regardless of pre-release status. -->
+	     silently never completes on-device. This value is NOT what ships: the
+	     signed aps-environment comes from the provisioning profile (observed: a
+	     development-signed archive is signed "development" while this file says
+	     "production"; Apple documents that exporting for distribution re-signs
+	     with the distribution profile). The backend uses APNs' production
+	     gateway only (docs/adr/0033), so push is tested on TestFlight builds;
+	     verify an exported build with scripts/ios-check-push-entitlement.sh. -->
 	<key>aps-environment</key>
 	<string>production</string>
 </dict>

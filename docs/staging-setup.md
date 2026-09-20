@@ -610,10 +610,25 @@ sudo systemctl restart mysterymixclub-api
 developer-token route: a provider token is only ever used server-to-APNs,
 never handed to the frontend). Two levels of check:
 
-1. **Config sanity**, without a real device: confirms the credentials mint a
-   signed JWT at all, not that APNs accepts it.
+1. **Config sanity**, without a real device. First, does Apple *accept* the
+   credentials? (Minting a JWT proves only that the key can sign.)
+   ```bash
+   sudo -u mysterymixclub bash -c '
+     cd /home/mysterymixclub/app/backend &&
+     set -a && source /etc/mysterymixclub/staging.env && set +a &&
+     .venv/bin/python -m scripts.probe_apns_environment --check-credentials'
+   ```
+   `credentials ACCEPTED` means a token that belongs to no device got
+   `BadDeviceToken` from the production gateway, which happens only after Apple
+   authenticated the provider (Apple documents a bad key, Key ID or Team ID as a
+   `403`; only the accepted case has been observed here).
+   It does not validate the topic (APNs checks the device token first), and a
+   key restricted to production only will show a sandbox `403` that is noted,
+   not treated as a failure. Nothing is sent to anyone. Then the local signing
+   check on its own:
    ```bash
    cd /home/mysterymixclub/app/backend && source .venv/bin/activate
+   set -a && source /etc/mysterymixclub/staging.env && set +a
    python3 -c "
    import asyncio
    from app.config import get_settings
@@ -624,7 +639,8 @@ never handed to the frontend). Two levels of check:
    "
    ```
    Raises `ApplePushTokenError` on a bad key/PEM; prints a token prefix on
-   success.
+   success. To find out which APNs environment a *registered device's* token is
+   in, see "Which APNs environment is a build in?" in `docs/ios/README.md`.
 2. **The real signal**: register a device via the app (Settings → enable
    notifications, or the onboarding auto-prompt), then trigger any mix
    lifecycle event (submit, vote, or wait for a deadline reminder) and check
@@ -669,7 +685,7 @@ never handed to the frontend). Two levels of check:
    the other environment too, so once a process has an accepted send, a
    sandbox token (from an Xcode debug build) is retired as well. That is
    right for a backend that only ever talks to the production gateway, but it
-   means such tokens never receive anything; see `MysteryMixClub-4vii.35`.
+   means such tokens never receive anything; see `docs/adr/0033`.
 
    No device token, provider JWT or notification payload is ever logged.
 

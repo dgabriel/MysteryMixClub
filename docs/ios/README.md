@@ -304,12 +304,24 @@ Unlike Apple Music's developer token, the provider-authentication token
 carries no `exp` claim (Apple's guidance: mint it, reuse it under an hour,
 re-mint rather than attach an expiry).
 
-**The gateway is always production** (`api.push.apple.com`), never sandbox.
-Every build this project ships -- TestFlight included -- is Release-signed,
-and a Release-signed build always talks to APNs' production environment
-regardless of pre-release status; sandbox only applies to a debug build run
-straight from Xcode, which isn't part of this project's shipped-build
-workflow. No environment toggle exists.
+**The gateway is always production** (`api.push.apple.com`), never sandbox --
+a decision, not an assumption: [ADR 0033](../adr/0033-apns-production-gateway-only.md).
+It rests on **what the build is signed for**, which is not "Release vs Debug".
+Per Apple's documentation, a device mints a *production* push token only when
+the app is signed with a distribution provisioning profile (TestFlight, App
+Store); one signed with a development profile mints a *sandbox* token that the
+production gateway rejects (`BadDeviceToken`). `aps-environment` in `App.entitlements` is **not** what
+ships: the signed value comes from the provisioning profile, so a checked-in
+`production` coexists with a development-signed archive (observed: the local
+`.xcarchive` files on this Mac are `Apple Development` identity,
+`get-task-allow`, `aps-environment=development`). Those are pre-export
+archives and say nothing about the build uploaded to TestFlight: Apple's
+documented behaviour is that export re-signs for distribution with the
+distribution profile, but that is not something these archives, or anything
+checked here, demonstrate. Push is therefore tested with
+TestFlight/App Store builds; an Xcode "Run" onto a device is a development
+build and will not receive pushes from this backend. No environment toggle
+exists. See "Which APNs environment is a build in?" below to verify a build.
 
 **This needs two manual Apple Developer Portal steps before it works
 on-device or in TestFlight**, both under Certificates, Identifiers &
@@ -452,8 +464,57 @@ accepted it or nothing was attempted (the deadline job's own unit does log
 accepted sends at INFO) -- and a 200 is APNs' acceptance, not proof the phone
 received anything. The `BadDeviceToken` gate is per process and proves the
 topic and credentials, not the token's environment (a sandbox token is retired
-like any other once a send has been accepted); environment handling is
-`MysteryMixClub-4vii.35`.
+like any other once a send has been accepted); why there is no environment handling is
+[ADR 0033](../adr/0033-apns-production-gateway-only.md).
+
+### Which APNs environment is a build in? (`MysteryMixClub-4vii.35`)
+
+Four different facts get conflated here; each has its own check, and none
+stands in for another:
+
+| Question | How to know | What it does **not** prove |
+|---|---|---|
+| Is the **uploaded build** signed for production? | `scripts/ios-check-push-entitlement.sh <exported .ipa>` prints the signed `aps-environment` and the profile's. Run it on the `.ipa` Xcode exports, before uploading. | A `.xcarchive` is signed for development until export, so the script refuses to answer for one (exit 3). |
+| Does **APNs accept our credentials**? | `backend/scripts/probe_apns_environment.py --check-credentials`, run on the Droplet with the runtime env loaded (command below). It sends a token that belongs to no device; a `BadDeviceToken` reply from the production gateway means Apple got past authenticating the provider (a bad key or Team ID is a `403` first). A key can be restricted to production only, so a sandbox `403` alone is reported as a note, not a failure. | Minting a JWT locally (the `staging-setup.md` "config sanity" step) proves only that the key can sign. It does not validate the topic either: APNs checks the device token first. |
+| Which environment is **this device's token** in? | The same script with `--email <account>`: a silent `background` push to each registered device on both gateways. Only the production gateway accepting it means the backend can reach it. Devices are printed by position, never by token. Exit 0 only if every device is a production token. | A 200 is APNs' **acceptance**, not delivery. "Silent" is Apple's documented behaviour for a `content-available`-only push; it has not been observed on a device here. |
+| Did the phone **receive** it? | The notification appearing on the device; record it in `MysteryMixClub-4vii.30`. | Nothing server-side can show this. |
+
+On the Droplet the script needs the runtime environment systemd normally
+injects (the APNs key and `DATABASE_URL`), loaded the same way the deploy loads
+it:
+
+```bash
+sudo -u mysterymixclub bash -c '
+  cd /home/mysterymixclub/app/backend &&
+  set -a && source /etc/mysterymixclub/staging.env && set +a &&
+  .venv/bin/python -m scripts.probe_apns_environment --check-credentials'
+# for a device: replace --check-credentials with --email someone@example.com
+```
+
+Prod's file is `/etc/mysterymixclub/prod.env`; prod access is never ad hoc.
+
+Two further separations the earlier docs blurred: **OS permission** is not
+**registration** (an account with permission granted and both push preferences
+on had no `device_push_tokens` row at all; `MysteryMixClub-4vii.32`), and a build's **API target** is
+its own fact -- iOS builds default to `https://staging.mysterymixclub.com`
+unless `VITE_IOS_API_BASE_URL` is set at build time (`vite.ios.config.ts`), so
+a staging build registers on staging, never on prod.
+
+**Evidence recorded 2026-09-20.** *Not available:* the archive or `.ipa` of
+TestFlight build 1.0 (8) -- the local archives here are all build 1 or 2, so its
+exported signing cannot be checked and no claim about it is made. *Established:*
+staging's APNs key, Key ID and Team ID are accepted by both Apple gateways (a
+fake token got `BadDeviceToken`, not `403`); staging's access log shows the
+installed iPhone app (WebView user agent, cross-origin preflights) calling the
+staging API, so its target is staging; and staging held **zero** device tokens
+at that moment. That last fact is consistent with a device that never
+registered and equally with one that registered and then logged out (logout
+unregisters), so *which* happened is not established. `MysteryMixClub-4vii.32`
+closes both gaps in the client, but it is merged, not yet observed on a device,
+and it needs a new build to reach the phone. The definitive checks for that
+build: `ios-check-push-entitlement.sh` on the exported `.ipa`, then the probe
+with `--email` after it registers, then the notification appearing
+(`MysteryMixClub-4vii.30`).
 
 **Still needs device evidence**, blocked on the two manual Developer Portal
 steps above: permission granted/denied/dismissed, a real push received in

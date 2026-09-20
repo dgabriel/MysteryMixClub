@@ -204,7 +204,7 @@ def _reminder_title_and_body(
     return (club.name, f"{when} to {action} {label}.")
 
 
-def _parse_apns_error(response: httpx.Response) -> tuple[str | None, datetime | None]:
+def parse_apns_error(response: httpx.Response) -> tuple[str | None, datetime | None]:
     """Pull APNs' machine-readable ``reason`` (and, on a 410, its ``timestamp``)
     out of an error body. Bounded and defensive: an oversized, non-JSON or
     oddly-shaped body yields ``(None, None)`` rather than an exception, and a
@@ -298,7 +298,7 @@ async def send_push(
         logger.info("push send: accepted by apns")
         return PushResult("ok", status_code)
 
-    reason, unregistered_at = _parse_apns_error(response)
+    reason, unregistered_at = parse_apns_error(response)
     if status_code == 410 and reason == _UNREGISTERED:
         return PushResult("retire", status_code, reason, unregistered_at)
     if status_code == 400 and reason == _BAD_DEVICE_TOKEN:

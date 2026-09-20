@@ -407,6 +407,23 @@ same events, so a late or stale notification always opens somewhere
 sensible even if the mix has since advanced past the state the notification
 described.
 
+**Foreground presentation** (`MysteryMixClub-4vii.34`). While the app is open
+iOS does not show a push on its own: the plugin's native handler asks the app
+how to present it, and with no `presentationOptions` configured it answered
+"not at all", so the push arrived (the JS `pushNotificationReceived` event
+fired) and nothing appeared. `frontend/capacitor.config.ts` now sets
+`plugins.PushNotifications.presentationOptions` to `["banner", "list"]`: the
+system banner, also kept in Notification Center. Deliberately no `sound` (the
+person is already looking at the app) and no `badge` (the backend never sends a
+count); `alert` is deprecated on iOS. No screen renders its own copy of the
+notification, so it is not shown twice, and backgrounded/terminated delivery
+and tap-to-open are unchanged. The value reaches the app through
+`ios/App/App/capacitor.config.json`, which is **generated** (gitignored) by
+`npm run ios:sync` -- and the Xcode "Sync web bundle" build phase runs that
+before every build -- so a new build is what carries it to a phone. Foreground,
+background and terminated behavior still has to be checked on a device; the
+results are recorded in `MysteryMixClub-4vii.30`.
+
 **Lock-screen copy is restrained**, matching the PRD's requirement: never
 names a submitter, participation mode, or hidden result (e.g. "Voting is
 open for The Mystery Mix Club", never "3 new songs to vote on").

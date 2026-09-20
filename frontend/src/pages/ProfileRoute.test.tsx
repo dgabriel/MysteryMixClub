@@ -501,6 +501,9 @@ describe("ProfileRoute", () => {
       });
 
       it("prompt: shows an error and re-enables the button if the request unexpectedly rejects", async () => {
+        // Expected to log the raw error for debugging (see the handler's own
+        // comment) -- suppress it so the test output stays clean.
+        const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
         const user = userEvent.setup();
         mockNativePushAvailable.mockReturnValue(true);
         mockPushPermissionStatus.mockResolvedValue("prompt");
@@ -512,11 +515,32 @@ describe("ProfileRoute", () => {
         const button = await screen.findByRole("button", { name: /turn on push notifications/i });
         await user.click(button);
 
+        expect(mockRequestPushPermissionAndRegister).toHaveBeenCalledOnce();
         expect(await screen.findByText("that didn't work. try again.")).toBeInTheDocument();
         const retryButton = await screen.findByRole("button", {
           name: /turn on push notifications/i,
         });
         expect(retryButton).not.toBeDisabled();
+
+        consoleSpy.mockRestore();
+      });
+
+      it("shows the toggles while push permission status is still loading, before showing the enable button/status", async () => {
+        mockNativePushAvailable.mockReturnValue(true);
+        // Never resolves within this test -- simulates the async
+        // pushPermissionStatus() call still being in flight.
+        mockPushPermissionStatus.mockReturnValue(new Promise(() => {}));
+        mockGetMe.mockResolvedValue(profileWith("Ada", { push_lifecycle_enabled: true }));
+
+        renderProfile();
+        await screen.findByText(/archived/i);
+
+        expect(await screen.findByText("notifications")).toBeInTheDocument();
+        expect(screen.getByRole("checkbox", { name: /push: updates/i })).toBeInTheDocument();
+        expect(
+          screen.queryByRole("button", { name: /turn on push notifications/i }),
+        ).not.toBeInTheDocument();
+        expect(screen.queryByText(/push is on for this device/i)).not.toBeInTheDocument();
       });
 
       it("granted: shows a status line, no button", async () => {

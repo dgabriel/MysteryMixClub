@@ -22,6 +22,7 @@ import {
   logout,
   logoutAll,
   refresh,
+  registerPushToken,
   removeMember,
   requestMagicLink,
   setPassword,
@@ -31,6 +32,7 @@ import {
   updateDisplayName,
   updateClub,
   updateMemberRole,
+  unregisterPushToken,
   updateNotificationPreferences,
   verifyToken,
 } from "./api";
@@ -361,6 +363,71 @@ describe("api.ts", () => {
     });
   });
 
+  describe("registerPushToken (MysteryMixClub-4vii.32)", () => {
+    it("POSTs the device token (Bearer + credentials) and resolves on 200", async () => {
+      setStoredAccessToken("my-token");
+      const fetchMock = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(jsonResponse(200, { message: "registered" }));
+
+      await expect(registerPushToken("device-token-abc")).resolves.toBeUndefined();
+
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(`${API_BASE}/api/v1/users/me/push-token`);
+      expect(init?.method).toBe("POST");
+      expect(init?.credentials).toBe("include");
+      expect(JSON.parse(String(init?.body))).toEqual({ device_token: "device-token-abc" });
+      expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer my-token");
+    });
+
+    it("throws ApiError on a non-2xx response, so a rejected upload is never mistaken for a registration", async () => {
+      setStoredAccessToken("my-token");
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(500, { detail: "boom" }));
+
+      const err = await registerPushToken("device-token-abc").catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(ApiError);
+      expect((err as ApiError).status).toBe(500);
+    });
+
+    it("throws when the session is gone (401, and the silent refresh fails too)", async () => {
+      setStoredAccessToken("stale-token");
+      vi.spyOn(globalThis, "fetch")
+        .mockResolvedValueOnce(jsonResponse(401, { detail: "not authenticated" }))
+        .mockResolvedValueOnce(emptyResponse(401));
+
+      const err = await registerPushToken("device-token-abc").catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(ApiError);
+      expect((err as ApiError).status).toBe(401);
+    });
+  });
+
+  describe("unregisterPushToken (MysteryMixClub-4vii.32)", () => {
+    it("DELETEs the device token (Bearer + credentials) and resolves on 204", async () => {
+      setStoredAccessToken("my-token");
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(emptyResponse(204));
+
+      await expect(unregisterPushToken("device token/abc")).resolves.toBeUndefined();
+
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(`${API_BASE}/api/v1/users/me/push-token?device_token=device+token%2Fabc`);
+      expect(init?.method).toBe("DELETE");
+      expect(init?.credentials).toBe("include");
+      expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer my-token");
+    });
+
+    it("throws ApiError on a non-2xx response, so a registration that was NOT removed is never mistaken for one that was", async () => {
+      setStoredAccessToken("my-token");
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(500, { detail: "boom" }));
+
+      const err = await unregisterPushToken("device-token-abc").catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(ApiError);
+      expect((err as ApiError).status).toBe(500);
+    });
+  });
+
   describe("getMe", () => {
     // MYS-35: UserProfile must carry `id`. Annotating the fixture as UserProfile
     // means this object literal only typechecks once UserProfile gains `id`
@@ -497,9 +564,9 @@ describe("api.ts", () => {
       setStoredAccessToken("my-token");
       const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, profile));
 
-      await expect(
-        updateNotificationPreferences({ email_notifications: false }),
-      ).resolves.toEqual(profile);
+      await expect(updateNotificationPreferences({ email_notifications: false })).resolves.toEqual(
+        profile,
+      );
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0];
@@ -583,13 +650,11 @@ describe("api.ts", () => {
   describe("startGoogleLink", () => {
     it("GETs /api/v1/users/me/google/link (Bearer + credentials) and resolves the authorize_url", async () => {
       setStoredAccessToken("my-token");
-      const fetchMock = vi
-        .spyOn(globalThis, "fetch")
-        .mockResolvedValue(
-          jsonResponse(200, {
-            authorize_url: "https://accounts.google.com/o/oauth2/v2/auth?state=x",
-          }),
-        );
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse(200, {
+          authorize_url: "https://accounts.google.com/o/oauth2/v2/auth?state=x",
+        }),
+      );
 
       await expect(startGoogleLink()).resolves.toEqual({
         authorize_url: "https://accounts.google.com/o/oauth2/v2/auth?state=x",

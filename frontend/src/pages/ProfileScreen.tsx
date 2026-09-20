@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from "react";
 import { PASSWORD_MIN_LENGTH, type Club } from "../services/api";
-import type { PushPermissionStatus } from "../ios/push";
+import type { PushPermissionStatus, PushRegistrationState } from "../ios/push";
 import { Button } from "../components/Button";
 import { PaperSurface } from "../components/PaperSurface";
 import { TextField } from "../components/TextField";
@@ -51,6 +51,11 @@ type ProfileScreenProps = {
    *  IOS-04). Covers anyone who denied or dismissed the onboarding
    *  auto-prompt, or joined before it existed. */
   pushStatus?: PushPermissionStatus | null;
+  /** Whether the backend has this device's token for the signed-in account.
+   *  Only meaningful once `pushStatus` is granted; permission alone never
+   *  means push will arrive (MysteryMixClub-4vii.32). */
+  pushRegistration?: PushRegistrationState;
+  onRetryPushRegistration?: () => void;
   onEnablePush?: () => void;
   enablingPush?: boolean;
   enablePushError?: string | null;
@@ -135,6 +140,8 @@ export function ProfileScreen({
   linkGoogleError,
   googleLinkNotice,
   pushStatus,
+  pushRegistration = "idle",
+  onRetryPushRegistration,
   onEnablePush,
   enablingPush = false,
   enablePushError,
@@ -241,6 +248,8 @@ export function ProfileScreen({
                 prefsError={prefsError}
                 pushAvailable={pushAvailable}
                 pushStatus={pushStatus}
+                pushRegistration={pushRegistration}
+                onRetryPushRegistration={onRetryPushRegistration}
                 onEnablePush={onEnablePush}
                 enablingPush={enablingPush}
                 enablePushError={enablePushError}
@@ -532,6 +541,8 @@ function NotificationPreferencesSection({
   prefsError,
   pushAvailable,
   pushStatus,
+  pushRegistration = "idle",
+  onRetryPushRegistration,
   onEnablePush,
   enablingPush = false,
   enablePushError,
@@ -542,6 +553,8 @@ function NotificationPreferencesSection({
   prefsError?: string | null;
   pushAvailable: boolean;
   pushStatus?: PushPermissionStatus | null;
+  pushRegistration?: PushRegistrationState;
+  onRetryPushRegistration?: () => void;
   onEnablePush?: () => void;
   enablingPush?: boolean;
   enablePushError?: string | null;
@@ -555,7 +568,26 @@ function NotificationPreferencesSection({
       {pushAvailable && pushStatus ? (
         <div className="mt-4">
           {pushStatus === "granted" ? (
-            <p className="font-mono text-sm text-ink-muted">push is on for this device</p>
+            // Permission is only half of it: the backend must also hold this
+            // device's token before a push can arrive (MysteryMixClub-4vii.32).
+            pushRegistration === "registered" ? (
+              <p className="font-mono text-sm text-ink-muted">push is on for this device</p>
+            ) : pushRegistration === "failed" ? (
+              <>
+                <p className="text-sm leading-[1.72] text-ink-muted">
+                  notifications are allowed on this phone, but this device isn&apos;t connected to
+                  mystery mix club yet, so pushes can&apos;t reach it. check your connection and
+                  try again.
+                </p>
+                <div className="mt-3">
+                  <Button onPaper variant="ghost" type="button" onClick={onRetryPushRegistration}>
+                    try again
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <p className="font-mono text-sm text-ink-muted">connecting this device for push…</p>
+            )
           ) : pushStatus === "denied" ? (
             <p className="text-sm leading-[1.72] text-ink-muted">
               push is off at the iOS level, so the push toggles below won&apos;t do anything

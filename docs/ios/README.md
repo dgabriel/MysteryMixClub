@@ -331,8 +331,8 @@ per registration, `device_token` unique) lets a user with several devices
 receive the same event on each; `POST /users/me/push-token` upserts by
 token (a token reassigns to whoever registers it, handling device reuse or
 a different user signing into the same phone), `DELETE` scopes to the
-caller's own rows. Both logout and account deletion drop the caller's
-tokens, mirroring `AuthIdentity`'s own cleanup-on-logout/deletion pattern.
+caller's own rows. Account deletion drops the caller's tokens server-side;
+logout relies on the client calling that `DELETE` first (see below).
 
 **Two independent preferences**, `push_lifecycle_enabled` and
 `push_deadline_reminders_enabled` (both default on), separate from each
@@ -360,6 +360,44 @@ anyone who denied or dismissed the auto-prompt, or joined before it
 existed. A denial can only be undone in iOS Settings, not by asking again
 from inside the app -- the manual path explains that rather than pretending
 a second in-app prompt would work.
+
+**Registration is separate from permission, and follows the session**
+(`MysteryMixClub-4vii.32`). OS permission belongs to the phone and survives
+logout; the backend registration belongs to a signed-in account, is dropped on
+logout, and can fail silently. So a device is only ever reported as
+registered once the native token was captured **and** the authenticated
+upload (`POST /users/me/push-token`) succeeded -- `register()` resolving
+proves neither, since it returns before the token event. `AuthProvider`
+reconciles after every login, every session restored from the cookie at
+launch, and every return to the foreground (the way back from iOS Settings):
+if permission is **already granted** and the device is not yet registered, it
+registers. It never prompts -- the one-time OS prompt stays with onboarding
+and Profile -- and it waits until onboarding is done. The state
+(`idle | registering | registered | failed`, `ios/push.ts`) is what Profile
+shows: "push is on for this device" only for `registered`, a plain "isn't
+connected yet" with **try again** for `failed`. Nothing retries on a timer;
+a failure is retried on the next foreground, the next login, or the button,
+so attempts are bounded by the user. The `register()` call, the native-token
+wait and the upload each time out after 15 seconds and end in `failed`, and
+native listeners attach once per process, each tracked on its own, so a
+partial failure is retried without duplicating the ones that attached.
+
+**Which account a registration belongs to.** A push *session* is open exactly
+while someone is signed in, keyed on the in-memory access token, so logout,
+login, and a login that replaces a live session (a magic link opened while
+another account is signed in) each end the old session and begin the next.
+Registration is refused while no session is open, and every operation records
+the session it started in *before* its first `await`: one from an earlier
+session never uploads, however late its callback lands. Logout closes the
+session first and then waits (up to 5 seconds) only for an upload that has
+already been sent, so the row it may have created is usually removed too; the
+token is remembered from the moment the upload is sent, so even a request that
+timed out client-side can be cleaned up. **The backend does not drop a device on
+logout by itself** -- the client's `DELETE /users/me/push-token` is the only
+cleanup -- so a failed DELETE is logged (the failure's message only, never the token), the
+token stays stored, and logout still completes; the row then remains until it
+is re-registered under whoever uses the phone next or APNs reports the token
+dead. The token, JWTs and payloads are never logged.
 
 **Deep-linking.** A tapped notification (foreground, background, or
 terminated) lands on the relevant club's home screen (`/clubs/:id`) --

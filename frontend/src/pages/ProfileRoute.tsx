@@ -17,10 +17,13 @@ import {
   type Club,
 } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
+import { usePushRegistration } from "../hooks/usePushRegistration";
 import {
   nativePushAvailable,
+  onAppResume,
   pushPermissionStatus,
   requestPushPermissionAndRegister,
+  syncPushRegistration,
   type PushPermissionStatus,
 } from "../ios/push";
 
@@ -116,16 +119,44 @@ export function ProfileRoute() {
   const [savingPref, setSavingPref] = useState<NotificationPreferenceKey | null>(null);
   const [prefsError, setPrefsError] = useState<string | null>(null);
 
+  // Whether the backend actually has this device's token -- a different fact
+  // from OS permission (MysteryMixClub-4vii.32). AuthProvider registers on
+  // login/session restore; this only reflects (and lets the user retry) it.
+  const pushRegistration = usePushRegistration();
+
   useEffect(() => {
     if (!nativePushAvailable()) return;
     let cancelled = false;
-    void pushPermissionStatus().then((status) => {
-      if (!cancelled) setPushStatus(status);
-    });
+    const refreshPermission = () => {
+      void pushPermissionStatus()
+        .then((status) => {
+          if (cancelled) return;
+          setPushStatus(status);
+          // Granted but not registered (first visit, or just back from iOS
+          // Settings): make sure a registration is under way. Idempotent.
+          if (status === "granted") void syncPushRegistration();
+        })
+        .catch((error: unknown) => {
+          // Runs on every foreground too, so it must never surface as an
+          // unhandled rejection; the section just keeps its last known state.
+          console.error(
+            "push permission check failed",
+            error instanceof Error ? error.message : "unknown error",
+          );
+        });
+    };
+    refreshPermission();
+    // Coming back from iOS Settings is how a denied permission gets granted.
+    const stopWatchingResume = onAppResume(refreshPermission);
     return () => {
       cancelled = true;
+      stopWatchingResume();
     };
   }, []);
+
+  function handleRetryPushRegistration() {
+    void syncPushRegistration();
+  }
 
   async function handleEnablePush() {
     setEnablingPush(true);
@@ -399,6 +430,8 @@ export function ProfileRoute() {
       linkGoogleError={linkGoogleError}
       googleLinkNotice={googleLinkNotice}
       pushStatus={pushStatus}
+      pushRegistration={pushRegistration}
+      onRetryPushRegistration={handleRetryPushRegistration}
       onEnablePush={handleEnablePush}
       enablingPush={enablingPush}
       enablePushError={enablePushError}

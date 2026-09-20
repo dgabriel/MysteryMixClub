@@ -12,7 +12,14 @@ import {
   setStoredAccessToken,
 } from "../services/api";
 import type { UserProfile } from "../services/api";
-import { nativePushAvailable, unregisterCurrentDevice } from "../ios/push";
+import {
+  invalidatePushSession,
+  nativePushAvailable,
+  onAppResume,
+  openPushSession,
+  syncPushRegistration,
+  unregisterCurrentDevice,
+} from "../ios/push";
 
 vi.mock("../services/api", () => ({
   refresh: vi.fn(),
@@ -28,6 +35,10 @@ vi.mock("../services/api", () => ({
 vi.mock("../ios/push", () => ({
   nativePushAvailable: vi.fn(),
   unregisterCurrentDevice: vi.fn(),
+  syncPushRegistration: vi.fn(),
+  invalidatePushSession: vi.fn(),
+  openPushSession: vi.fn(),
+  onAppResume: vi.fn(),
 }));
 
 const mockRefresh = vi.mocked(apiRefresh);
@@ -37,6 +48,10 @@ const mockLogoutAll = vi.mocked(apiLogoutAll);
 const mockSetStored = vi.mocked(setStoredAccessToken);
 const mockNativePushAvailable = vi.mocked(nativePushAvailable);
 const mockUnregisterCurrentDevice = vi.mocked(unregisterCurrentDevice);
+const mockSyncPushRegistration = vi.mocked(syncPushRegistration);
+const mockInvalidatePushSession = vi.mocked(invalidatePushSession);
+const mockOpenPushSession = vi.mocked(openPushSession);
+const mockOnAppResume = vi.mocked(onAppResume);
 
 function profileWith(displayName: string): UserProfile {
   return {
@@ -63,6 +78,7 @@ function Probe() {
     userId,
     logout,
     logoutAll,
+    setAccessToken,
   } = useAuth();
   return (
     <div>
@@ -76,6 +92,9 @@ function Probe() {
           assert the cleared state; the rejection itself is expected. */}
       <button type="button" onClick={() => void logout().catch(() => {})}>
         do-logout
+      </button>
+      <button type="button" onClick={() => setAccessToken("second-login-token")}>
+        do-login
       </button>
       <button type="button" onClick={() => void logoutAll().catch(() => {})}>
         do-logout-all
@@ -115,15 +134,15 @@ describe("AuthProvider / useAuth", () => {
     // ready, non-empty name. Tests that care about onboarding override this.
     mockGetMe.mockResolvedValue(profileWith("ada"));
     mockNativePushAvailable.mockReturnValue(false);
+    mockSyncPushRegistration.mockResolvedValue("idle");
+    mockOnAppResume.mockReturnValue(() => {});
   });
 
   it("calls refresh exactly once on mount", async () => {
     mockRefresh.mockResolvedValue(null);
     renderWithProvider();
 
-    await waitFor(() =>
-      expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated"),
-    );
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated"));
     expect(mockRefresh).toHaveBeenCalledTimes(1);
   });
 
@@ -131,9 +150,7 @@ describe("AuthProvider / useAuth", () => {
     mockRefresh.mockResolvedValue({ access_token: "restored-token" });
     renderWithProvider();
 
-    await waitFor(() =>
-      expect(screen.getByTestId("status")).toHaveTextContent("authenticated"),
-    );
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("authenticated"));
     expect(mockSetStored).toHaveBeenCalledWith("restored-token");
   });
 
@@ -141,9 +158,7 @@ describe("AuthProvider / useAuth", () => {
     mockRefresh.mockResolvedValue(null);
     renderWithProvider();
 
-    await waitFor(() =>
-      expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated"),
-    );
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated"));
     expect(mockSetStored).toHaveBeenCalledWith(null);
   });
 
@@ -153,15 +168,11 @@ describe("AuthProvider / useAuth", () => {
     const user = userEvent.setup();
 
     renderWithProvider();
-    await waitFor(() =>
-      expect(screen.getByTestId("status")).toHaveTextContent("authenticated"),
-    );
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("authenticated"));
 
     await user.click(screen.getByRole("button", { name: "do-logout" }));
 
-    await waitFor(() =>
-      expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated"),
-    );
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated"));
     expect(mockLogout).toHaveBeenCalledTimes(1);
     expect(mockSetStored).toHaveBeenLastCalledWith(null);
   });
@@ -172,15 +183,11 @@ describe("AuthProvider / useAuth", () => {
     const user = userEvent.setup();
 
     renderWithProvider();
-    await waitFor(() =>
-      expect(screen.getByTestId("status")).toHaveTextContent("authenticated"),
-    );
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("authenticated"));
 
     await user.click(screen.getByRole("button", { name: "do-logout" }));
 
-    await waitFor(() =>
-      expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated"),
-    );
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated"));
     expect(mockLogout).toHaveBeenCalledTimes(1);
   });
 
@@ -190,15 +197,11 @@ describe("AuthProvider / useAuth", () => {
     const user = userEvent.setup();
 
     renderWithProvider();
-    await waitFor(() =>
-      expect(screen.getByTestId("status")).toHaveTextContent("authenticated"),
-    );
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("authenticated"));
 
     await user.click(screen.getByRole("button", { name: "do-logout-all" }));
 
-    await waitFor(() =>
-      expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated"),
-    );
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated"));
     expect(mockLogoutAll).toHaveBeenCalledTimes(1);
   });
 
@@ -208,15 +211,11 @@ describe("AuthProvider / useAuth", () => {
     const user = userEvent.setup();
 
     renderWithProvider();
-    await waitFor(() =>
-      expect(screen.getByTestId("status")).toHaveTextContent("authenticated"),
-    );
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("authenticated"));
 
     await user.click(screen.getByRole("button", { name: "do-logout-all" }));
 
-    await waitFor(() =>
-      expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated"),
-    );
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated"));
     expect(mockLogoutAll).toHaveBeenCalledTimes(1);
   });
 
@@ -230,9 +229,7 @@ describe("AuthProvider / useAuth", () => {
     mockRefresh.mockResolvedValue({ access_token: "restored-token" });
     renderWithProviderStrict();
 
-    await waitFor(() =>
-      expect(screen.getByTestId("status")).toHaveTextContent("authenticated"),
-    );
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("authenticated"));
     expect(screen.getByTestId("status")).not.toHaveTextContent("loading");
     expect(mockSetStored).toHaveBeenCalledWith("restored-token");
   });
@@ -241,9 +238,7 @@ describe("AuthProvider / useAuth", () => {
     mockRefresh.mockResolvedValue(null);
     renderWithProviderStrict();
 
-    await waitFor(() =>
-      expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated"),
-    );
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated"));
     expect(screen.getByTestId("status")).not.toHaveTextContent("loading");
     expect(mockSetStored).toHaveBeenCalledWith(null);
   });
@@ -252,9 +247,7 @@ describe("AuthProvider / useAuth", () => {
     mockRefresh.mockResolvedValue({ access_token: "restored-token" });
     renderWithProviderStrict();
 
-    await waitFor(() =>
-      expect(screen.getByTestId("status")).toHaveTextContent("authenticated"),
-    );
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("authenticated"));
     expect(mockRefresh).toHaveBeenCalledTimes(1);
   });
 
@@ -268,9 +261,7 @@ describe("AuthProvider / useAuth", () => {
     mockGetMe.mockResolvedValue(profileWith(""));
     renderWithProvider();
 
-    await waitFor(() =>
-      expect(screen.getByTestId("profile-status")).toHaveTextContent("ready"),
-    );
+    await waitFor(() => expect(screen.getByTestId("profile-status")).toHaveTextContent("ready"));
     expect(screen.getByTestId("needs-onboarding")).toHaveTextContent("true");
     expect(mockGetMe).toHaveBeenCalledTimes(1);
   });
@@ -280,9 +271,7 @@ describe("AuthProvider / useAuth", () => {
     mockGetMe.mockResolvedValue(profileWith("Ada"));
     renderWithProvider();
 
-    await waitFor(() =>
-      expect(screen.getByTestId("profile-status")).toHaveTextContent("ready"),
-    );
+    await waitFor(() => expect(screen.getByTestId("profile-status")).toHaveTextContent("ready"));
     expect(screen.getByTestId("needs-onboarding")).toHaveTextContent("false");
     expect(screen.getByTestId("display-name")).toHaveTextContent("Ada");
   });
@@ -292,9 +281,7 @@ describe("AuthProvider / useAuth", () => {
     mockGetMe.mockRejectedValue(new Error("401"));
     renderWithProvider();
 
-    await waitFor(() =>
-      expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated"),
-    );
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated"));
     expect(screen.getByTestId("profile-status")).toHaveTextContent("idle");
     expect(screen.getByTestId("needs-onboarding")).toHaveTextContent("false");
   });
@@ -303,9 +290,7 @@ describe("AuthProvider / useAuth", () => {
     mockRefresh.mockResolvedValue({ access_token: "tok" });
     renderWithProvider();
 
-    await waitFor(() =>
-      expect(screen.getByTestId("profile-status")).toHaveTextContent("ready"),
-    );
+    await waitFor(() => expect(screen.getByTestId("profile-status")).toHaveTextContent("ready"));
     expect(mockGetMe).toHaveBeenCalledTimes(1);
   });
 
@@ -329,12 +314,8 @@ describe("AuthProvider / useAuth", () => {
     mockGetMe.mockResolvedValue(profileWith("Ada"));
     renderWithProvider();
 
-    await waitFor(() =>
-      expect(screen.getByTestId("profile-status")).toHaveTextContent("ready"),
-    );
-    expect(screen.getByTestId("user-id")).toHaveTextContent(
-      "11111111-1111-1111-1111-111111111111",
-    );
+    await waitFor(() => expect(screen.getByTestId("profile-status")).toHaveTextContent("ready"));
+    expect(screen.getByTestId("user-id")).toHaveTextContent("11111111-1111-1111-1111-111111111111");
   });
 
   it("userId: reset to null after logout clears the session", async () => {
@@ -352,18 +333,14 @@ describe("AuthProvider / useAuth", () => {
 
     await user.click(screen.getByRole("button", { name: "do-logout" }));
 
-    await waitFor(() =>
-      expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated"),
-    );
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated"));
     expect(screen.getByTestId("user-id")).toHaveTextContent("<null>");
   });
 
   it("useAuth throws when used outside an AuthProvider", () => {
     // Suppress the expected React error boundary console noise.
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
-    expect(() => render(<Probe />)).toThrow(
-      /useAuth must be used within an AuthProvider/,
-    );
+    expect(() => render(<Probe />)).toThrow(/useAuth must be used within an AuthProvider/);
     spy.mockRestore();
   });
 
@@ -376,9 +353,7 @@ describe("AuthProvider / useAuth", () => {
       const user = userEvent.setup();
 
       renderWithProvider();
-      await waitFor(() =>
-        expect(screen.getByTestId("status")).toHaveTextContent("authenticated"),
-      );
+      await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("authenticated"));
 
       await user.click(screen.getByRole("button", { name: "do-logout" }));
 
@@ -396,9 +371,7 @@ describe("AuthProvider / useAuth", () => {
       const user = userEvent.setup();
 
       renderWithProvider();
-      await waitFor(() =>
-        expect(screen.getByTestId("status")).toHaveTextContent("authenticated"),
-      );
+      await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("authenticated"));
 
       await user.click(screen.getByRole("button", { name: "do-logout" }));
 
@@ -416,9 +389,7 @@ describe("AuthProvider / useAuth", () => {
       const user = userEvent.setup();
 
       renderWithProvider();
-      await waitFor(() =>
-        expect(screen.getByTestId("status")).toHaveTextContent("authenticated"),
-      );
+      await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("authenticated"));
 
       await user.click(screen.getByRole("button", { name: "do-logout" }));
 
@@ -436,9 +407,7 @@ describe("AuthProvider / useAuth", () => {
       const user = userEvent.setup();
 
       renderWithProvider();
-      await waitFor(() =>
-        expect(screen.getByTestId("status")).toHaveTextContent("authenticated"),
-      );
+      await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("authenticated"));
 
       await user.click(screen.getByRole("button", { name: "do-logout-all" }));
 
@@ -447,6 +416,202 @@ describe("AuthProvider / useAuth", () => {
       );
       expect(mockUnregisterCurrentDevice).toHaveBeenCalledOnce();
       expect(mockLogoutAll).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("session lifecycle across logout and login in one launch", () => {
+    it("loads the profile again when the same launch logs out and back in", async () => {
+      // Client-side navigation means there is no reload between the two: the
+      // profile (and so the user id everything else keys on) must be re-fetched
+      // for the new session, or it stays empty until the app is relaunched.
+      mockRefresh.mockResolvedValue({ access_token: "tok" });
+      mockLogout.mockResolvedValue(undefined);
+      const user = userEvent.setup();
+
+      renderWithProvider();
+      await waitFor(() => expect(screen.getByTestId("user-id")).not.toHaveTextContent("<null>"));
+      expect(mockGetMe).toHaveBeenCalledTimes(1);
+
+      await user.click(screen.getByRole("button", { name: "do-logout" }));
+      await waitFor(() => expect(screen.getByTestId("user-id")).toHaveTextContent("<null>"));
+
+      mockGetMe.mockResolvedValue({
+        ...profileWith("grace"),
+        id: "22222222-2222-2222-2222-222222222222",
+      });
+      await user.click(screen.getByRole("button", { name: "do-login" }));
+
+      await waitFor(() =>
+        expect(screen.getByTestId("user-id")).toHaveTextContent(
+          "22222222-2222-2222-2222-222222222222",
+        ),
+      );
+      expect(mockGetMe).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("push registration follows the session (MysteryMixClub-4vii.32)", () => {
+    it("registers this device once a session is restored and its profile is ready, on native iOS", async () => {
+      mockRefresh.mockResolvedValue({ access_token: "tok" });
+      mockNativePushAvailable.mockReturnValue(true);
+
+      renderWithProvider();
+
+      await waitFor(() => expect(mockSyncPushRegistration).toHaveBeenCalledOnce());
+      expect(screen.getByTestId("profile-status")).toHaveTextContent("ready");
+    });
+
+    it("registers again after logging out and back in, as a fresh session", async () => {
+      mockRefresh.mockResolvedValue({ access_token: "tok" });
+      mockLogout.mockResolvedValue(undefined);
+      mockUnregisterCurrentDevice.mockResolvedValue(undefined);
+      mockNativePushAvailable.mockReturnValue(true);
+      const user = userEvent.setup();
+
+      renderWithProvider();
+      await waitFor(() => expect(mockSyncPushRegistration).toHaveBeenCalledTimes(1));
+
+      await user.click(screen.getByRole("button", { name: "do-logout" }));
+      await waitFor(() =>
+        expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated"),
+      );
+      await user.click(screen.getByRole("button", { name: "do-login" }));
+
+      await waitFor(() => expect(mockSyncPushRegistration).toHaveBeenCalledTimes(2));
+    });
+
+    it("never touches push on web", async () => {
+      mockRefresh.mockResolvedValue({ access_token: "tok" });
+      mockNativePushAvailable.mockReturnValue(false);
+
+      renderWithProvider();
+      await waitFor(() => expect(screen.getByTestId("profile-status")).toHaveTextContent("ready"));
+
+      expect(mockSyncPushRegistration).not.toHaveBeenCalled();
+      expect(mockOnAppResume).not.toHaveBeenCalled();
+    });
+
+    it("waits until the profile has loaded", async () => {
+      mockRefresh.mockResolvedValue({ access_token: "tok" });
+      mockNativePushAvailable.mockReturnValue(true);
+      let finishProfile: (p: UserProfile) => void = () => {};
+      mockGetMe.mockReturnValue(
+        new Promise<UserProfile>((resolve) => {
+          finishProfile = resolve;
+        }),
+      );
+
+      renderWithProvider();
+      await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("authenticated"));
+      expect(mockSyncPushRegistration).not.toHaveBeenCalled();
+
+      finishProfile(profileWith("ada"));
+      await waitFor(() => expect(mockSyncPushRegistration).toHaveBeenCalledOnce());
+    });
+
+    it("holds off while onboarding is still needed, so the first permission prompt stays with onboarding", async () => {
+      mockRefresh.mockResolvedValue({ access_token: "tok" });
+      mockNativePushAvailable.mockReturnValue(true);
+      mockGetMe.mockResolvedValue(profileWith(""));
+
+      renderWithProvider();
+      await waitFor(() => expect(screen.getByTestId("needs-onboarding")).toHaveTextContent("true"));
+
+      expect(mockSyncPushRegistration).not.toHaveBeenCalled();
+    });
+
+    it("re-syncs each time the app returns to the foreground", async () => {
+      mockRefresh.mockResolvedValue({ access_token: "tok" });
+      mockNativePushAvailable.mockReturnValue(true);
+      let resumed: () => void = () => {};
+      mockOnAppResume.mockImplementation((callback) => {
+        resumed = callback;
+        return () => {};
+      });
+
+      renderWithProvider();
+      await waitFor(() => expect(mockSyncPushRegistration).toHaveBeenCalledTimes(1));
+
+      resumed();
+
+      expect(mockSyncPushRegistration).toHaveBeenCalledTimes(2);
+    });
+
+    it("opens the push session as soon as someone is signed in, before the profile has loaded", async () => {
+      // The first permission prompt (onboarding) can register the device while
+      // the profile gate is still up, so the session must already be open.
+      mockRefresh.mockResolvedValue({ access_token: "tok" });
+      mockNativePushAvailable.mockReturnValue(true);
+      mockGetMe.mockReturnValue(new Promise(() => {}));
+
+      renderWithProvider();
+
+      await waitFor(() => expect(mockOpenPushSession).toHaveBeenCalledOnce());
+      expect(screen.getByTestId("profile-status")).toHaveTextContent("loading");
+    });
+
+    it("treats a login that replaces a live session as an account switch: new profile, new push session", async () => {
+      // No logout in between (e.g. a magic link opened while another account is
+      // signed in): the previous account's profile and push registration must
+      // not carry over to the new one.
+      mockRefresh.mockResolvedValue({ access_token: "tok" });
+      mockNativePushAvailable.mockReturnValue(true);
+      const user = userEvent.setup();
+
+      renderWithProvider();
+      await waitFor(() => expect(screen.getByTestId("user-id")).not.toHaveTextContent("<null>"));
+      await waitFor(() => expect(mockSyncPushRegistration).toHaveBeenCalledTimes(1));
+      mockInvalidatePushSession.mockClear();
+      mockOpenPushSession.mockClear();
+
+      mockGetMe.mockResolvedValue({
+        ...profileWith("grace"),
+        id: "22222222-2222-2222-2222-222222222222",
+      });
+      await user.click(screen.getByRole("button", { name: "do-login" }));
+
+      await waitFor(() =>
+        expect(screen.getByTestId("user-id")).toHaveTextContent(
+          "22222222-2222-2222-2222-222222222222",
+        ),
+      );
+      // The old account's push session ended before the new one began...
+      expect(mockInvalidatePushSession).toHaveBeenCalled();
+      expect(mockOpenPushSession).toHaveBeenCalled();
+      expect(mockInvalidatePushSession.mock.invocationCallOrder[0]).toBeLessThan(
+        mockOpenPushSession.mock.invocationCallOrder[0],
+      );
+      // ...and the new account is registered for itself.
+      await waitFor(() => expect(mockSyncPushRegistration).toHaveBeenCalledTimes(2));
+    });
+
+    it("does not end the push session when the profile settles or onboarding completes", async () => {
+      mockRefresh.mockResolvedValue({ access_token: "tok" });
+      mockNativePushAvailable.mockReturnValue(true);
+
+      renderWithProvider();
+      await waitFor(() => expect(mockSyncPushRegistration).toHaveBeenCalledOnce());
+
+      expect(mockInvalidatePushSession).not.toHaveBeenCalled();
+    });
+
+    it("stops watching the foreground and invalidates the push session when the session ends", async () => {
+      mockRefresh.mockResolvedValue({ access_token: "tok" });
+      mockLogout.mockResolvedValue(undefined);
+      mockUnregisterCurrentDevice.mockResolvedValue(undefined);
+      mockNativePushAvailable.mockReturnValue(true);
+      const stopWatching = vi.fn();
+      mockOnAppResume.mockReturnValue(stopWatching);
+      const user = userEvent.setup();
+
+      renderWithProvider();
+      await waitFor(() => expect(mockSyncPushRegistration).toHaveBeenCalledOnce());
+      mockInvalidatePushSession.mockClear();
+
+      await user.click(screen.getByRole("button", { name: "do-logout" }));
+
+      await waitFor(() => expect(stopWatching).toHaveBeenCalled());
+      expect(mockInvalidatePushSession).toHaveBeenCalled();
     });
   });
 });

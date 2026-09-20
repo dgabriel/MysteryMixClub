@@ -8,6 +8,7 @@ from pydantic import Field, StringConstraints, model_validator
 
 from app.api.wire import WireModel
 from sqlalchemy import delete, func, select, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.auth import (
@@ -499,13 +500,24 @@ async def register_push_token(
     stale second row. One user can have many rows (many devices); this never
     touches any row but the one matching this exact token.
     """
-    existing = await db.scalar(
-        select(DevicePushToken).where(DevicePushToken.device_token == payload.device_token)
+    # One atomic upsert (not select-then-write): a dead-token verdict from APNs
+    # only retires a registration that predates it, so every registration --
+    # new, reassigned, or the same user re-registering -- stamps `updated_at`
+    # itself, and a concurrent retire can neither make this a no-op nor raise.
+    # clock_timestamp(), not now(), so it is the moment of this statement
+    # rather than the transaction's start (MysteryMixClub-4vii.33).
+    await db.execute(
+        insert(DevicePushToken)
+        .values(
+            user_id=current_user.id,
+            device_token=payload.device_token,
+            updated_at=func.clock_timestamp(),
+        )
+        .on_conflict_do_update(
+            index_elements=[DevicePushToken.device_token],
+            set_={"user_id": current_user.id, "updated_at": func.clock_timestamp()},
+        )
     )
-    if existing is not None:
-        existing.user_id = current_user.id
-    else:
-        db.add(DevicePushToken(user_id=current_user.id, device_token=payload.device_token))
     await db.commit()
     return RegisterPushTokenResponse()
 

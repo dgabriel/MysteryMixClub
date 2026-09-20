@@ -29,6 +29,7 @@ from app.models.submission import Submission
 from app.models.user import User
 from app.models.vote import Vote
 from app.services.apple_push_token import ApplePushTokenService
+from app.services.push_notifications import PushResult
 
 _TEAM_ID = "TEAM123456"
 _KEY_ID = "KEY1234567"
@@ -53,7 +54,7 @@ def push_calls(monkeypatch):
         client, token_service, bundle_id, device_token, title, body, data=None
     ):
         calls.append((device_token, title, body))
-        return "ok"
+        return PushResult("ok")
 
     monkeypatch.setattr(push_notifications_module, "send_push", fake_send_push)
     return calls

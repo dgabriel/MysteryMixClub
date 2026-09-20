@@ -74,8 +74,12 @@ it is scoped to `Path=/api/v1/auth` on purpose and is not sent to
 - `device_push_tokens.session_id` is a nullable foreign key, `ON DELETE SET NULL`
   (an old session being purged must not silently remove a device that is still
   registered). The migration is additive.
-- Tokens issued before the claim existed have no `sid` and keep the previous
-  unconditional behaviour until they expire, at most an hour after deploy.
+- Tokens issued before the claim existed have no `sid` (they expire within an
+  hour of the deploy). Such a token may register a new device or re-register an
+  *unbound* one, but never takes a device that a session owns (409): with no
+  session to compare, a stale request could otherwise overwrite, and unbind, a
+  newer sign-in's device. (A first draft let them take over unconditionally; an
+  automated review flagged it and it was tightened.)
 
 The client's own `DELETE` stays as belt and braces, and its 5-second wait for an
 in-flight upload stays as a best effort; correctness no longer depends on either.
@@ -146,10 +150,11 @@ deliberately hold several bound rows; reintroducing the bug fails four of them.
   issued before the claim existed (at most an hour) is unbound.
 - **Sessions that simply expire** (30 days, never logged out) are not swept; their
   rows stay until the token is re-registered or APNs retires it.
-- **A token with no `sid` (issued before the claim existed, at most an hour)
-  takes a device over unconditionally and writes `session_id = NULL`**, so it can
-  also unbind a row a newer login owns; that login's logout then no longer
-  deletes it until the app re-registers. Transitional and self-healing.
+- **A device registered with a session-less token is unbound.** A token with no
+  `sid` (issued before the claim existed, at most an hour) can create or re-register
+  only unbound rows, so its device is not removed by logout until the app
+  re-registers with a token that names a session. Transitional and self-healing
+  (the next refresh mints a `sid`).
 - **`sessions.created_at` is the start of the login transaction**, so two logins
   on one phone within the same instant compare arbitrarily. Theoretical, and the
   outcome (which of two simultaneous logins keeps the device) is harmless.

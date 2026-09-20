@@ -523,8 +523,11 @@ async def register_push_token(
       that is at least as new. A late upload from an older login (the previous
       account, on a phone that has since signed in as someone else) therefore
       cannot overwrite the newer account's ownership; refused with 409.
-    - A token issued before the claim existed carries no session and keeps the
-      previous unconditional behaviour (those tokens expire within the hour).
+    - A token issued before the claim existed carries no session (those tokens
+      expire within the hour of the deploy). It can register a new device or
+      re-register an unbound one, but it never takes a device that a session
+      owns (409): with nothing to compare, a stale request could otherwise
+      overwrite a newer sign-in's device.
     """
     # Lock order matters: USERS row first, then the session. Account deletion
     # (`delete_me`) takes the users row exclusively (a key update on the unique
@@ -592,6 +595,9 @@ async def register_push_token(
             DevicePushToken.session_id.is_(None),
             owner_session_created_at <= session_created_at,
         )
+    else:
+        # No session to compare with: only an unbound row may be taken.
+        takeover_allowed = DevicePushToken.session_id.is_(None)
     registered = await db.scalar(
         insert(DevicePushToken)
         .values(

@@ -419,9 +419,9 @@ logged (the failure's message only, never the token), the token stays stored,
 and logout still completes. The token, JWTs and payloads are never logged.
 Known limits: a device row that already exists when this ships has no session,
 so logout removes it only after the app re-registers and binds it (next launch
-after the update), and a token minted before this shipped carries no session and
-keeps the old unconditional behaviour until it expires (at most an hour); a
-session that merely expires (30 days) is not swept.
+after the update), and a token minted before this shipped carries no session, so it can only
+register new or unbound devices, never take one a session owns, until it expires
+(at most an hour); a session that merely expires (30 days) is not swept.
 
 **Deep-linking.** A tapped notification (foreground, background, or
 terminated) lands on the relevant club's home screen (`/clubs/:id`) --

@@ -272,6 +272,36 @@ async def test_the_same_session_can_re_register_its_own_device(client, db_sessio
     assert await _rows(db_session) == {"device-1": (user_id, sid)}
 
 
+async def test_a_token_without_a_session_cannot_take_a_device_a_session_owns(client, db_session):
+    # A token minted before the claim existed has no session to compare, so it must
+    # not overwrite (or unbind) a device that a session owns, however old or new.
+    a_id = await _user(db_session, "a@example.com")
+    b_id = await _user(db_session, "b@example.com")
+    a_sid, _raw, a_headers = await _login(db_session, a_id)
+    assert (await _register(client, a_headers, "the-phone")).status_code == 200
+    legacy_b = {"Authorization": f"Bearer {create_access_token(b_id)}"}
+
+    resp = await _register(client, legacy_b, "the-phone")
+
+    assert resp.status_code == 409
+    assert await _rows(db_session) == {"the-phone": (a_id, a_sid)}  # still A's, still bound
+
+
+async def test_a_token_without_a_session_can_register_and_re_register_an_unbound_device(
+    client, db_session
+):
+    a_id = await _user(db_session, "a@example.com")
+    b_id = await _user(db_session, "b@example.com")
+    legacy_a = {"Authorization": f"Bearer {create_access_token(a_id)}"}
+    legacy_b = {"Authorization": f"Bearer {create_access_token(b_id)}"}
+
+    assert (await _register(client, legacy_a, "the-phone")).status_code == 200  # a new device
+    assert (await _register(client, legacy_a, "the-phone")).status_code == 200  # again
+    assert (await _register(client, legacy_b, "the-phone")).status_code == 200  # an unbound one
+
+    assert await _rows(db_session) == {"the-phone": (b_id, None)}
+
+
 async def test_a_row_with_no_session_never_blocks_a_bound_registration(client, db_session):
     # A legacy/unbound row (no session) never blocks a bound registration.
     user_id = await _user(db_session, "a@example.com")

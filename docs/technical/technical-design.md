@@ -186,7 +186,7 @@ this cross-site return; the nonce cookie is Lax for the same reason.
   logout checks that session is still live. Device push registration (`POST /users/me/push-token`) is the
   first: it needs a live session, `/auth/logout` deletes that session's `device_push_tokens` rows in the same
   transaction, and a token already held by a newer session cannot be taken back by an older one
-  (ADR 0034). Tokens issued before the claim existed have no `sid` and are unaffected until they expire.
+  (ADR 0034). Tokens issued before the claim existed have no `sid`: they can register a new or unbound device but never take one a session owns, until they expire (at most an hour).
 
 ### Security Rules
 

@@ -2156,6 +2156,17 @@
         "file": "frontend/src/ios/push.test.ts"
       },
       "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:03eb4bfe014e55beac3a4e4b4a1338af",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-20T16:02:37.352Z",
+      "reason": "Accepted limitation, not a false positive: the generated ios/App/App/capacitor.config.json is gitignored and absent in CI, and the bead forbids hand-editing it, so a unit test can only pin the source. To narrow the gap this PR also tests the chain that produces it (ios:sync runs 'cap sync ios'; the Xcode build phase runs 'npm run ios:sync' with alwaysOutOfDate), and the sync was run and its generated output read while developing. The remaining proof, that the installed build shows a foreground banner, is device evidence tracked in MysteryMixClub-4vii.30.",
+      "context": {
+        "title": "Test validates source config, not generated runtime config",
+        "file": "frontend/src/ios/capacitorConfig.test.ts"
+      },
+      "expires_at": null
     }
   ]
 }

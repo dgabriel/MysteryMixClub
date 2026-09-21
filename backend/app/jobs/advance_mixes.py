@@ -19,7 +19,7 @@ Per locked mix, the first matching branch wins:
    out yet, and the deadline is 1–12h away, warn the outstanding actors and stamp
    the per-phase warning marker.
    Otherwise, push-only nudges (MysteryMixClub-bfqo), at most one per run: the
-   08:00 (club time) "due today" nudge, the halfway nudge, and, in submission,
+   08:00 "due today" nudge (club timezone, or US Central for a club that never chose one), the halfway nudge, and, in submission,
    the "3 or fewer left" nudge. See :func:`_send_due_nudge`.
 3. Deadline passed, ``open_submission``, ZERO submissions → do NOT advance; email
    the organizer once (extend or advance manually) and stamp the notice. The mix
@@ -231,14 +231,15 @@ async def _send_due_nudge(
 
     if opened is not None and opened < deadline:
         reminders = nudge_timing.scheduled_reminder_times(opened, deadline, window_hours)
-        # "8am" only means something where the club has really chosen a timezone.
-        # A duration-mode club never sets one (it is always the "UTC" default,
-        # 03:00-04:00 in the US), so it gets no due-today nudge.
-        due_morning = (
-            nudge_timing.due_morning_at(opened, deadline, club.timezone)
+        # "8am" needs a timezone the club actually chose. A weekly-anchor club
+        # has one; a duration-mode club never sets one (its stored value is the
+        # "UTC" placeholder, 03:00-04:00 in the US), so it gets US Central.
+        due_tz = (
+            club.timezone
             if club.deadline_mode == "weekly_anchor"
-            else None
+            else nudge_timing.DEFAULT_DUE_MORNING_TZ
         )
+        due_morning = nudge_timing.due_morning_at(opened, deadline, due_tz)
         halfway = nudge_timing.halfway_at(opened, deadline)
         # A due-morning nudge that is itself suppressed sends nothing, so it
         # must not suppress halfway in turn.

@@ -377,14 +377,14 @@ moment. Copy never names anyone.
   already voting when `voting_opened_at` shipped has none and gets no voting
   halfway nudge. Not re-armed by an extension (half the original time has
   passed).
-- **Due today.** 08:00 in the **club's** timezone on the club-local day the
-  phase is due ("Due today: vote in ..."). Skipped when the phase opened after
-  that 08:00 or the deadline is less than an hour after it. An extension of
-  voting re-arms it for the new due day. **Weekly-anchor clubs only:** a
-  duration-mode club never chooses a timezone (its `timezone` is the "UTC"
-  placeholder, which would make this 03:00-04:00 for a US club), so it gets no
-  due-today nudge until the create/edit flow captures a real one
-  (`MysteryMixClub-bfqo` follow-up).
+- **Due today.** 08:00 on the day the phase is due ("Due today: vote in ...").
+  A weekly-anchor club uses its own timezone. A duration-mode club never
+  chooses one (its stored `timezone` is the "UTC" placeholder, 03:00-04:00 for a
+  US club), so it gets 08:00 **US Central** (`America/Chicago`, so it stays 8am
+  through daylight saving; `MysteryMixClub-sqhj`). Skipped when the phase
+  opened after that 08:00 or the deadline is less than an hour after it. An
+  extension of voting re-arms it for the new due day. Capturing a real timezone
+  per club would replace the Central fallback (`MysteryMixClub-jj8n`).
 - **3 or fewer left** (submission phase only). The first time at least one
   submission is in and 3 or fewer members are still outstanding, only those
   members hear "Only 2 people, including you, still need to submit ...", or

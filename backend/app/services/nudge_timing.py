@@ -5,7 +5,8 @@ plain datetimes. Two of the three nudges are pinned to a moment (the "last few"
 one is state-driven and lives in the job):
 
 * **halfway** -- the midpoint between a phase opening and its deadline.
-* **due morning** -- 08:00 on the club's local calendar day the phase is due.
+* **due morning** -- 08:00 on the local calendar day the phase is due, in the
+  club's timezone (or :data:`DEFAULT_DUE_MORNING_TZ` for a club with none).
 
 Both are measured from the phase's real stamps (``*_opened_at`` and the
 deadline), not from the club's configured window: a weekly-anchor club's window
@@ -30,6 +31,11 @@ NUDGE_MIN_WINDOW = timedelta(hours=6)
 # least this long before the deadline (an 8:10am deadline gets no "due today").
 DUE_MORNING_HOUR = 8
 DUE_MORNING_MIN_LEAD = timedelta(hours=1)
+# A club with no chosen timezone (every duration-mode club: its stored timezone
+# is the "UTC" placeholder) gets the due-today nudge at 8am US Central instead
+# (Dawn's call, MysteryMixClub-sqhj). America/Chicago rather than a fixed UTC-6
+# so it stays 8am on the wall clock through daylight saving.
+DEFAULT_DUE_MORNING_TZ = "America/Chicago"
 # Two pushes to the same audience closer together than this are one push too
 # many: only the more established one is sent (see :func:`near_any`).
 COINCIDENCE = timedelta(hours=1)
@@ -54,7 +60,7 @@ def halfway_at(opened_at: datetime, deadline: datetime) -> datetime | None:
 
 
 def due_morning_at(opened_at: datetime, deadline: datetime, tz_name: str) -> datetime | None:
-    """08:00 on the club-local day of ``deadline``, as a UTC instant.
+    """08:00 on the ``tz_name`` calendar day of ``deadline``, as a UTC instant.
 
     None when that moment is not after the phase opened (it opened later that
     morning, so the player has only just heard about it) or leaves less than

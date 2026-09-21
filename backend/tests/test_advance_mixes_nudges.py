@@ -363,23 +363,104 @@ async def test_due_morning_skipped_when_the_phase_opened_after_8am_that_day(
     assert push_calls == []
 
 
-async def test_a_duration_mode_club_gets_no_due_morning_nudge(run_job, db_session, push_calls):
-    # Its timezone is the "UTC" placeholder no one chose, so "8am" would be
-    # 3-4am for a US club. Same fixture as the weekly-anchor case, minus the mode.
+# 8am and 6pm in Chicago on 10 March 2026 (CDT, UTC-5 since the 8th).
+EIGHT_AM_CT = datetime(2026, 3, 10, 13, 0, tzinfo=UTC)
+SIX_PM_CT = datetime(2026, 3, 10, 23, 0, tzinfo=UTC)
+
+
+async def _duration_club_due_today(db_session, **club_overrides):
     club, users = await _club_of(
-        db_session,
-        5,
-        submission_window_hours=48,
-        timezone="America/New_York",
-        deadline_mode="duration",
+        db_session, 5, submission_window_hours=48, deadline_mode="duration", **club_overrides
     )
-    mix_ = await _due_today_mix(db_session, club)
+    mix_ = await _due_today_mix(
+        db_session,
+        club,
+        submission_opened_at=SIX_PM_CT - timedelta(hours=48),
+        submission_deadline=SIX_PM_CT,
+        submission_warning_sent_at=EIGHT_AM_CT - timedelta(hours=1),
+        push_submission_reminder_sent_at=EIGHT_AM_CT - timedelta(hours=20),
+        push_submission_halfway_sent_at=EIGHT_AM_CT - timedelta(hours=14),
+        push_submission_last_few_sent_at=EIGHT_AM_CT - timedelta(hours=5),
+    )
+    return club, users, mix_
 
-    report = await run_job(EIGHT_AM_NY)
 
-    assert report.nudged == 0
+async def test_a_club_with_no_chosen_timezone_gets_due_today_at_8am_us_central(
+    run_job, db_session, push_calls
+):
+    # Duration mode: the stored timezone is the unchosen "UTC" placeholder.
+    club, users, mix_ = await _duration_club_due_today(db_session)
+
+    early = await run_job(EIGHT_AM_CT - timedelta(minutes=15))
+    assert early.nudged == 0
     assert push_calls == []
-    assert (await _reload(db_session, mix_.id)).push_submission_due_morning_sent_at is None
+
+    report = await run_job(EIGHT_AM_CT)
+
+    assert report.nudged == 1
+    assert _sent_tokens(push_calls) == _tokens(users)
+    assert set(_bodies(push_calls)) == {"Due today: submit to Mystery Mix 1: mix 1."}
+    assert (await _reload(db_session, mix_.id)).push_submission_due_morning_sent_at is not None
+
+
+async def test_the_us_central_default_ignores_a_duration_clubs_stored_timezone(
+    run_job, db_session, push_calls
+):
+    # Only a weekly-anchor club's timezone is trusted; this stored value is
+    # whatever the API defaulted or an old client sent.
+    club, users, mix_ = await _duration_club_due_today(db_session, timezone="Asia/Tokyo")
+
+    report = await run_job(EIGHT_AM_CT)
+
+    assert report.nudged == 1
+    assert set(_bodies(push_calls)) == {"Due today: submit to Mystery Mix 1: mix 1."}
+
+
+async def test_a_weekly_anchor_club_that_chose_utc_gets_8am_utc_not_central(
+    run_job, db_session, push_calls
+):
+    # The fallback keys on the deadline mode, not on the value "UTC": a club that
+    # really chose UTC is due at 08:00 UTC (a Central fallback would be 13:00).
+    eight_am_utc = datetime(2026, 3, 10, 8, 0, tzinfo=UTC)
+    deadline = datetime(2026, 3, 10, 18, 0, tzinfo=UTC)
+    club, users = await _club_of(
+        db_session, 5, submission_window_hours=48, timezone="UTC", deadline_mode="weekly_anchor"
+    )
+    await _due_today_mix(
+        db_session,
+        club,
+        submission_opened_at=deadline - timedelta(hours=48),
+        submission_deadline=deadline,
+        submission_warning_sent_at=eight_am_utc - timedelta(hours=1),
+        push_submission_reminder_sent_at=eight_am_utc - timedelta(hours=20),
+        push_submission_halfway_sent_at=eight_am_utc - timedelta(hours=14),
+        push_submission_last_few_sent_at=eight_am_utc - timedelta(hours=5),
+    )
+
+    assert (await run_job(eight_am_utc - timedelta(minutes=15))).nudged == 0
+    assert (await run_job(eight_am_utc)).nudged == 1
+
+
+async def test_the_us_central_default_follows_daylight_saving(run_job, db_session, push_calls):
+    # Before the US change (7 March) Chicago is UTC-6, so 8am is 14:00 UTC.
+    deadline = datetime(2026, 3, 7, 23, 0, tzinfo=UTC)
+    eight_am = datetime(2026, 3, 7, 14, 0, tzinfo=UTC)
+    club, users = await _club_of(
+        db_session, 5, submission_window_hours=48, deadline_mode="duration"
+    )
+    await _due_today_mix(
+        db_session,
+        club,
+        submission_opened_at=deadline - timedelta(hours=48),
+        submission_deadline=deadline,
+        submission_warning_sent_at=eight_am - timedelta(hours=1),
+        push_submission_reminder_sent_at=eight_am - timedelta(hours=20),
+        push_submission_halfway_sent_at=eight_am - timedelta(hours=14),
+        push_submission_last_few_sent_at=eight_am - timedelta(hours=5),
+    )
+
+    assert (await run_job(eight_am - timedelta(minutes=15))).nudged == 0
+    assert (await run_job(eight_am)).nudged == 1
 
 
 async def test_due_morning_is_suppressed_when_it_lands_on_the_12h_warning(

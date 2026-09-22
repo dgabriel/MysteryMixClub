@@ -33,8 +33,10 @@ class OAuthExchangeCode(Base):
     __tablename__ = "oauth_exchange_codes"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # ON DELETE CASCADE (MysteryMixClub-4vii.38): short-lived, single-use rows
+    # anyway; nothing worth keeping once the user is gone.
     user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     code_hash: Mapped[str] = mapped_column(String, nullable=False, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

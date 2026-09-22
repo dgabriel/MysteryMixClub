@@ -528,7 +528,12 @@ def main() -> int:
     print("\n" + "=" * 72)
     print("Done. For App Store Connect's Review Notes:")
     print("=" * 72)
-    print(f"""
+    # Deliberately prints the plaintext password: it's meant to be copied
+    # straight into App Store Connect's Review Notes field, the one place
+    # this account's password is supposed to end up (see the module
+    # docstring). Not a leak -- the destination is the whole point.
+    print(  # lgtm[py/clear-text-logging-sensitive-data]
+        f"""
 REVIEW ACCOUNT
 Email: {reviewer.email}
 Password: {reviewer_password if not args.reviewer_password else "(the one you supplied)"}
@@ -541,7 +546,8 @@ SUGGESTED REVIEW FLOW
    through to a result.
 4. Open "{club3.name}" -- open for submission. Add, edit, and remove a
    submission.
-""")
+"""
+    )
     return 0
 
 

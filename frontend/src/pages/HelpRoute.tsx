@@ -22,7 +22,7 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
       },
       {
         q: "how do i log in?",
-        a: "there are no passwords. enter your email on the login page and we'll send you a sign-in link. click it and you're in. the link is single-use and expires after 15 minutes.",
+        a: "a few ways: enter your email and we'll send you a single-use sign-in link (expires after 15 minutes), set a password once and use that instead, or sign in with google. on the iphone app you can also sign in with apple.",
       },
       {
         q: "it's my first time logging in, what happens?",
@@ -160,11 +160,15 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
     items: [
       {
         q: "what emails will i get?",
-        a: "one when a mystery mix opens for submissions or voting, one when results are ready, a nudge as a deadline approaches, and one when your club wraps up. organizers also get a note if a mystery mix is ready to open but still needs a theme.",
+        a: "one when a mystery mix opens for submissions or voting, one when results are ready, a nudge as a deadline approaches, one if an organizer extends voting, and one when your club wraps up. organizers also get a note if a mystery mix is ready to open but still needs a theme.",
+      },
+      {
+        q: "does the iphone app send push notifications too?",
+        a: "if you turn them on, yes: the same club events above, plus a few extra reminders as a deadline gets close (halfway through, the morning it's due, and when only a few people are left to submit). push is a separate setting from email, in your profile.",
       },
       {
         q: "can i turn them off?",
-        a: "yes, every notification email has a one-click unsubscribe link at the bottom. that doesn't affect sign-in emails; you'll always need those to log in.",
+        a: "yes. every notification email has a one-click unsubscribe link at the bottom, and push notifications have their own on/off switch in your profile. neither affects sign-in emails; you'll always need those to log in.",
       },
     ],
   },

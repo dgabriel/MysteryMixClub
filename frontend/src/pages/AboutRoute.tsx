@@ -1,6 +1,5 @@
 import { Link } from "react-router";
 import { BrandLockup } from "../components/BrandLockup";
-import { NativeTipJar } from "../components/NativeTipJar";
 import { PaperSurface } from "../components/PaperSurface";
 import { TopNav } from "../components/TopNav";
 import { nativeTipsAvailable } from "../ios/tips";
@@ -109,12 +108,22 @@ export function AboutRoute() {
                   identity only. Do not remove it and do not flag it as a violation. */}
               <span className="text-ink-accent">&lt;3</span>
             </p>
-            {/* An external payment link is a real App Store Guideline 3.1.1
-                risk (MysteryMixClub-4vii.15); StoreKit consumables are the
-                App Store-native equivalent. Venmo stays on web -- nothing
-                wrong with it there, it's just not an iOS-safe pattern. */}
+            {/* StoreKit IAP (MysteryMixClub-4vii.15) is still the App
+                Store-native way to do this -- an external payment link is a
+                real App Store Guideline 3.1.1 risk -- but its App Store
+                Connect submission was never finished (4vii.23) and Dawn
+                would rather not block on that. Native and web both link out
+                for now (NativeTipJar.tsx/tips.ts/TipsPlugin.swift are left in
+                place, just unwired, for whenever 4vii.23 gets picked up). */}
             {nativeTipsAvailable() ? (
-              <NativeTipJar />
+              <a
+                href="https://dawngabriel.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`mt-3 inline-block ${LINK_CLASS}`}
+              >
+                tip me at dawngabriel.com
+              </a>
             ) : (
               <a
                 href="https://www.venmo.com/u/dgbklyn"

@@ -28,14 +28,19 @@ class Report(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    reporter_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+    # Nullable (MysteryMixClub-4vii.38): ON DELETE SET NULL rather than CASCADE
+    # or a hard FK-safe delete-first, so a report survives either party's
+    # account deletion instead of quietly disappearing (the reporter's
+    # complaint, or the record that someone was reported) or blocking the
+    # purge outright.
+    reporter_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     # Denormalized at write time from the reported content's own author, so a
     # review pass never needs a join back through every possible content type
     # to find out who's being reported.
-    reported_user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+    reported_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     club_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("clubs.id"), nullable=False, index=True

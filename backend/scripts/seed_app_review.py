@@ -282,7 +282,7 @@ def ensure_member(
 
 def ensure_mix_open_for_submission(organizer: Account, club_id: str, theme: str) -> dict[str, Any]:
     mixes = organizer.get(f"/clubs/{club_id}/mixes")
-    mix = next(m for m in mixes if m["round_number"] == 1)
+    mix = next(m for m in mixes if m["mix_number"] == 1)
     if mix["state"] == "pending":
         mix = organizer.patch(
             f"/mixes/{mix['id']}", json={"theme": theme, "state": "open_submission"}

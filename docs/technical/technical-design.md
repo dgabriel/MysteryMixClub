@@ -680,10 +680,10 @@ Aligned with commitments in `problem-statement.md`.
 - No analytics pipelines that store individual user behavior by default
 - Aggregate-only metrics at launch (total clubs, total mystery mixes, total submissions — no user-level tracking)
 - Individual taste profiles are a future opt-in feature — the data collection layer is not built until that feature is explicitly scoped
-- Right to be forgotten: `DELETE /users/me` cascades to all submissions, votes, notes, sessions, and club membership records. Soft delete with a scheduled hard purge within 30 days.
+- Right to be forgotten: `DELETE /users/me` cascades to all submissions, votes, notes, sessions, club membership records, linked Google/Apple sign-in identities, and push device registrations. Soft delete with a scheduled hard purge within 30 days.
 - No third-party analytics scripts (no Google Analytics, no Mixpanel) in v1
 - Ad provider must be vetted for political content policy before any ad integration is implemented
-- **Subprocessors (GDPR Art. 28, MYS-184):** two third parties process personal data on our behalf — Resend (email addresses, for magic links/notifications) and DigitalOcean (hosts the app servers and database). Both have a standard DPA covering their processing. The song-lookup/playback integrations (Spotify, YouTube, Apple Music, Deezer) only ever receive a title/artist/ISRC — never anything tying a lookup back to a specific user — so they are not subprocessors of personal data. Keep this section in sync with the Privacy Policy's "subprocessors" section (`frontend/src/pages/PrivacyRoute.tsx`).
+- **Subprocessors (GDPR Art. 28, MYS-184):** four third parties process personal data on our behalf — Resend (email addresses, for magic links/notifications), DigitalOcean (hosts the app servers and database), Google (account id/name/email for Sign-In, `MysteryMixClub-ali8.4`), and Apple (account identifier/email for Sign in with Apple, and APNs push delivery — `4vii.9`/`4vii.25`). Resend and DigitalOcean have a standard DPA; Google's and Apple's own terms govern their side. The Apple Music *user* token (MYS-105) is used once, in memory, to create a playlist and is never persisted. The song-lookup/playback integrations (Spotify, YouTube, Apple Music, Deezer) only ever receive a title/artist/ISRC — never anything tying a lookup back to a specific user — so they are not subprocessors of personal data. Keep this section in sync with the Privacy Policy's "subprocessors" section (`frontend/src/pages/PrivacyRoute.tsx`).
 
 ---
 

@@ -107,41 +107,29 @@ validation; a reason must reflect actual use).
 
 MMC's web session is an in-memory access token plus an HttpOnly refresh cookie. The native session keeps the refresh cookie in `URLSession`'s shared store, but the proof does not yet exercise a refresh, so a session lasts only as long as the 60-minute access token. Expiry recovery, account switching, and logout-all across devices are IOS-01 work and are not proven here.
 
-## Tip jar via Apple IAP (`MysteryMixClub-4vii.15`, 2026-09-15)
+## Tip jar (`MysteryMixClub-4vii.15`, `.23`; superseded 2026-09-22)
 
-The web app's Venmo tip link is gated out of the native build
-(`nativeTipsAvailable()`) and replaced with three StoreKit consumables via a
-new `MMCTipsPlugin.swift` -- an external payment link on iOS is a real
-Guideline 3.1.1 risk. Tips unlock nothing (no club limits, votes,
-submissions, or status change).
+`4vii.15` gated the web app's Venmo tip link out of the native build
+(`nativeTipsAvailable()`) and replaced it with three StoreKit consumables via
+`MMCTipsPlugin.swift` -- an external payment link on iOS is a real Guideline
+3.1.1 risk. That needed a manual App Store Connect step (Apple requires the
+first consumable IAP of each type to be submitted bundled with a new app
+version, not created and approved standalone) that `4vii.23` was filed to
+finish, and never was.
 
-**This needs one manual App Store Connect step**: create three consumable
-In-App Purchase products under this app's record, with exactly these
-product ids (the plugin hardcodes them):
-
-- `com.mysterymixclub.app.tip.small`
-- `com.mysterymixclub.app.tip.medium`
-- `com.mysterymixclub.app.tip.large`
-
-Set whatever price tier and display name/description feel right for each
-(the app renders StoreKit's own `displayName`/`displayPrice`, so whatever is
-entered there is what shows).
-
-**Deliberately deferred to a later version (`MysteryMixClub-4vii.23`):**
-Apple requires the first consumable IAP of each type to be submitted bundled
-with a new app version, not created and approved standalone
-(https://developer.apple.com/help/app-store-connect/manage-submissions-to-app-review/submit-an-in-app-purchase).
-Rather than couple the tip jar's App Review to the initial submission, the
-IAP products were left unfinished/unsubmitted in App Store Connect for the
-first release. This is a clean no-op, not a broken feature: until the
-products exist and are approved, `getProducts()` returns an empty list and
-the tip jar section on `/about` renders nothing at all (fails quietly by
-design, same pattern Apple Music's own "unconfigured" state already uses) --
-no tip jar and no Venmo link either (that's gated out specifically because
-an external payment link is the Guideline 3.1.1 risk this feature exists to
-avoid, so it's not a valid fallback). Nothing for App Review to reject in
-the meantime. Finish the App Store Connect listings and bundle them with a
-future version's submission per `MysteryMixClub-4vii.23` when ready.
+**As of 2026-09-22 (Dawn's call), the native build links out to
+`dawngabriel.com` instead of using IAP**, for now -- same external-link shape
+`AboutRoute.tsx` already used for web's Venmo link, just pointed at Dawn's own
+site, where she'll add a tip jar directly. `nativeTipsAvailable()` in
+`AboutRoute.tsx` now picks which external link to show (dawngabriel.com on
+native, Venmo on web) rather than picking between a link and
+`<NativeTipJar />`. The Swift plugin, `frontend/src/ios/tips.ts`, and
+`NativeTipJar.tsx` are untouched and still work end to end -- just unwired
+from `/about` -- so finishing `4vii.23`'s App Store Connect listings and
+switching `AboutRoute.tsx` back to `<NativeTipJar />` stays a small, reversible
+change whenever that's picked up. This reintroduces the Guideline 3.1.1
+exposure IAP existed to avoid; accepted as a conscious, temporary tradeoff
+rather than blocking submission on the IAP paperwork.
 
 ## UGC moderation posture (`MysteryMixClub-4vii.13`, 2026-09-15)
 

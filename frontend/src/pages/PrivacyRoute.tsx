@@ -26,7 +26,7 @@ export function PrivacyRoute() {
             privacy policy
           </h1>
           <p className="mt-2 text-center font-mono text-meta text-ink-muted">
-            last updated july 2026
+            last updated september 2026
           </p>
 
           <p className="mt-8 text-sm font-medium leading-[1.72] text-ink">
@@ -48,8 +48,11 @@ export function PrivacyRoute() {
               </h2>
               <p className="mt-3">
                 your email, display name, and preferred streaming service; the songs, notes, and
-                votes you submit to clubs you're a member of; and basic session data needed to keep
-                you signed in.
+                votes you submit to clubs you're a member of; basic session data needed to keep you
+                signed in; and, if you choose to sign in with google or apple, the account
+                identifier those providers give us to recognize you. if you turn on push
+                notifications in the iphone app, we store a device token so we know where to send
+                them.
               </p>
             </section>
 
@@ -80,13 +83,21 @@ export function PrivacyRoute() {
                 subprocessors
               </h2>
               <p className="mt-3">
-                three services process personal data on our behalf: resend (your email address, to
+                four services process personal data on our behalf: resend (your email address, to
                 deliver sign-in links and notifications), digitalocean (hosting our servers and
-                database, so everything you store in the app), and google (if you choose to sign in
-                with google, we receive your google account id, name, and email address to create or
-                sign in to your account). resend and digitalocean operate under their own data
-                processing agreements; google's terms govern what it does with your data on its own
-                side.
+                database, so everything you store in the app), google (if you choose to sign in with
+                google, we receive your google account id, name, and email address to create or sign
+                in to your account), and apple (on the iphone app: if you choose to sign in with
+                apple, we receive your apple account identifier and an email address, either your
+                real one or, if you choose to hide it, a private relay address apple generates that
+                still reaches you, to create or sign in to your account; if you turn on push
+                notifications, apple delivers them to your device on our behalf). resend and
+                digitalocean operate under their own data processing agreements; google's and
+                apple's own terms govern what each does with your data on its side.
+              </p>
+              <p className="mt-3">
+                if you connect apple music to create a mystery mix playlist, we send your apple
+                music user token to apple's api to create it and don't store the token afterward.
               </p>
               <p className="mt-3">
                 spotify, youtube, apple music, and deezer help us look up and play the songs you
@@ -105,8 +116,9 @@ export function PrivacyRoute() {
                 download a copy of everything tied to your account (profile, submissions, votes, and
                 notes) any time from your profile page, satisfying your right of access and data
                 portability under gdpr articles 15 and 20. delete your account any time from the
-                same page: this cascades to your submissions, votes, notes, sessions, and club
-                memberships, with a scheduled hard purge of any remaining trace within 30 days.
+                same page: this cascades to your submissions, votes, notes, sessions, club
+                memberships, linked google/apple sign-in identities, and any push device
+                registrations, with a scheduled hard purge of any remaining trace within 30 days.
               </p>
             </section>
 

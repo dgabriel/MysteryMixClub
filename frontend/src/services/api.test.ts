@@ -1626,7 +1626,15 @@ describe("api.ts", () => {
           platforms: { spotify: "https://open.spotify.com/track/x" },
           submitter_note: "a banger",
           vote_count: 3,
-          notes: [{ body: "this slaps", author_display_name: "Ada", created_at: "x" }],
+          notes: [
+            {
+              id: "note-1",
+              author_id: "user-ada",
+              body: "this slaps",
+              author_display_name: "Ada",
+              created_at: "x",
+            },
+          ],
           voters: [{ user_id: "user-3", display_name: "Cal", weight: 1 }],
         },
       ],
@@ -1639,7 +1647,15 @@ describe("api.ts", () => {
             title: "Debaser",
             artist: "Pixies",
             note_count: 1,
-            notes: [{ body: "this slaps", author_display_name: "Ada", created_at: "x" }],
+            notes: [
+              {
+                id: "note-1",
+                author_id: "user-ada",
+                body: "this slaps",
+                author_display_name: "Ada",
+                created_at: "x",
+              },
+            ],
           },
         ],
       },

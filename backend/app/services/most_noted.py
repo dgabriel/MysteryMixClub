@@ -34,6 +34,12 @@ from app.models.user import User
 class MostNotedNote:
     """A single note on a winning submission, ready for display."""
 
+    # id/author_id (MysteryMixClub-4vii.39): needed to report the note and to
+    # hide that action on the viewer's own -- the wire-level ResultNote this
+    # feeds carried neither until Guideline 1.2 review found the reveal had
+    # no report action at all.
+    id: uuid.UUID
+    author_id: uuid.UUID
     body: str
     author_display_name: str
     created_at: datetime
@@ -99,6 +105,8 @@ async def compute_most_noted(round_id: uuid.UUID, db: AsyncSession) -> MostNoted
     for note, display_name in note_rows:
         notes_by_submission[note.submission_id].append(
             MostNotedNote(
+                id=note.id,
+                author_id=note.author_id,
                 body=note.body,
                 author_display_name=display_name,
                 created_at=note.created_at,

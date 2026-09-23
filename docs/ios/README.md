@@ -166,24 +166,44 @@ change whenever that's picked up. This reintroduces the Guideline 3.1.1
 exposure IAP existed to avoid; accepted as a conscious, temporary tradeoff
 rather than blocking submission on the IAP paperwork.
 
-## UGC moderation posture (`MysteryMixClub-4vii.13`, 2026-09-15)
+## UGC moderation posture (`MysteryMixClub-4vii.13`, 2026-09-15; reveal
+coverage `4vii.39`, 2026-09-23)
 
-App Store Guideline 1.2 requires a UGC app to offer a way to report
-objectionable content. v1 is deliberately minimal: a member can report
-another member's note (`POST /api/v1/reports`), which persists a row with
-the reporter, the note's real author, the club, a reason, and optional
-detail -- there is no admin console yet. Review it by querying the table
-directly:
+App Store Guideline 1.2 requires a UGC app to offer (1) a way to report
+objectionable content, (2) the ability to block abusive users, (3) a
+mechanism to filter objectionable material, and (4) published contact
+information. Current posture, one item at a time:
 
-```sql
-SELECT * FROM reports WHERE status = 'open' ORDER BY created_at DESC;
-```
+1. **Reporting** -- a member can report another member's note
+   (`POST /api/v1/reports`), which persists a row with the reporter, the
+   note's real author, the club, a reason, and optional detail. The report
+   action reaches notes everywhere a member can see someone else's: the live
+   `open_voting` composer/list, the closed-mix reveal's per-submission notes,
+   and the reveal's Most Noted section -- `4vii.39` closed the gap where the
+   reveal rendered notes read-only with no report action at all (found during
+   the `6qiq` App Store readiness walkthrough). There is no admin console
+   yet; review reports by querying the table directly:
 
-Mark a report reviewed with `UPDATE reports SET status = 'reviewed' WHERE
-id = '<id>';` once handled (organizer member-removal, a direct conversation,
-or no action needed). Blocking and automated content filtering were
-deliberately deferred (basic report action only, not the full system) --
-revisit if report volume or severity ever suggests they're needed.
+   ```sql
+   SELECT * FROM reports WHERE status = 'open' ORDER BY created_at DESC;
+   ```
+
+   Mark one reviewed with `UPDATE reports SET status = 'reviewed' WHERE
+   id = '<id>';` once handled (organizer member-removal, a direct
+   conversation, or no action needed).
+
+2. **Blocking** -- not yet implemented anywhere in frontend or backend.
+   Tracked as `MysteryMixClub-4vii.42`, deliberately deferred pending its own
+   design (what "blocked" means for a small invite-only club app).
+
+3. **Content filtering** -- not yet implemented; only after-the-fact
+   reporting exists today. Tracked as `MysteryMixClub-4vii.43`, lower
+   priority than blocking -- the app is invite-only among known friend
+   groups, and report volume so far is zero.
+
+4. **Published contact info** -- `info@mysterymixclub.com`, on the public
+   `/help` route (no sign-in required) via the `ContactEmail` component,
+   linked from `/about` and the signed-in nav's Help entry.
 
 ## Native Google sign-in via ASWebAuthenticationSession (`MysteryMixClub-4vii.21`, 2026-09-15)
 

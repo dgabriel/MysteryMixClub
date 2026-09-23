@@ -366,6 +366,13 @@ async def test_results_per_submission_notes_ordered_and_authored(client, db_sess
 
     assert [n["body"] for n in notes] == ["first", "second", "third"]
     assert [n["author_display_name"] for n in notes] == ["Org", "Bob", "Alice"]
+    # id/author_id (MysteryMixClub-4vii.39): the reveal has to carry enough to
+    # report a note and to hide that action on the viewer's own -- neither was
+    # on the wire before Guideline 1.2 review found the reveal had no report
+    # action at all.
+    assert [n["author_id"] for n in notes] == [str(organizer.id), str(bob.id), str(alice.id)]
+    assert all(n["id"] for n in notes)
+    assert len({n["id"] for n in notes}) == 3
 
 
 # --------------------------------------------------------------------------- #
@@ -502,6 +509,10 @@ async def test_results_most_noted_clear_winner(client, db_session):
     assert winner["note_count"] == 2
     assert [n["body"] for n in winner["notes"]] == ["n1", "n2"]
     assert [n["author_display_name"] for n in winner["notes"]] == ["Bob", "Org"]
+    # id/author_id (MysteryMixClub-4vii.39): Most Noted's notes need these too
+    # -- it's the other place the reveal shows another member's free text.
+    assert [n["author_id"] for n in winner["notes"]] == [str(bob.id), str(organizer.id)]
+    assert all(n["id"] for n in winner["notes"])
 
 
 async def test_results_most_noted_empty_when_no_notes(client, db_session):

@@ -113,7 +113,15 @@ describe("SubmissionHistoryRoute", () => {
         mix_number: 3,
         created_at: "2026-03-05T00:00:00Z",
         vote_count: 4,
-        notes: [{ body: "nice", author_display_name: "Sam", created_at: "2026-03-06T00:00:00Z" }],
+        notes: [
+          {
+            id: "note-1",
+            author_id: "user-sam",
+            body: "nice",
+            author_display_name: "Sam",
+            created_at: "2026-03-06T00:00:00Z",
+          },
+        ],
       }),
     ]);
 
@@ -148,7 +156,15 @@ describe("SubmissionHistoryRoute", () => {
       entryWith({
         theme: "road trip",
         submitter_note: "my pick",
-        notes: [{ body: "great pick", author_display_name: "Sam", created_at: "2026-01-02T00:00:00Z" }],
+        notes: [
+          {
+            id: "note-2",
+            author_id: "user-sam",
+            body: "great pick",
+            author_display_name: "Sam",
+            created_at: "2026-01-02T00:00:00Z",
+          },
+        ],
       }),
     ]);
 
@@ -312,7 +328,15 @@ describe("SubmissionHistoryRoute", () => {
         mix_number: 3,
         created_at: "2026-03-05T00:00:00Z",
         vote_count: 4,
-        notes: [{ body: "nice", author_display_name: "Sam", created_at: "2026-03-06T00:00:00Z" }],
+        notes: [
+          {
+            id: "note-1",
+            author_id: "user-sam",
+            body: "nice",
+            author_display_name: "Sam",
+            created_at: "2026-03-06T00:00:00Z",
+          },
+        ],
       }),
     ]);
 

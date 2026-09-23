@@ -59,6 +59,20 @@ class _FakeApi:
         self.tokens[token] = email
         return token
 
+    def _add_pending_mixes(self, club_id: str, start: int, end: int) -> None:
+        for n in range(start, end + 1):
+            mix_id = f"mix-{uuid.uuid4()}"
+            self.mixes[mix_id] = {
+                "id": mix_id,
+                "club_id": club_id,
+                "mix_number": n,
+                "theme": None,
+                "state": "pending",
+            }
+            self.submissions[mix_id] = []
+            self.votes[mix_id] = {}
+            self.notes[mix_id] = set()
+
     # -- request dispatch -----------------------------------------------------
     def handle(self, request: httpx.Request) -> httpx.Response:
         method, path = request.method, request.url.path
@@ -111,21 +125,9 @@ class _FakeApi:
         if method == "POST" and path == "/clubs":
             user = self._user_for(request)
             club_id = f"club-{uuid.uuid4()}"
-            total_rounds = body.get("total_rounds", 6)
             club = {"id": club_id, "name": body["name"], "organizer_id": user["id"]}
             self.clubs[club_id] = club
-            for n in range(1, total_rounds + 1):
-                mix_id = f"mix-{uuid.uuid4()}"
-                self.mixes[mix_id] = {
-                    "id": mix_id,
-                    "club_id": club_id,
-                    "mix_number": n,
-                    "theme": None,
-                    "state": "pending",
-                }
-                self.submissions[mix_id] = []
-                self.votes[mix_id] = {}
-                self.notes[mix_id] = set()
+            self._add_pending_mixes(club_id, start=1, end=body.get("total_rounds", 6))
             return httpx.Response(201, json=club)
 
         if method == "POST" and path.startswith("/clubs/") and path.endswith("/invites"):
@@ -133,6 +135,21 @@ class _FakeApi:
             token = f"club-invite-{uuid.uuid4()}"
             self.club_invites[token] = club_id
             return httpx.Response(201, json={"token": token})
+
+        if method == "PATCH" and path.startswith("/clubs/") and path.count("/") == 2:
+            # Mirrors the real PATCH /clubs/:id's total_rounds growth
+            # (_reconcile_mixes): appends pending mixes numbered above
+            # whatever the highest existing mix_number is. Shrinking isn't
+            # modeled -- the seeding script only ever grows this club.
+            club_id = path.split("/")[2]
+            new_total = body.get("total_rounds")
+            if new_total is not None:
+                current_max = max(
+                    (m["mix_number"] for m in self.mixes.values() if m["club_id"] == club_id),
+                    default=0,
+                )
+                self._add_pending_mixes(club_id, start=current_max + 1, end=new_total)
+            return httpx.Response(200, json=self.clubs[club_id])
 
         if method == "GET" and path.startswith("/clubs/") and path.endswith("/mixes"):
             club_id = path.split("/")[2]
@@ -395,6 +412,61 @@ def test_rerun_is_idempotent(monkeypatch, fake_api):
     assert mix["state"] == "closed"
     assert len(api.notes[mix["id"]]) == 1
     assert len(api.submissions[mix["id"]]) == 4
+
+
+def test_club_2_opens_a_fresh_mix_after_the_reviewers_vote_closes_the_current_one(
+    monkeypatch, fake_api
+):
+    """Pins MysteryMixClub-4vii.40: Apple's reviewer casting their one
+    outstanding vote closes club 2's mix (quorum). A rerun of the script has
+    to find a SECOND mix ready for the same voting demo -- not leave the
+    club with nothing left to do for a follow-up review pass."""
+    api, client_factory = fake_api
+
+    first = _run(monkeypatch, client_factory)
+    assert first == 0
+
+    club2 = next(c for c in api.clubs.values() if c["name"] == "App Review Club 2")
+    mix1 = next(
+        m for m in api.mixes.values() if m["club_id"] == club2["id"] and m["mix_number"] == 1
+    )
+    assert mix1["state"] == "open_voting"
+
+    # The reviewer casts their outstanding vote directly, the same way
+    # Apple's reviewer would from the app -- closing mix 1 via quorum,
+    # exactly the live scenario 4vii.40 was filed against.
+    reviewer_account = sar.Account(
+        email=sar._DEFAULT_REVIEWER_EMAIL,
+        password=sar._derive_password(sar._DEFAULT_REVIEWER_EMAIL),
+        display_name="App Reviewer",
+        client=client_factory(),
+    )
+    assert reviewer_account.try_login()
+    playlist = reviewer_account.get(f"/mixes/{mix1['id']}/playlist")
+    candidates = [e["submission_id"] for e in playlist["entries"] if not e["is_own"]]
+    reviewer_account.post(f"/mixes/{mix1['id']}/votes", json={"submission_ids": candidates[:2]})
+    assert api.mixes[mix1["id"]]["state"] == "closed"
+
+    second = _run(monkeypatch, client_factory)
+    assert second == 0
+
+    mix2 = next(
+        m for m in api.mixes.values() if m["club_id"] == club2["id"] and m["mix_number"] == 2
+    )
+    assert mix2["state"] == "open_voting"
+    assert len(api.submissions[mix2["id"]]) == 3  # reviewer + 2 synthetic
+
+    reviewer = api.users[sar._DEFAULT_REVIEWER_EMAIL]
+    voter_ids = set(api.votes[mix2["id"]].keys())
+    assert reviewer["id"] not in voter_ids  # still the one thing left outstanding
+    assert len(voter_ids) == 2  # both synthetic members voted
+
+    # No duplicate club and no duplicate synthetic members from the reset.
+    assert sum(1 for c in api.clubs.values() if c["name"] == "App Review Club 2") == 1
+    club2_members = [
+        e for e in api.users if e.startswith("mmc-review-club2-") and e.endswith(sar._MEMBER_DOMAIN)
+    ]
+    assert len(club2_members) == 2
 
 
 def test_does_not_reuse_a_same_named_club_organized_by_someone_else(monkeypatch, fake_api):

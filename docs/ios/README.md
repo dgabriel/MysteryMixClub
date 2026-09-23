@@ -60,6 +60,41 @@ by native `URLSession` -- that means CORS applies, and the target backend's
 `ALLOWED_ORIGINS` must include `capacitor://localhost` (already true for
 staging and prod; see `scripts/staging.env.example` / `scripts/prod.env.example`).
 
+## Local API review in the iOS Simulator
+
+For an already-running local backend, use the explicit simulator build helper:
+
+```bash
+xcrun simctl list devices available
+xcrun simctl boot <simulator-uuid>  # only if it is shut down
+bash scripts/ios-simulator-local.sh <simulator-uuid> http://localhost:8000
+```
+
+The helper prints the built `.app` path and installation command. Install that
+path, then launch `com.mysterymixclub.app` in Simulator. This replaces the app
+on that simulator only; it does not install on a physical phone. The display
+name is **MMC Local Review**. Use the backend origin (usually port 8000), not
+the Vite frontend port. The native app bundles its own React frontend.
+
+The backend must allow `capacitor://localhost` in `ALLOWED_ORIGINS`. The helper
+does not start, restart, migrate, or reconfigure the backend. Existing review
+credentials remain outside scripts, build settings, and source control.
+
+Local HTTP requires all four conditions: `MMC_IOS_LOCAL_SIMULATOR=1`, Xcode
+`CONFIGURATION=Debug`, `PLATFORM_NAME=iphonesimulator`, and `ACTION=build`.
+Only loopback HTTP origins are accepted. The helper generates an isolated
+Info.plist with `NSAllowsLocalNetworking` in its temporary build directory;
+it does not change the shipping Info.plist or enable arbitrary network loads.
+No HTTPS certificate checks are disabled.
+
+Ordinary builds still require HTTPS. Release, physical-device, and archive
+builds reject the local flag. Do not globally export that flag. Xcode's normal
+web-sync phase regenerates the web bundle for each subsequent build.
+
+Simulator runs can verify UI and local account flows. MusicKit, real push
+delivery, Apple account integration, and distribution behavior still require
+appropriate physical-device/TestFlight evidence.
+
 ## Privacy manifest audit (`MysteryMixClub-4vii.17`, 2026-09-15)
 
 Apple requires a `PrivacyInfo.xcprivacy` manifest for any linked framework

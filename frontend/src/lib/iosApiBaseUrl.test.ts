@@ -18,3 +18,32 @@ describe("resolveIosApiBaseUrl (MysteryMixClub-4vii.12)", () => {
     expect(() => resolveIosApiBaseUrl("")).toThrow(/must be an https:\/\/ URL/);
   });
 });
+
+describe("local simulator API isolation", () => {
+  const context = { localSimulator: "1", configuration: "Debug", platform: "iphonesimulator", action: "build" };
+
+  it("allows explicit Debug simulator loopback origins", () => {
+    expect(resolveIosApiBaseUrl(undefined, context)).toBe("http://localhost:8000");
+    expect(resolveIosApiBaseUrl("http://127.0.0.1:8000/", context)).toBe("http://127.0.0.1:8000");
+    expect(resolveIosApiBaseUrl("http://[::1]:8000", context)).toBe("http://[::1]:8000");
+  });
+
+  it.each([
+    { configuration: "Release" }, { platform: "iphoneos" }, { action: "install" },
+    { localSimulator: "0" }, { configuration: undefined }, { platform: undefined }, { action: undefined },
+  ])("rejects unsafe or missing Xcode context: %j", (override) => {
+    expect(() => resolveIosApiBaseUrl("http://localhost:8000", { ...context, ...override })).toThrow(/explicit Debug/);
+  });
+
+  it.each([
+    "http://192.168.1.153:8000", "http://localhost.example.com:8000", "https://staging.mysterymixclub.com",
+    "http://user:password@localhost:8000", "http://localhost:8000/api", "http://localhost:8000?x=1",
+    "http://localhost:8000#fragment",
+  ])("rejects non-loopback origins and URL extras: %s", (url) => {
+    expect(() => resolveIosApiBaseUrl(url, context)).toThrow(/loopback HTTP origin/);
+  });
+
+  it("does not enable HTTP just because Xcode is building for a simulator", () => {
+    expect(() => resolveIosApiBaseUrl("http://localhost:8000", { ...context, localSimulator: undefined })).toThrow(/https/);
+  });
+});

@@ -6,7 +6,26 @@
  *  networking exception (MysteryMixClub-4vii.12), so a non-HTTPS backend is
  *  unreachable by construction, and a build that "succeeded" against one
  *  would just fail invisibly on-device instead of at build time. */
-export function resolveIosApiBaseUrl(envValue: string | undefined): string {
+export interface IosBuildContext {
+  localSimulator?: string;
+  configuration?: string;
+  platform?: string;
+  action?: string;
+}
+
+export function resolveIosApiBaseUrl(envValue: string | undefined, context: IosBuildContext = {}): string {
+  if (context.localSimulator !== undefined) {
+    if (context.localSimulator !== "1" || context.configuration !== "Debug" ||
+        context.platform !== "iphonesimulator" || context.action !== "build") {
+      throw new Error("Local API access requires an explicit Debug iphonesimulator build (not an archive).");
+    }
+    const url = new URL(envValue ?? "http://localhost:8000");
+    if (url.protocol !== "http:" || !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) ||
+        url.username || url.password || url.pathname !== "/" || url.search || url.hash) {
+      throw new Error("Local simulator API must be a loopback HTTP origin without credentials, path, query, or fragment.");
+    }
+    return url.origin;
+  }
   const apiBaseUrl = envValue ?? "https://staging.mysterymixclub.com";
   if (!apiBaseUrl.startsWith("https://")) {
     throw new Error(

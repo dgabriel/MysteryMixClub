@@ -12,7 +12,12 @@ import { resolveIosApiBaseUrl } from "./src/lib/iosApiBaseUrl";
 // HTTPS validation lives in src/lib/iosApiBaseUrl.ts (with its own tests)
 // rather than inline here, since this file sits outside vitest's src/**
 // coverage and couldn't otherwise be exercised directly.
-const apiBaseUrl = resolveIosApiBaseUrl(process.env.VITE_IOS_API_BASE_URL);
+const apiBaseUrl = resolveIosApiBaseUrl(process.env.VITE_IOS_API_BASE_URL, {
+  localSimulator: process.env.MMC_IOS_LOCAL_SIMULATOR,
+  configuration: process.env.CONFIGURATION,
+  platform: process.env.PLATFORM_NAME,
+  action: process.env.ACTION,
+});
 
 export default defineConfig({
   publicDir: path.resolve(__dirname, "public"),

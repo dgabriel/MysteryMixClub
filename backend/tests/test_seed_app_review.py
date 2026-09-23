@@ -41,7 +41,7 @@ class _FakeApi:
         self.tokens: dict[str, str] = {}  # access_token -> email
         self.club_invites: dict[str, str] = {}  # token -> club_id
         self.clubs: dict[str, dict[str, Any]] = {}
-        self.mixes: dict[str, dict[str, Any]] = {}  # mix_id -> {..., club_id, round_number}
+        self.mixes: dict[str, dict[str, Any]] = {}  # mix_id -> {..., club_id, mix_number}
         self.submissions: dict[str, list[dict[str, Any]]] = {}  # mix_id -> [submission]
         self.votes: dict[str, dict[str, list[str]]] = {}  # mix_id -> {user_id: [submission_id]}
         self.notes: dict[str, set[tuple[str, str]]] = {}  # mix_id -> {(author_id, submission_id)}
@@ -119,7 +119,7 @@ class _FakeApi:
                 self.mixes[mix_id] = {
                     "id": mix_id,
                     "club_id": club_id,
-                    "round_number": n,
+                    "mix_number": n,
                     "theme": None,
                     "state": "pending",
                 }
@@ -326,7 +326,7 @@ def test_full_run_reaches_all_three_target_states(monkeypatch, fake_api, capsys)
 
     def mix1(club_id: str) -> dict:
         return next(
-            m for m in api.mixes.values() if m["club_id"] == club_id and m["round_number"] == 1
+            m for m in api.mixes.values() if m["club_id"] == club_id and m["mix_number"] == 1
         )
 
     club1_mix = mix1(clubs["App Review Club 1"]["id"])
@@ -363,7 +363,7 @@ def test_completed_club_leaves_a_note_before_the_closing_vote(monkeypatch, fake_
     assert exit_code == 0
     club1 = next(c for c in api.clubs.values() if c["name"] == "App Review Club 1")
     mix = next(
-        m for m in api.mixes.values() if m["club_id"] == club1["id"] and m["round_number"] == 1
+        m for m in api.mixes.values() if m["club_id"] == club1["id"] and m["mix_number"] == 1
     )
     assert mix["state"] == "closed"
     assert len(api.notes[mix["id"]]) == 1
@@ -389,7 +389,7 @@ def test_rerun_is_idempotent(monkeypatch, fake_api):
     assert len(api.clubs) == club_count
     club1 = next(c for c in api.clubs.values() if c["name"] == "App Review Club 1")
     mix = next(
-        m for m in api.mixes.values() if m["club_id"] == club1["id"] and m["round_number"] == 1
+        m for m in api.mixes.values() if m["club_id"] == club1["id"] and m["mix_number"] == 1
     )
     # Still closed, still exactly one note -- no duplicate vote/note attempts.
     assert mix["state"] == "closed"

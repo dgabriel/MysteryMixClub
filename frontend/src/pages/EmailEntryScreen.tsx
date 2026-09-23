@@ -285,9 +285,18 @@ export function EmailEntryScreen({
             than a change to the shared BrandLockup (used elsewhere under
             TopNav, where this doesn't apply either way). */}
           <BrandLockup as="h1" className={isNativeIOS ? "mt-[10px]" : ""}>
-            <div className="mt-3 flex justify-center sm:justify-start">
-              <Badge>beta</Badge>
-            </div>
+            {/* Hidden on native (MysteryMixClub-4vii.41): Guideline 2.2 says
+                a beta label belongs in TestFlight, not a public App Store
+                binary -- and since a submitted archive and its TestFlight
+                build are the same bytes, there's no build-time way to tell
+                "under review" from "already live" apart, so this is off for
+                every native build rather than just the store-bound one. Web
+                keeps it; the product genuinely is invite-only/beta there. */}
+            {!isNativeIOS ? (
+              <div className="mt-3 flex justify-center sm:justify-start">
+                <Badge>beta</Badge>
+              </div>
+            ) : null}
           </BrandLockup>
           <p className="mt-2 text-center text-sm leading-[1.72] text-ink-muted">
             invite-only. sign in with your email.

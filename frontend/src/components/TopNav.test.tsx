@@ -7,6 +7,17 @@ import { useAuth } from "../hooks/useAuth";
 
 vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
 
+// Mutable so a single test (MysteryMixClub-4vii.41) can flip native mode on;
+// vi.hoisted lifts this above vi.mock's own hoisting so the factory below can
+// close over it. Every other test leaves it false, matching IS_NATIVE_BUILD's
+// real value in this (non-Capacitor) test environment.
+const platform = vi.hoisted(() => ({ isNative: false }));
+vi.mock("../lib/platform", () => ({
+  get IS_NATIVE_BUILD() {
+    return platform.isNative;
+  },
+}));
+
 const mockUseAuth = vi.mocked(useAuth);
 const logout = vi.fn();
 
@@ -75,6 +86,7 @@ function renderNav(ui = <TopNav />, at = "/start") {
 describe("TopNav", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    platform.isNative = false;
     setAuth(false);
   });
 
@@ -211,6 +223,34 @@ describe("TopNav", () => {
 
       await user.click(screen.getByRole("button", { name: /^open menu$/i }));
       expect(screen.getAllByRole("button", { name: /^admin$/i })).toHaveLength(2);
+    });
+  });
+
+  describe("beta badge (MysteryMixClub-4vii.41: Guideline 2.2, no beta label in the App Store build)", () => {
+    it("shows the what's new / beta trigger on web, authed", () => {
+      renderNav();
+      expect(screen.getByRole("button", { name: /^what's new$/i })).toBeInTheDocument();
+    });
+
+    it("shows the what's new / beta trigger on web, signed-out", () => {
+      setUnauthed();
+      renderNav();
+      expect(screen.getByRole("button", { name: /^what's new$/i })).toBeInTheDocument();
+    });
+
+    it("hides the beta badge entirely on a native build, authed", () => {
+      platform.isNative = true;
+      renderNav();
+      expect(screen.queryByRole("button", { name: /^what's new$/i })).not.toBeInTheDocument();
+      expect(screen.queryByText("beta")).not.toBeInTheDocument();
+    });
+
+    it("hides the beta badge entirely on a native build, signed-out", () => {
+      platform.isNative = true;
+      setUnauthed();
+      renderNav();
+      expect(screen.queryByRole("button", { name: /^what's new$/i })).not.toBeInTheDocument();
+      expect(screen.queryByText("beta")).not.toBeInTheDocument();
     });
   });
 

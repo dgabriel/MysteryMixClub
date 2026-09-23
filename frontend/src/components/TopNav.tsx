@@ -152,7 +152,14 @@ export function TopNav({ back }: TopNavProps) {
     markLatestReleaseSeen();
     setShowReleaseNotes(false);
   }
-  const betaBadge = (
+  // Hidden on native (MysteryMixClub-4vii.41): Guideline 2.2 says a beta
+  // label belongs in TestFlight, not a public App Store binary -- and a
+  // submitted archive and its TestFlight build are the same bytes, so there's
+  // no build-time way to tell "under review" from "already live" apart. Off
+  // for every native build rather than just the store-bound one; the
+  // "what's new" trigger this doubles as is lost there, but AuthedLayout's
+  // own once-per-release auto-popup still surfaces new release notes.
+  const betaBadge = IS_NATIVE_BUILD ? null : (
     <button type="button" onClick={() => setShowReleaseNotes(true)} aria-label="what's new">
       <Badge>beta</Badge>
     </button>

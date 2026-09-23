@@ -921,6 +921,22 @@ describe("LoginRoute", () => {
     expect(heading.parentElement?.parentElement?.className).not.toContain("mt-[10px]");
   });
 
+  // --- beta badge hidden on native (MysteryMixClub-4vii.41: Guideline 2.2) - //
+
+  it("shows the beta badge on web", () => {
+    mockGetPlatform.mockReturnValue("web");
+    renderLogin();
+
+    expect(screen.getByText("beta")).toBeInTheDocument();
+  });
+
+  it("hides the beta badge on native iOS -- a beta label belongs in TestFlight, not the App Store build", () => {
+    mockGetPlatform.mockReturnValue("ios");
+    renderLogin();
+
+    expect(screen.queryByText("beta")).not.toBeInTheDocument();
+  });
+
   // --- form semantics and validation ---------------------------------------- //
 
   it("the method switcher is a labelled group of pressed-state buttons, not ARIA tabs", async () => {

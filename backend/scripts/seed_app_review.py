@@ -346,7 +346,7 @@ def ensure_mix_open_for_voting(organizer: Account, mix_id: str) -> dict[str, Any
     mix = organizer.get(f"/mixes/{mix_id}")
     if mix["state"] == "open_submission":
         mix = organizer.patch(f"/mixes/{mix_id}", json={"state": "open_voting"})
-        print(f"    mix 1: opened for voting (state now {mix['state']!r})")
+        print(f"    mix {mix['mix_number']}: opened for voting (state now {mix['state']!r})")
     return mix
 
 

@@ -10,7 +10,11 @@ lifecycle states without hunting for them. This builds exactly that:
       1. COMPLETED    -- several submissions, votes, notes, a revealed result
       2. OPEN VOTING  -- synthetic submissions in; the reviewer's own vote is
                          the one thing left outstanding, so there's something
-                         to actually DO when they open the club
+                         to actually DO when they open the club. Casting that
+                         vote closes the mix (quorum), so a RERUN of this
+                         script opens the club's next mix the same way --
+                         MysteryMixClub-4vii.40's repeatable reset for a
+                         second Apple review pass, not a one-shot fixture.
       3. OPEN SUBMISSION -- left almost empty so the reviewer can add, edit,
                          and remove their own submission freely
 
@@ -90,6 +94,27 @@ _SONG_POOL = [
 # How many synthetic members join each club, on top of the reviewer.
 CLUB_1_MEMBERS = 3  # + the reviewer = 4 playing submitters
 CLUB_2_MEMBERS = 2  # + the reviewer = 3 playing submitters
+
+# Club 2's own mix sequence is kept at least this many PENDING mixes deep
+# (MysteryMixClub-4vii.40) -- topped up on every run, not just when it's
+# about to run dry. The reviewer's outstanding vote closes a mix (quorum) the
+# moment it's cast, live, outside any script run this code can observe; once
+# a club's FINAL mix closes that way the club itself goes `complete` and
+# PATCH /clubs/:id refuses to grow it further (409), so headroom has to stay
+# ahead of wherever a live reviewer might be, not be topped up reactively
+# after the fact.
+CLUB_2_MIX_BUFFER = 5
+
+# Cycled by mix_number so a rerun's fresh mix isn't literally the same theme
+# as the one that just closed -- cosmetic, but confusing to a reviewer doing
+# a second pass if the demo looked identical to the first.
+_CLUB_2_THEMES = [
+    "One-Hit Wonders",
+    "Songs From a Movie Soundtrack",
+    "Guilty Pleasures",
+    "Songs to Play at a Wedding",
+    "Songs Under Three Minutes",
+]
 
 
 def _derive_password(email: str) -> str:
@@ -280,15 +305,41 @@ def ensure_member(
     return account
 
 
-def ensure_mix_open_for_submission(organizer: Account, club_id: str, theme: str) -> dict[str, Any]:
+def _mix_by_number(organizer: Account, club_id: str, number: int) -> dict[str, Any]:
     mixes = organizer.get(f"/clubs/{club_id}/mixes")
-    mix = next(m for m in mixes if m["mix_number"] == 1)
+    return next(m for m in mixes if m["mix_number"] == number)
+
+
+def ensure_mix_open_for_submission(
+    organizer: Account, mix: dict[str, Any], theme: str
+) -> dict[str, Any]:
+    """Opens `mix` for submission if it's still pending -- a no-op on a
+    rerun that finds it already open_submission or later."""
     if mix["state"] == "pending":
         mix = organizer.patch(
             f"/mixes/{mix['id']}", json={"theme": theme, "state": "open_submission"}
         )
-        print(f"    mix 1: opened for submission ({theme!r})")
+        print(f"    mix {mix['mix_number']}: opened for submission ({theme!r})")
     return mix
+
+
+def _next_club_2_mix(reviewer: Account, club: dict[str, Any]) -> dict[str, Any]:
+    """The mix to prep for the OPEN VOTING demo (MysteryMixClub-4vii.40):
+    whichever one is already open_voting (idempotent -- nothing left to set
+    up), else the lowest-numbered pending one. Grows the club's total_rounds
+    first if it's running low on pending mixes -- see CLUB_2_MIX_BUFFER for
+    why that has to happen proactively, not only once the slate is empty."""
+    mixes = sorted(reviewer.get(f"/clubs/{club['id']}/mixes"), key=lambda m: m["mix_number"])
+    pending = [m for m in mixes if m["state"] == "pending"]
+    if len(pending) < CLUB_2_MIX_BUFFER:
+        new_total = mixes[-1]["mix_number"] + CLUB_2_MIX_BUFFER
+        reviewer.patch(f"/clubs/{club['id']}", json={"total_rounds": new_total})
+        print(f"    grew to {new_total} mixes (headroom for future review passes)")
+        mixes = sorted(reviewer.get(f"/clubs/{club['id']}/mixes"), key=lambda m: m["mix_number"])
+    target = next((m for m in mixes if m["state"] == "open_voting"), None)
+    if target is not None:
+        return target
+    return next(m for m in mixes if m["state"] in ("pending", "open_submission"))
 
 
 def ensure_mix_open_for_voting(organizer: Account, mix_id: str) -> dict[str, Any]:
@@ -397,7 +448,9 @@ def build_club_completed(
         )
         for n in range(1, CLUB_1_MEMBERS + 1)
     ]
-    mix = ensure_mix_open_for_submission(reviewer, club["id"], "Songs for a Long Drive")
+    mix = ensure_mix_open_for_submission(
+        reviewer, _mix_by_number(reviewer, club["id"], 1), "Songs for a Long Drive"
+    )
     for m in members:
         ensure_submission(m, mix["id"])
     mix = ensure_mix_open_for_voting(reviewer, mix["id"])
@@ -423,8 +476,9 @@ def build_club_open_voting(
         reviewer,
         name,
         "A mystery mix open for voting, for App Store review -- the reviewer's own vote is "
-        "the one thing left to do here.",
-        total_rounds=3,
+        "the one thing left to do here. Rerun the seeding script for another review pass: it "
+        "opens the club's next mix the same way once this one closes.",
+        total_rounds=CLUB_2_MIX_BUFFER,
     )
     members = [reviewer] + [
         ensure_member(
@@ -436,14 +490,18 @@ def build_club_open_voting(
         )
         for n in range(1, CLUB_2_MEMBERS + 1)
     ]
-    mix = ensure_mix_open_for_submission(reviewer, club["id"], "One-Hit Wonders")
+    mix = _next_club_2_mix(reviewer, club)
+    theme = _CLUB_2_THEMES[(mix["mix_number"] - 1) % len(_CLUB_2_THEMES)]
+    mix = ensure_mix_open_for_submission(reviewer, mix, theme)
     for m in members:
         ensure_submission(m, mix["id"])
     mix = ensure_mix_open_for_voting(reviewer, mix["id"])
     # Only the synthetic members vote -- the reviewer's own vote is left
     # outstanding on purpose, so there's something to do when they check the
     # build. Casting it here would immediately close the mix (quorum) and
-    # defeat the point.
+    # defeat the point. A rerun after that vote happens live finds the NEXT
+    # pending mix via _next_club_2_mix and repeats this same setup
+    # (MysteryMixClub-4vii.40) -- a repeatable reset, not a one-shot fixture.
     for m in members[1:]:
         cast_vote_for_others(m, mix["id"], max_votes=2)
     return ClubBuild(id=club["id"], mix_id=mix["id"], name=name, members=members)
@@ -459,7 +517,9 @@ def build_club_open_submission(reviewer: Account) -> ClubBuild:
         "edit, and remove their own submission here.",
         total_rounds=3,
     )
-    mix = ensure_mix_open_for_submission(reviewer, club["id"], "Songs About the Sea")
+    mix = ensure_mix_open_for_submission(
+        reviewer, _mix_by_number(reviewer, club["id"], 1), "Songs About the Sea"
+    )
     # Left otherwise empty on purpose (no synthetic submissions) so the
     # reviewer's add/edit/remove cycle only ever touches their own row.
     return ClubBuild(id=club["id"], mix_id=mix["id"], name=name, members=[reviewer])
@@ -542,7 +602,9 @@ SUGGESTED REVIEW FLOW
 2. Open "{club1.name}" -- a completed mystery mix: results, notes, and
    provider links.
 3. Open "{club2.name}" -- open for voting. Cast a vote to see the flow
-   through to a result.
+   through to a result. NOTE FOR A SECOND REVIEW PASS: casting that vote
+   closes the mix. Rerunning this same script opens a fresh mix in the
+   same club, ready for another vote -- no need to recreate the account.
 4. Open "{club3.name}" -- open for submission. Add, edit, and remove a
    submission.
 """

@@ -11,8 +11,10 @@
 #      from) and pulls the latest code on it.
 #   3. Creates backend/.env from .env.example (with a generated SECRET_KEY) if absent.
 #   4. Stops any dev instance this script previously started, then spins up a fresh
-#      one: Postgres (docker compose) + API (uvicorn) + web (vite), in the
-#      background with logs under .dev/logs/.
+#      one: Postgres (docker compose) + API (uvicorn) + web (vite) + the
+#      playlist worker (app.jobs.playlist_worker, MYS-258 -- without it, a
+#      mix's Spotify playlist job sits queued forever), in the background
+#      with logs under .dev/logs/.
 #
 # Optional integrations — fill these into backend/.env to light them up:
 #
@@ -259,7 +261,7 @@ ensure_hooks() {
 # --- process lifecycle ----------------------------------------------------- #
 stop_instance() {
   local stopped=0 name pf pid
-  for name in backend frontend; do
+  for name in backend frontend playlist-worker; do
     pf="$PID_DIR/$name.pid"
     [ -f "$pf" ] || continue
     pid="$(cat "$pf" 2>/dev/null || true)"
@@ -320,6 +322,23 @@ start_frontend() {
     echo $! >"$PID_DIR/frontend.pid" )
 }
 
+start_playlist_worker() {
+  local venv="$REPO_ROOT/backend/.venv"
+  info "Starting playlist worker…"
+  # Without this, a mix's Spotify playlist job sits QUEUED forever in local
+  # dev -- staging/prod run app.jobs.playlist_worker continuously as a
+  # systemd service (scripts/mysterymixclub-playlist-worker.service), but
+  # nothing here ever did, so playlist status stayed stuck on "building"
+  # indefinitely for any locally-created mix. Safe to run unconditionally,
+  # even with Spotify unconfigured or the shared account not connected --
+  # _generate_for_job treats both as a normal no-op ("complete", no
+  # playlist), never a crash (see app/jobs/playlist_worker.py).
+  ( cd "$REPO_ROOT/backend"
+    nohup "$venv/bin/python" -m app.jobs.playlist_worker \
+      </dev/null >"$LOG_DIR/playlist-worker.log" 2>&1 &
+    echo $! >"$PID_DIR/playlist-worker.pid" )
+}
+
 wait_for_api() {
   info "Waiting for the API to answer…"
   for _ in $(seq 1 30); do
@@ -340,11 +359,14 @@ summary() {
   API   : http://127.0.0.1:8000   (docs: /docs, health: /api/v1/healthz)
   DB    : postgres://mmc:mmc@127.0.0.1:5432/mysterymixclub
 
-  Logs  : .dev/logs/backend.log , .dev/logs/frontend.log
+  Logs  : .dev/logs/backend.log , .dev/logs/frontend.log , .dev/logs/playlist-worker.log
           tail with: scripts/dev-up.sh logs
   Stop  : scripts/dev-up.sh stop        (Postgres keeps running; 'docker compose stop db' to stop it)
   Sign-in is magic-link based; in dev (no RESEND_API_KEY) the link is printed to the API log.
-  Spotify playlist export needs SPOTIFY_CLIENT_ID/SECRET in backend/.env (see top of this script).
+  Spotify playlist export needs SPOTIFY_CLIENT_ID/SECRET in backend/.env (see top of this script),
+  AND the shared connector account (SPOTIFY_PLAYLIST_ACCOUNT_USER_ID) actually connected via
+  the app's own Spotify OAuth flow -- the worker now runs continuously, but a mix's playlist
+  job still no-ops (not a crash) until that account is connected.
 EOF
 }
 
@@ -400,5 +422,6 @@ stop_instance
 start_db
 start_backend
 start_frontend
+start_playlist_worker
 wait_for_api
 summary

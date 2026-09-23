@@ -1117,6 +1117,13 @@ async def get_mix_playlist(
 
 
 class ResultNote(WireModel):
+    # id/author_id (MysteryMixClub-4vii.39): the reveal rendered notes
+    # read-only with no report action at all -- Guideline 1.2 review found
+    # reporting only ever reached the live open_voting composer (SongNotes),
+    # never the post-close reveal. Needed to POST /reports (content_id) and
+    # to hide the action on the viewer's own note.
+    id: str
+    author_id: str
     body: str
     author_display_name: str
     created_at: datetime
@@ -1300,6 +1307,8 @@ async def get_mix_results(
     for note, display_name in note_rows:
         notes_by_submission.setdefault(note.submission_id, []).append(
             ResultNote(
+                id=str(note.id),
+                author_id=str(note.author_id),
                 body=note.body,
                 author_display_name=display_name,
                 created_at=note.created_at,
@@ -1361,6 +1370,8 @@ async def get_mix_results(
                 note_count=w.note_count,
                 notes=[
                     ResultNote(
+                        id=str(n.id),
+                        author_id=str(n.author_id),
                         body=n.body,
                         author_display_name=n.author_display_name,
                         created_at=n.created_at,

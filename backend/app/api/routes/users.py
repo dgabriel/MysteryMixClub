@@ -368,7 +368,13 @@ async def get_my_submission_history(
         if mix_state != "closed" and note.author_id != current_user.id:
             continue
         notes_by_submission.setdefault(note.submission_id, []).append(
-            ResultNote(body=note.body, author_display_name=display_name, created_at=note.created_at)
+            ResultNote(
+                id=str(note.id),
+                author_id=str(note.author_id),
+                body=note.body,
+                author_display_name=display_name,
+                created_at=note.created_at,
+            )
         )
 
     return [

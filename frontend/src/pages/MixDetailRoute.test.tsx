@@ -2820,7 +2820,15 @@ describe("MixDetailRoute", () => {
             source_url: null,
             platforms: { spotify: "https://open.spotify.com/track/x" },
             submitter_note: null,
-            notes: [{ body: "this one got me", author_display_name: "Ada", created_at: "x" }],
+            notes: [
+              {
+                id: "note-1",
+                author_id: "user-ada",
+                body: "this one got me",
+                author_display_name: "Ada",
+                created_at: "x",
+              },
+            ],
           },
         ],
       });
@@ -2921,8 +2929,20 @@ describe("MixDetailRoute", () => {
               artist: "Billie Eilish",
               note_count: 2,
               notes: [
-                { body: "an absolute banger", author_display_name: "Ada", created_at: "x" },
-                { body: "haunting bassline", author_display_name: "Cal", created_at: "y" },
+                {
+                  id: "note-2",
+                  author_id: "user-ada",
+                  body: "an absolute banger",
+                  author_display_name: "Ada",
+                  created_at: "x",
+                },
+                {
+                  id: "note-3",
+                  author_id: "user-cal",
+                  body: "haunting bassline",
+                  author_display_name: "Cal",
+                  created_at: "y",
+                },
               ],
             },
           ],
@@ -2944,6 +2964,45 @@ describe("MixDetailRoute", () => {
       expect(within(section).getByText("Cal")).toBeInTheDocument();
     });
 
+    it("Most Noted: notes offer 'report', same as the picks list (MysteryMixClub-4vii.39)", async () => {
+      const user = userEvent.setup();
+      setupClosed({
+        submissions: [sub({ vote_count: 2, notes: [] })],
+        most_noted: {
+          note_count: 1,
+          winners: [
+            {
+              submission_id: "s1",
+              title: "Bad Guy",
+              artist: "Billie Eilish",
+              note_count: 1,
+              notes: [
+                {
+                  id: "note-mn-1",
+                  author_id: OTHER,
+                  body: "an absolute banger",
+                  author_display_name: "Ada",
+                  created_at: "x",
+                },
+              ],
+            },
+          ],
+        },
+      });
+      renderMix();
+
+      await screen.findByRole("heading", { name: /most noted/i });
+      const section = sectionFor(/most noted/i);
+      await user.click(within(section).getByRole("button", { name: "report" }));
+      const dialog = await screen.findByRole("dialog");
+      await user.click(within(dialog).getByRole("radio", { name: "inappropriate content" }));
+      await user.click(within(dialog).getByRole("button", { name: "submit report" }));
+
+      await waitFor(() =>
+        expect(mockReportNote).toHaveBeenCalledWith("note-mn-1", "inappropriate_content", ""),
+      );
+    });
+
     it("Most Noted: a tie renders both winners as co-recognized", async () => {
       setupClosed({
         submissions: [
@@ -2958,14 +3017,30 @@ describe("MixDetailRoute", () => {
               title: "Bad Guy",
               artist: "Billie Eilish",
               note_count: 3,
-              notes: [{ body: "loved it", author_display_name: "Ada", created_at: "x" }],
+              notes: [
+                {
+                  id: "note-4",
+                  author_id: "user-ada",
+                  body: "loved it",
+                  author_display_name: "Ada",
+                  created_at: "x",
+                },
+              ],
             },
             {
               submission_id: "s2",
               title: "Vienna",
               artist: "Billy Joel",
               note_count: 3,
-              notes: [{ body: "timeless", author_display_name: "Cal", created_at: "y" }],
+              notes: [
+                {
+                  id: "note-5",
+                  author_id: "user-cal",
+                  body: "timeless",
+                  author_display_name: "Cal",
+                  created_at: "y",
+                },
+              ],
             },
           ],
         },
@@ -3254,7 +3329,15 @@ describe("MixDetailRoute", () => {
             artist: "Billie Eilish",
             submitter_note: "a banger",
             vote_count: 2,
-            notes: [{ body: "this slaps", author_display_name: "Ada", created_at: "x" }],
+            notes: [
+              {
+                id: "note-6",
+                author_id: "user-ada",
+                body: "this slaps",
+                author_display_name: "Ada",
+                created_at: "x",
+              },
+            ],
           }),
         ],
       });
@@ -3282,8 +3365,20 @@ describe("MixDetailRoute", () => {
             title: "Bad Guy",
             vote_count: 1,
             notes: [
-              { body: "this slaps", author_display_name: "Ada", created_at: "x" },
-              { body: "on repeat", author_display_name: "Cal", created_at: "y" },
+              {
+                id: "note-7",
+                author_id: "user-ada",
+                body: "this slaps",
+                author_display_name: "Ada",
+                created_at: "x",
+              },
+              {
+                id: "note-8",
+                author_id: "user-cal",
+                body: "on repeat",
+                author_display_name: "Cal",
+                created_at: "y",
+              },
             ],
           }),
         ],
@@ -3306,6 +3401,48 @@ describe("MixDetailRoute", () => {
       // collapses again
       await user.click(within(card).getByRole("button", { name: /hide 2 notes/i }));
       expect(within(card).queryByText("this slaps")).not.toBeInTheDocument();
+    });
+
+    it("Submissions: offers 'report' on a completed mix's notes too, not just while voting (MysteryMixClub-4vii.39)", async () => {
+      const user = userEvent.setup();
+      setupClosed({
+        submissions: [
+          sub({
+            title: "Bad Guy",
+            vote_count: 2,
+            notes: [
+              {
+                id: "note-9",
+                author_id: OTHER,
+                body: "this slaps",
+                author_display_name: "Ada",
+                created_at: "x",
+              },
+              {
+                id: "note-10",
+                author_id: ORGANIZER, // the viewer's own -- no report on this one
+                author_display_name: "x",
+                body: "my own take",
+                created_at: "y",
+              },
+            ],
+          }),
+        ],
+      });
+      renderMix();
+
+      await screen.findByRole("heading", { name: /the picks/i });
+      const card = cardFor("Bad Guy");
+      await user.click(within(card).getByRole("button", { name: /show 2 notes/i }));
+
+      expect(within(card).getAllByRole("button", { name: "report" })).toHaveLength(1);
+      await user.click(within(card).getByRole("button", { name: "report" }));
+      const dialog = await screen.findByRole("dialog");
+      await user.click(within(dialog).getByRole("radio", { name: "harassment" }));
+      await user.click(within(dialog).getByRole("button", { name: "submit report" }));
+
+      await waitFor(() => expect(mockReportNote).toHaveBeenCalledWith("note-9", "harassment", ""));
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
 
     it("Submissions: the caller's own submission is labelled 'you'", async () => {

@@ -2717,19 +2717,51 @@ function SongNotes({
 }
 
 /** A list of reveal notes (body + author), shared by Most Noted and each
- *  submission card. Calm, read-only — no composer in the closed view. */
-function ResultNoteList({ notes }: { notes: ResultNote[] }) {
+ *  submission card. Calm, read-only — no composer in the closed view. Still
+ *  reportable, though (MysteryMixClub-4vii.13/4vii.39): the reveal is the
+ *  ONLY place a vibing viewer's or a completed mix's notes are ever visible
+ *  to other members, so a report action has to live here too, not just on
+ *  SongNotes' live open_voting composer+list. Same report pattern as
+ *  SongNotes: ReportContentModal itself surfaces a submit failure, so this
+ *  doesn't need its own error state. */
+function ResultNoteList({ notes, userId }: { notes: ResultNote[]; userId: string | null }) {
+  const [reportingNote, setReportingNote] = useState<ResultNote | null>(null);
+
   return (
-    <ul className="space-y-3">
-      {notes.map((note, i) => (
-        <li key={i}>
-          <p className="text-sm leading-[1.65] text-foreground">{note.body}</p>
-          <span className="mt-1 block font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
-            {note.author_display_name}
-          </span>
-        </li>
-      ))}
-    </ul>
+    <>
+      <ul className="space-y-3">
+        {notes.map((note) => (
+          <li key={note.id}>
+            <p className="text-sm leading-[1.65] text-foreground">{note.body}</p>
+            <div className="mt-1 flex items-center gap-3">
+              <span className="block font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
+                {note.author_display_name}
+              </span>
+              {note.author_id !== userId ? (
+                <button
+                  type="button"
+                  onClick={() => setReportingNote(note)}
+                  className="font-mono uppercase tracking-mono-caps text-mini text-muted-foreground underline underline-offset-[3px] hover:text-foreground"
+                >
+                  report
+                </button>
+              ) : null}
+            </div>
+          </li>
+        ))}
+      </ul>
+
+      {reportingNote ? (
+        <ReportContentModal
+          contentPreview={reportingNote.body}
+          onSubmit={async (reason, detail) => {
+            await reportNote(reportingNote.id, reason, detail);
+            setReportingNote(null);
+          }}
+          onDismiss={() => setReportingNote(null)}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -2782,7 +2814,7 @@ function topPlayers(groups: PlayerGroup[]): PlayerGroup[] {
  * toggle so a long thread doesn't bury the picks list (MYS-72). Used on the
  * picks cards; Most Noted keeps its notes open, since seeing them is the point.
  */
-function CollapsibleNotes({ notes }: { notes: ResultNote[] }) {
+function CollapsibleNotes({ notes, userId }: { notes: ResultNote[]; userId: string | null }) {
   const [open, setOpen] = useState(false);
   const label = `${notes.length} ${notes.length === 1 ? "note" : "notes"}`;
   return (
@@ -2797,7 +2829,7 @@ function CollapsibleNotes({ notes }: { notes: ResultNote[] }) {
       </button>
       {open ? (
         <div className="mt-4">
-          <ResultNoteList notes={notes} />
+          <ResultNoteList notes={notes} userId={userId} />
         </div>
       ) : null}
     </div>
@@ -2833,7 +2865,7 @@ function ResultsSection({
   // A vibing viewer gets the trimmed reveal — winner(s) + Most Noted + their own
   // song's notes, no rankings or vote counts (MYS-112).
   if (results.viewer_is_vibing) {
-    return <VibingReveal results={results} onActionError={onActionError} />;
+    return <VibingReveal results={results} userId={userId} onActionError={onActionError} />;
   }
 
   if (results.submissions.length === 0) {
@@ -2847,7 +2879,9 @@ function ResultsSection({
 
   return (
     <div className="animate-fade-in space-y-12">
-      {most_noted.winners.length > 0 ? <MostNotedSection winners={most_noted.winners} /> : null}
+      {most_noted.winners.length > 0 ? (
+        <MostNotedSection winners={most_noted.winners} userId={userId} />
+      ) : null}
 
       {winners.length > 0 ? <WinnersSection winners={winners} nameFor={nameFor} /> : null}
 
@@ -2912,7 +2946,9 @@ function ResultsSection({
                             .join(", ")}
                         </p>
                       ) : null}
-                      {s.notes.length > 0 ? <CollapsibleNotes notes={s.notes} /> : null}
+                      {s.notes.length > 0 ? (
+                        <CollapsibleNotes notes={s.notes} userId={userId} />
+                      ) : null}
                     </div>
                   </div>
                 </Card>
@@ -2984,15 +3020,19 @@ function RankBadge({ rank }: { rank: number }) {
  */
 function VibingReveal({
   results,
+  userId,
   onActionError,
 }: {
   results: MixResults;
+  userId: string | null;
   onActionError: (message: string | null) => void;
 }) {
   const { most_noted, winners, picks } = results;
   return (
     <div className="animate-fade-in space-y-12">
-      {most_noted.winners.length > 0 ? <MostNotedSection winners={most_noted.winners} /> : null}
+      {most_noted.winners.length > 0 ? (
+        <MostNotedSection winners={most_noted.winners} userId={userId} />
+      ) : null}
 
       {winners.length > 0 ? <VibeWinnersSection winners={winners} /> : null}
 
@@ -3096,7 +3136,13 @@ function VibePicksSection({
  * a tie co-recognizes at most a handful of picks and is the rare case, not the
  * shape of the list.
  */
-function MostNotedSection({ winners }: { winners: MostNotedWinner[] }) {
+function MostNotedSection({
+  winners,
+  userId,
+}: {
+  winners: MostNotedWinner[];
+  userId: string | null;
+}) {
   const tie = winners.length > 1;
   return (
     <section>
@@ -3123,7 +3169,7 @@ function MostNotedSection({ winners }: { winners: MostNotedWinner[] }) {
               ) : null}
               {w.notes.length > 0 ? (
                 <div className="mt-5 border-t border-hairline-soft pt-5">
-                  <ResultNoteList notes={w.notes} />
+                  <ResultNoteList notes={w.notes} userId={userId} />
                 </div>
               ) : null}
             </Card>

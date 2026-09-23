@@ -1479,8 +1479,12 @@ export async function getMixSubmissions(mixId: string): Promise<SubmissionResult
 // closed (GET /mixes/:id/results → 409 while still open).
 // --------------------------------------------------------------------------- //
 
-/** A note shown in the reveal — body + author, no edit affordances. */
+/** A note shown in the reveal — body + author, no edit affordances.
+ *  id/author_id (MysteryMixClub-4vii.39): needed to report the note via
+ *  POST /reports and to hide that action on the viewer's own. */
 export type ResultNote = {
+  id: string;
+  author_id: string;
   body: string;
   author_display_name: string;
   created_at: string;

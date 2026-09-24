@@ -35,6 +35,7 @@ from app.auth.jwt import (
     JWTError,
     create_access_token,
     create_sign_in_state,
+    decode_access_token_session_id,
     decode_google_link_state,
     decode_sign_in_state,
 )
@@ -106,6 +107,16 @@ _REFRESH_COOKIE_SAMESITE: Literal["lax"] = "lax"
 # the server-side expiry check both derive from this so they can never drift.
 _REFRESH_TOKEN_TTL = timedelta(days=30)
 _REFRESH_TOKEN_MAX_AGE = int(_REFRESH_TOKEN_TTL.total_seconds())
+# The iOS app's WebView origin (Capacitor's default iOS scheme). Its requests to
+# the API are cross-site, so the SameSite=Lax refresh cookie is never sent back
+# (MysteryMixClub-kw2u). A browser sets Origin itself and page script cannot,
+# so a web page -- even one running injected script -- can never ask for the
+# refresh token in a response body (ADR 0037).
+_NATIVE_APP_ORIGIN = "capacitor://localhost"
+# How the iOS app presents its Keychain-held refresh token instead of the cookie.
+# A custom header can't be sent cross-site without a CORS preflight, so this
+# adds no CSRF surface.
+_REFRESH_TOKEN_HEADER = "X-Refresh-Token"
 _DEVICE_HINT_MAX_LENGTH = 255
 
 # Anti-CSRF nonce for the Google round-trip (ADR 0007). Scoped to the Google
@@ -191,6 +202,10 @@ class MagicLinkResponse(WireModel):
 class VerifyResponse(WireModel):
     access_token: str
     token_type: str = "bearer"
+    # Only for the iOS app (ADR 0037): its WebView origin never gets the
+    # refresh cookie, so it holds this in the Keychain instead. Omitted for
+    # every other caller (routes use response_model_exclude_none).
+    refresh_token: str | None = None
 
 
 class LogoutResponse(WireModel):
@@ -384,6 +399,18 @@ async def _issue_session(
     return create_access_token(user_id, session_id), raw_refresh_token
 
 
+def _native_refresh_token(origin: str | None, raw_refresh_token: str) -> str | None:
+    """The raw refresh token to return in the body, for the iOS app only
+    (ADR 0037); ``None`` for every other caller, who relies on the cookie."""
+    return raw_refresh_token if origin == _NATIVE_APP_ORIGIN else None
+
+
+def _presented_refresh_token(cookie_token: str | None, header_token: str | None) -> str | None:
+    """The refresh token this request presents: the cookie (web), else the
+    ``X-Refresh-Token`` header (the iOS app, ADR 0037)."""
+    return cookie_token or header_token or None
+
+
 def _set_refresh_cookie(response: Response, raw_refresh_token: str, settings: Settings) -> None:
     """Set the refresh cookie. Its attributes must match _clear_refresh_cookie
     exactly or logout won't clear it."""
@@ -514,7 +541,7 @@ async def request_magic_link(
     return response
 
 
-@router.get("/verify", response_model=VerifyResponse)
+@router.get("/verify", response_model=VerifyResponse, response_model_exclude_none=True)
 async def verify_magic_link(
     token: str,
     response: Response,
@@ -523,6 +550,7 @@ async def verify_magic_link(
     settings: Settings = Depends(get_settings),
     email_sender: EmailSender = Depends(get_email_sender),
     user_agent: str | None = Header(default=None),
+    origin: str | None = Header(default=None),
     invite: str | None = None,
 ) -> VerifyResponse:
     now = datetime.now(timezone.utc)
@@ -577,16 +605,20 @@ async def verify_magic_link(
 
     _set_refresh_cookie(response, raw_refresh_token, settings)
 
-    return VerifyResponse(access_token=access_token)
+    return VerifyResponse(
+        access_token=access_token,
+        refresh_token=_native_refresh_token(origin, raw_refresh_token),
+    )
 
 
-@router.post("/login", response_model=VerifyResponse)
+@router.post("/login", response_model=VerifyResponse, response_model_exclude_none=True)
 async def login_with_password(
     payload: PasswordLoginRequest,
     response: Response,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
     user_agent: str | None = Header(default=None),
+    origin: str | None = Header(default=None),
 ) -> VerifyResponse:
     """Sign in with email + password (ADR 0007). Magic link is unaffected; an
     account with no password set simply can't sign in this way."""
@@ -633,10 +665,18 @@ async def login_with_password(
     await db.commit()
 
     _set_refresh_cookie(response, raw_refresh_token, settings)
-    return VerifyResponse(access_token=access_token)
+    return VerifyResponse(
+        access_token=access_token,
+        refresh_token=_native_refresh_token(origin, raw_refresh_token),
+    )
 
 
-@router.post("/register", response_model=VerifyResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/register",
+    response_model=VerifyResponse,
+    response_model_exclude_none=True,
+    status_code=status.HTTP_201_CREATED,
+)
 async def register_with_password(
     payload: PasswordRegisterRequest,
     response: Response,
@@ -645,6 +685,7 @@ async def register_with_password(
     settings: Settings = Depends(get_settings),
     email_sender: EmailSender = Depends(get_email_sender),
     user_agent: str | None = Header(default=None),
+    origin: str | None = Header(default=None),
 ) -> VerifyResponse:
     """Create a NEW invite-gated account with a password and sign it in
     (ADR 0007).
@@ -701,7 +742,10 @@ async def register_with_password(
         )
 
     _set_refresh_cookie(response, raw_refresh_token, settings)
-    return VerifyResponse(access_token=access_token)
+    return VerifyResponse(
+        access_token=access_token,
+        refresh_token=_native_refresh_token(origin, raw_refresh_token),
+    )
 
 
 @router.post(
@@ -1165,13 +1209,16 @@ class GoogleNativeExchangeRequest(WireModel):
     code: str
 
 
-@router.post("/google/native-exchange", response_model=VerifyResponse)
+@router.post(
+    "/google/native-exchange", response_model=VerifyResponse, response_model_exclude_none=True
+)
 async def google_native_exchange(
     payload: GoogleNativeExchangeRequest,
     response: Response,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
     user_agent: str | None = Header(default=None),
+    origin: str | None = Header(default=None),
 ) -> VerifyResponse:
     """Redeem a one-time code from the native Google sign-in flow
     (MysteryMixClub-4vii.21) for a real session -- called via a normal fetch
@@ -1201,7 +1248,10 @@ async def google_native_exchange(
     await db.commit()
 
     _set_refresh_cookie(response, raw_refresh_token, settings)
-    return VerifyResponse(access_token=access_token)
+    return VerifyResponse(
+        access_token=access_token,
+        refresh_token=_native_refresh_token(origin, raw_refresh_token),
+    )
 
 
 async def _find_identity_owner(db: AsyncSession, provider: str, subject: str) -> User | None:
@@ -1431,7 +1481,9 @@ class AppleNativeSignInRequest(WireModel):
     invite_token: str | None = None
 
 
-@router.post("/apple/native-verify", response_model=VerifyResponse)
+@router.post(
+    "/apple/native-verify", response_model=VerifyResponse, response_model_exclude_none=True
+)
 async def apple_native_sign_in(
     payload: AppleNativeSignInRequest,
     response: Response,
@@ -1441,6 +1493,7 @@ async def apple_native_sign_in(
     keys_client: AppleJWKSClient = Depends(get_apple_jwks_client),
     email_sender: EmailSender = Depends(get_email_sender),
     user_agent: str | None = Header(default=None),
+    origin: str | None = Header(default=None),
 ) -> VerifyResponse:
     """Sign in (or sign up, invite-gated) with Apple (MysteryMixClub-4vii.9,
     Guideline 4.8) -- the native counterpart to /google/native-exchange, but
@@ -1517,7 +1570,10 @@ async def apple_native_sign_in(
     await db.commit()
 
     _set_refresh_cookie(response, raw_refresh_token, settings)
-    return VerifyResponse(access_token=access_token)
+    return VerifyResponse(
+        access_token=access_token,
+        refresh_token=_native_refresh_token(origin, raw_refresh_token),
+    )
 
 
 def session_is_live(session: Session | None, now: datetime) -> bool:
@@ -1533,12 +1589,14 @@ def session_is_live(session: Session | None, now: datetime) -> bool:
     )
 
 
-@router.post("/refresh", response_model=VerifyResponse)
+@router.post("/refresh", response_model=VerifyResponse, response_model_exclude_none=True)
 async def refresh_access_token(
     refresh_token: str | None = Cookie(default=None, alias=_REFRESH_COOKIE_NAME),
+    header_refresh_token: str | None = Header(default=None, alias=_REFRESH_TOKEN_HEADER),
     db: AsyncSession = Depends(get_db),
 ) -> VerifyResponse:
     now = datetime.now(timezone.utc)
+    refresh_token = _presented_refresh_token(refresh_token, header_refresh_token)
 
     if refresh_token is None:
         raise HTTPException(
@@ -1579,35 +1637,58 @@ def _clear_refresh_cookie(response: Response, settings: Settings) -> None:
     )
 
 
+def _bearer_session_id(authorization: str | None) -> uuid.UUID | None:
+    """The ``sid`` of a valid, unexpired Bearer access token, or ``None``."""
+    if authorization is None or not authorization.lower().startswith("bearer "):
+        return None
+    try:
+        return decode_access_token_session_id(authorization[len("bearer ") :].strip())
+    except JWTError:
+        return None
+
+
 @router.post("/logout", response_model=LogoutResponse)
 async def logout(
     response: Response,
     refresh_token: str | None = Cookie(default=None, alias=_REFRESH_COOKIE_NAME),
+    header_refresh_token: str | None = Header(default=None, alias=_REFRESH_TOKEN_HEADER),
+    authorization: str | None = Header(default=None),
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> LogoutResponse:
     # Logout is idempotent: always clear the cookie and return 200, whether the
     # cookie is missing, unmatched, or already invalidated (TD 5). Only an
     # active session for the presented token is invalidated.
+    refresh_token = _presented_refresh_token(refresh_token, header_refresh_token)
+    # FOR UPDATE: a device registration for this session takes FOR UPDATE on
+    # the same row, so it either commits first (and is deleted just below)
+    # or runs after this commits and sees the session as logged out and is
+    # refused -- an upload already in flight can never recreate the row
+    # afterwards (MysteryMixClub-4vii.36).
+    session: Session | None = None
     if refresh_token is not None:
-        # FOR UPDATE: a device registration for this session takes FOR UPDATE on
-        # the same row, so it either commits first (and is deleted just below)
-        # or runs after this commits and sees the session as logged out and is
-        # refused -- an upload already in flight can never recreate the row
-        # afterwards (MysteryMixClub-4vii.36).
         session = await db.scalar(
             select(Session)
             .where(Session.refresh_token_hash == hash_token(refresh_token))
             .with_for_update()
         )
-        if session is not None and session.invalidated_at is None:
-            session.invalidated_at = datetime.now(timezone.utc)
-            # The devices registered under this login go with it, whether or not
-            # the client's own DELETE ever ran or reached us.
-            await db.execute(
-                delete(DevicePushToken).where(DevicePushToken.session_id == session.id)
+    else:
+        # No refresh token at all (the iOS app lost its Keychain entry, or an
+        # older build that never had one): fall back to the session the Bearer
+        # access token was issued under, so logout still revokes it and its
+        # push devices (MysteryMixClub-kw2u, ADR 0037). This only ever ends the
+        # session the token already belongs to; it grants nothing.
+        session_id = _bearer_session_id(authorization)
+        if session_id is not None:
+            session = await db.scalar(
+                select(Session).where(Session.id == session_id).with_for_update()
             )
-            await db.commit()
+    if session is not None and session.invalidated_at is None:
+        session.invalidated_at = datetime.now(timezone.utc)
+        # The devices registered under this login go with it, whether or not
+        # the client's own DELETE ever ran or reached us.
+        await db.execute(delete(DevicePushToken).where(DevicePushToken.session_id == session.id))
+        await db.commit()
 
     _clear_refresh_cookie(response, settings)
     return LogoutResponse(message="logged out")
@@ -1617,9 +1698,11 @@ async def logout(
 async def logout_all(
     response: Response,
     refresh_token: str | None = Cookie(default=None, alias=_REFRESH_COOKIE_NAME),
+    header_refresh_token: str | None = Header(default=None, alias=_REFRESH_TOKEN_HEADER),
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> LogoutResponse:
+    refresh_token = _presented_refresh_token(refresh_token, header_refresh_token)
     # The presenting session identifies the user regardless of its own
     # invalidated_at state, so an already-invalidated cookie can still log out
     # the user's other devices. No identifiable session => 401 (no user to act

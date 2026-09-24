@@ -35,6 +35,7 @@ from app.models.auth_identity import AuthIdentity
 from app.models.club import Club
 from app.models.club_member import ClubMember
 from app.models.invite import Invite
+from app.auth.tokens import hash_token
 from app.models.session import Session
 from app.models.user import User
 from app.services.apple_signin import AppleJWKSClient, get_apple_jwks_client
@@ -210,6 +211,32 @@ async def test_already_linked_subject_signs_in(apple_client, db_session):
     db_session.expire_all()
     session_row = await db_session.scalar(select(Session).where(Session.user_id == user_id))
     assert session_row is not None
+
+
+async def test_sign_in_from_the_ios_app_returns_its_refresh_token(apple_client, db_session):
+    """The iOS app's WebView never gets the refresh cookie back, so a sign-in
+    from its origin returns the token in the body for the Keychain
+    (MysteryMixClub-kw2u, ADR 0037). The same sign-in from anywhere else
+    doesn't."""
+    user = await _seed_user(db_session, "someone@example.com", apple_id=APPLE_SUB)
+    user_id = user.id
+    payload = {"identity_token": _identity_token(email="someone@example.com")}
+
+    native = await apple_client.post(
+        VERIFY_URL, json=payload, headers={"Origin": "capacitor://localhost"}
+    )
+    web = await apple_client.post(VERIFY_URL, json=payload)
+
+    assert native.status_code == 200, native.text
+    raw_refresh = native.json()["refresh_token"]
+    db_session.expire_all()
+    session_row = await db_session.scalar(
+        select(Session).where(Session.refresh_token_hash == hash_token(raw_refresh))
+    )
+    assert session_row is not None
+    assert session_row.user_id == user_id
+    assert web.status_code == 200, web.text
+    assert "refresh_token" not in web.json()
 
 
 # --------------------------------------------------------------------------- #

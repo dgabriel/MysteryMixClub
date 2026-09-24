@@ -150,6 +150,9 @@ deliberately hold several bound rows; reintroducing the bug fails four of them.
   cookie reaches the server; closing the iOS gap needs logout (and refresh) to
   identify the session without that cookie, for example from the access token's
   `sid`, or a native-held refresh token. Not addressed by this ADR.
+  **Resolved 2026-09-24 by ADR 0037:** the iOS app now presents a
+  Keychain-held refresh token in `X-Refresh-Token`, and logout falls back to the
+  access token's `sid`, so these guarantees hold on iOS too.
 
 - **Lock-order gaps this work does not close** (found by review, reproduced,
   none involve device rows, and all predate it): a password login that clears

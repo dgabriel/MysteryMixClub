@@ -174,6 +174,14 @@ this cross-site return; the nonce cookie is Lax for the same reason.
 - If valid: issue a new access token, return to client
 - If invalid or expired: return 401, redirect to magic link request
 - The user experiences none of this — it is fully silent
+- **The iOS app (ADR 0037)** never gets the cookie back: its WebView origin,
+  `capacitor://localhost`, is cross-site to the API. A sign-in from exactly that
+  `Origin` also returns `refresh_token` in the body (never to any other
+  origin), the app keeps it in the Keychain, and presents it as the
+  `X-Refresh-Token` header. `/auth/refresh`, `/auth/logout` and
+  `/auth/logout-all` read the cookie first, then that header. With neither,
+  `/auth/logout` falls back to the Bearer access token's `sid`, so logout
+  always revokes.
 
 ### Session Management
 
@@ -193,6 +201,7 @@ this cross-site return; the nonce cookie is Lax for the same reason.
 - Magic link tokens: single-use, 15-minute expiry, cryptographically random, hard-deleted on use
 - Access tokens: JWT, 60-minute expiry, signed with server secret, never stored in localStorage or cookies
 - Refresh tokens: 30-day expiry, stored as a hash in the database, HttpOnly Secure cookie on client
+  (on iOS, the Keychain instead; returned in a body only to the app's own origin, ADR 0037)
 - Rate limiting on `/auth/request` — maximum 5 magic link requests per email per hour
 - Rate limiting on `/auth/forgot-password` — same 5 per email per hour
 - Brute-force protection on `/auth/login` — maximum 10 FAILED attempts per email

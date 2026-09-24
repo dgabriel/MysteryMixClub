@@ -8,9 +8,13 @@
  *  - The refresh token is an HttpOnly cookie the browser manages; we never read
  *    or set it. Endpoints that depend on it use `credentials: 'include'` so the
  *    cookie is sent on the cross-origin (but same-site) request to :8000.
+ *  - Except in the iOS build (ADR 0037): its WebView origin never gets that
+ *    cookie back, so sign-in returns the refresh token in the body, it lives in
+ *    the Keychain (ios/sessionStore), and goes back as `X-Refresh-Token`.
  */
 
 import { IS_NATIVE_BUILD } from "../lib/platform";
+import { clearRefreshToken, loadRefreshToken, saveRefreshToken } from "../ios/sessionStore";
 
 // Default to the 127.0.0.1 loopback (not "localhost"): the app keeps every
 // origin on one host so the session cookie survives the Spotify OAuth redirect
@@ -56,7 +60,22 @@ export function setStoredAccessToken(token: string | null): void {
 type TokenResponse = {
   access_token: string;
   token_type: string;
+  /** Present only on a sign-in from the iOS app (ADR 0037). */
+  refresh_token?: string;
 };
+
+/** Keep the refresh token a sign-in returned to the iOS app (ADR 0037). The
+ *  backend only ever returns one to the native build's origin. */
+async function keepNativeRefreshToken(data: TokenResponse): Promise<void> {
+  if (IS_NATIVE_BUILD && data.refresh_token) await saveRefreshToken(data.refresh_token);
+}
+
+/** The iOS app's stand-in for the refresh cookie (ADR 0037); empty on web. */
+async function nativeRefreshHeaders(): Promise<Record<string, string>> {
+  if (!IS_NATIVE_BUILD) return {};
+  const token = await loadRefreshToken();
+  return token ? { "X-Refresh-Token": token } : {};
+}
 
 /** Current user profile (GET /api/v1/users/me). A non-empty `display_name`
  *  means the user has completed onboarding; "" is the not-yet-onboarded
@@ -159,6 +178,7 @@ export async function verifyToken(
     throw new ApiError(res.status, await readErrorMessage(res));
   }
   const data = (await res.json()) as TokenResponse;
+  await keepNativeRefreshToken(data);
   return { access_token: data.access_token };
 }
 
@@ -180,6 +200,7 @@ export async function login(email: string, password: string): Promise<{ access_t
     throw new ApiError(res.status, await readErrorMessage(res));
   }
   const data = (await res.json()) as TokenResponse;
+  await keepNativeRefreshToken(data);
   return { access_token: data.access_token };
 }
 
@@ -207,6 +228,7 @@ export async function register(
     throw new ApiError(res.status, await readErrorMessage(res));
   }
   const data = (await res.json()) as TokenResponse;
+  await keepNativeRefreshToken(data);
   return { access_token: data.access_token };
 }
 
@@ -294,7 +316,9 @@ export async function exchangeGoogleNativeCode(code: string): Promise<{ access_t
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
-  return (await res.json()) as { access_token: string };
+  const data = (await res.json()) as TokenResponse;
+  await keepNativeRefreshToken(data);
+  return { access_token: data.access_token };
 }
 
 /**
@@ -322,7 +346,9 @@ export async function signInWithApple(
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));
   }
-  return (await res.json()) as { access_token: string };
+  const data = (await res.json()) as TokenResponse;
+  await keepNativeRefreshToken(data);
+  return { access_token: data.access_token };
 }
 
 /**
@@ -335,7 +361,12 @@ export async function refresh(): Promise<{ access_token: string } | null> {
     const res = await fetch(`${AUTH_BASE}/refresh`, {
       method: "POST",
       credentials: "include",
+      headers: await nativeRefreshHeaders(),
     });
+    // The server rejected the session outright (logged out elsewhere, expired):
+    // the iOS app's saved token is dead, so stop sending it. Any other failure
+    // (offline, a 5xx) keeps it for the next try.
+    if (res.status === 401 && IS_NATIVE_BUILD) await clearRefreshToken();
     if (!res.ok) return null;
     const data = (await res.json()) as TokenResponse;
     return { access_token: data.access_token };
@@ -344,20 +375,35 @@ export async function refresh(): Promise<{ access_token: string } | null> {
   }
 }
 
-/** Invalidate the current session and clear the refresh cookie. Idempotent. */
+/** Invalidate the current session and clear the refresh cookie. Idempotent.
+ *  The iOS app also sends its access token, so the server can still find the
+ *  session if the Keychain has no refresh token to send (ADR 0037), and drops
+ *  its saved token whatever the outcome. */
 export async function logout(): Promise<void> {
-  await fetch(`${AUTH_BASE}/logout`, {
-    method: "POST",
-    credentials: "include",
-  });
+  try {
+    const headers = await nativeRefreshHeaders();
+    if (IS_NATIVE_BUILD && accessToken) headers.Authorization = `Bearer ${accessToken}`;
+    await fetch(`${AUTH_BASE}/logout`, {
+      method: "POST",
+      credentials: "include",
+      headers,
+    });
+  } finally {
+    if (IS_NATIVE_BUILD) await clearRefreshToken();
+  }
 }
 
 /** Invalidate all sessions for the current user. */
 export async function logoutAll(): Promise<void> {
-  await fetch(`${AUTH_BASE}/logout-all`, {
-    method: "POST",
-    credentials: "include",
-  });
+  try {
+    await fetch(`${AUTH_BASE}/logout-all`, {
+      method: "POST",
+      credentials: "include",
+      headers: await nativeRefreshHeaders(),
+    });
+  } finally {
+    if (IS_NATIVE_BUILD) await clearRefreshToken();
+  }
 }
 
 type RequestOptions = RequestInit & {
@@ -583,13 +629,7 @@ export async function exportMyData(): Promise<Record<string, unknown>> {
  *  API's wire spelling exactly (never an index — Monday=0 is a storage
  *  detail the client never sees). */
 export type Weekday =
-  | "monday"
-  | "tuesday"
-  | "wednesday"
-  | "thursday"
-  | "friday"
-  | "saturday"
-  | "sunday";
+  "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday";
 
 /** A club as returned by the backend (GET/POST /api/v1/clubs). */
 export type Club = {
@@ -925,12 +965,7 @@ export async function acceptInvite(token: string): Promise<Club> {
 
 /** Streaming platforms the app surfaces, matching the backend's normalized keys. */
 export type PlatformKey =
-  | "spotify"
-  | "youtube"
-  | "youtubeMusic"
-  | "deezer"
-  | "appleMusic"
-  | "bandcamp";
+  "spotify" | "youtube" | "youtubeMusic" | "deezer" | "appleMusic" | "bandcamp";
 
 /** A canonical, platform-agnostic song resolved from a link or a search pick.
  *  `platforms` only contains the platforms that actually have a link. */

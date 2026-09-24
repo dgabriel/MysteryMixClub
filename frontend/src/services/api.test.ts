@@ -1703,6 +1703,100 @@ describe("api.ts", () => {
     });
   });
 
+  describe("iOS app session (MysteryMixClub-kw2u, ADR 0037)", () => {
+    const store = {
+      loadRefreshToken: vi.fn(),
+      saveRefreshToken: vi.fn(),
+      clearRefreshToken: vi.fn(),
+    };
+
+    async function nativeApi() {
+      vi.resetModules();
+      vi.doMock("../lib/platform", () => ({ IS_NATIVE_BUILD: true }));
+      vi.doMock("../ios/sessionStore", () => store);
+      return import("./api");
+    }
+
+    beforeEach(() => {
+      store.loadRefreshToken.mockReset().mockResolvedValue("kept-refresh");
+      store.saveRefreshToken.mockReset().mockResolvedValue(undefined);
+      store.clearRefreshToken.mockReset().mockResolvedValue(undefined);
+    });
+
+    afterEach(() => {
+      vi.doUnmock("../lib/platform");
+      vi.doUnmock("../ios/sessionStore");
+      vi.resetModules();
+    });
+
+    it("keeps the refresh token a sign-in returns, and hands back only the access token", async () => {
+      const api = await nativeApi();
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse(200, { access_token: "a", token_type: "bearer", refresh_token: "r" }),
+      );
+
+      await expect(api.login("ios@example.com", "pw")).resolves.toEqual({ access_token: "a" });
+      expect(store.saveRefreshToken).toHaveBeenCalledWith("r");
+    });
+
+    it("refresh sends the saved token in X-Refresh-Token", async () => {
+      const api = await nativeApi();
+      const fetchMock = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(jsonResponse(200, { access_token: "fresh", token_type: "bearer" }));
+
+      await expect(api.refresh()).resolves.toEqual({ access_token: "fresh" });
+      const headers = fetchMock.mock.calls[0][1]?.headers as Record<string, string>;
+      expect(headers["X-Refresh-Token"]).toBe("kept-refresh");
+    });
+
+    it("a rejected refresh (401) forgets the saved token; a server error keeps it", async () => {
+      const api = await nativeApi();
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(emptyResponse(500));
+      await api.refresh();
+      expect(store.clearRefreshToken).not.toHaveBeenCalled();
+
+      fetchMock.mockResolvedValue(emptyResponse(401));
+      await api.refresh();
+      expect(store.clearRefreshToken).toHaveBeenCalledTimes(1);
+    });
+
+    it("logout sends the saved token and the access token, then forgets the saved token", async () => {
+      const api = await nativeApi();
+      api.setStoredAccessToken("access");
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(emptyResponse(200));
+
+      await api.logout();
+
+      const headers = fetchMock.mock.calls[0][1]?.headers as Record<string, string>;
+      expect(headers["X-Refresh-Token"]).toBe("kept-refresh");
+      expect(headers.Authorization).toBe("Bearer access");
+      expect(store.clearRefreshToken).toHaveBeenCalled();
+    });
+
+    it("logout forgets the saved token even when the request fails", async () => {
+      const api = await nativeApi();
+      vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("offline"));
+
+      await expect(api.logout()).rejects.toThrow("offline");
+      expect(store.clearRefreshToken).toHaveBeenCalled();
+    });
+  });
+
+  it("web never sends X-Refresh-Token or an access token to logout", async () => {
+    setStoredAccessToken("access");
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(emptyResponse(200));
+
+    await refresh();
+    await logout();
+
+    for (const [, init] of fetchMock.mock.calls) {
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      expect(headers["X-Refresh-Token"]).toBeUndefined();
+      expect(headers.Authorization).toBeUndefined();
+    }
+  });
+
   describe("shareableOrigin (MysteryMixClub-jrm2)", () => {
     it("uses window.location.origin on web", () => {
       expect(shareableOrigin()).toBe(window.location.origin);

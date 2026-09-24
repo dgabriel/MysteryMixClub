@@ -137,6 +137,71 @@ describe("LoginRoute", () => {
     expect(screen.getByText("HOME")).toBeInTheDocument();
   });
 
+  describe("while the startup session restore is in flight (MysteryMixClub-4vii.51)", () => {
+    function renderWithHome() {
+      return render(
+        <MemoryRouter initialEntries={["/login"]}>
+          <Routes>
+            <Route path="/login" element={<LoginRoute />} />
+            <Route path="/home" element={<div>HOME</div>} />
+          </Routes>
+        </MemoryRouter>,
+      );
+    }
+
+    function setStatus(status: "loading" | "unauthenticated" | "authenticated") {
+      mockUseAuth.mockReturnValue({ status, setAccessToken } as unknown as ReturnType<
+        typeof useAuth
+      >);
+    }
+
+    it("shows the loading state, never the sign-in form", () => {
+      setStatus("loading");
+
+      renderWithHome();
+
+      expect(screen.getByText(/verifying/i)).toBeInTheDocument();
+      expect(screen.queryByLabelText(/^email$/i)).not.toBeInTheDocument();
+      expect(screen.queryByText("HOME")).not.toBeInTheDocument();
+    });
+
+    it("then resolves to the sign-in form when there's no session", async () => {
+      setStatus("loading");
+      const { rerender } = renderWithHome();
+
+      setStatus("unauthenticated");
+      rerender(
+        <MemoryRouter initialEntries={["/login"]}>
+          <Routes>
+            <Route path="/login" element={<LoginRoute />} />
+            <Route path="/home" element={<div>HOME</div>} />
+          </Routes>
+        </MemoryRouter>,
+      );
+
+      expect(await screen.findByLabelText(/^email$/i)).toBeInTheDocument();
+      expect(screen.queryByText(/verifying/i)).not.toBeInTheDocument();
+    });
+
+    it("or straight to /home when the session was restored", () => {
+      setStatus("loading");
+      const { rerender } = renderWithHome();
+
+      setStatus("authenticated");
+      rerender(
+        <MemoryRouter initialEntries={["/login"]}>
+          <Routes>
+            <Route path="/login" element={<LoginRoute />} />
+            <Route path="/home" element={<div>HOME</div>} />
+          </Routes>
+        </MemoryRouter>,
+      );
+
+      expect(screen.getByText("HOME")).toBeInTheDocument();
+      expect(screen.queryByLabelText(/^email$/i)).not.toBeInTheDocument();
+    });
+  });
+
   it("shows invite-required contact info upfront, before any submission — email revealed only on click", async () => {
     const user = userEvent.setup();
     renderLogin();
@@ -172,9 +237,7 @@ describe("LoginRoute", () => {
     renderLogin();
 
     // EmailEntry visible
-    expect(
-      screen.getByRole("button", { name: /send sign-in link/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /send sign-in link/i })).toBeInTheDocument();
 
     const input = screen.getByLabelText(/email/i);
     // Leading/trailing whitespace should be trimmed by the screen before submit.
@@ -216,9 +279,7 @@ describe("LoginRoute", () => {
     // CheckEmail is NOT shown.
     expect(screen.queryByText("check your email")).not.toBeInTheDocument();
     // Still on the email entry form.
-    expect(
-      screen.getByRole("button", { name: /send sign-in link/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /send sign-in link/i })).toBeInTheDocument();
   });
 
   it("edge case: empty input does not call requestMagicLink and stays on the form", async () => {
@@ -306,9 +367,7 @@ describe("LoginRoute", () => {
     await user.click(await screen.findByRole("button", { name: /use a different email/i }));
 
     await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: /send sign-in link/i }),
-      ).toBeInTheDocument(),
+      expect(screen.getByRole("button", { name: /send sign-in link/i })).toBeInTheDocument(),
     );
     expect(screen.queryByText("check your email")).not.toBeInTheDocument();
   });
@@ -382,7 +441,9 @@ describe("LoginRoute", () => {
     // The real form is here now, not just a link back to /login.
     expect(await screen.findByRole("button", { name: /^join$/i })).toBeInTheDocument();
     expect(screen.getByText(/no invite yet\?/i)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^use a different email$/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /^use a different email$/i }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^email us$/i })).not.toBeInTheDocument();
   });
 
@@ -399,7 +460,9 @@ describe("LoginRoute", () => {
     await user.type(passwordInput(), "correct-horse");
     await user.click(screen.getByRole("button", { name: /^sign in$/i }));
 
-    await waitFor(() => expect(mockLogin).toHaveBeenCalledWith("user@example.com", "correct-horse"));
+    await waitFor(() =>
+      expect(mockLogin).toHaveBeenCalledWith("user@example.com", "correct-horse"),
+    );
     expect(setAccessToken).toHaveBeenCalledWith("acc-1");
     // Magic link is untouched by the password path.
     expect(mockRequestMagicLink).not.toHaveBeenCalled();
@@ -571,17 +634,18 @@ describe("LoginRoute", () => {
     await waitFor(() => expect(mockForgotPassword).toHaveBeenCalledWith("user@example.com"));
     // Never phrased as "sent" — a 200 says nothing about the address.
     expect(await screen.findByText(/if that email has a password set/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /set a new password with this link/i })).toHaveAttribute(
-      "href",
-      "/auth/reset-password?token=reset-tok",
-    );
+    expect(
+      screen.getByRole("link", { name: /set a new password with this link/i }),
+    ).toHaveAttribute("href", "/auth/reset-password?token=reset-tok");
   });
 
   // --- google (ADR 0007) ---------------------------------------------------- //
 
   it("google: renders a real link to the redirect endpoint, carrying any stashed invite", async () => {
     localStorage.setItem("pendingInvitePath", "/invite/inv-789");
-    mockGoogleLoginUrl.mockReturnValue("http://api.test/api/v1/auth/google/login?invite_token=inv-789");
+    mockGoogleLoginUrl.mockReturnValue(
+      "http://api.test/api/v1/auth/google/login?invite_token=inv-789",
+    );
 
     try {
       renderLogin();
@@ -637,9 +701,7 @@ describe("LoginRoute", () => {
 
   it("google: ?google=invite_required reuses the same copy as the other sign-up paths", () => {
     renderLogin("/login?google=invite_required");
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      /you need an invite to create an account/i,
-    );
+    expect(screen.getByRole("alert")).toHaveTextContent(/you need an invite to create an account/i);
   });
 
   it("google: ?google=denied and an unknown outcome each get calm copy", () => {
@@ -676,9 +738,7 @@ describe("LoginRoute", () => {
   // the same sentence from the user's own submit is an error.
   it("google: outcome messages are plain, while the same words from a form submit get the error color", async () => {
     localStorage.setItem("pendingInvitePath", "/invite/inv-789");
-    mockRegister.mockRejectedValue(
-      new ApiError(403, "you need an invite to create an account"),
-    );
+    mockRegister.mockRejectedValue(new ApiError(403, "you need an invite to create an account"));
     const user = userEvent.setup();
 
     try {

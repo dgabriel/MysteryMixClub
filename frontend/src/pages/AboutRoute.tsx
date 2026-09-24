@@ -2,7 +2,7 @@ import { Link } from "react-router";
 import { BrandLockup } from "../components/BrandLockup";
 import { PaperSurface } from "../components/PaperSurface";
 import { TopNav } from "../components/TopNav";
-import { nativeTipsAvailable } from "../ios/tips";
+import { IS_NATIVE_BUILD } from "../lib/platform";
 
 const LINK_CLASS =
   "font-mono uppercase tracking-mono text-label text-ink-link underline underline-offset-[3px] transition-colors duration-150 hover:text-ink";
@@ -31,8 +31,8 @@ export function AboutRoute() {
 
           <p className="mt-6 text-sm leading-[1.72] text-ink">
             mysterymixclub is a place for friends to trade songs, discover what everyone's been
-            listening to, and put their taste on the line. no algorithm, no popularity contest, just
-            people who love music, sharing it with people they love.
+            listening to, and put their taste on the line. no algorithm, no strangers, just people
+            who love music, sharing it with people they love.
           </p>
           <p className="mt-4 text-sm leading-[1.72] text-ink">
             you can search and verify songs across spotify, apple music, deezer, youtube, youtube
@@ -94,37 +94,27 @@ export function AboutRoute() {
             </h2>
             <p className="mt-3 text-sm leading-[1.72] text-ink">
               i will never *make* you look at an ad. i won't use ai to scrape your data and sell it.
-              for many people, the app is free, but it does cost me a lil money to run. the total
-              cost for developing this app was about <b className="font-medium">$220</b> including
-              hosting on digital ocean, domain registration, apple developer program, apple music,
-              and extra claude usage tokens. monthly ongoing cost is just hosting and claude tokens,
-              which is about <b className="font-medium">$30-$40</b>. annual costs include apple
-              developer program and domain renewal, which is about{" "}
-              <b className="font-medium">$120</b>. if you want to help me keep this app running, or
-              if you just want to say thanks, you can tip me on venmo. any amount is appreciated{" "}
-              {/* Deliberate: Dawn added this as a second decorative accent under the
-                  retired system, and the style guide carries it forward by name. It is
-                  the one sanctioned exception to amber being action, achievement, or
-                  identity only. Do not remove it and do not flag it as a violation. */}
-              <span className="text-ink-accent">&lt;3</span>
+              for many people, the app is free, but it does cost me a lil money to run: hosting on
+              digital ocean, the domain, the apple developer program, and claude usage tokens.
+              {/* No tip ask or link in the iPhone app (MysteryMixClub-4vii.50):
+                  pointing to an outside way to pay is an App Store Guideline 3.1.1
+                  risk. StoreKit IAP (NativeTipJar.tsx, tips.ts, TipsPlugin.swift) is
+                  still the App Store-native path, left unwired until 4vii.23 finishes
+                  its App Store Connect setup. */}
+              {IS_NATIVE_BUILD ? null : (
+                <>
+                  {" "}
+                  if you want to help me keep this app running, or if you just want to say thanks,
+                  you can tip me on venmo. any amount is appreciated{" "}
+                  {/* Deliberate: Dawn added this as a second decorative accent under the
+                      retired system, and the style guide carries it forward by name. It is
+                      the one sanctioned exception to amber being action, achievement, or
+                      identity only. Do not remove it and do not flag it as a violation. */}
+                  <span className="text-ink-accent">&lt;3</span>
+                </>
+              )}
             </p>
-            {/* StoreKit IAP (MysteryMixClub-4vii.15) is still the App
-                Store-native way to do this -- an external payment link is a
-                real App Store Guideline 3.1.1 risk -- but its App Store
-                Connect submission was never finished (4vii.23) and Dawn
-                would rather not block on that. Native and web both link out
-                for now (NativeTipJar.tsx/tips.ts/TipsPlugin.swift are left in
-                place, just unwired, for whenever 4vii.23 gets picked up). */}
-            {nativeTipsAvailable() ? (
-              <a
-                href="https://dawngabriel.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`mt-3 inline-block ${LINK_CLASS}`}
-              >
-                tip me at dawngabriel.com
-              </a>
-            ) : (
+            {IS_NATIVE_BUILD ? null : (
               <a
                 href="https://www.venmo.com/u/dgbklyn"
                 target="_blank"

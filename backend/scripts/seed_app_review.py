@@ -93,6 +93,24 @@ _SONG_POOL = [
 
 # How many synthetic members join each club, on top of the reviewer.
 CLUB_1_MEMBERS = 3  # + the reviewer = 4 playing submitters
+
+# Club 1's reveal must show notes on at least this many songs (every song,
+# with CLUB_1_MEMBERS + 1 submitters) so a reviewer can report one member's
+# note and block another's without the two tests colliding
+# (MysteryMixClub-4vii.46). Notes can only be left before the mix closes, so
+# an existing closed Club 1 with fewer is deleted and rebuilt.
+CLUB_1_MIN_NOTED_SONGS = 4
+
+# Seeded note bodies, cycled per author. Must pass the content filter (they
+# do: plain appreciation, no flagged terms).
+_NOTE_BODIES = [
+    "this one's a great pick!",
+    "instant add to my own playlist",
+    "did not see this one coming, love it",
+    "perfect for the theme",
+    "the chorus on this is unreal",
+    "been humming this all week",
+]
 CLUB_2_MEMBERS = 2  # + the reviewer = 3 playing submitters
 
 # Club 2's own mix sequence is kept at least this many PENDING mixes deep
@@ -190,6 +208,11 @@ class Account:
         if resp.status_code >= 400:
             raise ApiError(resp)
         return resp.json() if resp.content else None
+
+    def delete(self, path: str) -> None:
+        resp = self.request("DELETE", path)
+        if resp.status_code >= 400:
+            raise ApiError(resp)
 
     def patch(self, path: str, json: dict[str, Any]) -> Any:
         resp = self.request("PATCH", path, json=json)
@@ -296,7 +319,15 @@ def ensure_member(
         client=client_factory(),
     )
     if account.try_login():
-        print(f"    {email}: already a member, logged in")
+        # A rebuilt club (see build_club_completed) has a new id, so an
+        # existing account isn't automatically in it -- rejoin via invite
+        # accept, which is idempotent for an already-active member.
+        if not any(c["id"] == club_id for c in account.get("/clubs")):
+            invite = reviewer.post(f"/clubs/{club_id}/invites")
+            account.post(f"/invites/{invite['token']}/accept")
+            print(f"    {email}: logged in and rejoined")
+        else:
+            print(f"    {email}: already a member, logged in")
         return account
     invite = reviewer.post(f"/clubs/{club_id}/invites")
     account.register(invite["token"])
@@ -412,19 +443,34 @@ def cast_vote_for_others(session: Account, mix_id: str, max_votes: int) -> None:
     print(f"    {session.email}: voted for {len(picks)} song(s)")
 
 
-def leave_a_note(session: Account, mix_id: str) -> None:
+def leave_notes(session: Account, mix_id: str, author_index: int) -> None:
+    """Leave a note on every OTHER submission in `mix_id` -- a no-op per
+    submission this member already noted (409)."""
     playlist = session.get(f"/mixes/{mix_id}/playlist")
     others = [e for e in playlist["entries"] if not e["is_own"]]
-    if not others:
-        return
-    submission_id = others[0]["submission_id"]
-    try:
-        session.post(
-            f"/submissions/{submission_id}/notes", json={"body": "this one's a great pick!"}
-        )
-    except ApiError as exc:
-        if exc.status_code != 409:  # already left a note on this submission -- fine
-            raise
+    for i, entry in enumerate(others):
+        body = _NOTE_BODIES[(author_index + i) % len(_NOTE_BODIES)]
+        try:
+            session.post(f"/submissions/{entry['submission_id']}/notes", json={"body": body})
+        except ApiError as exc:
+            if exc.status_code != 409:  # already left a note on this submission -- fine
+                raise
+
+
+def clear_blocks(reviewer: Account) -> None:
+    """Undo any block a previous reviewer left behind: a block hides that
+    member's notes from the reviewer, which would leave the next review pass
+    with nothing to report (MysteryMixClub-4vii.46)."""
+    for block in reviewer.get("/users/me/blocks"):
+        reviewer.delete(f"/users/me/blocks/{block['user_id']}")
+        print(f"  unblocked {block['display_name']}")
+
+
+def _noted_song_count(reviewer: Account, mix_id: str) -> int:
+    playlist = reviewer.get(f"/mixes/{mix_id}/playlist")
+    return sum(
+        1 for e in playlist["entries"] if reviewer.get(f"/submissions/{e['submission_id']}/notes")
+    )
 
 
 def build_club_completed(
@@ -432,6 +478,17 @@ def build_club_completed(
 ) -> ClubBuild:
     name = "App Review Club 1"
     print(f"\n== {name} (target: COMPLETED) ==")
+    existing = _find_club_by_name(reviewer, name)
+    if existing is not None:
+        mix1 = _mix_by_number(reviewer, existing["id"], 1)
+        if (
+            mix1["state"] == "closed"
+            and _noted_song_count(reviewer, mix1["id"]) < CLUB_1_MIN_NOTED_SONGS
+        ):
+            # Closed mixes take no new notes from playing members, so the
+            # only way to reach the note target is a fresh club.
+            reviewer.delete(f"/clubs/{existing['id']}")
+            print(f"  deleted closed {name}: fewer than {CLUB_1_MIN_NOTED_SONGS} noted songs")
     club = ensure_club(
         reviewer,
         name,
@@ -459,7 +516,8 @@ def build_club_completed(
         # playing member's vote meets quorum and auto-closes the mix on the
         # spot, and a playing member can't leave a note once it's closed
         # (only a vibing one can, per _notes_open) -- so note first, vote last.
-        leave_a_note(members[1], mix["id"])
+        for i, m in enumerate(members[1:]):
+            leave_notes(m, mix["id"], author_index=i)
         for m in members:
             cast_vote_for_others(m, mix["id"], max_votes=2)
         final = reviewer.get(f"/mixes/{mix['id']}")
@@ -568,6 +626,7 @@ def main() -> int:
     try:
         reviewer.ensure_signed_in(args.invite_token)
         reviewer.ensure_onboarded()
+        clear_blocks(reviewer)
 
         club1 = build_club_completed(reviewer, client_factory)
         club2 = build_club_open_voting(reviewer, client_factory)
@@ -610,13 +669,14 @@ SUGGESTED REVIEW FLOW
 
 USER-GENERATED CONTENT (Guideline 1.2)
 Membership is invite-only, and every control below is live in this build.
-- Report: in "{club1.name}", open the mix results. Review Member 1's
-  note ("this one's a great pick!") carries a report action. Reports are
-  also available on notes during voting and in Most Noted.
+- Report: in "{club1.name}", open the mix results. Every song carries
+  notes from other members, and each note has a report action (also in
+  Most Noted). Notes stay hidden during voting so they can't sway votes,
+  so the results are where members see each other's notes.
 - Block: on the "{club1.name}" home screen, the member list offers
   block on each other member's row (also offered right after a report).
   Once blocked, that member's notes disappear from your view. Unblock is
-  on the same row.
+  on the same row. Rerunning this script also clears any blocks.
 - Filter: every piece of shared text (display names, club and mix names
   and descriptions, notes) is checked against a hate and harassment
   list before it is saved. A flagged write is rejected and never shown

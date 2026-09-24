@@ -45,6 +45,8 @@ class _FakeApi:
         self.submissions: dict[str, list[dict[str, Any]]] = {}  # mix_id -> [submission]
         self.votes: dict[str, dict[str, list[str]]] = {}  # mix_id -> {user_id: [submission_id]}
         self.notes: dict[str, set[tuple[str, str]]] = {}  # mix_id -> {(author_id, submission_id)}
+        self.members: dict[str, set[str]] = {}  # club_id -> {user_id}
+        self.blocks: dict[str, set[str]] = {}  # blocker user_id -> {blocked user_id}
 
     # -- helpers ------------------------------------------------------------
     def _user_for(self, request: httpx.Request) -> dict[str, Any]:
@@ -99,6 +101,9 @@ class _FakeApi:
                 "display_name": email,
                 "email_notifications": True,
             }
+            if body["invite_token"] in self.club_invites:
+                club_id = self.club_invites[body["invite_token"]]
+                self.members[club_id].add(self.users[email]["id"])
             return httpx.Response(201, json={"access_token": self._issue_token(email)})
 
         if method == "GET" and path == "/users/me":
@@ -112,21 +117,27 @@ class _FakeApi:
             return httpx.Response(200, json={"ok": True})
 
         if method == "GET" and path == "/clubs":
-            # NOT scoped to the caller here, unlike the real list_clubs (which
-            # scopes by MEMBERSHIP, not organizer_id -- membership isn't
-            # modeled in this fake at all). Deliberately permissive: this lets
+            # Scoped by membership like the real list_clubs, so a rebuilt
+            # club's rejoin path (ensure_member) is actually exercised. A club
+            # flagged `visible_to_all` is listed regardless: that lets
             # test_does_not_reuse_a_same_named_club_organized_by_someone_else
             # exercise the SCRIPT's own organizer_id guard (_find_club_by_name)
             # in isolation, rather than relying on server-side scoping to hide
             # a collision the guard exists to catch either way.
-            self._user_for(request)  # requires auth, same as the real route
-            return httpx.Response(200, json=list(self.clubs.values()))
+            user = self._user_for(request)
+            listed = [
+                c
+                for c in self.clubs.values()
+                if c.get("visible_to_all") or user["id"] in self.members.get(c["id"], set())
+            ]
+            return httpx.Response(200, json=listed)
 
         if method == "POST" and path == "/clubs":
             user = self._user_for(request)
             club_id = f"club-{uuid.uuid4()}"
             club = {"id": club_id, "name": body["name"], "organizer_id": user["id"]}
             self.clubs[club_id] = club
+            self.members[club_id] = {user["id"]}
             self._add_pending_mixes(club_id, start=1, end=body.get("total_rounds", 6))
             return httpx.Response(201, json=club)
 
@@ -135,6 +146,38 @@ class _FakeApi:
             token = f"club-invite-{uuid.uuid4()}"
             self.club_invites[token] = club_id
             return httpx.Response(201, json={"token": token})
+
+        if method == "DELETE" and path.startswith("/clubs/") and path.count("/") == 2:
+            club_id = path.split("/")[2]
+            user = self._user_for(request)
+            if self.clubs[club_id]["organizer_id"] != user["id"]:
+                return httpx.Response(403, json={"detail": "organizer only"})
+            for mix_id in [mid for mid, m in self.mixes.items() if m["club_id"] == club_id]:
+                del self.mixes[mix_id], self.submissions[mix_id], self.votes[mix_id]
+                del self.notes[mix_id]
+            del self.clubs[club_id], self.members[club_id]
+            return httpx.Response(204)
+
+        if method == "POST" and path.startswith("/invites/") and path.endswith("/accept"):
+            club_id = self.club_invites[path.split("/")[2]]
+            self.members[club_id].add(self._user_for(request)["id"])
+            return httpx.Response(200, json=self.clubs[club_id])
+
+        if method == "GET" and path == "/users/me/blocks":
+            user = self._user_for(request)
+            by_id = {u["id"]: u for u in self.users.values()}
+            return httpx.Response(
+                200,
+                json=[
+                    {"user_id": b, "display_name": by_id[b]["display_name"]}
+                    for b in sorted(self.blocks.get(user["id"], set()))
+                ],
+            )
+
+        if method == "DELETE" and path.startswith("/users/me/blocks/"):
+            user = self._user_for(request)
+            self.blocks.get(user["id"], set()).discard(path.split("/")[-1])
+            return httpx.Response(204)
 
         if method == "PATCH" and path.startswith("/clubs/") and path.count("/") == 2:
             # Mirrors the real PATCH /clubs/:id's total_rounds growth
@@ -177,6 +220,20 @@ class _FakeApi:
                     "too_many_results": False,
                 },
             )
+
+        if method == "GET" and path.startswith("/submissions/") and path.endswith("/notes"):
+            # Closed-mix reads only (all the script does): everyone's notes,
+            # minus authors the caller blocked -- the real list_notes rule.
+            submission_id = path.split("/")[2]
+            user = self._user_for(request)
+            blocked = self.blocks.get(user["id"], set())
+            notes = [
+                {"author_id": author}
+                for subs in self.notes.values()
+                for author, sid in subs
+                if sid == submission_id and author not in blocked
+            ]
+            return httpx.Response(200, json=notes)
 
         if method == "POST" and path.startswith("/submissions/") and path.endswith("/notes"):
             submission_id = path.split("/")[2]
@@ -352,7 +409,7 @@ def test_full_run_reaches_all_three_target_states(monkeypatch, fake_api, capsys)
 
     assert club1_mix["state"] == "closed"
     assert len(api.submissions[club1_mix["id"]]) == 4  # reviewer + 3 synthetic
-    assert len(api.notes[club1_mix["id"]]) == 1
+    assert len(api.notes[club1_mix["id"]]) == sar.CLUB_1_MEMBERS * sar.CLUB_1_MEMBERS
 
     assert club2_mix["state"] == "open_voting"
     assert len(api.submissions[club2_mix["id"]]) == 3  # reviewer + 2 synthetic
@@ -383,7 +440,64 @@ def test_completed_club_leaves_a_note_before_the_closing_vote(monkeypatch, fake_
         m for m in api.mixes.values() if m["club_id"] == club1["id"] and m["mix_number"] == 1
     )
     assert mix["state"] == "closed"
-    assert len(api.notes[mix["id"]]) == 1
+    # Every synthetic member notes every song but their own: 3 authors x 3.
+    assert len(api.notes[mix["id"]]) == sar.CLUB_1_MEMBERS * sar.CLUB_1_MEMBERS
+    noted_songs = {sid for _, sid in api.notes[mix["id"]]}
+    assert len(noted_songs) >= sar.CLUB_1_MIN_NOTED_SONGS
+
+
+def _club_1(api: _FakeApi) -> tuple[dict[str, Any], dict[str, Any]]:
+    club = next(c for c in api.clubs.values() if c["name"] == "App Review Club 1")
+    mix = next(m for m in api.mixes.values() if m["club_id"] == club["id"] and m["mix_number"] == 1)
+    return club, mix
+
+
+def test_rebuilds_a_closed_club_1_with_too_few_notes(monkeypatch, fake_api):
+    """MysteryMixClub-4vii.46: an environment seeded before notes covered
+    every song has a closed Club 1 with a single note. Closed mixes take no
+    new notes, so the rerun deletes and rebuilds it -- and the existing
+    synthetic accounts must rejoin the new club, not just log in."""
+    api, client_factory = fake_api
+    assert _run(monkeypatch, client_factory) == 0
+    old_club, old_mix = _club_1(api)
+    keep = next(iter(api.notes[old_mix["id"]]))
+    api.notes[old_mix["id"]] = {keep}
+
+    assert _run(monkeypatch, client_factory) == 0
+
+    new_club, new_mix = _club_1(api)
+    assert new_club["id"] != old_club["id"]
+    assert old_club["id"] not in api.clubs
+    assert new_mix["state"] == "closed"
+    assert len({sid for _, sid in api.notes[new_mix["id"]]}) >= sar.CLUB_1_MIN_NOTED_SONGS
+    assert len(api.members[new_club["id"]]) == sar.CLUB_1_MEMBERS + 1
+
+
+def test_rerun_keeps_a_club_1_that_already_has_enough_notes(monkeypatch, fake_api):
+    api, client_factory = fake_api
+    assert _run(monkeypatch, client_factory) == 0
+    first_club, _ = _club_1(api)
+
+    assert _run(monkeypatch, client_factory) == 0
+
+    assert _club_1(api)[0]["id"] == first_club["id"]
+
+
+def test_rerun_clears_the_reviewers_blocks(monkeypatch, fake_api):
+    """A block left by a previous review pass hides that member's notes from
+    the reviewer, leaving nothing to report -- the rerun must undo it without
+    mistaking the hidden notes for a Club 1 that needs rebuilding."""
+    api, client_factory = fake_api
+    assert _run(monkeypatch, client_factory) == 0
+    club, _ = _club_1(api)
+    reviewer_id = api.users["appreview@dawngabriel.com"]["id"]
+    member_ids = api.members[club["id"]] - {reviewer_id}
+    api.blocks[reviewer_id] = set(member_ids)
+
+    assert _run(monkeypatch, client_factory) == 0
+
+    assert api.blocks[reviewer_id] == set()
+    assert _club_1(api)[0]["id"] == club["id"]
 
 
 def test_rerun_is_idempotent(monkeypatch, fake_api):
@@ -408,9 +522,9 @@ def test_rerun_is_idempotent(monkeypatch, fake_api):
     mix = next(
         m for m in api.mixes.values() if m["club_id"] == club1["id"] and m["mix_number"] == 1
     )
-    # Still closed, still exactly one note -- no duplicate vote/note attempts.
+    # Still closed, same notes -- no duplicate vote/note attempts.
     assert mix["state"] == "closed"
-    assert len(api.notes[mix["id"]]) == 1
+    assert len(api.notes[mix["id"]]) == sar.CLUB_1_MEMBERS * sar.CLUB_1_MEMBERS
     assert len(api.submissions[mix["id"]]) == 4
 
 
@@ -483,6 +597,7 @@ def test_does_not_reuse_a_same_named_club_organized_by_someone_else(monkeypatch,
         "id": foreign_club_id,
         "name": "App Review Club 1",
         "organizer_id": "user-someone-else",
+        "visible_to_all": True,
     }
 
     exit_code = _run(monkeypatch, client_factory)

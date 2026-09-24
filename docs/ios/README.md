@@ -140,7 +140,9 @@ validation; a reason must reflect actual use).
 
 ## Known session limitation
 
-MMC's web session is an in-memory access token plus an HttpOnly refresh cookie. The native session keeps the refresh cookie in `URLSession`'s shared store, but the proof does not yet exercise a refresh, so a session lasts only as long as the 60-minute access token. Expiry recovery, account switching, and logout-all across devices are IOS-01 work and are not proven here.
+MMC's web session is an in-memory access token plus an HttpOnly refresh cookie. The app's WebView origin (`capacitor://localhost`) is cross-site to the API, so that `SameSite=Lax` cookie never comes back from iOS: until `MysteryMixClub-kw2u`, refresh always failed (sign in again after an hour or any relaunch) and logout revoked nothing.
+
+**Since ADR 0037 (2026-09-24)** a sign-in from the app's origin also returns the refresh token in the body. `MMCSessionStorePlugin` (`SessionStorePlugin.swift`, wrapped by `src/ios/sessionStore.ts`) keeps it in the Keychain, and `api.ts` sends it as `X-Refresh-Token` on refresh, logout, and logout-all. Logout also sends the access token, so the server can still find and revoke the session if the Keychain has nothing to send. The web path is unchanged. Still to prove on a real iPhone: stay signed in across a close and reopen, and a logout that revokes the session and deletes its devices even if the client's own push-token `DELETE` never runs.
 
 ## Tip jar (`MysteryMixClub-4vii.15`, `.23`; superseded 2026-09-22)
 

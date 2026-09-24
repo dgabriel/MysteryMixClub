@@ -20,11 +20,12 @@ import uuid
 from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import async_session_factory
 from app.models.auth_identity import AuthIdentity
+from app.models.block import Block
 from app.models.club import Club
 from app.models.club_member import ClubMember
 from app.models.device_push_token import DevicePushToken
@@ -69,6 +70,12 @@ async def hard_delete_users(
     # ON DELETE, so these must go before the user delete to avoid both an
     # IntegrityError and an orphaned PII record.
     await db.execute(delete(Note).where(Note.author_id.in_(user_ids)))
+    # Blocks reference users on both sides (blocker and blocked), so a purge
+    # drops the row whichever side the purged account was on -- interpersonal
+    # state has no orphan meaning (the block table's own FKs also CASCADE).
+    await db.execute(
+        delete(Block).where(or_(Block.blocker_id.in_(user_ids), Block.blocked_id.in_(user_ids)))
+    )
     await db.execute(delete(Vote).where(Vote.voter_id.in_(user_ids)))
     await db.execute(delete(Submission).where(Submission.user_id.in_(user_ids)))
     await db.execute(delete(ClubMember).where(ClubMember.user_id.in_(user_ids)))

@@ -651,6 +651,10 @@ export type ClubMember = {
   joined_at: string;
   is_organizer: boolean;
   is_admin: boolean;
+  /** MysteryMixClub-4vii.42: true when the viewer has blocked this member, so
+   *  the members UI can badge the row and offer unblock. Undefined/null on
+   *  responses that don't compute the viewer relation (e.g. role changes). */
+  blocked_by_me?: boolean | null;
 };
 
 /** An invite (POST /api/v1/clubs/:id/invites, or POST /api/v1/admin/invites
@@ -1792,6 +1796,53 @@ export async function reportNote(
       reason,
       detail: detail || undefined,
     }),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+}
+
+// --------------------------------------------------------------------------- //
+// Blocks (MysteryMixClub-4vii.42) -- Guideline 1.2's other half: members can
+// block an abusive user, not just report their content. A block is
+// one-directional and quiet: it only filters the blocker's own reads (the
+// blocked member's notes disappear from every surface the blocker can see);
+// the blocked member is never told and nothing changes for them. Persisted
+// server-side; the read-side enforcement is the backend's, not the client's.
+// --------------------------------------------------------------------------- //
+
+/** One entry of the caller's block list (GET /api/v1/users/me/blocks). */
+export type BlockedUser = {
+  user_id: string;
+  display_name: string;
+  created_at: string;
+};
+
+export async function listBlocks(): Promise<BlockedUser[]> {
+  const res = await authenticatedRequest("/api/v1/users/me/blocks");
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as BlockedUser[];
+}
+
+/** Block a fellow (current or former) club member. Idempotent: re-blocking
+ *  someone already blocked returns the standing block. */
+export async function blockUser(userId: string): Promise<BlockedUser> {
+  const res = await authenticatedRequest("/api/v1/users/me/blocks", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user_id: userId }),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as BlockedUser;
+}
+
+export async function unblockUser(userId: string): Promise<void> {
+  const res = await authenticatedRequest(`/api/v1/users/me/blocks/${userId}`, {
+    method: "DELETE",
   });
   if (!res.ok) {
     throw new ApiError(res.status, await readErrorMessage(res));

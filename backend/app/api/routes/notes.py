@@ -46,6 +46,7 @@ from app.models.mix import Mix
 from app.models.note import Note
 from app.models.submission import Submission
 from app.models.user import User
+from app.services.blocks import blocked_user_ids
 
 router = APIRouter(tags=["notes"])
 
@@ -193,6 +194,13 @@ async def list_notes(
     # full set is revealed once the mix is closed (the reveal).
     if mix_.state != "closed":
         stmt = stmt.where(Note.author_id == current_user.id)
+    else:
+        # MysteryMixClub-4vii.42: a blocked member's notes never reach the
+        # blocker, the reveal surface included. Blocks are one-way and quiet --
+        # other members' reads are untouched (ADR 0035).
+        blocked = await blocked_user_ids(db, current_user.id)
+        if blocked:
+            stmt = stmt.where(Note.author_id.notin_(blocked))
 
     rows = await db.execute(stmt)
     return [_to_response(note, display_name) for note, display_name in rows.all()]

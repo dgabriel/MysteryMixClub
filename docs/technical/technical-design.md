@@ -381,6 +381,40 @@ body                TEXT NOT NULL (max 280 chars)
 created_at          TIMESTAMP
 ```
 
+### reports
+```
+id                  UUID PRIMARY KEY
+reporter_id         UUID REFERENCES users(id) ON DELETE SET NULL (nullable)
+reported_user_id    UUID REFERENCES users(id) ON DELETE SET NULL (nullable; denormalized at write from the content's author)
+club_id             UUID REFERENCES clubs(id)
+content_type        TEXT CHECK (content_type IN ('note'))
+content_id          UUID NOT NULL
+reason              TEXT CHECK (reason IN ('inappropriate_content', 'harassment', 'spam', 'other'))
+detail              TEXT (nullable)
+status              TEXT CHECK (status IN ('open', 'reviewed')) DEFAULT 'open'
+created_at          TIMESTAMP
+```
+> App Store Guideline 1.2's reporting half (MysteryMixClub-4vii.13). Review is
+> a direct table query, not a console — the operational process lives in
+> docs/ios/README.md's moderation posture. `SET NULL` (4vii.38): the
+> moderation record survives either party's account purge; `blocks`, by
+> contrast, cascade-deletes with either account (ADR 0035).
+
+### blocks
+```
+blocker_id          UUID REFERENCES users(id) ON DELETE CASCADE
+blocked_id          UUID REFERENCES users(id) ON DELETE CASCADE
+created_at          TIMESTAMP
+PRIMARY KEY (blocker_id, blocked_id)
+```
+> Guideline 1.2's blocking half (MysteryMixClub-4vii.42, ADR 0035):
+> one-directional and quiet — the blocker's own reads are filtered everywhere
+> they can see the blocked member's text (notes, submitter_note, submission
+> history, per-viewer Most Noted, `voters[]`); the blocked member's experience
+> is unchanged and never notified. Blocking an already-left/removed clubmate
+> is allowed; only self-blocks (400) and never-clubmates (neutral 404) are
+> rejected.
+
 ### magic_link_tokens
 ```
 id                  UUID PRIMARY KEY
@@ -540,6 +574,18 @@ GET    /mixes/:id/votes/mine    Get current user's votes
 POST   /submissions/:id/notes   Leave a note on a submission
 GET    /submissions/:id/notes   Get notes on a submission
 ```
+
+### Moderation (Guideline 1.2)
+```
+POST   /reports                 Report UGC (v1: notes; content_type/reason constrained) — 4vii.13
+POST   /users/me/blocks         Block a current/former clubmate (201; idempotent re-POST -> 200; 400 self, neutral 404 never-clubmates) — 4vii.42, ADR 0035
+GET    /users/me/blocks         List the caller's blocks (newest first)
+DELETE /users/me/blocks/:userId Unblock (204; 404 if no standing block)
+```
+> Reads are filtered per-viewer: any response that would show the caller a
+> blocked author's text (notes, submitter_note, submission history,
+> per-viewer Most Noted, `voters[]`) excludes it; members lists carry
+> `blocked_by_me`. Details in ADR 0035.
 
 ---
 

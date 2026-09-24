@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router";
 import { ClubHomeScreen } from "./ClubHomeScreen";
 import {
   ApiError,
+  blockUser,
   createInvite,
   deleteClub,
   getClub,
@@ -12,6 +13,7 @@ import {
   getMixes,
   removeMember,
   shareableOrigin,
+  unblockUser,
   updateClub,
   updateMemberRole,
   updateMix,
@@ -82,6 +84,12 @@ export function ClubHomeRoute() {
   // Member self-leave (MYS-97).
   const [leavingClub, setLeavingClub] = useState(false);
   const [leaveClubError, setLeaveClubError] = useState<string | null>(null);
+
+  // Member blocking (MysteryMixClub-4vii.42, Guideline 1.2): any member's
+  // control over whose notes reach them. One busy/error pair covers both
+  // block and unblock -- the two never run at once.
+  const [blockingUserId, setBlockingUserId] = useState<string | null>(null);
+  const [blockError, setBlockError] = useState<string | null>(null);
 
   // Club-invite welcome guide (MysteryMixClub-6eo8). The lazy initializer
   // reads-and-clears the one-shot "just joined" flag exactly once at mount,
@@ -357,6 +365,42 @@ export function ClubHomeRoute() {
     }
   }
 
+  async function handleBlockMember(memberUserId: string) {
+    setBlockingUserId(memberUserId);
+    setBlockError(null);
+    try {
+      await blockUser(memberUserId);
+      // Patch the flag locally; the members list is small and nothing else
+      // changed. The enforcement itself is server-side on every read.
+      setMembers((current) =>
+        current.map((m) => (m.user_id === memberUserId ? { ...m, blocked_by_me: true } : m)),
+      );
+    } catch (err) {
+      setBlockError(
+        err instanceof ApiError ? err.message : "couldn't block that member. try again.",
+      );
+    } finally {
+      setBlockingUserId(null);
+    }
+  }
+
+  async function handleUnblockMember(memberUserId: string) {
+    setBlockingUserId(memberUserId);
+    setBlockError(null);
+    try {
+      await unblockUser(memberUserId);
+      setMembers((current) =>
+        current.map((m) => (m.user_id === memberUserId ? { ...m, blocked_by_me: false } : m)),
+      );
+    } catch (err) {
+      setBlockError(
+        err instanceof ApiError ? err.message : "couldn't unblock that member. try again.",
+      );
+    } finally {
+      setBlockingUserId(null);
+    }
+  }
+
   // While loading (or if the club never resolved without an error), keep the
   // screen in its loading state. The screen reads `club` only after the
   // loading/error guards, so the empty placeholder is never rendered.
@@ -424,6 +468,10 @@ export function ClubHomeRoute() {
       onLeaveClub={handleLeaveClub}
       leavingClub={leavingClub}
       leaveClubError={leaveClubError}
+      onBlockMember={handleBlockMember}
+      onUnblockMember={handleUnblockMember}
+      blockingUserId={blockingUserId}
+      blockError={blockError}
       onOpenClubSongs={() => navigate(`/clubs/${id}/songs`)}
       showInviteGuide={showInviteGuide}
       onDismissInviteGuide={dismissInviteGuide}

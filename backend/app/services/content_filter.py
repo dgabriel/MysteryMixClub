@@ -27,7 +27,7 @@ from fastapi import HTTPException, status
 
 #: The single user-facing rejection message. Generic on purpose (see module
 #: docstring); surfaced verbatim by the frontend's readErrorMessage.
-CONTENT_POLICY_MESSAGE = "that text isn't allowed here — try something else."
+CONTENT_POLICY_MESSAGE = "that text isn't allowed here. Try something else."
 
 # Common leetspeak/homoglyph substitutions mapped back to their letter. Kept to
 # unambiguous look-alikes; anything cleverer than this is accepted as an

@@ -607,6 +607,27 @@ SUGGESTED REVIEW FLOW
    same club, ready for another vote -- no need to recreate the account.
 4. Open "{club3.name}" -- open for submission. Add, edit, and remove a
    submission.
+
+USER-GENERATED CONTENT (Guideline 1.2)
+Membership is invite-only, and every control below is live in this build.
+- Report: in "{club1.name}", open the mix results. Review Member 1's
+  note ("this one's a great pick!") carries a report action. Reports are
+  also available on notes during voting and in Most Noted.
+- Block: on the "{club1.name}" home screen, the member list offers
+  block on each other member's row (also offered right after a report).
+  Once blocked, that member's notes disappear from your view. Unblock is
+  on the same row.
+- Filter: every piece of shared text (display names, club and mix names
+  and descriptions, notes) is checked against a hate and harassment
+  list before it is saved. A flagged write is rejected and never shown
+  to anyone. To see it, try setting your display name to "kys" on the
+  Profile screen.
+- Response: every report immediately emails our moderation inbox
+  (info@mysterymixclub.com). We review each report within 24 hours.
+  We can delete an offending account, and a club's organizer can remove
+  a member from the club.
+- Contact: info@mysterymixclub.com, on the Help screen (no sign-in
+  needed).
 """
     print(summary)  # lgtm[py/clear-text-logging-sensitive-data]
     return 0

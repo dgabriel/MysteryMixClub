@@ -167,7 +167,8 @@ exposure IAP existed to avoid; accepted as a conscious, temporary tradeoff
 rather than blocking submission on the IAP paperwork.
 
 ## UGC moderation posture (`MysteryMixClub-4vii.13`, 2026-09-15; reveal
-coverage `4vii.39`, 2026-09-23; blocking `4vii.42`, 2026-09-23)
+coverage `4vii.39`, 2026-09-23; blocking `4vii.42`, 2026-09-23; content
+filtering `4vii.43`, 2026-09-23)
 
 App Store Guideline 1.2 requires a UGC app to offer (1) a way to report
 objectionable content, (2) the ability to block abusive users, (3) a
@@ -205,10 +206,18 @@ information. Current posture, one item at a time:
    preference. Member rows carry `blocked_by_me` so the client can render
    the standing state.
 
-3. **Content filtering** -- not yet implemented; only after-the-fact
-   reporting exists today. Tracked as `MysteryMixClub-4vii.43`, lower
-   priority than blocking -- the app is invite-only among known friend
-   groups, and report volume so far is zero.
+3. **Content filtering** -- implemented 2026-09-23 (see ADR 0036 for the
+   tradeoffs). `app/services/content_filter.py` holds a curated denylist of
+   hate/harassment terms (slurs, sexual violence, targeted-harassment
+   phrases; generic profanity deliberately allowed) that every member-visible
+   free-text *write* passes through: display name, club name/description,
+   mix theme/description, submission note, note body. Matching normalizes
+   first (accents, leetspeak, repeated letters, dotted-out letters) and is
+   whole-word ("bass"/"class"/"assassin" pass). A flagged write is rejected
+   with a 422 carrying one generic message — the text never exists, which is
+   the strongest reading of "filtered before other members can see it". The
+   frontend shows the message through its existing form-error plumbing; no
+   client-side list to keep in sync.
 
 4. **Published contact info** -- `info@mysterymixclub.com`, on the public
    `/help` route (no sign-in required) via the `ContactEmail` component,

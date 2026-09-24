@@ -47,6 +47,7 @@ from app.models.note import Note
 from app.models.submission import Submission
 from app.models.user import User
 from app.services.blocks import blocked_user_ids
+from app.services.content_filter import reject_if_flagged
 
 router = APIRouter(tags=["notes"])
 
@@ -116,6 +117,9 @@ async def leave_note(
     submission = await _load_submission(submission_id, db)
     mix_ = await _load_mix(submission.mix_id, db)
     await _load_club_as_member(mix_.club_id, current_user, db)
+    # Content filter (MysteryMixClub-4vii.43, Guideline 1.2): notes are the
+    # app's primary member-to-member free-text surface; reject at write.
+    reject_if_flagged(payload.body)
 
     if not await _notes_open(mix_, current_user.id, db):
         raise HTTPException(
@@ -154,6 +158,7 @@ async def edit_note(
     submission = await _load_submission(submission_id, db)
     mix_ = await _load_mix(submission.mix_id, db)
     await _load_club_as_member(mix_.club_id, current_user, db)
+    reject_if_flagged(payload.body)  # see leave_note (MysteryMixClub-4vii.43)
 
     if not await _notes_open(mix_, current_user.id, db):
         raise HTTPException(

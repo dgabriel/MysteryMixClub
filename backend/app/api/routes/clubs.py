@@ -24,6 +24,7 @@ from app.models.spotify_mix_playlist import SpotifyMixPlaylist
 from app.models.submission import Submission
 from app.models.user import User
 from app.services.blocks import blocked_user_ids
+from app.services.content_filter import reject_if_flagged
 from app.models.vote import Vote
 from app.services.source_tracks import source_fields
 
@@ -326,6 +327,10 @@ async def create_club(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ClubResponse:
+    # Content filter (MysteryMixClub-4vii.43, Guideline 1.2): club name and
+    # description are member-visible free text; reject flagged terms at write.
+    reject_if_flagged(payload.name)
+    reject_if_flagged(payload.description)
     club = Club(
         name=payload.name,
         description=payload.description,
@@ -777,6 +782,9 @@ async def update_club(
 
     updates = payload.model_dump(exclude_unset=True)
     new_total = updates.pop("total_rounds", None)
+    # Content filter (MysteryMixClub-4vii.43) — same as create.
+    reject_if_flagged(updates.get("name"))
+    reject_if_flagged(updates.get("description"))
 
     if new_total is not None and new_total != club.total_mixes:
         await _reconcile_mixes(club, new_total, db)

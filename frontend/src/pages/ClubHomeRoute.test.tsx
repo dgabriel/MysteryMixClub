@@ -553,6 +553,44 @@ describe("ClubHomeRoute", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("narrow rows (MysteryMixClub-4vii.47): every member control stays present, wrap-capable, and tappable at iPhone portrait width", async () => {
+    // Dawn's repro on iPhone 17 Pro: with organizer controls + a blocked
+    // badge the nowrap row pushed Unblock past the right edge. The fix wraps
+    // the name cluster and the actions cluster; this test pins the wrapping
+    // structure and that unblock still reverses the block from the same row.
+    window.innerWidth = 393; // iPhone portrait
+    window.dispatchEvent(new Event("resize"));
+
+    const user = userEvent.setup();
+    setAuth(ORGANIZER_ID); // organizer controls = the cramped case
+    mockGetClubMembers.mockResolvedValue([
+      ...members().map((m) =>
+        m.user_id === MEMBER_ID ? { ...m, blocked_by_me: true } : m,
+      ),
+    ]);
+    renderClub();
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+    const unblock = screen.getByRole("button", { name: /^unblock bo$/i });
+    const makeAdmin = screen.getByRole("button", { name: /make admin/i });
+    const remove = screen.getByRole("button", { name: /^remove$/i });
+    expect(screen.getByText("blocked")).toBeInTheDocument();
+
+    // Both halves of the cramped row wrap now, so nothing can extend past
+    // the right edge; pin that structure against a relapse to fixed rows.
+    const row = unblock.closest("li");
+    expect(row).not.toBeNull();
+    const rowFlex = row!.querySelector("div");
+    expect(rowFlex?.className).toContain("flex-wrap");
+    expect(unblock.closest("span")?.className).toContain("flex-wrap");
+
+    // ...and the reversal control still works from the same row.
+    await user.click(unblock);
+    await waitFor(() => expect(mockUnblockUser).toHaveBeenCalledWith(MEMBER_ID));
+    expect(makeAdmin).toBeEnabled();
+    expect(remove).toBeEnabled();
+  });
+
   it("block failure: a calm error lands by the list and the row keeps its block action", async () => {
     const user = userEvent.setup();
     mockBlockUser.mockRejectedValue(new Error("boom"));

@@ -315,8 +315,14 @@ export function ClubHomeScreen({
                       : "border-hairline-soft bg-card",
                   ].join(" ")}
                 >
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="flex items-center gap-3">
+                  {/* Narrow-viewport safety (MysteryMixClub-4vii.47): with
+                      organizer controls + a blocked badge, one nowrap line
+                      pushed Unblock past the right edge on an iPhone portrait
+                      row. Everything here wraps instead: the name cluster can
+                      double-line, and when the whole row is cramped the
+                      actions cluster drops to its own line, right-aligned. */}
+                  <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                    <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
                       <span className="w-6 shrink-0 text-right font-mono text-mini text-muted-foreground">
                         {anyVotes ? (
                           entry.rank === 1 ? (
@@ -328,7 +334,7 @@ export function ClubHomeScreen({
                       </span>
                       <UserAvatar userId={entry.user_id} size={28} />
                       <span
-                        className={`font-mono text-sm text-foreground ${isMe ? "font-medium" : ""}`}
+                        className={`truncate font-mono text-sm text-foreground ${isMe ? "font-medium" : ""}`}
                       >
                         {entry.display_name}
                       </span>
@@ -338,7 +344,7 @@ export function ClubHomeScreen({
                       ) : null}
                       {member?.blocked_by_me ? <Badge>blocked</Badge> : null}
                     </span>
-                    <span className="flex items-center gap-4">
+                    <span className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1">
                       <span
                         className={`text-right font-mono text-xs ${leading ? "text-accent" : "text-muted-foreground"}`}
                       >

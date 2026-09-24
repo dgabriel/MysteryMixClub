@@ -99,6 +99,11 @@ type ClubHomeScreenProps = {
   onLeaveClub: () => void;
   leavingClub: boolean;
   leaveClubError?: string | null;
+  // --- Member blocking (MysteryMixClub-4vii.42, Guideline 1.2) ---
+  onBlockMember: (userId: string) => void;
+  onUnblockMember: (userId: string) => void;
+  blockingUserId: string | null;
+  blockError?: string | null;
   // --- All-time vote leaderboard (MYS-157) ---
   leaderboard: LeaderboardEntry[];
   userId: string | null;
@@ -147,6 +152,10 @@ export function ClubHomeScreen({
   onLeaveClub,
   leavingClub,
   leaveClubError,
+  onBlockMember,
+  onUnblockMember,
+  blockingUserId,
+  blockError,
   leaderboard,
   userId,
   onOpenClubSongs,
@@ -327,6 +336,7 @@ export function ClubHomeScreen({
                       {member?.is_admin && !member?.is_organizer ? (
                         <Badge>co-organizer</Badge>
                       ) : null}
+                      {member?.blocked_by_me ? <Badge>blocked</Badge> : null}
                     </span>
                     <span className="flex items-center gap-4">
                       <span
@@ -360,6 +370,34 @@ export function ClubHomeScreen({
                           {removingUserId === entry.user_id ? "removing…" : "remove"}
                         </button>
                       ) : null}
+                      {/* Blocking is every member's control over their own
+                          feed (Guideline 1.2), not an organizer power -- so it
+                          shows on each row of the club you read, for admin and
+                          member alike, and is quiet by design (the other side
+                          is never told). */}
+                      {!isMe && member ? (
+                        member.blocked_by_me === true ? (
+                          <button
+                            type="button"
+                            onClick={() => onUnblockMember(entry.user_id)}
+                            disabled={blockingUserId === entry.user_id}
+                            aria-label={`unblock ${entry.display_name}`}
+                            className="py-1.5 font-mono uppercase tracking-mono text-mini text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-link disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline"
+                          >
+                            {blockingUserId === entry.user_id ? "unblocking…" : "unblock"}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => onBlockMember(entry.user_id)}
+                            disabled={blockingUserId === entry.user_id}
+                            aria-label={`block ${entry.display_name} -- hides their notes from your view`}
+                            className="py-1.5 font-mono uppercase tracking-mono text-mini text-foreground underline underline-offset-[3px] transition-colors duration-150 hover:text-link disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline"
+                          >
+                            {blockingUserId === entry.user_id ? "blocking…" : "block"}
+                          </button>
+                        )
+                      ) : null}
                     </span>
                   </div>
                   {/* The tile runs the bar inline between name and score; it
@@ -392,6 +430,16 @@ export function ClubHomeScreen({
             <div className="mt-3">
               <FormError onPaper>{removeError}</FormError>
             </div>
+          ) : null}
+          {blockError ? (
+            <div className="mt-3">
+              <FormError onPaper>{blockError}</FormError>
+            </div>
+          ) : null}
+          {members.some((m) => m.blocked_by_me) ? (
+            <p className="mt-3 text-meta leading-[1.6] text-ink-muted">
+              a blocked member&apos;s notes are hidden from you. they aren&apos;t told.
+            </p>
           ) : null}
         </section>
 

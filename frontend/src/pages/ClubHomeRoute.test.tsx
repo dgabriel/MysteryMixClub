@@ -6,6 +6,7 @@ import { ClubHomeRoute } from "./ClubHomeRoute";
 import { AuthedLayout } from "../components/AuthedLayout";
 import {
   ApiError,
+  blockUser,
   createInvite,
   deleteClub,
   getClub,
@@ -14,6 +15,7 @@ import {
   getResults,
   getMixes,
   removeMember,
+  unblockUser,
   updateClub,
   updateMemberRole,
   updateMix,
@@ -40,6 +42,8 @@ vi.mock("../services/api", async () => {
     createInvite: vi.fn(),
     deleteClub: vi.fn(),
     updateMemberRole: vi.fn(),
+    blockUser: vi.fn(),
+    unblockUser: vi.fn(),
   };
 });
 
@@ -59,6 +63,8 @@ const mockRemoveMember = vi.mocked(removeMember);
 const mockCreateInvite = vi.mocked(createInvite);
 const mockDeleteClub = vi.mocked(deleteClub);
 const mockUpdateMemberRole = vi.mocked(updateMemberRole);
+const mockBlockUser = vi.mocked(blockUser);
+const mockUnblockUser = vi.mocked(unblockUser);
 const mockUseAuth = vi.mocked(useAuth);
 
 const ORGANIZER_ID = "org-1111";
@@ -250,6 +256,12 @@ describe("ClubHomeRoute", () => {
     mockGetClubMembers.mockResolvedValue(members());
     mockGetMixes.mockResolvedValue([]);
     mockGetResults.mockResolvedValue(resultsWith());
+    mockBlockUser.mockResolvedValue({
+      user_id: MEMBER_ID,
+      display_name: "Bo",
+      created_at: "2026-01-03T00:00:00Z",
+    });
+    mockUnblockUser.mockResolvedValue(undefined);
     setAuth(ORGANIZER_ID);
   });
 
@@ -486,6 +498,71 @@ describe("ClubHomeRoute", () => {
 
     await waitFor(() => expect(mockRemoveMember).toHaveBeenCalledTimes(1));
     expect(mockRemoveMember).toHaveBeenCalledWith("club-1", MEMBER_ID);
+  });
+
+  // --- Member blocking (MysteryMixClub-4vii.42, Guideline 1.2) ---
+
+  it("block: the block action sits on every non-self row, not your own", async () => {
+    setAuth(ORGANIZER_ID);
+    renderClub();
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+    expect(screen.getByRole("button", { name: /^block bo ?--/i })).toBeInTheDocument();
+    // Your own row carries no self-block control.
+    expect(screen.queryByRole("button", { name: /^block ada ?--/i })).not.toBeInTheDocument();
+  });
+
+  it("block: clicking 'block' calls the api, then the row shows the blocked badge + an unblock action", async () => {
+    const user = userEvent.setup();
+    setAuth(ORGANIZER_ID);
+    renderClub();
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+    await user.click(screen.getByRole("button", { name: /^block bo ?--/i }));
+
+    await waitFor(() => expect(mockBlockUser).toHaveBeenCalledWith(MEMBER_ID));
+    expect(await screen.findByText("blocked")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^unblock bo$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^block bo ?--/i })).not.toBeInTheDocument();
+    // A steady-state reminder of what blocking does appears once anyone is blocked.
+    expect(
+      screen.getByText(/a blocked member's notes are hidden from you/i),
+    ).toBeInTheDocument();
+  });
+
+  it("unblock: a member marked blocked_by_me gets an 'unblock' action that restores the plain row", async () => {
+    const user = userEvent.setup();
+    mockGetClubMembers.mockResolvedValue([
+      ...members().map((m) =>
+        m.user_id === MEMBER_ID ? { ...m, blocked_by_me: true } : m,
+      ),
+    ]);
+    renderClub();
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+    // Server-reported state shows the badge + unblock (which the aria-label
+    // names specifically), never the block action.
+    expect(screen.getByText("blocked")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^unblock bo$/i }));
+
+    await waitFor(() => expect(mockUnblockUser).toHaveBeenCalledWith(MEMBER_ID));
+    await waitFor(() => expect(screen.queryByText("blocked")).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /^block bo ?--/i })).toBeInTheDocument();
+    expect(
+      screen.queryByText(/a blocked member's notes are hidden from you/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("block failure: a calm error lands by the list and the row keeps its block action", async () => {
+    const user = userEvent.setup();
+    mockBlockUser.mockRejectedValue(new Error("boom"));
+    renderClub();
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+    await user.click(screen.getByRole("button", { name: /^block bo ?--/i }));
+
+    expect(await screen.findByText(/couldn't block that member/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^block bo ?--/i })).toBeInTheDocument();
   });
 
   // --- Co-organizer promote/demote (MYS-99) ---

@@ -167,7 +167,7 @@ exposure IAP existed to avoid; accepted as a conscious, temporary tradeoff
 rather than blocking submission on the IAP paperwork.
 
 ## UGC moderation posture (`MysteryMixClub-4vii.13`, 2026-09-15; reveal
-coverage `4vii.39`, 2026-09-23)
+coverage `4vii.39`, 2026-09-23; blocking `4vii.42`, 2026-09-23)
 
 App Store Guideline 1.2 requires a UGC app to offer (1) a way to report
 objectionable content, (2) the ability to block abusive users, (3) a
@@ -192,9 +192,18 @@ information. Current posture, one item at a time:
    id = '<id>';` once handled (organizer member-removal, a direct
    conversation, or no action needed).
 
-2. **Blocking** -- not yet implemented anywhere in frontend or backend.
-   Tracked as `MysteryMixClub-4vii.42`, deliberately deferred pending its own
-   design (what "blocked" means for a small invite-only club app).
+2. **Blocking** -- implemented 2026-09-23 (see ADR 0035 for the semantics).
+   A member can block any current or former clubmate from the club home
+   member list (`block` / `unblock` row actions) or from the follow-up
+   offered after reporting a note. `POST/GET/DELETE /api/v1/users/me/blocks`
+   manage it; a block is quiet (the other side is never notified) and
+   one-directional: everywhere the blocker can read another member's text
+   (note lists, reveal notes, `submitter_note`, submission history,
+   per-viewer Most Noted), the blocked author's content is filtered
+   server-side out of the blocker's responses only. Vote aggregates and
+   display names stay -- shared history is not rewritten by one member's
+   preference. Member rows carry `blocked_by_me` so the client can render
+   the standing state.
 
 3. **Content filtering** -- not yet implemented; only after-the-fact
    reporting exists today. Tracked as `MysteryMixClub-4vii.43`, lower

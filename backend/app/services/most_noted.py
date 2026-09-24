@@ -21,6 +21,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Collection
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -70,19 +71,31 @@ class MostNoted:
     winners: list[MostNotedSubmission] = field(default_factory=list)
 
 
-async def compute_most_noted(round_id: uuid.UUID, db: AsyncSession) -> MostNoted:
+async def compute_most_noted(
+    round_id: uuid.UUID,
+    db: AsyncSession,
+    *,
+    exclude_author_ids: Collection[uuid.UUID] = (),
+) -> MostNoted:
     """Compute the Most Noted submission(s) for a mix.
 
     Returns all submissions tied at the highest note count, each with the notes
     that earned it. An empty ``winners`` list means the mix has no notes.
+
+    ``exclude_author_ids`` drops those authors' notes from both the count and
+    the winner selection: Most Noted is per-viewer once a member has blocked
+    someone, because the blocker must not see the blocked member's notes
+    anywhere (MysteryMixClub-4vii.42, ADR 0035). Callers pass their own empty
+    set (the default) when no one is blocked.
     """
-    counts = (
-        await db.execute(
-            select(Note.submission_id, func.count())
-            .where(Note.mix_id == round_id)
-            .group_by(Note.submission_id)
-        )
-    ).all()
+    counts_query = (
+        select(Note.submission_id, func.count())
+        .where(Note.mix_id == round_id)
+        .group_by(Note.submission_id)
+    )
+    if exclude_author_ids:
+        counts_query = counts_query.where(Note.author_id.notin_(exclude_author_ids))
+    counts = (await db.execute(counts_query)).all()
     if not counts:
         return MostNoted(mix_id=round_id, note_count=0, winners=[])
 
@@ -93,14 +106,15 @@ async def compute_most_noted(round_id: uuid.UUID, db: AsyncSession) -> MostNoted
         s.id: s for s in await db.scalars(select(Submission).where(Submission.id.in_(winning_ids)))
     }
 
-    note_rows = (
-        await db.execute(
-            select(Note, User.display_name)
-            .join(User, User.id == Note.author_id)
-            .where(Note.submission_id.in_(winning_ids))
-            .order_by(Note.created_at.asc())
-        )
-    ).all()
+    notes_query = (
+        select(Note, User.display_name)
+        .join(User, User.id == Note.author_id)
+        .where(Note.submission_id.in_(winning_ids))
+        .order_by(Note.created_at.asc())
+    )
+    if exclude_author_ids:
+        notes_query = notes_query.where(Note.author_id.notin_(exclude_author_ids))
+    note_rows = (await db.execute(notes_query)).all()
     notes_by_submission: dict[uuid.UUID, list[MostNotedNote]] = {sid: [] for sid in winning_ids}
     for note, display_name in note_rows:
         notes_by_submission[note.submission_id].append(

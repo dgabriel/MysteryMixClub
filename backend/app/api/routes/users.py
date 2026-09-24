@@ -28,6 +28,7 @@ from app.auth.passwords import hash_password
 from app.auth.tokens import generate_token
 from app.config import Settings, get_settings
 from app.db.session import get_db
+from app.services.blocks import blocked_user_ids
 from app.models.club import Club
 from app.models.auth_identity import AuthIdentity
 from app.models.club_member import ClubMember
@@ -325,6 +326,11 @@ async def get_my_submission_history(
     submission_ids = [s.id for s, _mix, _name in rows]
     closed_submission_ids = {s.id for s, mix_, _name in rows if mix_.state == "closed"}
 
+    # Blocks apply here too (MysteryMixClub-4vii.42, ADR 0035): the member's
+    # own history must not leak a blocked member's notes or vote attribution
+    # back to them.
+    blocked = await blocked_user_ids(db, current_user.id)
+
     vote_counts: dict[uuid.UUID, int] = {}
     voters_by_submission: dict[uuid.UUID, list[ResultVoter]] = {}
     if closed_submission_ids:
@@ -345,6 +351,8 @@ async def get_my_submission_history(
             )
         ).all()
         for submission_id, voter_id, display_name, weight in voter_rows:
+            if voter_id in blocked:
+                continue
             voters_by_submission.setdefault(submission_id, []).append(
                 ResultVoter(user_id=str(voter_id), display_name=display_name, weight=weight)
             )
@@ -366,6 +374,8 @@ async def get_my_submission_history(
         # submitter) sees only their own notes while voting is open, so notes
         # can't sway votes (MYS-67); the full set is revealed once closed.
         if mix_state != "closed" and note.author_id != current_user.id:
+            continue
+        if note.author_id in blocked:
             continue
         notes_by_submission.setdefault(note.submission_id, []).append(
             ResultNote(

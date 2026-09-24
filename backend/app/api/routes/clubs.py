@@ -23,6 +23,7 @@ from app.models.playlist_job import PlaylistJob
 from app.models.spotify_mix_playlist import SpotifyMixPlaylist
 from app.models.submission import Submission
 from app.models.user import User
+from app.services.blocks import blocked_user_ids
 from app.models.vote import Vote
 from app.services.source_tracks import source_fields
 
@@ -294,10 +295,19 @@ class MemberResponse(WireModel):
     # (club_members.role == "admin", MYS-99). Broader than is_organizer, which
     # only ever means "is the original organizer_id".
     is_admin: bool
+    # MysteryMixClub-4vii.42 (Guideline 1.2): true when the *viewer* has
+    # blocked this member, so the members UI can badge the row and offer
+    # unblock. None means "not computed" (endpoints that return a member
+    # without the viewer's block list, e.g. the role-change response).
+    blocked_by_me: bool | None = None
 
 
 def _to_member_response(
-    member: ClubMember, user: User, organizer_id: uuid.UUID | None
+    member: ClubMember,
+    user: User,
+    organizer_id: uuid.UUID | None,
+    *,
+    blocked_by_me: bool | None = None,
 ) -> MemberResponse:
     is_organizer = member.user_id == organizer_id
     return MemberResponse(
@@ -306,6 +316,7 @@ def _to_member_response(
         joined_at=member.joined_at,
         is_organizer=is_organizer,
         is_admin=is_organizer or member.role == "admin",
+        blocked_by_me=blocked_by_me,
     )
 
 
@@ -461,6 +472,9 @@ async def list_club_members(
 ) -> list[MemberResponse]:
     club = await _load_club_as_member(league_id, current_user, db)
     # Active members joined to their users in one query to avoid an N+1.
+    # blocked_by_me is a per-viewer flag, so the block list loads once outside
+    # the row loop (MysteryMixClub-4vii.42).
+    blocked = await blocked_user_ids(db, current_user.id)
     rows = await db.execute(
         select(ClubMember, User)
         .join(User, User.id == ClubMember.user_id)
@@ -470,7 +484,10 @@ async def list_club_members(
         )
         .order_by(ClubMember.joined_at.asc())
     )
-    return [_to_member_response(member, user, club.organizer_id) for member, user in rows.all()]
+    return [
+        _to_member_response(member, user, club.organizer_id, blocked_by_me=user.id in blocked)
+        for member, user in rows.all()
+    ]
 
 
 class ClubLeaderboardEntry(WireModel):

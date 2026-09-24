@@ -42,6 +42,7 @@ from app.models.note import Note
 from app.models.submission import Submission
 from app.models.user import User
 from app.services.deadline_scheduling import compute_phase_deadline
+from app.services.blocks import blocked_user_ids
 from app.services.source_tracks import source_fields
 from app.services.playlist_jobs import enqueue_playlist_job
 from app.models.vote import Vote
@@ -1040,6 +1041,11 @@ async def get_mix_playlist(
         )
 
     submissions = list(await db.scalars(select(Submission).where(Submission.mix_id == round_id)))
+    # Blocks filter the submitter note per-viewer: a blocked member's text
+    # never reaches the blocker, even inside a mix they share. The song row
+    # itself stays -- a member can still judge a blocked submitter's pick
+    # (MysteryMixClub-4vii.42, ADR 0035).
+    blocked = await blocked_user_ids(db, current_user.id)
     # Anonymous + shuffled (technical-design §8). Sort by id first so Postgres heap
     # order doesn't affect the result, then seed the shuffle on the mix id for a
     # stable per-mix order that's consistent across all playlist platforms (MYS-151).
@@ -1076,7 +1082,7 @@ async def get_mix_playlist(
                 platforms=platforms,
                 preferred_url=_preferred_url(platforms, current_user.preferred_service),
                 is_own=s.user_id == current_user.id,
-                submitter_note=s.note,
+                submitter_note=None if s.user_id in blocked else s.note,
             )
         )
         if s.youtube_video_id:
@@ -1287,7 +1293,16 @@ async def get_mix_results(
         )
     ).all()
     voters_by_submission: dict[uuid.UUID, list[ResultVoter]] = {}
+    # Blocks re-shape the reveal per-viewer: a blocked member's notes and
+    # submitter note drop out, and they leave the voter-attribution lists --
+    # but aggregate counts and the shared scoreboard stay intact, because the
+    # closed mix is the record of a mix the blocker took part in
+    # (MysteryMixClub-4vii.42, ADR 0035).
+    blocked = await blocked_user_ids(db, current_user.id)
+
     for submission_id, voter_id, display_name, weight in voter_rows:
+        if voter_id in blocked:
+            continue
         voters_by_submission.setdefault(submission_id, []).append(
             ResultVoter(user_id=str(voter_id), display_name=display_name, weight=weight)
         )
@@ -1305,6 +1320,8 @@ async def get_mix_results(
     ).all()
     notes_by_submission: dict[uuid.UUID, list[ResultNote]] = {}
     for note, display_name in note_rows:
+        if note.author_id in blocked:
+            continue
         notes_by_submission.setdefault(note.submission_id, []).append(
             ResultNote(
                 id=str(note.id),
@@ -1328,7 +1345,7 @@ async def get_mix_results(
             album=s.album,
             album_art_url=s.album_art_url,
             platforms=s.platform_links or {},
-            submitter_note=s.note,
+            submitter_note=None if s.user_id in blocked else s.note,
             vote_count=votes_by_submission.get(s.id, 0),
             notes=notes_by_submission.get(s.id, []),
             voters=voters_by_submission.get(s.id, []),
@@ -1359,7 +1376,7 @@ async def get_mix_results(
         for i, (uid, total) in enumerate(ranked_players)
     ]
 
-    most_noted = await compute_most_noted(round_id, db)
+    most_noted = await compute_most_noted(round_id, db, exclude_author_ids=blocked)
     most_noted_result = MostNotedResult(
         note_count=most_noted.note_count,
         winners=[

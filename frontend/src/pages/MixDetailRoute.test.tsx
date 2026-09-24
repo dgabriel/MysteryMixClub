@@ -5,6 +5,7 @@ import { RouterProvider, createMemoryRouter } from "react-router";
 import { MixDetailRoute } from "./MixDetailRoute";
 import {
   addNote,
+  blockUser,
   castVotes,
   deleteSubmission,
   editNote,
@@ -58,6 +59,7 @@ vi.mock("../services/api", async () => {
     getNotes: vi.fn(),
     addNote: vi.fn(),
     editNote: vi.fn(),
+    blockUser: vi.fn(),
     getSpotifyStatus: vi.fn(),
     getVoteCounts: vi.fn(),
     reportNote: vi.fn(),
@@ -84,6 +86,7 @@ const mockEditNote = vi.mocked(editNote);
 const mockGetSpotifyStatus = vi.mocked(getSpotifyStatus);
 const mockGetVoteCounts = vi.mocked(getVoteCounts);
 const mockReportNote = vi.mocked(reportNote);
+const mockBlockUser = vi.mocked(blockUser);
 const mockResolveSong = vi.mocked(resolveSong);
 const mockSubmitSong = vi.mocked(submitSong);
 const mockUseAuth = vi.mocked(useAuth);
@@ -324,6 +327,11 @@ describe("MixDetailRoute", () => {
     });
     mockGetNotes.mockResolvedValue([]);
     mockReportNote.mockResolvedValue(undefined);
+    mockBlockUser.mockResolvedValue({
+      user_id: OTHER,
+      display_name: "Bob",
+      created_at: "2026-01-02T00:00:00Z",
+    });
     mockAddNote.mockResolvedValue({
       id: "n1",
       submission_id: "p1",
@@ -2551,6 +2559,11 @@ describe("MixDetailRoute", () => {
       await user.click(within(dialog).getByRole("button", { name: "submit report" }));
 
       await waitFor(() => expect(mockReportNote).toHaveBeenCalledWith("n1", "spam", ""));
+      // The block follow-up (MysteryMixClub-4vii.42) keeps the dialog open
+      // after a successful report; [done] dismisses it.
+      expect(await screen.findByText(/report sent/i)).toBeInTheDocument();
+      expect(within(screen.getByRole("dialog")).getByRole("button", { name: /block bob/i })).toBeInTheDocument();
+      await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "done" }));
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
 
@@ -3442,7 +3455,60 @@ describe("MixDetailRoute", () => {
       await user.click(within(dialog).getByRole("button", { name: "submit report" }));
 
       await waitFor(() => expect(mockReportNote).toHaveBeenCalledWith("note-9", "harassment", ""));
+      // The block follow-up (MysteryMixClub-4vii.42) keeps the dialog open
+      // after a successful report; [done] dismisses it.
+      expect(await screen.findByText(/report sent/i)).toBeInTheDocument();
+      expect(within(screen.getByRole("dialog")).getByRole("button", { name: /block ada/i })).toBeInTheDocument();
+      await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "done" }));
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("Submissions: blocking a note's author from the report dialog refetches and hides their notes (MysteryMixClub-4vii.42)", async () => {
+      const user = userEvent.setup();
+      mockGetResults.mockResolvedValueOnce(
+        results({
+          submissions: [
+            sub({
+              title: "Bad Guy",
+              vote_count: 2,
+              notes: [
+                {
+                  id: "note-9",
+                  author_id: OTHER,
+                  body: "this slaps",
+                  author_display_name: "Ada",
+                  created_at: "x",
+                },
+              ],
+            }),
+          ],
+        }),
+      );
+      mockGetResults.mockResolvedValue(
+        results({ submissions: [sub({ title: "Bad Guy", vote_count: 2, notes: [] })] }),
+      );
+      mockGetMix.mockResolvedValue(mix({ state: "closed" }));
+      renderMix();
+
+      await screen.findByRole("heading", { name: /the picks/i });
+      const card = cardFor("Bad Guy");
+      await user.click(within(card).getByRole("button", { name: /show 1 note/i }));
+      await user.click(within(card).getByRole("button", { name: "report" }));
+      const dialog = await screen.findByRole("dialog");
+      await user.click(within(dialog).getByRole("radio", { name: "harassment" }));
+      await user.click(within(dialog).getByRole("button", { name: "submit report" }));
+
+      await waitFor(() => expect(mockReportNote).toHaveBeenCalledWith("note-9", "harassment", ""));
+
+      // Accepting the block follow-up blocks the author server-side, then the
+      // route refetches results; the server's filtered response drops their
+      // notes. That unmounts the now-empty notes list (and its dialog) — the
+      // author's note simply disappearing is the visible confirmation.
+      await user.click(within(dialog).getByRole("button", { name: /block ada/i }));
+      await waitFor(() => expect(mockBlockUser).toHaveBeenCalledWith(OTHER));
+      await waitFor(() => expect(mockGetResults).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+      expect(screen.queryByText("this slaps")).not.toBeInTheDocument();
     });
 
     it("Submissions: the caller's own submission is labelled 'you'", async () => {

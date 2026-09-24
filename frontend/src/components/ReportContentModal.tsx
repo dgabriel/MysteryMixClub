@@ -34,6 +34,14 @@ type ReportContentModalProps = {
   contentPreview: string;
   onSubmit: (reason: ReportReason, detail: string) => Promise<void>;
   onDismiss: () => void;
+  /** Optional follow-up offered after a successful report (MysteryMixClub-
+   *  4vii.42): blocking the author is Guideline 1.2's other half, and the
+   *  moment a member flags someone's text is the moment they're likeliest to
+   *  want it. When both props are set the modal owns closing after submit
+   *  (the caller's onSubmit must NOT dismiss): it shows "report sent" plus
+   *  this offer, and the [done] button calls onDismiss. */
+  blockTarget?: { userId: string; displayName: string };
+  onBlock?: (userId: string) => Promise<void>;
 };
 
 /**
@@ -47,6 +55,8 @@ export function ReportContentModal({
   contentPreview,
   onSubmit,
   onDismiss,
+  blockTarget,
+  onBlock,
 }: ReportContentModalProps) {
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -56,6 +66,12 @@ export function ReportContentModal({
   const [detail, setDetail] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Post-submit block offer state (only reachable when blockTarget+onBlock
+  // are set). `sent` switches the dialog from form to confirmation.
+  const [sent, setSent] = useState(false);
+  const [blocking, setBlocking] = useState(false);
+  const [blocked, setBlocked] = useState(false);
+  const [blockError, setBlockError] = useState<string | null>(null);
 
   async function submit() {
     if (!reason || submitting) return;
@@ -63,9 +79,29 @@ export function ReportContentModal({
     setError(null);
     try {
       await onSubmit(reason, detail.trim());
+      // Callers that passed a blockTarget keep the dialog open for the
+      // follow-up offer; everyone else closes from their own onSubmit and
+      // never reaches this line.
+      if (blockTarget && onBlock) setSent(true);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "couldn't send your report. try again.");
       setSubmitting(false);
+    }
+  }
+
+  async function handleBlock() {
+    if (!blockTarget || !onBlock) return;
+    setBlocking(true);
+    setBlockError(null);
+    try {
+      await onBlock(blockTarget.userId);
+      setBlocked(true);
+    } catch (err) {
+      setBlockError(
+        err instanceof ApiError ? err.message : "couldn't block them. try again.",
+      );
+    } finally {
+      setBlocking(false);
     }
   }
 
@@ -95,6 +131,49 @@ export function ReportContentModal({
           </button>
         </div>
 
+        {sent && blockTarget && onBlock ? (
+          <>
+            <p className="mt-3 text-sm leading-[1.6] text-muted-foreground">
+              report sent. we review every report, and we can remove content or restrict
+              accounts from here.
+            </p>
+            {blocked ? (
+              <p className="mt-4 text-sm leading-[1.6] text-foreground">
+                blocked. {blockTarget.displayName}&rsquo;s notes are hidden from you —
+                they aren&rsquo;t told, and nothing changes for them.
+              </p>
+            ) : (
+              <>
+                <p className="mt-4 text-sm leading-[1.6] text-muted-foreground">
+                  stop seeing {blockTarget.displayName}&rsquo;s notes? blocking hides them
+                  everywhere in your app — they aren&rsquo;t told, and nothing changes for
+                  them.
+                </p>
+                {blockError ? (
+                  <p role="alert" className="mt-3 text-sm text-destructive-text">
+                    {blockError}
+                  </p>
+                ) : null}
+                <div className="mt-4">
+                  <Button
+                    variant="ghost"
+                    type="button"
+                    onClick={() => void handleBlock()}
+                    disabled={blocking}
+                  >
+                    {blocking ? "blocking…" : `block ${blockTarget.displayName}`}
+                  </Button>
+                </div>
+              </>
+            )}
+            <div className="mt-5 flex items-center justify-end">
+              <Button type="button" onClick={onDismiss}>
+                done
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
         <p className="mt-3 text-sm leading-[1.6] text-muted-foreground">
           &ldquo;{contentPreview}&rdquo;
         </p>
@@ -151,6 +230,8 @@ export function ReportContentModal({
             {submitting ? "sending…" : "submit report"}
           </Button>
         </div>
+          </>
+        )}
       </div>
     </div>
   );

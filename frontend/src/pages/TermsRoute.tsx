@@ -42,9 +42,8 @@ export function TermsRoute() {
                 the basics
               </h2>
               <p className="mt-3">
-                mysterymixclub is currently in beta. features, availability, and these terms may
-                change as the product develops. we'll do our best to give you notice of material
-                changes.
+                features, availability, and these terms may change as the product develops. we'll do
+                our best to give you notice of material changes.
               </p>
             </section>
 
@@ -91,12 +90,12 @@ export function TermsRoute() {
 
             <section>
               <h2 className="font-mono text-mini uppercase tracking-mono-wide text-ink-accent">
-                as-is, beta software
+                no warranties
               </h2>
               <p className="mt-3">
-                mysterymixclub is provided "as is," without warranties of any kind, during this beta
-                period. we're not liable for lost data, service interruptions, or issues arising
-                from third-party platforms this app depends on.
+                mysterymixclub is provided "as is," without warranties of any kind. we're not liable
+                for lost data, service interruptions, or issues arising from third-party platforms
+                this app depends on.
               </p>
             </section>
 

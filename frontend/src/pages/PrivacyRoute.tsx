@@ -72,9 +72,12 @@ export function PrivacyRoute() {
                 cookies
               </h2>
               <p className="mt-3">
-                the only cookie we set is a strictly-necessary, HttpOnly session cookie that keeps
-                you signed in. it isn't used for tracking or advertising, and it's not readable by
-                any script running in your browser.
+                we set two strictly-necessary, HttpOnly cookies: a session cookie that keeps you
+                signed in, and, only while you sign in with google, a short-lived cookie (it expires
+                after 10 minutes) that protects that sign-in from forgery. neither is used for
+                tracking or advertising, and neither is readable by any script running in your
+                browser. the iphone app keeps its sign-in in your phone's keychain instead of a
+                cookie.
               </p>
             </section>
 
@@ -113,11 +116,13 @@ export function PrivacyRoute() {
                 your data, your control
               </h2>
               <p className="mt-3">
-                download a copy of everything tied to your account (profile, submissions, votes, and
-                notes) any time from your profile page, satisfying your right of access and data
-                portability under gdpr articles 15 and 20. delete your account any time from the
-                same page: this cascades to your submissions, votes, notes, sessions, club
-                memberships, linked google/apple sign-in identities, and any push device
+                download a copy of your profile, submissions, votes, notes, and club memberships any
+                time from your profile page. for anything else we hold about you (like sign-in
+                session records, reports you've filed, members you've blocked, or push device
+                registrations), email us and we'll send it; together these cover your rights of
+                access and data portability under gdpr articles 15 and 20. delete your account any
+                time from the same page: this cascades to your submissions, votes, notes, sessions,
+                club memberships, linked google/apple sign-in identities, and any push device
                 registrations, with a scheduled hard purge of any remaining trace within 30 days.
               </p>
             </section>

@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useLocation } from "react-router";
+import { IS_NATIVE_BUILD } from "../lib/platform";
 import { BrandLockup } from "../components/BrandLockup";
 import { ContactEmail } from "../components/ContactEmail";
 import { PaperSurface } from "../components/PaperSurface";
@@ -22,7 +23,7 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
       },
       {
         q: "how do i log in?",
-        a: "a few ways: enter your email and we'll send you a single-use sign-in link (expires after 15 minutes), set a password once and use that instead, or sign in with google. on the iphone app you can also sign in with apple.",
+        a: "enter your email and we'll send you a single-use sign-in link (expires after 15 minutes), or set a password once and use that instead. on the iphone app you can also sign in with apple, and where the sign-in screen shows a google button, you can use your google account.",
       },
       {
         q: "it's my first time logging in, what happens?",
@@ -182,7 +183,7 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
       },
       {
         q: "can i download my data?",
-        a: 'yes, your profile has a "download my data" option that exports everything tied to your account.',
+        a: 'yes, your profile has a "download my data" option. it exports your profile, submissions, votes, notes, and club memberships. for anything else we hold about you, email us.',
       },
       {
         q: "can i delete my account?",
@@ -196,7 +197,11 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
     items: [
       {
         q: "is mysterymixclub free?",
-        a: "yes. there's a voluntary tip jar linked on the about page, but nothing is paywalled and there are no ads.",
+        // The iPhone app mentions no tip jar at all (MysteryMixClub-4vii.50):
+        // pointing to an outside way to pay is an App Store Guideline 3.1.1 risk.
+        a: IS_NATIVE_BUILD
+          ? "yes. nothing is paywalled and there are no ads."
+          : "yes. there's a voluntary tip jar linked on the about page, but nothing is paywalled and there are no ads.",
       },
       {
         q: "does it use ai on my data?",

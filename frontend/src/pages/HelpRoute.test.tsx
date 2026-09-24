@@ -64,4 +64,20 @@ describe("HelpRoute", () => {
       ]),
     );
   });
+  it("in the iPhone app, the 'is it free?' answer mentions no tip jar (4vii.50)", async () => {
+    vi.resetModules();
+    vi.doMock("../lib/platform", () => ({ IS_NATIVE_BUILD: true }));
+    const { HelpRoute: NativeHelpRoute } = await import("./HelpRoute");
+
+    const { container } = render(
+      <MemoryRouter>
+        <NativeHelpRoute />
+      </MemoryRouter>,
+    );
+
+    expect(container.textContent).toContain("nothing is paywalled");
+    expect(container.textContent).not.toMatch(/tip jar|tip me|venmo/i);
+    vi.doUnmock("../lib/platform");
+    vi.resetModules();
+  });
 });

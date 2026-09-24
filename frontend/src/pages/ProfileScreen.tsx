@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from "react";
-import { PASSWORD_MIN_LENGTH, type Club } from "../services/api";
+import { PASSWORD_MIN_LENGTH, type BlockedUser, type Club } from "../services/api";
 import type { PushPermissionStatus, PushRegistrationState } from "../ios/push";
 import { Button } from "../components/Button";
 import { PaperSurface } from "../components/PaperSurface";
@@ -14,9 +14,7 @@ import { CrownIcon } from "../components/CrownIcon";
 import { UserAvatar } from "../components/avatars/UserAvatar";
 
 export type NotificationPreferenceKey =
-  | "email_notifications"
-  | "push_lifecycle_enabled"
-  | "push_deadline_reminders_enabled";
+  "email_notifications" | "push_lifecycle_enabled" | "push_deadline_reminders_enabled";
 
 type ProfileScreenProps = {
   userId: string | null;
@@ -68,6 +66,12 @@ type ProfileScreenProps = {
   onTogglePreference?: (key: NotificationPreferenceKey, value: boolean) => void;
   savingPref?: NotificationPreferenceKey | null;
   prefsError?: string | null;
+  /** The viewer's block list (MysteryMixClub-4vii.49); null while loading. */
+  blockedMembers?: BlockedUser[] | null;
+  blocksLoadError?: string | null;
+  onUnblock?: (userId: string) => void;
+  unblockingUserId?: string | null;
+  unblockError?: string | null;
   onLogoutAll: () => void;
   logoutAllBusy?: boolean;
   onExportData: () => void;
@@ -150,6 +154,11 @@ export function ProfileScreen({
   onTogglePreference,
   savingPref,
   prefsError,
+  blockedMembers = null,
+  blocksLoadError,
+  onUnblock,
+  unblockingUserId = null,
+  unblockError,
   onLogoutAll,
   logoutAllBusy = false,
   onExportData,
@@ -270,6 +279,14 @@ export function ProfileScreen({
                 </Button>
               </div>
             </section>
+
+            <BlockedMembersSection
+              blockedMembers={blockedMembers}
+              loadError={blocksLoadError}
+              onUnblock={onUnblock}
+              unblockingUserId={unblockingUserId}
+              unblockError={unblockError}
+            />
 
             <ExportDataSection
               onExportData={onExportData}
@@ -576,8 +593,8 @@ function NotificationPreferencesSection({
               <>
                 <p className="text-sm leading-[1.72] text-ink-muted">
                   notifications are allowed on this phone, but this device isn&apos;t connected to
-                  mystery mix club yet, so pushes can&apos;t reach it. check your connection and
-                  try again.
+                  mystery mix club yet, so pushes can&apos;t reach it. check your connection and try
+                  again.
                 </p>
                 <div className="mt-3">
                   <Button onPaper variant="ghost" type="button" onClick={onRetryPushRegistration}>
@@ -590,8 +607,8 @@ function NotificationPreferencesSection({
             )
           ) : pushStatus === "denied" ? (
             <p className="text-sm leading-[1.72] text-ink-muted">
-              push is off at the iOS level, so the push toggles below won&apos;t do anything
-              until you turn it back on in iOS settings &gt; notifications &gt; mysterymixclub.
+              push is off at the iOS level, so the push toggles below won&apos;t do anything until
+              you turn it back on in iOS settings &gt; notifications &gt; mysterymixclub.
             </p>
           ) : (
             <>
@@ -776,6 +793,75 @@ function SetPasswordForm({
         </div>
       </form>
     </>
+  );
+}
+
+/**
+ * Everyone the viewer has blocked, each with an unblock action
+ * (MysteryMixClub-4vii.49, Guideline 1.2). The club page can only unblock
+ * someone still on that club's roster, so this is the one place a block
+ * can always be undone: a member who left, or a club that was deleted.
+ *
+ * Unblocking is recoverable (you can block again), so it's `ghost`, like the
+ * club page's own unblock. Rows sit directly on paper, so they use the `ink`
+ * ramp and `ink-hairline` dividers. The name truncates rather than pushing
+ * the button off a narrow screen (the 4vii.47 lesson).
+ */
+function BlockedMembersSection({
+  blockedMembers,
+  loadError,
+  onUnblock,
+  unblockingUserId,
+  unblockError,
+}: {
+  blockedMembers: BlockedUser[] | null;
+  loadError?: string | null;
+  onUnblock?: (userId: string) => void;
+  unblockingUserId: string | null;
+  unblockError?: string | null;
+}) {
+  return (
+    <section className="mt-12 border-t border-ink-hairline pt-10">
+      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-accent">
+        blocked members
+      </h2>
+      <p className="mt-2 text-sm leading-[1.72] text-ink-muted">
+        you won&apos;t see notes from anyone you block. they&apos;re never told.
+      </p>
+      {loadError ? (
+        <p role="alert" className="mt-4 text-sm leading-[1.72] text-ink">
+          {loadError}
+        </p>
+      ) : blockedMembers === null ? null : blockedMembers.length === 0 ? (
+        <p className="mt-4 text-sm leading-[1.72] text-ink-muted">
+          you haven&apos;t blocked anyone.
+        </p>
+      ) : (
+        <ul className="mt-4 divide-y divide-ink-hairline border-y border-ink-hairline">
+          {blockedMembers.map((member) => (
+            <li key={member.user_id} className="flex items-center justify-between gap-4 py-3">
+              <span className="min-w-0 truncate text-sm text-ink">{member.display_name}</span>
+              <Button
+                onPaper
+                variant="ghost"
+                type="button"
+                className="shrink-0"
+                onClick={() => onUnblock?.(member.user_id)}
+                disabled={unblockingUserId !== null}
+                aria-label={`unblock ${member.display_name}`}
+              >
+                {unblockingUserId === member.user_id ? "unblocking…" : "unblock"}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {unblockError ? (
+        <div className="mt-3">
+          <FormError onPaper>{unblockError}</FormError>
+        </div>
+      ) : null}
+    </section>
   );
 }
 

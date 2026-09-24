@@ -577,7 +577,7 @@ GET    /submissions/:id/notes   Get notes on a submission
 
 ### Moderation (Guideline 1.2)
 ```
-POST   /reports                 Report UGC (v1: notes; content_type/reason constrained) — 4vii.13
+POST   /reports                 Report UGC (v1: notes; content_type/reason constrained); post-commit the moderation contact is emailed (4vii.48) — 4vii.13
 POST   /users/me/blocks         Block a current/former clubmate (201; idempotent re-POST -> 200; 400 self, neutral 404 never-clubmates) — 4vii.42, ADR 0035
 GET    /users/me/blocks         List the caller's blocks (newest first)
 DELETE /users/me/blocks/:userId Unblock (204; 404 if no standing block)

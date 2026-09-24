@@ -81,6 +81,11 @@ class Settings(BaseSettings):
     # NOT a login gate — sign-in is open to existing users + valid invite links.
     # Normalized via seed_admin_email_set.
     seed_admin_emails: str = Field(default="")
+    # Guideline 1.2 moderation contact: receives one email per filed member
+    # content report (MysteryMixClub-4vii.48) and is the address published to
+    # Apple in the App Review notes. NOT member-facing.
+    moderation_contact_email: str = Field(default="info@mysterymixclub.com")
+
     # Hard cap on total (non-deleted) accounts for the controlled beta (MYS-127);
     # new sign-ups are blocked at the cap, existing users unaffected. 0 = unlimited.
     max_users: int = Field(default=1500)

@@ -161,3 +161,85 @@ async def test_post_rejects_bad_reason(client, db_session):
         headers=_auth(reporter.id),
     )
     assert resp.status_code == 422
+
+
+# --------------------------------------------------------------------------- #
+# Triage reliability (MysteryMixClub-4vii.48): every filed report emails the
+# moderation contact.
+# --------------------------------------------------------------------------- #
+
+
+async def test_report_emails_the_moderation_contact_with_full_context(
+    client, db_session, email_spy
+):
+    organizer = await _seed_user(db_session, "o@example.com", name="Ollie")
+    reporter = await _seed_user(db_session, "r@example.com", name="Ria")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    await _add_member(db_session, mix_.club_id, reporter)
+    note = await _seed_note(db_session, mix_, organizer, body="you all have no taste")
+
+    resp = await client.post(
+        "/api/v1/reports",
+        json={
+            "content_type": "note",
+            "content_id": str(note.id),
+            "reason": "harassment",
+            "detail": "third time this week",
+        },
+        headers=_auth(reporter.id),
+    )
+    assert resp.status_code == 201
+
+    assert len(email_spy.sends) == 1
+    to, subject, html = email_spy.sends[0]
+    assert to == "info@mysterymixclub.com"
+    assert "harassment" in subject
+    # Enough context to judge without opening the app.
+    assert "you all have no taste" in html
+    assert "Ollie" in html and "Ria" in html
+    assert "third time this week" in html
+    assert "bad guy" in html and "Billie Eilish" in html  # the note's submission song
+
+
+async def test_report_email_html_escapes_member_text(client, db_session, email_spy):
+    organizer = await _seed_user(db_session, "o@example.com")
+    reporter = await _seed_user(db_session, "r@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    await _add_member(db_session, mix_.club_id, reporter)
+    note = await _seed_note(db_session, mix_, organizer, body='<script>alert("x")</script>')
+
+    resp = await client.post(
+        "/api/v1/reports",
+        json={"content_type": "note", "content_id": str(note.id), "reason": "other"},
+        headers=_auth(reporter.id),
+    )
+    assert resp.status_code == 201
+
+    html = email_spy.sends[0][2]
+    assert "<script>" not in html
+    assert "&lt;script&gt;" in html
+
+
+async def test_report_survives_a_broken_email_sender(client, db_session, email_spy, monkeypatch):
+    organizer = await _seed_user(db_session, "o@example.com")
+    reporter = await _seed_user(db_session, "r@example.com")
+    mix_ = await _seed_club_with_mix(db_session, organizer)
+    await _add_member(db_session, mix_.club_id, reporter)
+    note = await _seed_note(db_session, mix_, organizer)
+
+    def _boom(email, subject, html, headers=None):
+        raise RuntimeError("resend is down")
+
+    monkeypatch.setattr(email_spy, "send", _boom)
+
+    resp = await client.post(
+        "/api/v1/reports",
+        json={"content_type": "note", "content_id": str(note.id), "reason": "spam"},
+        headers=_auth(reporter.id),
+    )
+    assert resp.status_code == 201  # delivery trouble never un-files a report
+
+    report = await db_session.scalar(
+        select(Report).where(Report.id == uuid.UUID(resp.json()["id"]))
+    )
+    assert report is not None

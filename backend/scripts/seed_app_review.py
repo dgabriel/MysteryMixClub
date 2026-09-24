@@ -682,10 +682,10 @@ Membership is invite-only, and every control below is live in this build.
   list before it is saved. A flagged write is rejected and never shown
   to anyone. To see it, try setting your display name to "kys" on the
   Profile screen.
-- Response: every report immediately emails our moderation inbox
-  (info@mysterymixclub.com). We review each report within 24 hours.
-  We can delete an offending account, and a club's organizer can remove
-  a member from the club.
+- Response: every report is logged immediately in the administrators'
+  Reports queue. An email alert is queued to notify administrators at
+  info@mysterymixclub.com. Administrators review reports promptly and
+  can delete an offending account; a club's organizer can remove a member.
 - Contact: info@mysterymixclub.com, on the Help screen (no sign-in
   needed).
 """

@@ -182,15 +182,14 @@ information. Current posture, one item at a time:
    `open_voting` composer/list, the closed-mix reveal's per-submission notes,
    and the reveal's Most Noted section -- `4vii.39` closed the gap where the
    reveal rendered notes read-only with no report action at all (found during
-   the `6qiq` App Store readiness walkthrough). Reports never wait for a
-   chance check: every filed report emails the moderation contact
+   the `6qiq` App Store readiness walkthrough). Every report is committed
+   immediately as an open item in the administrators' Reports queue. After
+   that commit, an email alert is queued to notify the moderation contact
    (`MODERATION_CONTACT_EMAIL`, default `info@mysterymixclub.com`, added in
    `4vii.48`) with full context (club, both members, the quoted note, song +
-   mix) -- the platform admin reading that inbox is the responsible
-   reviewer, and the email is the cadence. The commitment (stated to Apple
-   in the App Review notes `backend/scripts/seed_app_review.py` prints) is
-   that every report is reviewed within 24 hours. Triage happens on the web-only
-   `/admin` screen (Reports section, added in `4vii.48.1`): open-first with
+   mix). Email delivery is best-effort: a failure is logged and never removes
+   the report from the queue. Administrators review reports promptly on the
+   web-only `/admin` screen (Reports section, added in `4vii.48.1`): open-first with
    each row's full context, null-safe fallbacks when an account was purged or
    the note no longer exists, and a `mark reviewed` action
    (`POST /api/v1/admin/reports/:id/review`) that records the disposition.

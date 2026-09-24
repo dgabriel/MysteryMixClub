@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Navigate, useSearchParams } from "react-router";
 import { EmailEntryScreen, type LoginMode } from "./EmailEntryScreen";
 import { CheckEmailScreen } from "./CheckEmailScreen";
+import { VerifyScreen } from "./VerifyScreen";
 import {
   API_BASE_URL,
   ApiError,
@@ -267,6 +268,17 @@ export function LoginRoute() {
   // here. Bounce them home (MYS-92). /home cascades to /onboarding if needed.
   if (status === "authenticated") {
     return <Navigate to="/home" replace />;
+  }
+
+  // The startup session restore is still in flight: show the same neutral
+  // loading state ProtectedRoute does, so a reopened app resolves straight to
+  // either this form or /home instead of flashing the form first. On iOS the
+  // restore waits on a Keychain read plus a network refresh (ADR 0037), which
+  // made the flash obvious (MysteryMixClub-4vii.51). Placed after every hook,
+  // and ?google= was already captured into state at mount, so nothing is lost
+  // while this shows.
+  if (status === "loading") {
+    return <VerifyScreen state="verifying" />;
   }
 
   if (sentTo) {

@@ -10,8 +10,10 @@ import {
   getClubs,
   getGoogleEnabled,
   getMe,
+  listBlocks,
   setPassword,
   startGoogleLink,
+  unblockUser,
   updateDisplayName,
   updateNotificationPreferences,
 } from "../services/api";
@@ -39,6 +41,8 @@ vi.mock("../services/api", async () => {
     setPassword: vi.fn(),
     startGoogleLink: vi.fn(),
     updateNotificationPreferences: vi.fn(),
+    listBlocks: vi.fn(),
+    unblockUser: vi.fn(),
   };
 });
 
@@ -66,6 +70,8 @@ const mockGetGoogleEnabled = vi.mocked(getGoogleEnabled);
 const mockSetPassword = vi.mocked(setPassword);
 const mockStartGoogleLink = vi.mocked(startGoogleLink);
 const mockUpdateNotificationPreferences = vi.mocked(updateNotificationPreferences);
+const mockListBlocks = vi.mocked(listBlocks);
+const mockUnblockUser = vi.mocked(unblockUser);
 const mockNativePushAvailable = vi.mocked(nativePushAvailable);
 const mockPushPermissionStatus = vi.mocked(pushPermissionStatus);
 const mockRequestPushPermissionAndRegister = vi.mocked(requestPushPermissionAndRegister);
@@ -181,6 +187,7 @@ describe("ProfileRoute", () => {
     mockSyncPushRegistration.mockResolvedValue("idle");
     mockOnAppResume.mockReturnValue(() => {});
     mockUsePushRegistration.mockReturnValue("registered");
+    mockListBlocks.mockResolvedValue([]);
   });
 
   it("renders the current display name and only the completed clubs, newest first", async () => {
@@ -209,9 +216,7 @@ describe("ProfileRoute", () => {
   });
 
   it("empty archive: shows a calm note", async () => {
-    mockGetClubs.mockResolvedValue([
-      clubWith({ state: "active", completed_at: null }),
-    ]);
+    mockGetClubs.mockResolvedValue([clubWith({ state: "active", completed_at: null })]);
 
     renderProfile();
 
@@ -345,6 +350,64 @@ describe("ProfileRoute", () => {
     expect(await screen.findByText(/boom/i)).toBeInTheDocument();
   });
 
+  describe("blocked members (MysteryMixClub-4vii.49)", () => {
+    const blocked = [
+      { user_id: "user-2", display_name: "Grace", created_at: "2026-09-24T12:00:00Z" },
+      { user_id: "user-3", display_name: "Linus", created_at: "2026-09-24T12:05:00Z" },
+    ];
+
+    it("lists every blocked member by name, each with an unblock action", async () => {
+      mockListBlocks.mockResolvedValue(blocked);
+
+      renderProfile();
+
+      expect(await screen.findByText("Grace")).toBeInTheDocument();
+      expect(screen.getByText("Linus")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "unblock Grace" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "unblock Linus" })).toBeInTheDocument();
+    });
+
+    it("empty: says nobody is blocked", async () => {
+      renderProfile();
+
+      expect(await screen.findByText(/you haven't blocked anyone/i)).toBeInTheDocument();
+    });
+
+    it("unblock: calls the API and removes only that member's row", async () => {
+      mockListBlocks.mockResolvedValue(blocked);
+      mockUnblockUser.mockResolvedValue(undefined);
+      const user = userEvent.setup();
+
+      renderProfile();
+      await user.click(await screen.findByRole("button", { name: "unblock Grace" }));
+
+      expect(mockUnblockUser).toHaveBeenCalledWith("user-2");
+      await waitFor(() => expect(screen.queryByText("Grace")).not.toBeInTheDocument());
+      expect(screen.getByText("Linus")).toBeInTheDocument();
+    });
+
+    it("unblock failure: keeps the row and shows a calm error", async () => {
+      mockListBlocks.mockResolvedValue(blocked);
+      mockUnblockUser.mockRejectedValue(new ApiError(500, "unblock failed"));
+      const user = userEvent.setup();
+
+      renderProfile();
+      await user.click(await screen.findByRole("button", { name: "unblock Grace" }));
+
+      expect(await screen.findByText(/unblock failed/i)).toBeInTheDocument();
+      expect(screen.getByText("Grace")).toBeInTheDocument();
+    });
+
+    it("load failure: only this section shows the error; the rest of the profile renders", async () => {
+      mockListBlocks.mockRejectedValue(new ApiError(500, "blocks unavailable"));
+
+      renderProfile();
+
+      expect(await screen.findByText(/blocks unavailable/i)).toBeInTheDocument();
+      expect(screen.getByText(/archived/i)).toBeInTheDocument();
+    });
+  });
+
   describe("account settings: set password", () => {
     it("no password yet: submitting the form calls setPassword and swaps in the status line", async () => {
       mockSetPassword.mockResolvedValue({ message: "ok" });
@@ -410,7 +473,9 @@ describe("ProfileRoute", () => {
 
     it("not linked: clicking the button starts the link flow and navigates to the authorize url", async () => {
       mockGetGoogleEnabled.mockResolvedValue({ enabled: true });
-      mockStartGoogleLink.mockResolvedValue({ authorize_url: "https://accounts.google.com/o/oauth2/authorize" });
+      mockStartGoogleLink.mockResolvedValue({
+        authorize_url: "https://accounts.google.com/o/oauth2/authorize",
+      });
       const user = userEvent.setup();
       const originalLocation = window.location;
       // jsdom doesn't implement navigation; stub `location` so the assignment
@@ -447,7 +512,9 @@ describe("ProfileRoute", () => {
       await screen.findByText(/archived/i);
 
       expect(await screen.findByText("linked")).toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: /link google account/i })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /link google account/i }),
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -608,7 +675,9 @@ describe("ProfileRoute", () => {
           renderProfile();
           await screen.findByText(/archived/i);
 
-          expect(await screen.findByText(/isn't connected to mystery mix club yet/i)).toBeInTheDocument();
+          expect(
+            await screen.findByText(/isn't connected to mystery mix club yet/i),
+          ).toBeInTheDocument();
           expect(screen.queryByText(/push is on for this device/i)).not.toBeInTheDocument();
           mockSyncPushRegistration.mockClear();
 
@@ -653,7 +722,9 @@ describe("ProfileRoute", () => {
 
           renderProfile();
           await screen.findByText(/archived/i);
-          expect(await screen.findByText(/won't do anything until you turn it back on/i)).toBeInTheDocument();
+          expect(
+            await screen.findByText(/won't do anything until you turn it back on/i),
+          ).toBeInTheDocument();
 
           mockPushPermissionStatus.mockResolvedValue("granted");
           resumed();
@@ -680,7 +751,9 @@ describe("ProfileRoute", () => {
         renderProfile();
         await screen.findByText(/archived/i);
 
-        expect(await screen.findByText(/won't do anything until you turn it back on/i)).toBeInTheDocument();
+        expect(
+          await screen.findByText(/won't do anything until you turn it back on/i),
+        ).toBeInTheDocument();
         expect(
           screen.queryByRole("button", { name: /turn on push notifications/i }),
         ).not.toBeInTheDocument();

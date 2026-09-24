@@ -8,12 +8,15 @@ import {
   getClubs,
   getGoogleEnabled,
   getMe,
+  listBlocks,
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
   setPassword as apiSetPassword,
   startGoogleLink,
+  unblockUser,
   updateDisplayName,
   updateNotificationPreferences,
+  type BlockedUser,
   type Club,
 } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
@@ -94,6 +97,14 @@ export function ProfileRoute() {
   });
 
   const [logoutAllBusy, setLogoutAllBusy] = useState(false);
+
+  // The viewer's block list (MysteryMixClub-4vii.49). Loaded on its own, apart
+  // from the main profile load, so a failure here only affects this section.
+  // null until it resolves.
+  const [blockedMembers, setBlockedMembers] = useState<BlockedUser[] | null>(null);
+  const [blocksLoadError, setBlocksLoadError] = useState<string | null>(null);
+  const [unblockingUserId, setUnblockingUserId] = useState<string | null>(null);
+  const [unblockError, setUnblockError] = useState<string | null>(null);
 
   const [exportingData, setExportingData] = useState(false);
   const [exportDataError, setExportDataError] = useState<string | null>(null);
@@ -232,6 +243,24 @@ export function ProfileRoute() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    listBlocks()
+      .then((blocks) => {
+        if (!cancelled) setBlockedMembers(blocks);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setBlocksLoadError(
+            err instanceof ApiError ? err.message : "couldn't load blocked members. try again.",
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Whether Google sign-in is configured at all -- same fail-safe reasoning as
   // EmailEntryScreen: a failed/unconfigured check hides the Google subsection
   // rather than showing one that would just 404 on click.
@@ -354,6 +383,26 @@ export function ProfileRoute() {
     }
   }
 
+  // One unblock in flight at a time, same guard shape as ClubHomeRoute's
+  // block/unblock. The row only leaves the list once the server confirms.
+  async function handleUnblock(memberUserId: string) {
+    if (unblockingUserId) return;
+    setUnblockingUserId(memberUserId);
+    setUnblockError(null);
+    try {
+      await unblockUser(memberUserId);
+      setBlockedMembers((current) =>
+        current ? current.filter((b) => b.user_id !== memberUserId) : current,
+      );
+    } catch (err) {
+      setUnblockError(
+        err instanceof ApiError ? err.message : "couldn't unblock that member. try again.",
+      );
+    } finally {
+      setUnblockingUserId(null);
+    }
+  }
+
   async function handleLogoutAll() {
     setLogoutAllBusy(true);
     try {
@@ -440,6 +489,11 @@ export function ProfileRoute() {
       onTogglePreference={handleTogglePreference}
       savingPref={savingPref}
       prefsError={prefsError}
+      blockedMembers={blockedMembers}
+      blocksLoadError={blocksLoadError}
+      onUnblock={handleUnblock}
+      unblockingUserId={unblockingUserId}
+      unblockError={unblockError}
       onLogoutAll={handleLogoutAll}
       logoutAllBusy={logoutAllBusy}
       onExportData={handleExportData}

@@ -16,7 +16,14 @@ interface NativeSessionStorePlugin {
   clearRefreshToken(): Promise<void>;
 }
 
-const sessionStore = registerPlugin<NativeSessionStorePlugin>("MMCSessionStore");
+// Registered on first use, not at import: api.ts imports this module, and
+// registering at load would reach into @capacitor/core for every consumer of
+// the API client (including tests that stub Capacitor without it).
+let plugin: NativeSessionStorePlugin | null = null;
+function sessionStore(): NativeSessionStorePlugin {
+  plugin ??= registerPlugin<NativeSessionStorePlugin>("MMCSessionStore");
+  return plugin;
+}
 
 function available(): boolean {
   return Capacitor.getPlatform() === "ios" && Capacitor.isPluginAvailable("MMCSessionStore");
@@ -30,7 +37,7 @@ function logFailure(action: string, error: unknown): void {
 export async function loadRefreshToken(): Promise<string | null> {
   if (!available()) return null;
   try {
-    return (await sessionStore.getRefreshToken()).token;
+    return (await sessionStore().getRefreshToken()).token;
   } catch (error) {
     logFailure("read", error);
     return null;
@@ -40,7 +47,7 @@ export async function loadRefreshToken(): Promise<string | null> {
 export async function saveRefreshToken(token: string): Promise<void> {
   if (!available()) return;
   try {
-    await sessionStore.setRefreshToken({ token });
+    await sessionStore().setRefreshToken({ token });
   } catch (error) {
     logFailure("write", error);
   }
@@ -49,7 +56,7 @@ export async function saveRefreshToken(token: string): Promise<void> {
 export async function clearRefreshToken(): Promise<void> {
   if (!available()) return;
   try {
-    await sessionStore.clearRefreshToken();
+    await sessionStore().clearRefreshToken();
   } catch (error) {
     logFailure("clear", error);
   }

@@ -2006,4 +2006,75 @@ export async function adminInviteFromWaitlist(entryId: string): Promise<Waitlist
   return (await res.json()) as WaitlistEntry;
 }
 
+/* ------------------------------------------------------------------ */
+/* Member content reports (MysteryMixClub-4vii.48.1, Guideline 1.2).   */
+/* ------------------------------------------------------------------ */
+
+/** A report participant — the reporter or the reported member. Null when the
+ *  account has been purged (reports SET NULL their user FKs, 4vii.38). */
+export type AdminReportParty = {
+  user_id: string;
+  display_name: string;
+  email: string;
+};
+
+/** The reported content, resolved at read time. Null when it no longer
+ *  exists; v1's only kind is "note". */
+export type AdminReportContent = {
+  kind: string;
+  content_id: string;
+  body: string;
+  song_title: string | null;
+  song_artist: string | null;
+  /** Human label of the mix the note sits in ("mix 2 · summer slows"). */
+  mix_label: string | null;
+};
+
+/** A member content report as a platform admin sees it
+ *  (GET /api/v1/admin/reports). Any of the surrounding context can be null
+ *  (purged accounts, deleted content, a removed club) — render those, don't
+ *  drop the row. */
+export type AdminReport = {
+  id: string;
+  reason: string;
+  detail: string | null;
+  status: "open" | "reviewed";
+  created_at: string;
+  club_id: string;
+  club_name: string | null;
+  reporter: AdminReportParty | null;
+  reported_user: AdminReportParty | null;
+  content: AdminReportContent | null;
+};
+
+export type AdminReportPage = { items: AdminReport[]; total: number };
+export type AdminReportStatusFilter = "open" | "reviewed" | "all";
+
+/** One page of member content reports, newest first (platform-admin only). */
+export async function adminListReports(
+  status: AdminReportStatusFilter = "open",
+  offset = 0,
+  limit = 50,
+): Promise<AdminReportPage> {
+  const res = await authenticatedRequest(
+    `/api/v1/admin/reports?status=${status}&limit=${limit}&offset=${offset}`,
+  );
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as AdminReportPage;
+}
+
+/** Mark a report reviewed after acting on it (platform-admin only).
+ *  Idempotent — re-reviewing returns the row unchanged. */
+export async function adminMarkReportReviewed(reportId: string): Promise<AdminReport> {
+  const res = await authenticatedRequest(`/api/v1/admin/reports/${reportId}/review`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as AdminReport;
+}
+
 export { ApiError };

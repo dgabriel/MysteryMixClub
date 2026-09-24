@@ -182,16 +182,19 @@ information. Current posture, one item at a time:
    `open_voting` composer/list, the closed-mix reveal's per-submission notes,
    and the reveal's Most Noted section -- `4vii.39` closed the gap where the
    reveal rendered notes read-only with no report action at all (found during
-   the `6qiq` App Store readiness walkthrough). There is no admin console
-   yet; review reports by querying the table directly:
+   the `6qiq` App Store readiness walkthrough). A platform admin reviews the
+   queue on the web-only `/admin` screen (Reports section, added in
+   `4vii.48.1`): open-first with each row's full context (club, reporter,
+   reported member, the quoted note with song + mix context), null-safe
+   fallbacks when an account was purged or the note no longer exists, and a
+   `mark reviewed` action backed by `POST /api/v1/admin/reports/:id/review`.
+   Act on a report with the tools already there (organizer member-removal, a
+   direct conversation, admin account deletion from the same screen), then
+   mark it reviewed. A direct query still works for bulk questions:
 
    ```sql
    SELECT * FROM reports WHERE status = 'open' ORDER BY created_at DESC;
    ```
-
-   Mark one reviewed with `UPDATE reports SET status = 'reviewed' WHERE
-   id = '<id>';` once handled (organizer member-removal, a direct
-   conversation, or no action needed).
 
 2. **Blocking** -- implemented 2026-09-23 (see ADR 0035 for the semantics).
    A member can block any current or former clubmate from the club home

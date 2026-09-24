@@ -581,6 +581,8 @@ POST   /reports                 Report UGC (v1: notes; content_type/reason const
 POST   /users/me/blocks         Block a current/former clubmate (201; idempotent re-POST -> 200; 400 self, neutral 404 never-clubmates) — 4vii.42, ADR 0035
 GET    /users/me/blocks         List the caller's blocks (newest first)
 DELETE /users/me/blocks/:userId Unblock (204; 404 if no standing block)
+GET    /admin/reports           Platform-admin queue: ?status=open|reviewed|all (default open), limit+offset, newest first; per-row context (club, both parties, the note) resolved null-safe — 4vii.48.1
+POST   /admin/reports/:id/review  Mark a report reviewed (idempotent 200; 404 unknown) — 4vii.48.1
 ```
 > Reads are filtered per-viewer: any response that would show the caller a
 > blocked author's text (notes, submitter_note, submission history,

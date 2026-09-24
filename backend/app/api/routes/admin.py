@@ -3,6 +3,7 @@ import secrets
 import uuid
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
@@ -26,6 +27,7 @@ from app.models.invite import Invite
 from app.models.magic_link_token import MagicLinkToken
 from app.models.mix import Mix
 from app.models.note import Note
+from app.models.report import Report
 from app.models.submission import Submission
 from app.models.user import User
 from app.models.vote import Vote
@@ -449,3 +451,172 @@ async def get_signup_trend(
             for day in (start_day + timedelta(days=offset) for offset in range(days))
         ],
     )
+
+
+# --------------------------------------------------------------------------- #
+# Member content reports (MysteryMixClub-4vii.48.1, Guideline 1.2)
+# --------------------------------------------------------------------------- #
+
+
+class AdminReportParty(WireModel):
+    """A report participant. Omitted entirely (null) when the account is gone —
+    reports SET NULL their user FKs on purge (MysteryMixClub-4vii.38) and the
+    list must render that instead of dropping the row."""
+
+    user_id: str
+    display_name: str
+    email: str
+
+
+class AdminReportContent(WireModel):
+    """The reported content, resolved at read time. Omitted (null) when the
+    content no longer exists; v1's only kind is 'note'."""
+
+    kind: str
+    content_id: str
+    body: str
+    song_title: str | None
+    song_artist: str | None
+    # Human label of the mix the content lives in ("mix 2 · summer slows").
+    mix_label: str | None
+
+
+class AdminReportResponse(WireModel):
+    id: str
+    reason: str
+    detail: str | None
+    status: str
+    created_at: datetime
+    club_id: str
+    club_name: str | None
+    reporter: AdminReportParty | None
+    reported_user: AdminReportParty | None
+    content: AdminReportContent | None
+
+
+class AdminReportPage(WireModel):
+    items: list[AdminReportResponse]
+    total: int
+
+
+_REPORT_PAGE_LIMIT = 50
+
+
+async def _to_admin_report(db: AsyncSession, report: Report) -> AdminReportResponse:
+    """Resolve one report's surrounding context. Every lookup is independent of
+    the row's foreign keys resolving — a purged user (SET NULL ids) or deleted
+    content yields None for that piece, never an exception."""
+    reporter = (
+        await db.scalar(select(User).where(User.id == report.reporter_id))
+        if report.reporter_id
+        else None
+    )
+    reported = (
+        await db.scalar(select(User).where(User.id == report.reported_user_id))
+        if report.reported_user_id
+        else None
+    )
+    club = await db.scalar(select(Club).where(Club.id == report.club_id))
+
+    content: AdminReportContent | None = None
+    if report.content_type == "note":
+        note = await db.scalar(select(Note).where(Note.id == report.content_id))
+        if note is not None:
+            submission = await db.scalar(
+                select(Submission).where(Submission.id == note.submission_id)
+            )
+            mix_ = await db.scalar(select(Mix).where(Mix.id == note.mix_id))
+            mix_label = f"mix {mix_.mix_number} · {mix_.theme}" if mix_ is not None else None
+            content = AdminReportContent(
+                kind="note",
+                content_id=str(report.content_id),
+                body=note.body,
+                song_title=submission.title if submission else None,
+                song_artist=submission.artist if submission else None,
+                mix_label=mix_label,
+            )
+
+    return AdminReportResponse(
+        id=str(report.id),
+        reason=report.reason,
+        detail=report.detail,
+        status=report.status,
+        created_at=report.created_at,
+        club_id=str(report.club_id),
+        club_name=club.name if club else None,
+        reporter=(
+            AdminReportParty(
+                user_id=str(reporter.id), display_name=reporter.display_name, email=reporter.email
+            )
+            if reporter
+            else None
+        ),
+        reported_user=(
+            AdminReportParty(
+                user_id=str(reported.id), display_name=reported.display_name, email=reported.email
+            )
+            if reported
+            else None
+        ),
+        content=content,
+    )
+
+
+def _report_status_clause(status_filter: str):
+    if status_filter == "all":
+        return None
+    return Report.status == status_filter
+
+
+@router.get("/reports", response_model=AdminReportPage)
+async def list_reports(
+    status: Literal["open", "reviewed", "all"] = "open",
+    limit: int = Query(default=_REPORT_PAGE_LIMIT, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    _admin: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AdminReportPage:
+    """List member content reports, newest first (platform-admin, 4vii.48.1).
+
+    Open by default — the pending queue; `reviewed` and `all` are for looking
+    back. Context (club, parties, the note itself) is assembled per row with
+    null-safe lookups so purged users and vanished content still render.
+    """
+    status_clause = _report_status_clause(status)
+    reports_filter = [status_clause] if status_clause is not None else []
+
+    total = await db.scalar(select(func.count()).select_from(Report).where(*reports_filter)) or 0
+    rows = list(
+        await db.scalars(
+            select(Report)
+            .where(*reports_filter)
+            # Stable under identical created_at (ties are possible in bursts;
+            # deterministic ordering keeps pagination non-overlapping).
+            .order_by(Report.created_at.desc(), Report.id.asc())
+            .offset(offset)
+            .limit(limit)
+        )
+    )
+    return AdminReportPage(
+        items=[await _to_admin_report(db, row) for row in rows],
+        total=total,
+    )
+
+
+@router.post("/reports/{report_id}/review", response_model=AdminReportResponse)
+async def mark_report_reviewed(
+    report_id: uuid.UUID,
+    _admin: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AdminReportResponse:
+    """Mark a report reviewed after the admin has acted on it (or chosen not
+    to). Idempotent — a second review of the same report just returns the row.
+    """
+    report = await db.scalar(select(Report).where(Report.id == report_id))
+    if report is None:
+        raise HTTPException(status_code=404, detail="report not found")
+    if report.status != "reviewed":
+        report.status = "reviewed"
+        await db.commit()
+        await db.refresh(report)
+    return await _to_admin_report(db, report)

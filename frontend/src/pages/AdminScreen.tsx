@@ -1,6 +1,12 @@
 import { type FormEvent, useState } from "react";
 import { Link } from "react-router";
-import type { AdminUser, SpotifyStatus, WaitlistEntry } from "../services/api";
+import type {
+  AdminReport,
+  AdminReportStatusFilter,
+  AdminUser,
+  SpotifyStatus,
+  WaitlistEntry,
+} from "../services/api";
 import { Badge } from "../components/Badge";
 import { Button } from "../components/Button";
 import { Card } from "../components/Card";
@@ -35,6 +41,16 @@ type AdminScreenProps = {
   onDeleteUser: (userId: string) => void;
   deletingUserId: string | null;
   deleteError?: string | null;
+  /** Member content reports (MysteryMixClub-4vii.48.1, Guideline 1.2). */
+  reports: AdminReport[];
+  reportsStatus: AdminReportStatusFilter;
+  onReportsStatusChange: (status: AdminReportStatusFilter) => void;
+  reportsTotal: number;
+  reportsLoading: boolean;
+  reportsError?: string | null;
+  onMarkReportReviewed: (reportId: string) => void;
+  reviewingReportId: string | null;
+  onLoadMoreReports: () => void;
   /** Platform invite (MYS-182): grants signup only, no club attachment. */
   platformInviteUrl: string | null;
   generatingInvite: boolean;
@@ -97,6 +113,15 @@ export function AdminScreen({
   onDeleteUser,
   deletingUserId,
   deleteError,
+  reports,
+  reportsStatus,
+  onReportsStatusChange,
+  reportsTotal,
+  reportsLoading,
+  reportsError,
+  onMarkReportReviewed,
+  reviewingReportId,
+  onLoadMoreReports,
   platformInviteUrl,
   generatingInvite,
   inviteError,
@@ -192,6 +217,82 @@ export function AdminScreen({
             {deleteError}
           </p>
         ) : null}
+
+        {/* Reports first among the tools below: this is the queue a reviewer
+            clears daily during moderation operations (MysteryMixClub-4vii.48.1).
+            "mark reviewed" is recoverable-adjacent bookkeeping, not destruction,
+            so it stays the neutral per-row text control that goes amber only on
+            hover — the same treatment R10 gave member management rows. Only
+            shown on open rows; a reviewed row is settled. */}
+        <section className="mt-16">
+          <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-accent">
+            reports
+          </h2>
+          <p className="mt-2 text-sm leading-[1.72] text-ink-muted">
+            notes members flagged to us. open first — review the queue, act outside the app if
+            needed (organizer removal, a conversation, a delete above), then mark reviewed.
+          </p>
+
+          {/* Exactly one status filter selected at all times: same furniture
+              treatment as the waitlist filters (selected = ink + underline,
+              hover = amber). */}
+          <div className="mt-6 flex gap-4">
+            {(["open", "reviewed"] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => onReportsStatusChange(option)}
+                aria-pressed={reportsStatus === option}
+                className={[
+                  "py-1.5 font-mono uppercase tracking-mono text-mini transition-colors duration-150",
+                  reportsStatus === option
+                    ? "text-ink underline underline-offset-[3px]"
+                    : "text-ink-muted hover:text-ink-accent",
+                ].join(" ")}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+
+          {reportsError ? (
+            <p role="alert" className="mt-4 text-sm leading-[1.72] text-ink">
+              {reportsError}
+            </p>
+          ) : reportsLoading && reports.length === 0 ? (
+            <p className="mt-6 font-mono text-meta text-ink-muted">loading…</p>
+          ) : reports.length === 0 ? (
+            <p className="mt-6 text-sm leading-[1.72] text-ink-muted">
+              {reportsStatus === "open" ? "the queue is clear." : "no reviewed reports yet."}
+            </p>
+          ) : (
+            <div className="mt-6">
+              <Card>
+                <ul className="divide-y divide-hairline-soft">
+                  {reports.map((report) => (
+                    <li key={report.id} className="py-4 first:pt-0 last:pb-0">
+                      <ReportRow
+                        report={report}
+                        reviewing={reviewingReportId === report.id}
+                        onMarkReviewed={() => onMarkReportReviewed(report.id)}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+              {reports.length < reportsTotal ? (
+                <button
+                  type="button"
+                  onClick={onLoadMoreReports}
+                  disabled={reportsLoading}
+                  className="mt-4 py-1.5 font-mono uppercase tracking-mono text-mini text-ink-muted transition-colors duration-150 hover:text-ink-accent"
+                >
+                  {reportsLoading ? "loading…" : `show more (${reportsTotal - reports.length} more)`}
+                </button>
+              ) : null}
+            </div>
+          )}
+        </section>
 
         <section className="mt-16">
           <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-accent">
@@ -444,6 +545,86 @@ function WaitlistRow({
       >
         {inviting ? "sending…" : entry.invited_at ? "resend" : "invite"}
       </Button>
+    </div>
+  );
+}
+
+/**
+ * One member content report (MysteryMixClub-4vii.48.1). A row must always be
+ * investigable: null-safe fallbacks for every piece of context the API can
+ * null out (purged reporter/reported accounts, deleted note, removed club)
+ * rather than hiding the report.
+ *
+ * The quoted note body is the centerpiece — that's what triage actually
+ * judges — rendered as a blockquote against the dark card. Reporter/reported
+ * identity and the song/mix context are the mono metadata ramp around it.
+ */
+function ReportRow({
+  report,
+  reviewing,
+  onMarkReviewed,
+}: {
+  report: AdminReport;
+  reviewing: boolean;
+  onMarkReviewed: () => void;
+}) {
+  const created = new Date(report.created_at).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+  const reportedParty = report.reported_user
+    ? `${report.reported_user.display_name} (${report.reported_user.email})`
+    : "account deleted";
+  const reporterParty = report.reporter
+    ? report.reporter.display_name
+    : "account deleted";
+
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <span className="min-w-0 flex-1">
+        <span className="block font-mono text-meta uppercase tracking-mono text-muted-foreground">
+          {report.reason.replace(/_/g, " ")} · {created}
+          {report.club_name ? ` · ${report.club_name}` : ""}
+        </span>
+        <span className="mt-1 block font-mono text-sm text-foreground">{reportedParty}</span>
+        {report.content ? (
+          <blockquote className="mt-2 border-l-2 border-hairline-soft pl-3 text-sm leading-[1.72] text-foreground">
+            {report.content.body}
+          </blockquote>
+        ) : (
+          <span className="mt-2 block text-sm leading-[1.72] text-muted-foreground">
+            this note is no longer available.
+          </span>
+        )}
+        <span className="mt-2 block font-mono text-meta text-muted-foreground">
+          {report.content
+            ? [
+                report.content.song_title && report.content.song_artist
+                  ? `${report.content.song_title} — ${report.content.song_artist}`
+                  : null,
+                report.content.mix_label,
+              ]
+                .filter(Boolean)
+                .join(" · ") || "note"
+            : null}
+          {report.detail ? ` · “${report.detail}”` : ""}
+          {` · reported by ${reporterParty}`}
+        </span>
+      </span>
+      {report.status === "open" ? (
+        <button
+          type="button"
+          onClick={onMarkReviewed}
+          disabled={reviewing}
+          className="shrink-0 py-1.5 font-mono uppercase tracking-mono text-mini text-muted-foreground transition-colors duration-150 hover:text-accent"
+        >
+          {reviewing ? "marking…" : "mark reviewed"}
+        </button>
+      ) : (
+        <span className="shrink-0 py-1.5 font-mono uppercase tracking-mono text-mini text-muted-foreground">
+          reviewed
+        </span>
+      )}
     </div>
   );
 }

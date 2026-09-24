@@ -43,6 +43,7 @@ from app.models.submission import Submission
 from app.models.user import User
 from app.services.deadline_scheduling import compute_phase_deadline
 from app.services.blocks import blocked_user_ids
+from app.services.content_filter import reject_if_flagged
 from app.services.source_tracks import source_fields
 from app.services.playlist_jobs import enqueue_playlist_job
 from app.models.vote import Vote
@@ -697,6 +698,10 @@ async def update_mix(
 
     updates = payload.model_dump(exclude_unset=True)
     new_state = updates.pop("state", None)
+    # Content filter (MysteryMixClub-4vii.43, Guideline 1.2): the theme and
+    # description are member-visible free text; reject flagged terms at write.
+    reject_if_flagged(updates.get("theme"))
+    reject_if_flagged(updates.get("description"))
     # Lifecycle emails to fire once the transition commits (MYS-109). Collected as
     # (mix, event) so an auto-opened next mix notifies for *its* opening.
     events: list[tuple[Mix, MixEvent]] = []

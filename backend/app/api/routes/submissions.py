@@ -39,6 +39,7 @@ from app.models.club_member import ClubMember
 from app.models.mix import Mix
 from app.models.submission import Submission
 from app.models.user import User
+from app.services.content_filter import reject_if_flagged
 from app.services.song_links import (
     SongLinkAssembler,
     assemble_source_links,
@@ -322,6 +323,9 @@ async def submit_song(
             status_code=status.HTTP_409_CONFLICT,
             detail="this mystery mix is not accepting submissions",
         )
+    # Content filter (MysteryMixClub-4vii.43, Guideline 1.2): the submitter
+    # note is shown to every voter/reveal viewer; reject flagged terms at write.
+    reject_if_flagged(payload.note)
 
     # Serialize concurrent submissions for the same (mix, user) pair so two
     # racing requests can't both pass the cap check and both insert (MYS-144).
@@ -379,6 +383,7 @@ async def edit_song(
             status_code=status.HTTP_409_CONFLICT,
             detail="this mystery mix is not accepting submissions",
         )
+    reject_if_flagged(payload.note)  # see submit_song (MysteryMixClub-4vii.43)
 
     submission = await db.scalar(
         select(Submission).where(Submission.id == submission_id, Submission.mix_id == round_id)
@@ -469,6 +474,7 @@ async def update_submission_note(
             status_code=status.HTTP_409_CONFLICT,
             detail="this mystery mix is not accepting submissions",
         )
+    reject_if_flagged(payload.note)  # see submit_song (MysteryMixClub-4vii.43)
     submission = await db.scalar(
         select(Submission).where(Submission.id == submission_id, Submission.mix_id == round_id)
     )

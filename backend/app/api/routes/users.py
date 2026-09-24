@@ -29,6 +29,7 @@ from app.auth.tokens import generate_token
 from app.config import Settings, get_settings
 from app.db.session import get_db
 from app.services.blocks import blocked_user_ids
+from app.services.content_filter import reject_if_flagged
 from app.models.club import Club
 from app.models.auth_identity import AuthIdentity
 from app.models.club_member import ClubMember
@@ -421,6 +422,9 @@ async def update_me(
     settings: Settings = Depends(get_settings),
 ) -> UserProfileResponse:
     fields = payload.model_dump(exclude_unset=True, exclude={"accept_terms"})
+    # Content filter (MysteryMixClub-4vii.43, Guideline 1.2): the display name
+    # is shown next to everything the member authors; reject at the one write.
+    reject_if_flagged(fields.get("display_name"))
     for field, value in fields.items():
         setattr(current_user, field, value)
     if payload.accept_terms:

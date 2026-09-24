@@ -586,6 +586,13 @@ DELETE /users/me/blocks/:userId Unblock (204; 404 if no standing block)
 > blocked author's text (notes, submitter_note, submission history,
 > per-viewer Most Noted, `voters[]`) excludes it; members lists carry
 > `blocked_by_me`. Details in ADR 0035.
+>
+> Writes are filtered server-side (`app/services/content_filter.py`, ADR 0036):
+> a curated hate/harassment denylist checked with normalized, whole-word
+> matching on every member-visible free-text write (display name, club
+> name/description, mix theme/description, submission note, note body). A
+> flagged write 422s with the generic message "that text isn't allowed here —
+> try something else." — the flagged term is never echoed.
 
 ---
 

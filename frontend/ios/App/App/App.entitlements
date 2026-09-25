@@ -8,10 +8,14 @@
 	     page load when the app isn't installed. Requires a matching
 	     apple-app-site-association hosted at each domain's root -- inert
 	     without one. Requires the Associated Domains capability enabled
-	     for this App ID in the Apple Developer portal. -->
+	     for this App ID in the Apple Developer portal. The domain is the
+	     MMC_APP_DOMAIN build setting: staging for Debug (Xcode Run), prod
+	     for Release (Archive, so TestFlight and the App Store). The same
+	     setting picks the API the web bundle talks to (vite.ios.config.ts),
+	     so the two can never point at different servers. -->
 	<key>com.apple.developer.associated-domains</key>
 	<array>
-		<string>applinks:staging.mysterymixclub.com</string>
+		<string>applinks:$(MMC_APP_DOMAIN)</string>
 	</array>
 	<!-- Sign in with Apple (MysteryMixClub-4vii.9, Guideline 4.8). Requires the
 	     "Sign In with Apple" capability enabled for this App ID in the Apple

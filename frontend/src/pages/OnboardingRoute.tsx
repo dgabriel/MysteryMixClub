@@ -4,7 +4,6 @@ import { OnboardingScreen } from "./OnboardingScreen";
 import { VerifyScreen } from "./VerifyScreen";
 import { acceptTerms } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
-import { nativePushAvailable, pushPermissionStatus, requestPushPermissionAndRegister } from "../ios/push";
 
 /**
  * First-login / consent onboarding route. Captures the display name for
@@ -20,8 +19,15 @@ import { nativePushAvailable, pushPermissionStatus, requestPushPermissionAndRegi
  */
 export function OnboardingRoute() {
   const navigate = useNavigate();
-  const { status, profileStatus, needsOnboarding, displayName, tosAccepted, applyDisplayName, applyTosAccepted } =
-    useAuth();
+  const {
+    status,
+    profileStatus,
+    needsOnboarding,
+    displayName,
+    tosAccepted,
+    applyDisplayName,
+    applyTosAccepted,
+  } = useAuth();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,17 +53,10 @@ export function OnboardingRoute() {
       const profile = await acceptTerms(name);
       applyDisplayName(profile.display_name);
       applyTosAccepted();
-      // Auto-prompt for push right after onboarding (MysteryMixClub-4vii.27,
-      // IOS-04) -- the first moment the user has an account and has seen
-      // what the app is, before they've necessarily joined/seen a specific
-      // club yet. Only when the prompt hasn't been shown before: iOS shows
-      // the real system dialog exactly once, so re-asking after a denial
-      // would just silently no-op anyway -- checking first avoids a pointless
-      // call and keeps this from ever masking the manual "enable
-      // notifications" path in Profile as the only way back in after a deny.
-      if (nativePushAvailable() && (await pushPermissionStatus()) === "prompt") {
-        void requestPushPermissionAndRegister();
-      }
+      // No push prompt here any more (MysteryMixClub-gxh3): the post-login
+      // PushActivationPrompt (AuthedLayout) explains first, then asks, so the
+      // one-shot iOS system prompt isn't spent on someone who hasn't been told
+      // why. Firing it here too would stack two prompts on arrival at /home.
       navigate("/home", { replace: true });
     } catch {
       // acceptTerms throws ApiError on a non-2xx response (and the wrapper

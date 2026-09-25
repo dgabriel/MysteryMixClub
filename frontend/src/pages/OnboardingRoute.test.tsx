@@ -14,9 +14,7 @@ import {
 
 // Mock the API module (no network).
 vi.mock("../services/api", async () => {
-  const actual = await vi.importActual<typeof import("../services/api")>(
-    "../services/api",
-  );
+  const actual = await vi.importActual<typeof import("../services/api")>("../services/api");
   return {
     ...actual,
     acceptTerms: vi.fn(),
@@ -57,8 +55,7 @@ function setAuth(
     tosAccepted?: boolean;
   } = {},
 ) {
-  const profileStatus =
-    overrides.profileStatus ?? (status === "authenticated" ? "ready" : "idle");
+  const profileStatus = overrides.profileStatus ?? (status === "authenticated" ? "ready" : "idle");
   mockUseAuth.mockReturnValue({
     status,
     isAuthenticated: status === "authenticated",
@@ -218,9 +215,7 @@ describe("OnboardingRoute", () => {
     await user.click(screen.getByRole("checkbox"));
     await user.click(screen.getByRole("button", { name: /continue/i }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "that didn't save. try again.",
-    );
+    expect(await screen.findByRole("alert")).toHaveTextContent("that didn't save. try again.");
     // Still on the onboarding screen — no navigation occurred.
     expect(screen.queryByText("HOME CONTENT")).not.toBeInTheDocument();
     expect(screen.getByText("one more thing")).toBeInTheDocument();
@@ -269,22 +264,19 @@ describe("OnboardingRoute", () => {
     await user.click(screen.getByRole("checkbox"));
     await user.click(screen.getByRole("button", { name: /continue/i }));
 
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: /saving/i })).toBeDisabled(),
-    );
+    await waitFor(() => expect(screen.getByRole("button", { name: /saving/i })).toBeDisabled());
 
     // Resolve so the trailing navigation flushes inside act().
     resolve(profileWith("Cleo"));
     expect(await screen.findByText("HOME CONTENT")).toBeInTheDocument();
   });
 
-  describe("push auto-prompt (MysteryMixClub-4vii.27, IOS-04)", () => {
-    it("prompts for push on native iOS right after a successful save", async () => {
+  describe("push prompt (MysteryMixClub-gxh3)", () => {
+    it("onboarding never fires the iOS permission prompt itself: the post-login explainer asks first", async () => {
       setAuth("authenticated", { needsOnboarding: true, displayName: "", tosAccepted: false });
       mockAcceptTerms.mockResolvedValue(profileWith("Alice"));
       mockNativePushAvailable.mockReturnValue(true);
       mockPushPermissionStatus.mockResolvedValue("prompt");
-      mockRequestPushPermissionAndRegister.mockResolvedValue("granted");
       const user = userEvent.setup();
 
       renderOnboarding();
@@ -294,41 +286,6 @@ describe("OnboardingRoute", () => {
       await user.click(screen.getByRole("button", { name: /continue/i }));
 
       expect(await screen.findByText("HOME CONTENT")).toBeInTheDocument();
-      await waitFor(() => expect(mockRequestPushPermissionAndRegister).toHaveBeenCalledOnce());
-    });
-
-    it("does not prompt on web", async () => {
-      setAuth("authenticated", { needsOnboarding: true, displayName: "", tosAccepted: false });
-      mockAcceptTerms.mockResolvedValue(profileWith("Alice"));
-      mockNativePushAvailable.mockReturnValue(false);
-      const user = userEvent.setup();
-
-      renderOnboarding();
-
-      await user.type(screen.getByLabelText(/display name/i), "Alice");
-      await user.click(screen.getByRole("checkbox"));
-      await user.click(screen.getByRole("button", { name: /continue/i }));
-
-      expect(await screen.findByText("HOME CONTENT")).toBeInTheDocument();
-      expect(mockPushPermissionStatus).not.toHaveBeenCalled();
-      expect(mockRequestPushPermissionAndRegister).not.toHaveBeenCalled();
-    });
-
-    it("does not re-prompt on native iOS when the OS has already answered", async () => {
-      setAuth("authenticated", { needsOnboarding: true, displayName: "", tosAccepted: false });
-      mockAcceptTerms.mockResolvedValue(profileWith("Alice"));
-      mockNativePushAvailable.mockReturnValue(true);
-      mockPushPermissionStatus.mockResolvedValue("denied");
-      const user = userEvent.setup();
-
-      renderOnboarding();
-
-      await user.type(screen.getByLabelText(/display name/i), "Alice");
-      await user.click(screen.getByRole("checkbox"));
-      await user.click(screen.getByRole("button", { name: /continue/i }));
-
-      expect(await screen.findByText("HOME CONTENT")).toBeInTheDocument();
-      await waitFor(() => expect(mockPushPermissionStatus).toHaveBeenCalledOnce());
       expect(mockRequestPushPermissionAndRegister).not.toHaveBeenCalled();
     });
   });

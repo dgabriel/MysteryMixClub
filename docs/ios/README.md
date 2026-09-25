@@ -479,16 +479,19 @@ A voting extension or a rollback re-arms the ~24-hour push along with the
 `push_*_due_morning_sent_at` and `push_submission_last_few_sent_at` columns on
 `Mix`; a rollback to submission re-arms all of them.
 
-**Permission timing is also both**, resolved the same way: an automatic OS
-prompt fires once, right after onboarding completes, checked against
-`pushPermissionStatus()` first so a user who already answered (denied or
-granted) is never re-asked -- iOS only shows the real system dialog once
-per app installation. Profile's notification-preferences section carries
-the second path: a manual "enable notifications" explainer/button for
-anyone who denied or dismissed the auto-prompt, or joined before it
-existed. A denial can only be undone in iOS Settings, not by asking again
-from inside the app -- the manual path explains that rather than pretending
-a second in-app prompt would work.
+**Permission timing (`MysteryMixClub-gxh3`, 2026-09-25).** Onboarding no
+longer fires the OS prompt. Instead, after login or session restore,
+`PushActivationPrompt` (rendered by `AuthedLayout`, after "what's new" if that
+is showing) offers push in the white modal: an explainer first when iOS has
+never asked, so the one-shot system dialog isn't spent blind; "open ios
+settings" when permission was denied, via `MMCAppSettingsPlugin`
+(`AppSettingsPlugin.swift`, opens this app's notification settings), then
+registering the device on return if permission was granted there; and nothing
+when permission is already granted. It asks at most three times per account on
+this device, a week apart (`lib/pushAsk.ts`); after that only Profile offers
+it. Declining never blocks anything. Profile's push toggles show as off and
+disabled, with the reason, until this device is actually registered
+(`MysteryMixClub-jpem`).
 
 **Registration is separate from permission, and follows the session**
 (`MysteryMixClub-4vii.32`). OS permission belongs to the phone and survives

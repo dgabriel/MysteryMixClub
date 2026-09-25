@@ -7,5 +7,6 @@ class ProofViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(MMCGoogleAuthPlugin())
         bridge?.registerPluginInstance(MMCAppleAuthPlugin())
         bridge?.registerPluginInstance(MMCSessionStorePlugin())
+        bridge?.registerPluginInstance(MMCAppSettingsPlugin())
     }
 }

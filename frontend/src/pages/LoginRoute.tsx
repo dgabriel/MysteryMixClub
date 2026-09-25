@@ -85,6 +85,9 @@ export function LoginRoute() {
   const [appleError, setAppleError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
+  // The address a link was last sent to, handed back to the form when the
+  // visitor says it was wrong (MysteryMixClub-ksnr).
+  const [lastEmail, setLastEmail] = useState("");
   const [devLink, setDevLink] = useState<string | null>(null);
   const [resetNotice, setResetNotice] = useState<string | null>(null);
   const [resetDevLink, setResetDevLink] = useState<string | null>(null);
@@ -282,7 +285,15 @@ export function LoginRoute() {
   }
 
   if (sentTo) {
-    return <CheckEmailScreen email={sentTo} onBack={() => setSentTo(null)} />;
+    return (
+      <CheckEmailScreen
+        email={sentTo}
+        onBack={() => {
+          setLastEmail(sentTo);
+          setSentTo(null);
+        }}
+      />
+    );
   }
 
   const pendingInvite = readPendingInviteToken();
@@ -290,6 +301,7 @@ export function LoginRoute() {
   return (
     <EmailEntryScreen
       onSubmit={handleSubmit}
+      initialEmail={lastEmail}
       submitting={submitting}
       error={error}
       devLink={devLink}

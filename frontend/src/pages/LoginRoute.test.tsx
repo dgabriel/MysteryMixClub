@@ -352,7 +352,7 @@ describe("LoginRoute", () => {
     expect(screen.getByRole("link", { name: /^help$/i })).toHaveAttribute("href", "/help");
   });
 
-  it("back affordance on CheckEmail returns to the email entry form", async () => {
+  it("'wrong email? change it' returns to the form with the address pre-filled and focused", async () => {
     mockRequestMagicLink.mockResolvedValue({ devToken: null });
     const user = userEvent.setup();
 
@@ -362,14 +362,24 @@ describe("LoginRoute", () => {
     await user.click(screen.getByRole("button", { name: /send sign-in link/i }));
 
     await screen.findByText("check your email");
-    // The button is conditional on the async waitlist-off check (MYS-215),
-    // so wait for it rather than assuming it's already resolved.
-    await user.click(await screen.findByRole("button", { name: /use a different email/i }));
+    await user.click(screen.getByRole("button", { name: /wrong email\? change it/i }));
 
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /send sign-in link/i })).toBeInTheDocument(),
     );
     expect(screen.queryByText("check your email")).not.toBeInTheDocument();
+    // The typo comes back to be corrected, not retyped (MysteryMixClub-ksnr).
+    const field = screen.getByLabelText(/^email$/i);
+    expect(field).toHaveValue("user@example.com");
+    expect(field).toHaveFocus();
+  });
+
+  it("an ordinary arrival at /login starts with an empty, unfocused email field", () => {
+    renderLogin();
+
+    const field = screen.getByLabelText(/^email$/i);
+    expect(field).toHaveValue("");
+    expect(field).not.toHaveFocus();
   });
 
   it("a stashed invite hides the waitlist block entirely — it's not needed", async () => {
@@ -441,9 +451,9 @@ describe("LoginRoute", () => {
     // The real form is here now, not just a link back to /login.
     expect(await screen.findByRole("button", { name: /^join$/i })).toBeInTheDocument();
     expect(screen.getByText(/no invite yet\?/i)).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /^use a different email$/i }),
-    ).not.toBeInTheDocument();
+    // A typo isn't a missing account: the way back stays even with the
+    // waitlist on (MysteryMixClub-ksnr).
+    expect(screen.getByRole("button", { name: /wrong email\? change it/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^email us$/i })).not.toBeInTheDocument();
   });
 

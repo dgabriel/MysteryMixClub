@@ -14,9 +14,10 @@ type CheckEmailScreenProps = {
 export function CheckEmailScreen({ email, onBack }: CheckEmailScreenProps) {
   // Same fail-safe pattern as EmailEntryScreen (MYS-215): undefined while
   // checking, falls back to "email us" on disabled/error. When enabled, the
-  // actual join form renders here (not just a pointer back to /login) —
-  // replacing "use a different email", since anyone without an account
-  // needs the waitlist, not a retry.
+  // actual join form renders here (not just a pointer back to /login), since
+  // anyone without an account needs the waitlist, not a retry. The "wrong
+  // email?" way back sits above both, though: a typo isn't a missing account,
+  // and it used to vanish whenever the waitlist was on (MysteryMixClub-ksnr).
   const [waitlistEnabled, setWaitlistEnabled] = useState<boolean | null | undefined>(undefined);
 
   useEffect(() => {
@@ -50,6 +51,13 @@ export function CheckEmailScreen({ email, onBack }: CheckEmailScreenProps) {
           </p>
           {/* The address is a value, so it takes mono at normal tracking. */}
           <p className="mt-1 font-mono text-sm text-ink break-all">{email}</p>
+          {onBack ? (
+            <div className="mt-2">
+              <Button variant="link" onPaper type="button" onClick={onBack}>
+                wrong email? change it
+              </Button>
+            </div>
+          ) : null}
           <p className="mt-4 text-sm leading-[1.72] text-ink-muted">
             open it on this device to continue. the link expires soon.
           </p>
@@ -68,13 +76,6 @@ export function CheckEmailScreen({ email, onBack }: CheckEmailScreenProps) {
                 />{" "}
                 to request one.
               </p>
-              {onBack ? (
-                <div className="mt-10">
-                  <Button variant="link" onPaper type="button" onClick={onBack}>
-                    use a different email
-                  </Button>
-                </div>
-              ) : null}
             </>
           )}
         </div>

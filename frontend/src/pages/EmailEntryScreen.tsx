@@ -22,6 +22,10 @@ const SCREEN_ERROR_ID = "login-form-error";
 
 type EmailEntryScreenProps = {
   onSubmit: (email: string) => void;
+  /** The address from a sign-in link request the visitor just backed out of
+   *  ("wrong email? change it"), so a typo is corrected rather than retyped
+   *  (MysteryMixClub-ksnr). */
+  initialEmail?: string;
   submitting: boolean;
   error?: string | null;
   /** Dev/staging only: a relative sign-in link to show below the button. */
@@ -110,6 +114,7 @@ function InlineAction({ onClick, children }: { onClick: () => void; children: st
 
 export function EmailEntryScreen({
   onSubmit,
+  initialEmail = "",
   submitting,
   error,
   devLink,
@@ -129,7 +134,7 @@ export function EmailEntryScreen({
   onNativeAppleSignIn,
   isNativeIOS,
 }: EmailEntryScreenProps) {
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState("");
   // Empty-field messages this screen raises itself, before any request. Kept
   // apart from the parent's server-driven errors and shown in preference to
@@ -188,6 +193,17 @@ export function EmailEntryScreen({
     }
     prevMode.current = mode;
   }, [mode, showsPassword, email]);
+
+  // Back from "wrong email? change it": land in the pre-filled field, ready to
+  // fix the typo (MysteryMixClub-ksnr). Focus only: setSelectionRange throws on
+  // a type="email" input. Mount only; an ordinary arrival at /login has no
+  // initial email and takes no focus.
+  useEffect(() => {
+    const field = emailRef.current;
+    if (!initialEmail || !field) return;
+    field.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();

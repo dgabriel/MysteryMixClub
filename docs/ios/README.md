@@ -45,9 +45,15 @@ This is the standard, documented workaround for Capacitor/React-Native-style
 sync phases; it only affects this one first-party script phase, not
 third-party build tooling.
 
-The build always points at a real HTTPS backend -- staging by default
-(`vite.ios.config.ts`), overridable with `VITE_IOS_API_BASE_URL` for prod or
-another target. There is no LAN/plain-HTTP option: a phone can't reach
+The build always points at a real HTTPS backend, chosen by the Xcode
+configuration (`MysteryMixClub-4vii.52`): the `MMC_APP_DOMAIN` build setting is
+`staging.mysterymixclub.com` for **Debug** (Xcode's Run button) and
+`mysterymixclub.com` for **Release**, which is what **Archive** uses, so every
+TestFlight and App Store build talks to **prod**. The same setting fills the
+universal-links domain in `App.entitlements`, so the API and the links can never
+disagree. `VITE_IOS_API_BASE_URL` still overrides the API when set explicitly
+(e.g. to archive a staging TestFlight build). Before this, archives silently
+defaulted to staging, because Xcode never passed that variable. There is no LAN/plain-HTTP option: a phone can't reach
 `127.0.0.1` on your Mac anyway, and `Info.plist` carries no App Transport
 Security relief to fall back on (removed in `MysteryMixClub-4vii.12` --
 config resolving to anything but `https://` now fails the build outright

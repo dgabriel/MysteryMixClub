@@ -13,6 +13,9 @@ import { resolveIosApiBaseUrl } from "./src/lib/iosApiBaseUrl";
 // rather than inline here, since this file sits outside vitest's src/**
 // coverage and couldn't otherwise be exercised directly.
 const apiBaseUrl = resolveIosApiBaseUrl(process.env.VITE_IOS_API_BASE_URL, {
+  // Set per Xcode configuration (Debug: staging, Release: prod) and exported
+  // to the "Sync web bundle" phase that runs this build (4vii.52).
+  appDomain: process.env.MMC_APP_DOMAIN,
   localSimulator: process.env.MMC_IOS_LOCAL_SIMULATOR,
   configuration: process.env.CONFIGURATION,
   platform: process.env.PLATFORM_NAME,

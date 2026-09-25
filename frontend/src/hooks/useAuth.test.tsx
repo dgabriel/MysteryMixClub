@@ -9,8 +9,14 @@ import {
   logout as apiLogout,
   logoutAll as apiLogoutAll,
   refresh as apiRefresh,
+  refreshSession as apiRefreshSession,
   setStoredAccessToken,
 } from "../services/api";
+import {
+  reportNetworkFailure,
+  reportNetworkSuccess,
+  resetConnectivityForTests,
+} from "../lib/connectivity";
 import type { UserProfile } from "../services/api";
 import {
   invalidatePushSession,
@@ -23,6 +29,7 @@ import {
 
 vi.mock("../services/api", () => ({
   refresh: vi.fn(),
+  refreshSession: vi.fn(),
   getMe: vi.fn(),
   logout: vi.fn(),
   logoutAll: vi.fn(),
@@ -42,6 +49,7 @@ vi.mock("../ios/push", () => ({
 }));
 
 const mockRefresh = vi.mocked(apiRefresh);
+const mockRefreshSession = vi.mocked(apiRefreshSession);
 const mockGetMe = vi.mocked(apiGetMe);
 const mockLogout = vi.mocked(apiLogout);
 const mockLogoutAll = vi.mocked(apiLogoutAll);
@@ -136,6 +144,34 @@ describe("AuthProvider / useAuth", () => {
     mockNativePushAvailable.mockReturnValue(false);
     mockSyncPushRegistration.mockResolvedValue("idle");
     mockOnAppResume.mockReturnValue(() => {});
+    resetConnectivityForTests();
+    // AuthProvider restores through refreshSession (MysteryMixClub-ga4y);
+    // delegate to the refresh mock so the tests below keep their meaning.
+    mockRefreshSession.mockImplementation(async () => {
+      const result = await mockRefresh();
+      return result ? { kind: "ok", access_token: result.access_token } : { kind: "none" };
+    });
+  });
+
+  it("opening with no connection waits on the loading state, then restores once back online (ga4y)", async () => {
+    // First attempt can't reach the network; the app must not decide the
+    // member is signed out.
+    mockRefreshSession
+      .mockResolvedValueOnce({ kind: "offline" })
+      .mockResolvedValueOnce({ kind: "ok", access_token: "restored-token" });
+    // What api.ts does on a network failure, so waitUntilOnline has
+    // something to wait for.
+    reportNetworkFailure();
+    renderWithProvider();
+
+    await waitFor(() => expect(mockRefreshSession).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId("status")).toHaveTextContent("loading");
+
+    reportNetworkSuccess();
+
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("authenticated"));
+    expect(mockRefreshSession).toHaveBeenCalledTimes(2);
+    expect(mockSetStored).toHaveBeenCalledWith("restored-token");
   });
 
   it("calls refresh exactly once on mount", async () => {

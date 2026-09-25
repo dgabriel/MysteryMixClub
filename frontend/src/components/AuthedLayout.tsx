@@ -2,6 +2,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Outlet, useLocation } from "react-router";
 import { TopNav } from "./TopNav";
 import { ReleaseNotesModal } from "./ReleaseNotesModal";
+import { OfflineScreen } from "./OfflineScreen";
+import {
+  forgetTypedFields,
+  hasUnsavedTyping,
+  useBackOnline,
+  useConnectivityPhase,
+  useInlineOfflineHost,
+} from "../lib/offline";
 import { hasUnseenRelease, markLatestReleaseSeen } from "../data/releaseNotes";
 import type { AuthedOutletContext, NavBack } from "../hooks/useAuthedLayout";
 
@@ -20,6 +28,22 @@ export function AuthedLayout() {
   const setNavBackCb = useCallback((back: NavBack | null) => setNavBack(back), []);
   const contentRef = useRef<HTMLDivElement>(null);
   const { pathname } = useLocation();
+
+  // Offline (MysteryMixClub-ga4y): the offline state replaces the page below
+  // the nav, but the page stays mounted (only hidden), so nothing typed is
+  // lost. Once "back online" has shown, the page remounts to reload its data,
+  // unless the member has typed something unsaved; then it's left as is.
+  useInlineOfflineHost();
+  const [reloadKey, setReloadKey] = useState(0);
+  const phase = useConnectivityPhase();
+  useBackOnline(
+    useCallback(() => {
+      if (hasUnsavedTyping()) return;
+      forgetTypedFields();
+      setReloadKey((key) => key + 1);
+    }, []),
+  );
+  const showingOffline = phase !== "online";
 
   // One-time-per-release auto-popup (MysteryMixClub, release-notes request).
   // A lazy initializer, not an effect: this is a one-time read of where the
@@ -68,8 +92,20 @@ export function AuthedLayout() {
         skip to content
       </a>
       <TopNav back={navBack ?? undefined} />
-      <div id="main-content" ref={contentRef} tabIndex={-1} className="flex flex-1 flex-col outline-none">
-        <Outlet context={{ setNavBack: setNavBackCb } satisfies AuthedOutletContext} />
+      {showingOffline ? <OfflineScreen reconnected={phase === "reconnected"} /> : null}
+      {/* `hidden` (display: none) rather than unmounting: see the offline note
+          above. A class, not the `hidden` attribute, because `flex` would win
+          over the attribute's display rule. */}
+      <div
+        id="main-content"
+        ref={contentRef}
+        tabIndex={-1}
+        className={`${showingOffline ? "hidden" : "flex"} flex-1 flex-col outline-none`}
+      >
+        <Outlet
+          key={reloadKey}
+          context={{ setNavBack: setNavBackCb } satisfies AuthedOutletContext}
+        />
       </div>
       {showReleaseNotes ? <ReleaseNotesModal onDismiss={dismissReleaseNotes} /> : null}
     </div>

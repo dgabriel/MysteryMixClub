@@ -15,6 +15,11 @@
 
 import { IS_NATIVE_BUILD } from "../lib/platform";
 import { clearRefreshToken, loadRefreshToken, saveRefreshToken } from "../ios/sessionStore";
+import {
+  reportNetworkFailure,
+  reportNetworkSuccess,
+  setConnectivityProbe,
+} from "../lib/connectivity";
 
 // Default to the 127.0.0.1 loopback (not "localhost"): the app keeps every
 // origin on one host so the session cookie survives the Spotify OAuth redirect
@@ -24,6 +29,17 @@ import { clearRefreshToken, loadRefreshToken, saveRefreshToken } from "../ios/se
 // adopts this session's access token rather than maintaining its own.
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 const AUTH_BASE = `${API_BASE_URL}/api/v1/auth`;
+
+// How the connectivity store confirms the API answers again after a network
+// failure (MysteryMixClub-ga4y): any response at all means it's reachable.
+setConnectivityProbe(async () => {
+  try {
+    await fetch(`${API_BASE_URL}/api/v1/healthz`, { cache: "no-store" });
+    return true;
+  } catch {
+    return false;
+  }
+});
 
 /**
  * The origin to build a real, externally-shareable URL from -- an invite
@@ -351,28 +367,46 @@ export async function signInWithApple(
   return { access_token: data.access_token };
 }
 
-/**
- * Exchange the HttpOnly refresh cookie for a fresh access token. Returns the
- * new token on success, or null when there is no valid session (401). Any other
- * failure also resolves to null so callers can treat it as "unauthenticated".
- */
-export async function refresh(): Promise<{ access_token: string } | null> {
+/** The outcome of trying to restore the session: a fresh access token, no
+ *  session to restore, or no network to ask (MysteryMixClub-ga4y), which must
+ *  not be mistaken for being signed out. */
+export type SessionRefresh =
+  { kind: "ok"; access_token: string } | { kind: "none" } | { kind: "offline" };
+
+export async function refreshSession(): Promise<SessionRefresh> {
+  let res: Response;
   try {
-    const res = await fetch(`${AUTH_BASE}/refresh`, {
+    res = await fetch(`${AUTH_BASE}/refresh`, {
       method: "POST",
       credentials: "include",
       headers: await nativeRefreshHeaders(),
     });
-    // The server rejected the session outright (logged out elsewhere, expired):
-    // the iOS app's saved token is dead, so stop sending it. Any other failure
-    // (offline, a 5xx) keeps it for the next try.
-    if (res.status === 401 && IS_NATIVE_BUILD) await clearRefreshToken();
-    if (!res.ok) return null;
-    const data = (await res.json()) as TokenResponse;
-    return { access_token: data.access_token };
   } catch {
-    return null;
+    reportNetworkFailure();
+    return { kind: "offline" };
   }
+  reportNetworkSuccess();
+  // The server rejected the session outright (logged out elsewhere, expired):
+  // the iOS app's saved token is dead, so stop sending it. Any other failure
+  // (offline, a 5xx) keeps it for the next try.
+  if (res.status === 401 && IS_NATIVE_BUILD) await clearRefreshToken();
+  if (!res.ok) return { kind: "none" };
+  try {
+    const data = (await res.json()) as TokenResponse;
+    return { kind: "ok", access_token: data.access_token };
+  } catch {
+    return { kind: "none" };
+  }
+}
+
+/**
+ * Exchange the refresh token for a fresh access token, or null when there's no
+ * usable session. A network failure also resolves to null here; callers that
+ * must tell "offline" from "signed out" use refreshSession().
+ */
+export async function refresh(): Promise<{ access_token: string } | null> {
+  const result = await refreshSession();
+  return result.kind === "ok" ? { access_token: result.access_token } : null;
 }
 
 /** Invalidate the current session and clear the refresh cookie. Idempotent.
@@ -434,11 +468,24 @@ export async function authenticatedRequest(
     return merged;
   };
 
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    ...rest,
-    credentials: "include",
-    headers: buildHeaders(),
-  });
+  // A request that gets no response at all means we're offline
+  // (MysteryMixClub-ga4y); any response means the API is reachable.
+  const send = async (): Promise<Response> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}${path}`, {
+        ...rest,
+        credentials: "include",
+        headers: buildHeaders(),
+      });
+      reportNetworkSuccess();
+      return response;
+    } catch (error) {
+      reportNetworkFailure();
+      throw error;
+    }
+  };
+
+  const res = await send();
 
   if (res.status !== 401 || !retryOnUnauthorized) {
     return res;
@@ -452,11 +499,7 @@ export async function authenticatedRequest(
   }
   accessToken = refreshed.access_token;
 
-  return fetch(`${API_BASE_URL}${path}`, {
-    ...rest,
-    credentials: "include",
-    headers: buildHeaders(),
-  });
+  return send();
 }
 
 /** Register this device for push notifications (MysteryMixClub-4vii.27,

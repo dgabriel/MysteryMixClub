@@ -22,6 +22,7 @@ import {
   logout,
   logoutAll,
   refresh,
+  refreshSession,
   registerPushToken,
   removeMember,
   requestMagicLink,
@@ -36,6 +37,7 @@ import {
   updateNotificationPreferences,
   verifyToken,
 } from "./api";
+import { isOffline, resetConnectivityForTests } from "../lib/connectivity";
 import type {
   AdminMetrics,
   AdminSignupTrend,
@@ -235,6 +237,27 @@ describe("api.ts", () => {
     it("returns null when fetch itself rejects (network error)", async () => {
       vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("network down"));
       await expect(refresh()).resolves.toBeNull();
+    });
+  });
+
+  describe("offline (MysteryMixClub-ga4y)", () => {
+    afterEach(() => resetConnectivityForTests());
+
+    it("refreshSession tells no network apart from no session", async () => {
+      vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new TypeError("Load failed"));
+      await expect(refreshSession()).resolves.toEqual({ kind: "offline" });
+      expect(isOffline()).toBe(true);
+
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(emptyResponse(401));
+      await expect(refreshSession()).resolves.toEqual({ kind: "none" });
+      expect(isOffline()).toBe(false);
+    });
+
+    it("a request that gets no response marks the app offline and still throws", async () => {
+      vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new TypeError("Load failed"));
+
+      await expect(authenticatedRequest("/api/v1/users/me")).rejects.toThrow("Load failed");
+      expect(isOffline()).toBe(true);
     });
   });
 

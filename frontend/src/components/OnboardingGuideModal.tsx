@@ -1,5 +1,6 @@
 import { useId, useRef, type ReactNode } from "react";
 import { Button } from "./Button";
+import { MODAL_CLOSE, MODAL_PANEL, MODAL_SCRIM } from "./modalSurface";
 import { CheckmarkIcon } from "./CheckmarkIcon";
 import { useFocusTrap } from "../hooks/useFocusTrap";
 
@@ -70,23 +71,23 @@ export function OnboardingGuideModal({
   useFocusTrap(dialogRef, onDismiss);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-floor/80 px-4">
+    <div className={MODAL_SCRIM}>
       <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="w-full max-w-md rounded-tile bg-sheet p-6 shadow-z4"
+        className={`w-full max-w-md p-6 ${MODAL_PANEL}`}
       >
         <div className="flex items-center justify-between gap-4">
-          <span className="font-mono text-mini uppercase tracking-mono-caps text-muted-foreground">
+          <span className="font-mono text-mini uppercase tracking-mono-caps text-ink-muted">
             {eyebrow}
           </span>
           <button
             type="button"
             onClick={onDismiss}
             aria-label="dismiss welcome guide"
-            className="text-foreground transition-colors duration-150 hover:text-accent"
+            className={MODAL_CLOSE}
           >
             <CloseIcon />
           </button>
@@ -94,11 +95,11 @@ export function OnboardingGuideModal({
 
         <h2
           id={titleId}
-          className="mt-5 font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug text-foreground"
+          className="mt-5 font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug text-ink"
         >
           {heading}
         </h2>
-        <p className="mt-3 text-sm leading-[1.6] text-muted-foreground">{intro}</p>
+        <p className="mt-3 text-sm leading-[1.6] text-ink-muted">{intro}</p>
 
         <ol className="mt-6 space-y-5">
           {steps.map((step, i) => (
@@ -108,7 +109,7 @@ export function OnboardingGuideModal({
                   "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border font-mono text-mini",
                   step.complete
                     ? "border-positive text-positive"
-                    : "border-hairline-strong text-muted-foreground",
+                    : "border-ink-muted text-ink-muted",
                 ].join(" ")}
               >
                 {step.complete ? (
@@ -121,21 +122,19 @@ export function OnboardingGuideModal({
                 )}
               </span>
               <div>
-                <h3 className="font-display text-base font-bold uppercase leading-none text-foreground">
+                <h3 className="font-display text-base font-bold uppercase leading-none text-ink">
                   {step.title}
                 </h3>
-                <p className="mt-1.5 text-sm leading-[1.55] text-muted-foreground">
-                  {step.description}
-                </p>
+                <p className="mt-1.5 text-sm leading-[1.55] text-ink-muted">{step.description}</p>
               </div>
             </li>
           ))}
         </ol>
 
-        <Button type="button" onClick={onPrimary} className="mt-2 w-full">
+        <Button onPaper type="button" onClick={onPrimary} className="mt-2 w-full">
           {primaryLabel}
         </Button>
-        <p className="mt-4 text-center text-mini leading-[1.5] text-muted-foreground">
+        <p className="mt-4 text-center text-mini leading-[1.5] text-ink-muted">
           find this guide again under &ldquo;how it works.&rdquo;
         </p>
       </div>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button } from "./Button";
+import { MODAL_PANEL, MODAL_SCRIM } from "./modalSurface";
 import { MusicNoteIcon } from "./MusicNoteIcon";
 import { PlaylistRow } from "./playlists/PlaylistRow";
 import { ServiceMark } from "./playlists/ServiceMark";
@@ -325,24 +326,27 @@ export function AppleMusicPlaylist({ mixId, entryCount }: { mixId: string; entry
         </p>
       ) : null}
       {error ? <p className={NOTE_CLASS}>{error}</p> : null}
-      {/* The reassurance interstitial is a modal, so it sits at the top of the
-          surface ladder: a `sheet` (Z4) panel wearing `shadow-z4`, whose 1px
-          white ring IS the token — no border alongside it. `muted-foreground`
-          fails AA on `sheet`, so every string here is `foreground`. */}
+      {/* The reassurance interstitial is a modal: the shared white panel with a
+          dark border (ADR 0038), so its copy is `ink`. */}
       {showSignInModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-floor/80 px-4">
-          <div className="w-full max-w-sm rounded-tile bg-sheet px-6 py-5 shadow-z4">
-            <p className="text-sm leading-[1.72] text-foreground">
+        <div className={MODAL_SCRIM}>
+          <div className={`w-full max-w-sm px-6 py-5 ${MODAL_PANEL}`}>
+            <p className="text-sm leading-[1.72] text-ink">
               opens apple&apos;s own sign-in. we never see or store your apple id password.
             </p>
-            <p className="mt-3 text-sm leading-[1.72] text-foreground">
+            <p className="mt-3 text-sm leading-[1.72] text-ink">
               before you sign in, check that the page&apos;s address reads apple.com.
             </p>
             <div className="mt-6 flex gap-4">
-              <Button type="button" onClick={handleGenerate}>
+              <Button onPaper type="button" onClick={handleGenerate}>
                 continue to apple music
               </Button>
-              <Button type="button" variant="ghost" onClick={() => setShowSignInModal(false)}>
+              <Button
+                onPaper
+                type="button"
+                variant="ghost"
+                onClick={() => setShowSignInModal(false)}
+              >
                 cancel
               </Button>
             </div>

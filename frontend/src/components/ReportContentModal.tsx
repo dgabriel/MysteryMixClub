@@ -1,5 +1,6 @@
 import { useId, useRef, useState } from "react";
 import { Button } from "./Button";
+import { MODAL_CLOSE, MODAL_PANEL, MODAL_SCRIM } from "./modalSurface";
 import { ApiError, type ReportReason } from "../services/api";
 import { useFocusTrap } from "../hooks/useFocusTrap";
 
@@ -97,27 +98,25 @@ export function ReportContentModal({
       await onBlock(blockTarget.userId);
       setBlocked(true);
     } catch (err) {
-      setBlockError(
-        err instanceof ApiError ? err.message : "couldn't block them. try again.",
-      );
+      setBlockError(err instanceof ApiError ? err.message : "couldn't block them. try again.");
     } finally {
       setBlocking(false);
     }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-floor/80 px-4">
+    <div className={MODAL_SCRIM}>
       <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="w-full max-w-md rounded-tile bg-sheet p-6 shadow-z4"
+        className={`w-full max-w-md p-6 ${MODAL_PANEL}`}
       >
         <div className="flex items-center justify-between gap-4">
           <h2
             id={titleId}
-            className="font-display text-[1.375rem] font-extrabold uppercase leading-none tracking-display-snug text-foreground"
+            className="font-display text-[1.375rem] font-extrabold uppercase leading-none tracking-display-snug text-ink"
           >
             report content
           </h2>
@@ -125,7 +124,7 @@ export function ReportContentModal({
             type="button"
             onClick={onDismiss}
             aria-label="dismiss report dialog"
-            className="text-foreground transition-colors duration-150 hover:text-accent"
+            className={MODAL_CLOSE}
           >
             <CloseIcon />
           </button>
@@ -133,29 +132,29 @@ export function ReportContentModal({
 
         {sent && blockTarget && onBlock ? (
           <>
-            <p className="mt-3 text-sm leading-[1.6] text-muted-foreground">
-              report sent. we review every report, and we can remove content or restrict
-              accounts from here.
+            <p className="mt-3 text-sm leading-[1.6] text-ink-muted">
+              report sent. we review every report, and we can remove content or restrict accounts
+              from here.
             </p>
             {blocked ? (
-              <p className="mt-4 text-sm leading-[1.6] text-foreground">
-                blocked. {blockTarget.displayName}&rsquo;s notes are hidden from you —
-                they aren&rsquo;t told, and nothing changes for them.
+              <p className="mt-4 text-sm leading-[1.6] text-ink">
+                blocked. {blockTarget.displayName}&rsquo;s notes are hidden from you. they
+                aren&rsquo;t told, and nothing changes for them.
               </p>
             ) : (
               <>
-                <p className="mt-4 text-sm leading-[1.6] text-muted-foreground">
+                <p className="mt-4 text-sm leading-[1.6] text-ink-muted">
                   stop seeing {blockTarget.displayName}&rsquo;s notes? blocking hides them
-                  everywhere in your app — they aren&rsquo;t told, and nothing changes for
-                  them.
+                  everywhere in your app. they aren&rsquo;t told, and nothing changes for them.
                 </p>
                 {blockError ? (
-                  <p role="alert" className="mt-3 text-sm text-destructive-text">
+                  <p role="alert" className="mt-3 text-sm text-ink-destructive">
                     {blockError}
                   </p>
                 ) : null}
                 <div className="mt-4">
                   <Button
+                    onPaper
                     variant="ghost"
                     type="button"
                     onClick={() => void handleBlock()}
@@ -167,69 +166,74 @@ export function ReportContentModal({
               </>
             )}
             <div className="mt-5 flex items-center justify-end">
-              <Button type="button" onClick={onDismiss}>
+              <Button onPaper type="button" onClick={onDismiss}>
                 done
               </Button>
             </div>
           </>
         ) : (
           <>
-        <p className="mt-3 text-sm leading-[1.6] text-muted-foreground">
-          &ldquo;{contentPreview}&rdquo;
-        </p>
+            <p className="mt-3 text-sm leading-[1.6] text-ink-muted">
+              &ldquo;{contentPreview}&rdquo;
+            </p>
 
-        <fieldset className="mt-5">
-          <legend className="font-mono text-mini uppercase tracking-mono-caps text-muted-foreground">
-            reason
-          </legend>
-          <div className="mt-2 space-y-2">
-            {REASONS.map((r) => (
-              <label key={r.value} className="flex cursor-pointer items-center gap-2.5">
-                <input
-                  type="radio"
-                  name="report-reason"
-                  value={r.value}
-                  checked={reason === r.value}
-                  onChange={() => setReason(r.value)}
-                  className="h-4 w-4 accent-accent"
-                />
-                <span className="text-sm text-foreground">{r.label}</span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
+            <fieldset className="mt-5">
+              <legend className="font-mono text-mini uppercase tracking-mono-caps text-ink-muted">
+                reason
+              </legend>
+              <div className="mt-2 space-y-2">
+                {REASONS.map((r) => (
+                  <label key={r.value} className="flex cursor-pointer items-center gap-2.5">
+                    <input
+                      type="radio"
+                      name="report-reason"
+                      value={r.value}
+                      checked={reason === r.value}
+                      onChange={() => setReason(r.value)}
+                      className="h-4 w-4 accent-ink-accent"
+                    />
+                    <span className="text-sm text-ink">{r.label}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
 
-        <label className="mt-4 block">
-          <span className="block font-mono text-mini uppercase tracking-mono-caps text-muted-foreground">
-            details (optional)
-          </span>
-          <textarea
-            value={detail}
-            maxLength={500}
-            rows={2}
-            onChange={(e) => setDetail(e.target.value)}
-            className="mt-2 w-full resize-none rounded-none border-0 border-b border-muted-foreground bg-transparent px-0 py-1 font-mono text-sm text-foreground placeholder:text-muted-foreground focus:border-accent focus:outline-none"
-          />
-        </label>
+            <label className="mt-4 block">
+              <span className="block font-mono text-mini uppercase tracking-mono-caps text-ink-muted">
+                details (optional)
+              </span>
+              <textarea
+                value={detail}
+                maxLength={500}
+                rows={2}
+                onChange={(e) => setDetail(e.target.value)}
+                className="mt-2 w-full resize-none rounded-none border-0 border-b border-ink-muted bg-transparent px-0 py-1 font-mono text-sm text-ink placeholder:text-ink-muted focus:border-ink-accent focus:outline-none"
+              />
+            </label>
 
-        {error ? (
-          <p role="alert" className="mt-3 text-sm text-destructive-text">
-            {error}
-          </p>
-        ) : null}
+            {error ? (
+              <p role="alert" className="mt-3 text-sm text-ink-destructive">
+                {error}
+              </p>
+            ) : null}
 
-        <div className="mt-5 flex items-center justify-end gap-4">
-          <button
-            type="button"
-            onClick={onDismiss}
-            className="font-mono text-mini uppercase tracking-mono-caps text-muted-foreground hover:text-foreground"
-          >
-            cancel
-          </button>
-          <Button type="button" onClick={() => void submit()} disabled={!reason || submitting}>
-            {submitting ? "sending…" : "submit report"}
-          </Button>
-        </div>
+            <div className="mt-5 flex items-center justify-end gap-4">
+              <button
+                type="button"
+                onClick={onDismiss}
+                className="font-mono text-mini uppercase tracking-mono-caps text-ink-muted hover:text-ink"
+              >
+                cancel
+              </button>
+              <Button
+                onPaper
+                type="button"
+                onClick={() => void submit()}
+                disabled={!reason || submitting}
+              >
+                {submitting ? "sending…" : "submit report"}
+              </Button>
+            </div>
           </>
         )}
       </div>

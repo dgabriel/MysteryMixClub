@@ -47,6 +47,7 @@ import {
 import { useAuth } from "../hooks/useAuth";
 import { usePolling } from "../hooks/usePolling";
 import { Button } from "../components/Button";
+import { MODAL_PANEL, MODAL_SCRIM } from "../components/modalSurface";
 import { Badge } from "../components/Badge";
 import { Card } from "../components/Card";
 import { PaperSurface } from "../components/PaperSurface";
@@ -642,21 +643,19 @@ export function MixDetailRoute() {
   return (
     <>
       {/* `useBlocker` renders in-app UI, not a native `window.confirm`, so this
-          is a real modal and takes the top of the surface ladder: a `sheet`
-          (Z4) panel wearing `shadow-z4`. That shadow token carries its own 1px
-          white ring, so the panel deliberately has no `border`. `sheet` is the
-          one surface `muted-foreground` fails on, so the copy is `foreground`. */}
+          is a real modal: the shared white panel with a dark border (ADR 0038),
+          so its copy is `ink`. */}
       {blocker.state === "blocked" ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-floor/80 px-4">
-          <div className="w-full max-w-sm rounded-tile bg-sheet px-6 py-5 shadow-z4">
-            <p className="text-sm leading-[1.72] text-foreground">
+        <div className={MODAL_SCRIM}>
+          <div className={`w-full max-w-sm px-6 py-5 ${MODAL_PANEL}`}>
+            <p className="text-sm leading-[1.72] text-ink">
               {leaveWarningMessage(mix, mySubmissions.length, submissionCap)}
             </p>
             <div className="mt-6 flex gap-4">
-              <Button type="button" onClick={() => blocker.proceed()}>
+              <Button onPaper type="button" onClick={() => blocker.proceed()}>
                 leave
               </Button>
-              <Button type="button" variant="ghost" onClick={() => blocker.reset()}>
+              <Button onPaper type="button" variant="ghost" onClick={() => blocker.reset()}>
                 stay
               </Button>
             </div>
@@ -2030,7 +2029,11 @@ function VotingSection({
                 />
                 {/* Vibers don't vote, but they can still leave notes — it's how
                     they take part (MYS-132). */}
-                <SongNotes submissionId={entry.submission_id} onActionError={onActionError} onBlockAuthor={onBlockAuthor} />
+                <SongNotes
+                  submissionId={entry.submission_id}
+                  onActionError={onActionError}
+                  onBlockAuthor={onBlockAuthor}
+                />
               </Card>
             </li>
           ))}
@@ -2305,7 +2308,11 @@ function VotingSection({
                     title={entry.title}
                     source={entry.source}
                   />
-                  <SongNotes submissionId={entry.submission_id} onActionError={onActionError} onBlockAuthor={onBlockAuthor} />
+                  <SongNotes
+                    submissionId={entry.submission_id}
+                    onActionError={onActionError}
+                    onBlockAuthor={onBlockAuthor}
+                  />
                 </div>
               </div>
             </li>
@@ -2945,7 +2952,14 @@ function ResultsSection({
   // A vibing viewer gets the trimmed reveal — winner(s) + Most Noted + their own
   // song's notes, no rankings or vote counts (MYS-112).
   if (results.viewer_is_vibing) {
-    return <VibingReveal results={results} userId={userId} onActionError={onActionError} onBlockAuthor={onBlockAuthor} />;
+    return (
+      <VibingReveal
+        results={results}
+        userId={userId}
+        onActionError={onActionError}
+        onBlockAuthor={onBlockAuthor}
+      />
+    );
   }
 
   if (results.submissions.length === 0) {
@@ -2960,7 +2974,11 @@ function ResultsSection({
   return (
     <div className="animate-fade-in space-y-12">
       {most_noted.winners.length > 0 ? (
-        <MostNotedSection winners={most_noted.winners} userId={userId} onBlockAuthor={onBlockAuthor} />
+        <MostNotedSection
+          winners={most_noted.winners}
+          userId={userId}
+          onBlockAuthor={onBlockAuthor}
+        />
       ) : null}
 
       {winners.length > 0 ? <WinnersSection winners={winners} nameFor={nameFor} /> : null}
@@ -3027,7 +3045,11 @@ function ResultsSection({
                         </p>
                       ) : null}
                       {s.notes.length > 0 ? (
-                        <CollapsibleNotes notes={s.notes} userId={userId} onBlockAuthor={onBlockAuthor} />
+                        <CollapsibleNotes
+                          notes={s.notes}
+                          userId={userId}
+                          onBlockAuthor={onBlockAuthor}
+                        />
                       ) : null}
                     </div>
                   </div>
@@ -3113,7 +3135,11 @@ function VibingReveal({
   return (
     <div className="animate-fade-in space-y-12">
       {most_noted.winners.length > 0 ? (
-        <MostNotedSection winners={most_noted.winners} userId={userId} onBlockAuthor={onBlockAuthor} />
+        <MostNotedSection
+          winners={most_noted.winners}
+          userId={userId}
+          onBlockAuthor={onBlockAuthor}
+        />
       ) : null}
 
       {winners.length > 0 ? <VibeWinnersSection winners={winners} /> : null}
@@ -3207,7 +3233,11 @@ function VibePicksSection({
                 <p className="mt-2 text-meta leading-[1.6] text-foreground">“{p.submitter_note}”</p>
               ) : null}
               <PlatformLinks platforms={p.platforms} title={p.title} source={p.source} />
-              <SongNotes submissionId={p.submission_id} onActionError={onActionError} onBlockAuthor={onBlockAuthor} />
+              <SongNotes
+                submissionId={p.submission_id}
+                onActionError={onActionError}
+                onBlockAuthor={onBlockAuthor}
+              />
             </Card>
           </li>
         ))}

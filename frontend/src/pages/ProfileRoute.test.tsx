@@ -764,6 +764,52 @@ describe("ProfileRoute", () => {
       });
     });
 
+    describe("push toggles only read as on when this device can receive push (MysteryMixClub-jpem)", () => {
+      async function renderNative(
+        status: "granted" | "denied" | "prompt",
+        registration: "idle" | "registering" | "registered" | "failed",
+      ) {
+        mockNativePushAvailable.mockReturnValue(true);
+        mockPushPermissionStatus.mockResolvedValue(status);
+        mockUsePushRegistration.mockReturnValue(registration);
+        renderProfile();
+        await screen.findByText(/archived/i);
+      }
+
+      it.each([
+        ["denied", "idle", /turn on notifications in ios settings/i],
+        ["prompt", "idle", /turn on push above/i],
+        ["granted", "registering", /switch on once this device is connected/i],
+        ["granted", "failed", /switch on once this device is connected/i],
+      ] as const)(
+        "%s / %s: push toggles unchecked, disabled, with the reason; email untouched",
+        async (status, registration, reason) => {
+          await renderNative(status, registration);
+
+          expect(await screen.findByText(reason)).toBeInTheDocument();
+          for (const name of [/push: updates/i, /push: reminders/i]) {
+            const toggle = screen.getByRole("checkbox", { name });
+            expect(toggle).not.toBeChecked();
+            expect(toggle).toBeDisabled();
+          }
+          const email = screen.getByRole("checkbox", { name: /^email/i });
+          expect(email).toBeChecked();
+          expect(email).toBeEnabled();
+          // The stored preferences (both true) were never rewritten.
+          expect(mockUpdateNotificationPreferences).not.toHaveBeenCalled();
+        },
+      );
+
+      it("granted and registered: toggles show the stored preferences and work", async () => {
+        await renderNative("granted", "registered");
+
+        const updates = await screen.findByRole("checkbox", { name: /push: updates/i });
+        expect(updates).toBeChecked();
+        expect(updates).toBeEnabled();
+        expect(screen.queryByText(/to use these|switch on once/i)).not.toBeInTheDocument();
+      });
+    });
+
     describe("preferences (MysteryMixClub-4vii.28, IOS-04)", () => {
       it("web: shows only the email toggle, checked from the loaded profile", async () => {
         mockNativePushAvailable.mockReturnValue(false);

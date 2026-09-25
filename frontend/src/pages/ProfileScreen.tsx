@@ -576,6 +576,10 @@ function NotificationPreferencesSection({
   enablingPush?: boolean;
   enablePushError?: string | null;
 }) {
+  const pushInactiveReason = pushAvailable
+    ? pushInactiveReasonFor(pushStatus, pushRegistration)
+    : null;
+
   return (
     <section className="mt-12 border-t border-ink-hairline pt-10">
       <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-accent">
@@ -647,24 +651,33 @@ function NotificationPreferencesSection({
         />
         {pushAvailable ? (
           <>
+            {/* A push toggle only reads as on when this device can actually
+                receive push (MysteryMixClub-jpem). Otherwise it shows unchecked
+                and disabled with the reason; the stored preference is never
+                touched, so it applies again once push works. */}
             <PreferenceCheckbox
               id="pref-push-lifecycle"
               label="push: updates"
               description="a nudge when it's your turn to submit or vote, and when a mystery mix wraps up."
-              checked={prefs.push_lifecycle_enabled}
-              disabled={Boolean(savingPref)}
+              checked={pushInactiveReason ? false : prefs.push_lifecycle_enabled}
+              disabled={Boolean(savingPref) || pushInactiveReason !== null}
+              inactive={pushInactiveReason !== null}
               onChange={(checked) => onTogglePreference?.("push_lifecycle_enabled", checked)}
             />
             <PreferenceCheckbox
               id="pref-push-deadline-reminders"
               label="push: reminders"
               description="an extra nudge as a submission or voting deadline approaches."
-              checked={prefs.push_deadline_reminders_enabled}
-              disabled={Boolean(savingPref)}
+              checked={pushInactiveReason ? false : prefs.push_deadline_reminders_enabled}
+              disabled={Boolean(savingPref) || pushInactiveReason !== null}
+              inactive={pushInactiveReason !== null}
               onChange={(checked) =>
                 onTogglePreference?.("push_deadline_reminders_enabled", checked)
               }
             />
+            {pushInactiveReason ? (
+              <p className="text-meta leading-[1.6] text-ink-muted">{pushInactiveReason}</p>
+            ) : null}
           </>
         ) : null}
       </div>
@@ -677,12 +690,27 @@ function NotificationPreferencesSection({
   );
 }
 
+/** Why push toggles can't deliver on this device right now, or null when they
+ *  can (permission granted and this device registered, MysteryMixClub-jpem). */
+function pushInactiveReasonFor(
+  pushStatus: PushPermissionStatus | null | undefined,
+  pushRegistration: PushRegistrationState,
+): string | null {
+  if (pushStatus === "denied") return "turn on notifications in ios settings to use these.";
+  if (pushStatus !== "granted") return "turn on push above to use these.";
+  if (pushRegistration === "registered") return null;
+  // Still connecting, or the connection failed: the status line above already
+  // says which, so this only says what it means for the toggles.
+  return "these switch on once this device is connected.";
+}
+
 function PreferenceCheckbox({
   id,
   label,
   description,
   checked,
   disabled,
+  inactive = false,
   onChange,
 }: {
   id: string;
@@ -690,10 +718,16 @@ function PreferenceCheckbox({
   description: string;
   checked: boolean;
   disabled?: boolean;
+  /** Can't take effect on this device right now: the label dims too, not just
+   *  the box, so the whole row reads as unavailable. */
+  inactive?: boolean;
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label htmlFor={id} className="flex cursor-pointer items-start gap-3">
+    <label
+      htmlFor={id}
+      className={`flex items-start gap-3 ${inactive ? "cursor-not-allowed" : "cursor-pointer"}`}
+    >
       {/* Same drawn-checkbox construction as OnboardingScreen's consent box,
           re-solved for the paper surface: `ink-accent` fill (checked) instead
           of `accent`, `paper` (white) mark instead of `accent-foreground` --
@@ -711,7 +745,11 @@ function PreferenceCheckbox({
         <CheckmarkIcon className="pointer-events-none col-start-1 row-start-1 hidden text-paper peer-checked:block" />
       </span>
       <span>
-        <span className="block font-mono text-mini uppercase tracking-mono-caps text-ink">
+        <span
+          className={`block font-mono text-mini uppercase tracking-mono-caps ${
+            inactive ? "text-ink-muted" : "text-ink"
+          }`}
+        >
           {label}
         </span>
         <span className="mt-1 block text-meta leading-[1.6] text-ink-muted">{description}</span>

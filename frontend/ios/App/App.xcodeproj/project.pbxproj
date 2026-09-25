@@ -14,6 +14,7 @@
 		4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */ = {isa = PBXBuildFile; productRef = 4D22ABE82AF431CB00220026 /* CapApp-SPM */; };
 		4DD97F31DBF41152B7AC0E1A /* TipsPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DC7A4BA8F31533705B5F4DB /* TipsPlugin.swift */; };
 		9BCDFDDFCE11596F84A9422D /* SessionStorePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D5D9C69F8FB45D7AF1B2B9C /* SessionStorePlugin.swift */; };
+		663E308009D940405E109FDF /* AppSettingsPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1DEF1F23FB34BB4FD97BB0 /* AppSettingsPlugin.swift */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		504EC30D1FED79650016851F /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
@@ -46,6 +47,7 @@
 		4569671C1AABCF1CBD01911F /* AppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		4DC7A4BA8F31533705B5F4DB /* TipsPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TipsPlugin.swift; sourceTree = "<group>"; };
 		4D5D9C69F8FB45D7AF1B2B9C /* SessionStorePlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SessionStorePlugin.swift; sourceTree = "<group>"; };
+		1D1DEF1F23FB34BB4FD97BB0 /* AppSettingsPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppSettingsPlugin.swift; sourceTree = "<group>"; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -121,6 +123,7 @@
 				30A8FA1AFD934EF6BDFB825B /* ProofViewController.swift */,
 				4DC7A4BA8F31533705B5F4DB /* TipsPlugin.swift */,
 				4D5D9C69F8FB45D7AF1B2B9C /* SessionStorePlugin.swift */,
+				1D1DEF1F23FB34BB4FD97BB0 /* AppSettingsPlugin.swift */,
 				A526A1630150137CDA89D854 /* GoogleAuthPlugin.swift */,
 				42107C86018C49C6A59EAB75 /* AppleAuthPlugin.swift */,
 			);
@@ -284,6 +287,7 @@
 				AF018E3B0AF04114BCB753B6 /* ProofViewController.swift in Sources */,
 				4DD97F31DBF41152B7AC0E1A /* TipsPlugin.swift in Sources */,
 				9BCDFDDFCE11596F84A9422D /* SessionStorePlugin.swift in Sources */,
+				663E308009D940405E109FDF /* AppSettingsPlugin.swift in Sources */,
 				B5CFE5EEE0CA92096990B4C6 /* GoogleAuthPlugin.swift in Sources */,
 				D1FE7773E6A64CAD8B519B92 /* AppleAuthPlugin.swift in Sources */,
 			);

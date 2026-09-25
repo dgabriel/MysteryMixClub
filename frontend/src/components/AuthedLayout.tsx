@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Outlet, useLocation } from "react-router";
 import { TopNav } from "./TopNav";
 import { ReleaseNotesModal } from "./ReleaseNotesModal";
+import { PushActivationPrompt } from "./PushActivationPrompt";
+import { useAuth } from "../hooks/useAuth";
 import { OfflineScreen } from "./OfflineScreen";
 import {
   forgetTypedFields,
@@ -28,6 +30,7 @@ export function AuthedLayout() {
   const setNavBackCb = useCallback((back: NavBack | null) => setNavBack(back), []);
   const contentRef = useRef<HTMLDivElement>(null);
   const { pathname } = useLocation();
+  const { userId } = useAuth();
 
   // Offline (MysteryMixClub-ga4y): the offline state replaces the page below
   // the nav, but the page stays mounted (only hidden), so nothing typed is
@@ -108,6 +111,9 @@ export function AuthedLayout() {
         />
       </div>
       {showReleaseNotes ? <ReleaseNotesModal onDismiss={dismissReleaseNotes} /> : null}
+      {/* After login, offer push (MysteryMixClub-gxh3), but never stacked on
+          top of "what's new": it waits until that's dismissed. */}
+      {!showReleaseNotes && userId ? <PushActivationPrompt userId={userId} /> : null}
     </div>
   );
 }

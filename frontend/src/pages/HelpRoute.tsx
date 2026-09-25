@@ -15,11 +15,11 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
     items: [
       {
         q: "do i need an invite?",
-        a: "yes. mysterymixclub is invite-only; there's no open signup. someone already in a club can send you a club invite link, or a platform admin can send you a general one.",
+        a: "yes. mysterymixclub is invite-only; there's no open signup. a club's organizer (or co-organizer) can send you an invite link to their club.",
       },
       {
         q: "what's the waitlist?",
-        a: "if you don't have an invite yet, some pages offer a waitlist join box instead. add your email, and we'll email you when a spot opens up. an invite from a club skips the waitlist entirely, so if a friend invites you, you're in right away.",
+        a: "when the waitlist is open, the sign-in page offers a box to join it instead. add your email, and we'll email you when a spot opens up. an invite from a club skips the waitlist entirely, so if a friend invites you, you're in right away.",
       },
       {
         q: "how do i log in?",
@@ -59,7 +59,7 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
       },
       {
         q: "what are the stages?",
-        a: "pending (no theme set yet) → open for submission → open for voting → closed. one mystery mix is active at a time, and they move forward only.",
+        a: "upcoming (no theme set yet) → submissions open → voting open → completed. one mystery mix is active at a time, and they move forward only.",
       },
       {
         q: "who sets the theme and deadlines?",
@@ -103,7 +103,7 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
     items: [
       {
         q: "is voting anonymous?",
-        a: "yes. while voting is open, songs are shuffled into one playlist with no names attached, so nobody can tell who submitted what until the mystery mix closes.",
+        a: "while voting is open, yes: songs are shuffled into one playlist with no names attached, and nobody can see who voted for what. at the reveal, everyone sees who submitted each song and who voted for it.",
       },
       {
         q: "can i vote for my own song?",
@@ -115,25 +115,7 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
       },
       {
         q: "can i leave notes without voting?",
-        a: "yes, notes and votes are independent.",
-      },
-    ],
-  },
-  {
-    slug: "casual-mode",
-    label: "casual mode",
-    items: [
-      {
-        q: "what's the difference between competitive mode and casual mode?",
-        a: "competitive mode means voting and a spot on the leaderboard. casual mode means skipping voting (a club's organizer can set this as the default when creating the club). either way, your song still gets submitted, shuffled in, and is fully eligible to win or get most noted.",
-      },
-      {
-        q: "can other members tell i'm in casual mode?",
-        a: "no. it's invisible to everyone else, during voting and at reveal.",
-      },
-      {
-        q: "do i see the leaderboard if i'm playing casual?",
-        a: "not the vote counts or leaderboard. you'll still see the winner, most noted, and every submission with its notes.",
+        a: "yes, notes and votes are independent. while voting is open you only see your own notes, so nobody's notes sway the vote. everyone's notes appear at the reveal.",
       },
     ],
   },
@@ -147,10 +129,10 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
       },
       {
         q: "which services get an auto-generated playlist?",
-        a: "spotify, apple music, and youtube. set your preferred one from your profile, and it'll be the default link shown to you across the app.",
+        a: "spotify, apple music, and youtube. open the mystery mix page once voting starts and pick the one you listen on.",
       },
       {
-        q: "what if a song isn't on my preferred service?",
+        q: "what if a song isn't on my service?",
         a: "the playlist will say so rather than just leaving it out silently, and a youtube link is always offered as a fallback.",
       },
     ],
@@ -161,7 +143,7 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
     items: [
       {
         q: "what emails will i get?",
-        a: "one when a mystery mix opens for submissions or voting, one when results are ready, a nudge as a deadline approaches, one if an organizer extends voting, and one when your club wraps up. organizers also get a note if a mystery mix is ready to open but still needs a theme.",
+        a: "a welcome when you join a club, one when a mystery mix opens for submissions or voting, one when results are ready, a nudge as a deadline approaches, and one if an organizer extends voting. organizers also get a note if a mystery mix is ready to open but still needs a theme.",
       },
       {
         q: "does the iphone app send push notifications too?",
@@ -169,7 +151,7 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
       },
       {
         q: "can i turn them off?",
-        a: "yes. every notification email has a one-click unsubscribe link at the bottom, and push notifications have their own on/off switch in your profile. neither affects sign-in emails; you'll always need those to log in.",
+        a: "yes. your profile has separate switches for email and push, and every notification email also has a one-click unsubscribe link at the bottom. neither affects sign-in emails; you'll always need those to log in.",
       },
     ],
   },
@@ -178,8 +160,8 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
     label: "your account",
     items: [
       {
-        q: "can i change my display name or preferred streaming service?",
-        a: "yes, both from your profile page, any time.",
+        q: "can i change my display name?",
+        a: "yes, from your profile page, any time.",
       },
       {
         q: "can i download my data?",
@@ -187,7 +169,21 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
       },
       {
         q: "can i delete my account?",
-        a: "yes, from your profile. this removes your submissions, votes, notes, and club memberships.",
+        a: "yes, from your profile. you're signed out everywhere right away, and your submissions, votes, notes, and club memberships are permanently removed within 30 days. if you organize a club that's still running, finish or hand it off first.",
+      },
+    ],
+  },
+  {
+    slug: "safety",
+    label: "safety",
+    items: [
+      {
+        q: "how do i report something?",
+        a: "at the reveal, every note from another member has a report option. reports go straight to us and we review them promptly.",
+      },
+      {
+        q: "how do i block someone?",
+        a: "from a club's member list, or right after you report their note. you won't see their notes anymore, and they're never told. you can see everyone you've blocked, and unblock them, from your profile.",
       },
     ],
   },
@@ -217,7 +213,7 @@ const SECTIONS: { slug: string; label: string; items: QA[] }[] = [
  * collapses to a login-only nav for signed-out visitors.
  *
  * Each section carries a stable `id` so it can be deep-linked (e.g.
- * /help#casual-mode).
+ * /help#safety).
  *
  * Client-side route changes don't get the browser's native #hash scroll (that
  * only fires on a real document navigation), so this scrolls to the target

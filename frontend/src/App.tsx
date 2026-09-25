@@ -5,6 +5,7 @@ import { Navigate, createBrowserRouter, useParams } from "react-router";
 // package export is for non-DOM contexts like tests instead.
 import { RouterProvider } from "react-router/dom";
 import { AuthProvider } from "./hooks/AuthProvider";
+import { AppOfflineOverlay } from "./components/OfflineScreen";
 import { IS_NATIVE_BUILD } from "./lib/platform";
 import { registerDeepLinkHandler } from "./native/deepLinks";
 import { registerPushDeepLinkHandler } from "./native/pushDeepLinks";
@@ -192,6 +193,7 @@ export default function App() {
   return (
     <AuthProvider>
       <RouterProvider router={router} />
+      <AppOfflineOverlay />
     </AuthProvider>
   );
 }

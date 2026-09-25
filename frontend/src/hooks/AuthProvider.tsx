@@ -3,9 +3,10 @@ import {
   getMe,
   logout as apiLogout,
   logoutAll as apiLogoutAll,
-  refresh as apiRefresh,
+  refreshSession,
   setStoredAccessToken,
 } from "../services/api";
+import { waitUntilOnline } from "../lib/connectivity";
 import { AuthContext, type AuthContextValue, type AuthStatus, type ProfileStatus } from "./useAuth";
 import {
   invalidatePushSession,
@@ -82,8 +83,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // gate it on an effect-cleanup flag, because StrictMode runs cleanup before
     // this one call resolves, which would otherwise leave status stuck loading.
     void (async () => {
-      const result = await apiRefresh();
-      if (result) {
+      // No network is not the same as no session (MysteryMixClub-ga4y):
+      // stay "loading" (the offline screen covers it) and try again once the
+      // connection is back, instead of dropping to the sign-in form.
+      let result = await refreshSession();
+      while (result.kind === "offline") {
+        await waitUntilOnline();
+        result = await refreshSession();
+      }
+      if (result.kind === "ok") {
         setStoredAccessToken(result.access_token);
         setToken(result.access_token);
         setStatus("authenticated");

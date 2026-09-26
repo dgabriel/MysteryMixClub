@@ -49,6 +49,12 @@
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
+	<!-- Export compliance (MysteryMixClub-4vii.53): the app uses only the OS's
+	     standard HTTPS/TLS, no custom or proprietary cryptography, which is
+	     exempt. Declaring it here answers App Store Connect's encryption
+	     question for every build instead of prompting on each upload. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
 		<string>armv7</string>

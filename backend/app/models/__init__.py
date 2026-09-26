@@ -1,14 +1,19 @@
 from app.models.apple_mix_playlist import AppleMixPlaylist
+from app.models.auth_identity import AuthIdentity
+from app.models.block import Block
 from app.models.club import Club
 from app.models.club_member import ClubMember
+from app.models.device_push_token import DevicePushToken
 from app.models.invite import Invite
 from app.models.login_attempt import LoginAttempt
 from app.models.magic_link_token import MagicLinkToken
 from app.models.mix import Mix
 from app.models.note import Note
 from app.models.oauth_callback_attempt import OAuthCallbackAttempt
+from app.models.oauth_exchange_code import OAuthExchangeCode
 from app.models.password_reset_token import PasswordResetToken
 from app.models.playlist_job import PlaylistJob
+from app.models.report import Report
 from app.models.session import Session
 from app.models.spotify_connection import SpotifyConnection
 from app.models.spotify_mix_playlist import SpotifyMixPlaylist
@@ -20,16 +25,21 @@ from app.models.waitlist_join_attempt import WaitlistJoinAttempt
 
 __all__ = [
     "AppleMixPlaylist",
+    "AuthIdentity",
+    "Block",
     "Club",
     "ClubMember",
+    "DevicePushToken",
     "Invite",
     "LoginAttempt",
     "MagicLinkToken",
     "Mix",
     "Note",
     "OAuthCallbackAttempt",
+    "OAuthExchangeCode",
     "PasswordResetToken",
     "PlaylistJob",
+    "Report",
     "Session",
     "SpotifyConnection",
     "SpotifyMixPlaylist",

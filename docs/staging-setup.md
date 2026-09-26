@@ -58,6 +58,14 @@ It is idempotent — safe to re-run.
 > Optional overrides (env vars): `STAGING_DB_NAME`, `STAGING_DB_USER`,
 > `REPO_URL`, `REPO_BRANCH`, `APP_ROOT`, `WEB_ROOT`.
 
+The bootstrap also creates a 2GB swap file if the Droplet has none. This
+$6/mo box only has ~1GB RAM, and `npm ci` for the frontend has been observed
+to get OOM-killed outright without swap (`MysteryMixClub-jrm2`,
+2026-09-15) -- which aborts `deploy-staging.sh` mid-way through publishing
+the frontend, since `set -euo pipefail` means the failed `npm ci` takes the
+whole deploy down with it. Check `free -h` after bootstrapping a new Droplet
+if you ever see a deploy fail with `npm ci ... Killed`.
+
 ---
 
 ## 2. Populate the runtime env file
@@ -251,6 +259,29 @@ Confirm it's online: `gh api repos/dgabriel/MysteryMixClub/actions/runners --jq 
 The workflow targets it via `runs-on: [self-hosted, staging]` — the `staging`
 label is what scopes deploy jobs to this specific runner, separate from
 prod's `prod`-labeled one.
+
+**Make the runner service auto-restart (`MysteryMixClub-jrm2`, 2026-09-15).**
+`./svc.sh install` generates a unit with no `Restart=` directive, so a runner
+process killed by anything (the OOM kill this bead traces, a bad deploy step,
+a Droplet hiccup) stays dead until someone notices and restarts it by hand --
+which is exactly what happened here: the runner sat crashed for 7 hours,
+silently queuing every deploy with nothing to pick them up. Add a drop-in
+rather than editing the generated unit file directly (`svc.sh` may
+regenerate it):
+
+```bash
+sudo mkdir -p /etc/systemd/system/actions.runner.dgabriel-MysteryMixClub.mysterymixclub-staging.service.d
+sudo tee /etc/systemd/system/actions.runner.dgabriel-MysteryMixClub.mysterymixclub-staging.service.d/override.conf <<'EOF'
+[Service]
+Restart=on-failure
+RestartSec=10
+EOF
+sudo systemctl daemon-reload
+```
+
+Do this once per runner install (it doesn't survive `svc.sh uninstall` +
+reinstall). Verify with
+`systemctl show actions.runner.<name>.service -p Restart`.
 
 **No SSH secrets needed** — `STAGING_HOST`/`STAGING_SSH_USER`/`STAGING_SSH_KEY`
 were used by the old SSH-based workflow and are no longer referenced. Safe to
@@ -524,6 +555,142 @@ file alone changes nothing.
 **Use a separate OAuth client per environment** — never share
 `GOOGLE_CLIENT_SECRET` across staging and prod, and each needs its own
 Authorized redirect URI registered on its own client (see `prod.env.example`).
+
+---
+
+## Enabling push notifications (MysteryMixClub-4vii.25/27, IOS-04)
+
+Push is **off** until both credentials are present, the same "gap is a
+supported state" pattern as Apple Music and Google above: every recipient's
+send is skipped without ever calling APNs (with one `push send: skipped N
+recipient(s), apns credentials are not configured` warning in the journal),
+no user-visible error, no crash. So this can be done any time after the code ships,
+independently of it, and skipping it breaks nothing except the notifications
+themselves.
+
+**Credentials come from the Apple Developer portal** (the same paid
+membership Apple Music and Sign in with Apple already need — no new
+enrollment). Two separate one-time steps, both required:
+
+1. **Certificates, Identifiers & Profiles → Identifiers →** this app's App ID
+   (`com.mysterymixclub.app`) **→ check "Push Notifications" →** Save. Without
+   this, code signing with the `aps-environment` entitlement `App.entitlements`
+   already carries fails (or silently does nothing on-device), the same
+   category of gotcha Sign in with Apple's own capability step has.
+   Regenerate/re-download the provisioning profile afterward.
+2. **Keys → ＋ → check "Apple Push Notifications service (APNs)" →** download
+   the `.p8`. **This download is one-time and non-recoverable** — store the
+   original in a password manager before doing anything else. Use a
+   **separate** key from Apple Music's MusicKit key (different service,
+   don't reuse); each environment can share one key or use its own,
+   but never share the `.p8` file itself the way `SECRET_KEY` must never be
+   shared.
+
+- `APPLE_PUSH_KEY_ID` — the 10 chars in the downloaded `AuthKey_XXXXXXXXXX.p8`
+  filename
+- `APPLE_PUSH_PRIVATE_KEY` — the `.p8` PEM contents
+- Team ID is **not** a separate value here — the push token service reuses
+  `APPLE_MUSIC_TEAM_ID` (already on the box if Apple Music is enabled;
+  otherwise it's still just the membership details page's Team ID, no Apple
+  Music setup required to fill it in).
+
+On the Droplet, add both to the env file. Same one-line, `\n`-escaped PEM
+convention as `APPLE_MUSIC_PRIVATE_KEY`:
+
+```bash
+sudo nano /etc/mysterymixclub/staging.env
+# APPLE_MUSIC_TEAM_ID=A1B2C3D4E5    # already present if Apple Music is on
+# APPLE_PUSH_KEY_ID=YYYYYYYYYY
+# APPLE_PUSH_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIGT...\n-----END PRIVATE KEY-----"
+
+sudo systemctl restart mysterymixclub-api
+```
+
+**Verify** — there is no client-facing endpoint to curl (unlike Apple Music's
+developer-token route: a provider token is only ever used server-to-APNs,
+never handed to the frontend). Two levels of check:
+
+1. **Config sanity**, without a real device. First, does Apple *accept* the
+   credentials? (Minting a JWT proves only that the key can sign.)
+   ```bash
+   sudo -u mysterymixclub bash -c '
+     cd /home/mysterymixclub/app/backend &&
+     set -a && source /etc/mysterymixclub/staging.env && set +a &&
+     .venv/bin/python -m scripts.probe_apns_environment --check-credentials'
+   ```
+   `credentials ACCEPTED` means a token that belongs to no device got
+   `BadDeviceToken` from the production gateway, which happens only after Apple
+   authenticated the provider (Apple documents a bad key, Key ID or Team ID as a
+   `403`; only the accepted case has been observed here).
+   It does not validate the topic (APNs checks the device token first), and a
+   key restricted to production only will show a sandbox `403` that is noted,
+   not treated as a failure. Nothing is sent to anyone. Then the local signing
+   check on its own:
+   ```bash
+   cd /home/mysterymixclub/app/backend && source .venv/bin/activate
+   set -a && source /etc/mysterymixclub/staging.env && set +a
+   python3 -c "
+   import asyncio
+   from app.config import get_settings
+   from app.services.apple_push_token import build_apple_push_token_service
+   svc = build_apple_push_token_service(get_settings())
+   print('configured:', svc.is_configured)
+   print(asyncio.run(svc.get_provider_token())[:20] + '...')
+   "
+   ```
+   Raises `ApplePushTokenError` on a bad key/PEM; prints a token prefix on
+   success. To find out which APNs environment a *registered device's* token is
+   in, see "Which APNs environment is a build in?" in `docs/ios/README.md`.
+2. **The real signal**: register a device via the app (Settings → enable
+   notifications, or the onboarding auto-prompt), then trigger any mix
+   lifecycle event (submit, vote, or wait for a deadline reminder) and check
+   the journal:
+   ```bash
+   sudo journalctl -u mysterymixclub-api -u mysterymixclub-advance-mixes --since "5 min ago" | grep "push send"
+   ```
+   Two units send pushes: the API (`mysterymixclub-api`, lifecycle events
+   triggered by a request) and the deadline job (`mysterymixclub-advance-mixes`,
+   reminders and deadline advances), so grep both. **The API unit surfaces only
+   WARNING-and-above records** (its INFO logging is switched on in development
+   only), so its journal shows sends that were *skipped, rejected or retired*
+   and cannot show one that succeeded. The deadline job's unit does run at INFO
+   and also logs `push send: accepted by apns` for each accepted request.
+   **A missing line in the API journal therefore proves nothing**: it can mean
+   APNs accepted the request, or that no send was attempted at all (no
+   recipient had a registered device, or the event never fired). And even a 200
+   from APNs is acceptance, not delivery -- the phone may be offline, in a Focus
+   mode, or have notifications switched off. The confirmation that push works
+   is the notification appearing on the device.
+
+   | Journal line | Meaning |
+   |---|---|
+   | `push send: accepted by apns` (deadline job unit only) | APNs returned 200. Acceptance, not delivery. |
+   | `push send: skipped N recipient(s), apns credentials are not configured` | The key/Key ID are missing from the running process. |
+   | `push send: no apns topic (bundle id) is configured` | `APPLE_SIGN_IN_BUNDLE_ID` resolved to an empty string. |
+   | `push send: apns rejected the request (status=403 reason=InvalidProviderToken)` | The key / Key ID / Team ID pairing is wrong (`ExpiredProviderToken`, `Forbidden` and similar 403 reasons are the same family). |
+   | `push send: apns rejected the request (status=400 reason=BadTopic)` (or `TopicDisallowed`, `PayloadEmpty`, ...) | A request or configuration problem -- the topic, payload or headers. **The device token is left alone.** |
+   | `push send: apns rejected the request (status=429 ...)` / `status=5xx` | Throttling or an APNs outage. Nothing is retired. |
+   | `push send: apns rejected the request (status=400 reason=unreadable)` | The response body was not a readable APNs error. Nothing is retired. |
+   | `push send: apns answered BadDeviceToken but has not yet accepted this topic in this process, so the token is kept` | APNs rejected the token, but this process has not yet seen a 200 for the topic, so a wrong topic or credentials cannot be ruled out. Nothing is deleted. |
+   | `push send: retired a registration apns reports as dead (status=410 reason=Unregistered)` | APNs said the token is no longer active for this app (a `BadDeviceToken` also retires once the topic has been accepted). The registration was deleted. |
+   | `push send: did not retire: the registration was newer than the verdict, reassigned to another account, or already removed` | A dead-token verdict arrived but the row it named was not the one to delete; nothing was removed. |
+
+   Two caveats on `BadDeviceToken`. The "topic accepted" memory is **per
+   process** -- each API worker process, each run of the deadline job and every
+   restart or deploy starts without it -- so whether a dead token is retired
+   on a given send depends on whether that process has already had a send
+   accepted. That errs on the safe side (rows are kept, never wrongly
+   deleted). And it proves the topic and credentials line up, **not** the
+   token's environment: APNs answers `BadDeviceToken` for a token minted for
+   the other environment too, so once a process has an accepted send, a
+   sandbox token (from an Xcode debug build) is retired as well. That is
+   right for a backend that only ever talks to the production gateway, but it
+   means such tokens never receive anything; see `docs/adr/0033`.
+
+   No device token, provider JWT or notification payload is ever logged.
+
+A restart is required: settings and the token service are cached per
+process, so editing the env file alone changes nothing.
 
 ---
 

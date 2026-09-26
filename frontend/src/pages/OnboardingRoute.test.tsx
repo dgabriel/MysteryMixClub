@@ -6,12 +6,15 @@ import { OnboardingRoute } from "./OnboardingRoute";
 import { ApiError, acceptTerms } from "../services/api";
 import type { UserProfile } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
+import {
+  nativePushAvailable,
+  pushPermissionStatus,
+  requestPushPermissionAndRegister,
+} from "../ios/push";
 
 // Mock the API module (no network).
 vi.mock("../services/api", async () => {
-  const actual = await vi.importActual<typeof import("../services/api")>(
-    "../services/api",
-  );
+  const actual = await vi.importActual<typeof import("../services/api")>("../services/api");
   return {
     ...actual,
     acceptTerms: vi.fn(),
@@ -23,8 +26,20 @@ vi.mock("../hooks/useAuth", () => ({
   useAuth: vi.fn(),
 }));
 
+// MysteryMixClub-4vii.27 (IOS-04): the push auto-prompt fires right after a
+// successful save, on native iOS only -- default to "not native" so the
+// existing web-flow tests above stay unaffected.
+vi.mock("../ios/push", () => ({
+  nativePushAvailable: vi.fn(),
+  pushPermissionStatus: vi.fn(),
+  requestPushPermissionAndRegister: vi.fn(),
+}));
+
 const mockAcceptTerms = vi.mocked(acceptTerms);
 const mockUseAuth = vi.mocked(useAuth);
+const mockNativePushAvailable = vi.mocked(nativePushAvailable);
+const mockPushPermissionStatus = vi.mocked(pushPermissionStatus);
+const mockRequestPushPermissionAndRegister = vi.mocked(requestPushPermissionAndRegister);
 const applyDisplayName = vi.fn();
 const applyTosAccepted = vi.fn();
 
@@ -40,8 +55,7 @@ function setAuth(
     tosAccepted?: boolean;
   } = {},
 ) {
-  const profileStatus =
-    overrides.profileStatus ?? (status === "authenticated" ? "ready" : "idle");
+  const profileStatus = overrides.profileStatus ?? (status === "authenticated" ? "ready" : "idle");
   mockUseAuth.mockReturnValue({
     status,
     isAuthenticated: status === "authenticated",
@@ -72,6 +86,9 @@ function profileWith(displayName: string): UserProfile {
     tos_accepted: true,
     has_password: false,
     google_linked: false,
+    email_notifications: true,
+    push_lifecycle_enabled: true,
+    push_deadline_reminders_enabled: true,
   };
 }
 
@@ -90,6 +107,8 @@ function renderOnboarding() {
 describe("OnboardingRoute", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockNativePushAvailable.mockReturnValue(false);
+    mockPushPermissionStatus.mockResolvedValue("prompt");
   });
 
   describe("brand-new user (no display name, no consent)", () => {
@@ -196,9 +215,7 @@ describe("OnboardingRoute", () => {
     await user.click(screen.getByRole("checkbox"));
     await user.click(screen.getByRole("button", { name: /continue/i }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "that didn't save. try again.",
-    );
+    expect(await screen.findByRole("alert")).toHaveTextContent("that didn't save. try again.");
     // Still on the onboarding screen — no navigation occurred.
     expect(screen.queryByText("HOME CONTENT")).not.toBeInTheDocument();
     expect(screen.getByText("one more thing")).toBeInTheDocument();
@@ -247,12 +264,29 @@ describe("OnboardingRoute", () => {
     await user.click(screen.getByRole("checkbox"));
     await user.click(screen.getByRole("button", { name: /continue/i }));
 
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: /saving/i })).toBeDisabled(),
-    );
+    await waitFor(() => expect(screen.getByRole("button", { name: /saving/i })).toBeDisabled());
 
     // Resolve so the trailing navigation flushes inside act().
     resolve(profileWith("Cleo"));
     expect(await screen.findByText("HOME CONTENT")).toBeInTheDocument();
+  });
+
+  describe("push prompt (MysteryMixClub-gxh3)", () => {
+    it("onboarding never fires the iOS permission prompt itself: the post-login explainer asks first", async () => {
+      setAuth("authenticated", { needsOnboarding: true, displayName: "", tosAccepted: false });
+      mockAcceptTerms.mockResolvedValue(profileWith("Alice"));
+      mockNativePushAvailable.mockReturnValue(true);
+      mockPushPermissionStatus.mockResolvedValue("prompt");
+      const user = userEvent.setup();
+
+      renderOnboarding();
+
+      await user.type(screen.getByLabelText(/display name/i), "Alice");
+      await user.click(screen.getByRole("checkbox"));
+      await user.click(screen.getByRole("button", { name: /continue/i }));
+
+      expect(await screen.findByText("HOME CONTENT")).toBeInTheDocument();
+      expect(mockRequestPushPermissionAndRegister).not.toHaveBeenCalled();
+    });
   });
 });

@@ -23,7 +23,16 @@ from app.models.user import User
 # was added alongside club co-organizers (MYS-99): true for the fixed
 # organizer OR a promoted co-organizer (role == "admin"), broader than
 # is_organizer, which only ever means "is the original organizer_id".
-_MEMBER_KEYS = {"user_id", "display_name", "joined_at", "is_organizer", "is_admin"}
+_MEMBER_KEYS = {
+    "user_id",
+    "display_name",
+    "joined_at",
+    "is_organizer",
+    "is_admin",
+    # MysteryMixClub-4vii.42: per-viewer block flag (Guideline 1.2); part of
+    # the members-list shape so the UI can badge/offer unblock.
+    "blocked_by_me",
+}
 
 
 # --------------------------------------------------------------------------- #

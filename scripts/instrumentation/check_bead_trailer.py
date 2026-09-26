@@ -111,7 +111,9 @@ def main() -> int:
     prefix = _bd_prefix()
     id_shape_ok = True
     if prefix:
-        id_shape_ok = bool(re.match(rf"^{re.escape(prefix)}-[A-Za-z0-9]+(\.[0-9]+)?$", trailer_value))
+        # Child beads nest by dotted numeric levels (4vii.48.1 is 48's child),
+        # so allow any number of .<digits> levels, not just one.
+        id_shape_ok = bool(re.match(rf"^{re.escape(prefix)}-[A-Za-z0-9]+(\.[0-9]+)*$", trailer_value))
 
     if not id_shape_ok:
         sys.stderr.write(

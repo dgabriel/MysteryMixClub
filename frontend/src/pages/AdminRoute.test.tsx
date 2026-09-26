@@ -8,10 +8,12 @@ import {
   adminCreateInvite,
   adminDeleteUser,
   adminInviteFromWaitlist,
+  adminListReports,
   adminListWaitlist,
+  adminMarkReportReviewed,
   adminSearchUsers,
 } from "../services/api";
-import type { AdminUser, Invite, WaitlistEntry } from "../services/api";
+import type { AdminReport, AdminUser, Invite, WaitlistEntry } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 
 // Mock the API module (no network). Keep ApiError real.
@@ -24,6 +26,8 @@ vi.mock("../services/api", async () => {
     adminCreateInvite: vi.fn(),
     adminListWaitlist: vi.fn(),
     adminInviteFromWaitlist: vi.fn(),
+    adminListReports: vi.fn(),
+    adminMarkReportReviewed: vi.fn(),
   };
 });
 
@@ -34,6 +38,8 @@ const mockDelete = vi.mocked(adminDeleteUser);
 const mockCreateInvite = vi.mocked(adminCreateInvite);
 const mockListWaitlist = vi.mocked(adminListWaitlist);
 const mockInviteFromWaitlist = vi.mocked(adminInviteFromWaitlist);
+const mockListReports = vi.mocked(adminListReports);
+const mockMarkReportReviewed = vi.mocked(adminMarkReportReviewed);
 const mockUseAuth = vi.mocked(useAuth);
 
 function setAuth(isPlatformAdmin: boolean) {
@@ -107,6 +113,7 @@ describe("AdminRoute", () => {
     setAuth(true);
     mockSearch.mockResolvedValue([]);
     mockListWaitlist.mockResolvedValue([]);
+    mockListReports.mockResolvedValue({ items: [], total: 0 });
   });
 
   it("non-admin: redirects to /home and never renders the admin page", () => {
@@ -346,6 +353,129 @@ describe("AdminRoute", () => {
         await user.click(screen.getByRole("button", { name: /^all$/i }));
         expect(screen.getByText("fan@example.com")).toBeInTheDocument();
         expect(screen.getByText("friend@example.com")).toBeInTheDocument();
+      });
+    });
+describe("reports (MysteryMixClub-4vii.48.1)", () => {
+      function reportWith(overrides: Partial<AdminReport> = {}): AdminReport {
+        return {
+          id: "rpt-1",
+          reason: "harassment",
+          detail: "third time this week",
+          status: "open",
+          created_at: "2026-09-20T12:00:00Z",
+          club_id: "club-1",
+          club_name: "Review Club",
+          reporter: { user_id: "u-r", display_name: "Ria", email: "ria@example.com" },
+          reported_user: { user_id: "u-t", display_name: "Ted", email: "ted@example.com" },
+          content: {
+            kind: "note",
+            content_id: "note-1",
+            body: "you all have no taste",
+            song_title: "Debaser",
+            song_artist: "Pixies",
+            mix_label: "mix 2 · slow burns",
+          },
+          ...overrides,
+        };
+      }
+
+      it("lists open reports with full context by default", async () => {
+        mockListReports.mockResolvedValue({ items: [reportWith()], total: 1 });
+        renderAdmin();
+
+        expect(await screen.findByText("you all have no taste")).toBeInTheDocument();
+        expect(mockListReports).toHaveBeenCalledWith("open");
+        expect(screen.getByText("Ted (ted@example.com)")).toBeInTheDocument();
+        expect(screen.getByText(/harassment/)).toBeInTheDocument();
+        expect(screen.getByText(/Debaser — Pixies/)).toBeInTheDocument();
+        expect(screen.getByText(/reported by Ria/)).toBeInTheDocument();
+        expect(screen.getByText(/“third time this week”/)).toBeInTheDocument();
+      });
+
+      it("renders purged parties and vanished content as safe fallbacks", async () => {
+        mockListReports.mockResolvedValue({
+          items: [
+            reportWith({ reporter: null, reported_user: null, content: null, detail: null }),
+          ],
+          total: 1,
+        });
+        renderAdmin();
+
+        expect(await screen.findByText("this note is no longer available.")).toBeInTheDocument();
+        expect(screen.getAllByText(/account deleted/).length).toBeGreaterThanOrEqual(2);
+      });
+
+      it("shows the clear-queue message when open is empty", async () => {
+        mockListReports.mockResolvedValue({ items: [], total: 0 });
+        renderAdmin();
+
+        expect(await screen.findByText("the queue is clear.")).toBeInTheDocument();
+      });
+
+      it("switches the status filter and refetches from the server", async () => {
+        mockListReports.mockResolvedValue({ items: [], total: 0 });
+        const user = userEvent.setup();
+        renderAdmin();
+
+        await screen.findByText("the queue is clear.");
+        await user.click(screen.getByRole("button", { name: /^reviewed$/i }));
+
+        expect(mockListReports).toHaveBeenLastCalledWith("reviewed");
+        expect(await screen.findByText("no reviewed reports yet.")).toBeInTheDocument();
+      });
+
+      it("marks a report reviewed and drops it off the open queue", async () => {
+        const report = reportWith();
+        mockListReports.mockResolvedValue({ items: [report], total: 1 });
+        mockMarkReportReviewed.mockResolvedValue({ ...report, status: "reviewed" });
+        const user = userEvent.setup();
+        renderAdmin();
+
+        await user.click(await screen.findByRole("button", { name: /^mark reviewed$/i }));
+
+        expect(mockMarkReportReviewed).toHaveBeenCalledWith("rpt-1");
+        expect(await screen.findByText("the queue is clear.")).toBeInTheDocument();
+        expect(screen.queryByText("you all have no taste")).not.toBeInTheDocument();
+      });
+
+      it("reviewed rows show the state instead of the action", async () => {
+        mockListReports.mockImplementation(async (status) =>
+          status === "reviewed"
+            ? { items: [reportWith({ status: "reviewed" })], total: 1 }
+            : { items: [], total: 0 },
+        );
+        const user = userEvent.setup();
+        renderAdmin();
+
+        await screen.findByText("the queue is clear.");
+        await user.click(screen.getByRole("button", { name: /^reviewed$/i }));
+
+        expect(await screen.findByText("reviewed", { selector: "span" })).toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: /^mark reviewed$/i })).not.toBeInTheDocument();
+      });
+
+      it("load-more appends the next page while the total is larger", async () => {
+        const first = reportWith({ id: "rpt-1" });
+        const second = reportWith({ id: "rpt-2", content: null });
+        mockListReports.mockImplementation(async (_status, offset = 0) =>
+          offset === 0 ? { items: [first], total: 2 } : { items: [second], total: 2 },
+        );
+        const user = userEvent.setup();
+        renderAdmin();
+
+        await screen.findByText("you all have no taste");
+        await user.click(screen.getByRole("button", { name: /show more/i }));
+
+        expect(mockListReports).toHaveBeenLastCalledWith("open", 1);
+        expect(await screen.findByText("this note is no longer available.")).toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: /show more/i })).not.toBeInTheDocument();
+      });
+
+      it("surfaces a load failure as page copy, not a crash", async () => {
+        mockListReports.mockRejectedValue(new ApiError(500, "request failed (500)"));
+        renderAdmin();
+
+        expect(await screen.findByRole("alert")).toHaveTextContent("request failed (500)");
       });
     });
   });

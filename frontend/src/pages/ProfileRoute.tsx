@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { ProfileScreen } from "./ProfileScreen";
+import { ProfileScreen, type NotificationPreferenceKey } from "./ProfileScreen";
 import {
   ApiError,
   deleteAccount,
@@ -8,14 +8,27 @@ import {
   getClubs,
   getGoogleEnabled,
   getMe,
+  listBlocks,
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
   setPassword as apiSetPassword,
   startGoogleLink,
+  unblockUser,
   updateDisplayName,
+  updateNotificationPreferences,
+  type BlockedUser,
   type Club,
 } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
+import { usePushRegistration } from "../hooks/usePushRegistration";
+import {
+  nativePushAvailable,
+  onAppResume,
+  pushPermissionStatus,
+  requestPushPermissionAndRegister,
+  syncPushRegistration,
+  type PushPermissionStatus,
+} from "../ios/push";
 
 /** Calm copy for the outcome flag Google's link callback redirects back with
  *  (?google_link=<outcome>, MysteryMixClub-ali8.6). `isError` only changes
@@ -85,11 +98,98 @@ export function ProfileRoute() {
 
   const [logoutAllBusy, setLogoutAllBusy] = useState(false);
 
+  // The viewer's block list (MysteryMixClub-4vii.49). Loaded on its own, apart
+  // from the main profile load, so a failure here only affects this section.
+  // null until it resolves.
+  const [blockedMembers, setBlockedMembers] = useState<BlockedUser[] | null>(null);
+  const [blocksLoadError, setBlocksLoadError] = useState<string | null>(null);
+  const [unblockingUserId, setUnblockingUserId] = useState<string | null>(null);
+  const [unblockError, setUnblockError] = useState<string | null>(null);
+
   const [exportingData, setExportingData] = useState(false);
   const [exportDataError, setExportDataError] = useState<string | null>(null);
 
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null);
+
+  // null on web (section hides entirely, mirroring googleEnabled's
+  // fail-safe-hide shape) -- on native iOS, whatever the OS already knows
+  // (MysteryMixClub-4vii.27, IOS-04's manual "enable notifications" path for
+  // anyone who denied/skipped the onboarding auto-prompt).
+  const [pushStatus, setPushStatus] = useState<PushPermissionStatus | null>(null);
+  const [enablingPush, setEnablingPush] = useState(false);
+  const [enablePushError, setEnablePushError] = useState<string | null>(null);
+
+  // Three independent toggles (MysteryMixClub-4vii.28, IOS-04): email
+  // lifecycle/reminder emails, push lifecycle updates, push deadline
+  // reminders. null until the initial profile load resolves.
+  const [notificationPrefs, setNotificationPrefs] = useState<Record<
+    NotificationPreferenceKey,
+    boolean
+  > | null>(null);
+  const [savingPref, setSavingPref] = useState<NotificationPreferenceKey | null>(null);
+  const [prefsError, setPrefsError] = useState<string | null>(null);
+
+  // Whether the backend actually has this device's token -- a different fact
+  // from OS permission (MysteryMixClub-4vii.32). AuthProvider registers on
+  // login/session restore; this only reflects (and lets the user retry) it.
+  const pushRegistration = usePushRegistration();
+
+  useEffect(() => {
+    if (!nativePushAvailable()) return;
+    let cancelled = false;
+    const refreshPermission = () => {
+      void pushPermissionStatus()
+        .then((status) => {
+          if (cancelled) return;
+          setPushStatus(status);
+          // Granted but not registered (first visit, or just back from iOS
+          // Settings): make sure a registration is under way. Idempotent.
+          if (status === "granted") void syncPushRegistration();
+        })
+        .catch((error: unknown) => {
+          // Runs on every foreground too, so it must never surface as an
+          // unhandled rejection; the section just keeps its last known state.
+          console.error(
+            "push permission check failed",
+            error instanceof Error ? error.message : "unknown error",
+          );
+        });
+    };
+    refreshPermission();
+    // Coming back from iOS Settings is how a denied permission gets granted.
+    const stopWatchingResume = onAppResume(refreshPermission);
+    return () => {
+      cancelled = true;
+      stopWatchingResume();
+    };
+  }, []);
+
+  function handleRetryPushRegistration() {
+    void syncPushRegistration();
+  }
+
+  async function handleEnablePush() {
+    setEnablingPush(true);
+    setEnablePushError(null);
+    try {
+      const status = await requestPushPermissionAndRegister();
+      setPushStatus(status);
+    } catch (err) {
+      // The underlying Capacitor calls resolve with a status object rather
+      // than rejecting in normal use (a real registration failure surfaces
+      // as the separate, best-effort 'registrationError' event, not a
+      // thrown promise) -- this only catches the unexpected case, so the
+      // button re-enables for a retry instead of getting stuck. Logged
+      // (unlike the ApiError catches elsewhere in this file) because there's
+      // no Network-tab equivalent for a native-bridge rejection -- this is
+      // the only place the real reason would ever surface.
+      console.error("push permission request failed", err);
+      setEnablePushError("that didn't work. try again.");
+    } finally {
+      setEnablingPush(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -120,6 +220,11 @@ export function ProfileRoute() {
         }
         setHasPassword(latestProfile.has_password);
         setGoogleLinked(latestProfile.google_linked);
+        setNotificationPrefs({
+          email_notifications: latestProfile.email_notifications,
+          push_lifecycle_enabled: latestProfile.push_lifecycle_enabled,
+          push_deadline_reminders_enabled: latestProfile.push_deadline_reminders_enabled,
+        });
       } catch (err) {
         if (!cancelled) {
           setError(
@@ -136,6 +241,24 @@ export function ProfileRoute() {
     // Mount-only: `searchParams` is read for its one-time redirect flag, not
     // tracked as a value to re-run this load for.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    listBlocks()
+      .then((blocks) => {
+        if (!cancelled) setBlockedMembers(blocks);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setBlocksLoadError(
+            err instanceof ApiError ? err.message : "couldn't load blocked members. try again.",
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Whether Google sign-in is configured at all -- same fail-safe reasoning as
@@ -212,6 +335,40 @@ export function ProfileRoute() {
     }
   }
 
+  // Optimistic: flips the toggle immediately, reverts + surfaces an error if
+  // the save fails, rather than waiting on the round trip to reflect a click
+  // (MysteryMixClub-4vii.28, IOS-04). One save in flight at a time -- all
+  // three checkboxes disable while `savingPref` is set (not just the one
+  // being saved), so a second click can't fire a second PATCH whose response
+  // could race the first and land its optimistic update on a stale `previous`
+  // snapshot. The guard below is redundant with that render-driven disable in
+  // the normal case; it stays as the actual invariant in case a click ever
+  // reaches this handler before the disabled state has painted.
+  async function handleTogglePreference(key: NotificationPreferenceKey, value: boolean) {
+    if (!notificationPrefs || savingPref) return;
+    const previous = notificationPrefs;
+    setNotificationPrefs({ ...previous, [key]: value });
+    setSavingPref(key);
+    setPrefsError(null);
+    try {
+      // Reconcile with what the server actually persisted, same as
+      // handleSaveName below -- the optimistic value is a guess; the
+      // response is the truth, in case the backend ever normalizes or
+      // rejects a combination differently than the click assumed.
+      const profile = await updateNotificationPreferences({ [key]: value });
+      setNotificationPrefs({
+        email_notifications: profile.email_notifications,
+        push_lifecycle_enabled: profile.push_lifecycle_enabled,
+        push_deadline_reminders_enabled: profile.push_deadline_reminders_enabled,
+      });
+    } catch (err) {
+      setNotificationPrefs(previous);
+      setPrefsError(err instanceof ApiError ? err.message : "that didn't save. try again.");
+    } finally {
+      setSavingPref(null);
+    }
+  }
+
   async function handleLinkGoogle() {
     setLinkingGoogle(true);
     setLinkGoogleError(null);
@@ -223,6 +380,26 @@ export function ProfileRoute() {
     } catch (err) {
       setLinkGoogleError(err instanceof ApiError ? err.message : "that didn't work. try again.");
       setLinkingGoogle(false);
+    }
+  }
+
+  // One unblock in flight at a time, same guard shape as ClubHomeRoute's
+  // block/unblock. The row only leaves the list once the server confirms.
+  async function handleUnblock(memberUserId: string) {
+    if (unblockingUserId) return;
+    setUnblockingUserId(memberUserId);
+    setUnblockError(null);
+    try {
+      await unblockUser(memberUserId);
+      setBlockedMembers((current) =>
+        current ? current.filter((b) => b.user_id !== memberUserId) : current,
+      );
+    } catch (err) {
+      setUnblockError(
+        err instanceof ApiError ? err.message : "couldn't unblock that member. try again.",
+      );
+    } finally {
+      setUnblockingUserId(null);
     }
   }
 
@@ -301,6 +478,22 @@ export function ProfileRoute() {
       linkingGoogle={linkingGoogle}
       linkGoogleError={linkGoogleError}
       googleLinkNotice={googleLinkNotice}
+      pushStatus={pushStatus}
+      pushRegistration={pushRegistration}
+      onRetryPushRegistration={handleRetryPushRegistration}
+      onEnablePush={handleEnablePush}
+      enablingPush={enablingPush}
+      enablePushError={enablePushError}
+      pushAvailable={nativePushAvailable()}
+      notificationPrefs={notificationPrefs}
+      onTogglePreference={handleTogglePreference}
+      savingPref={savingPref}
+      prefsError={prefsError}
+      blockedMembers={blockedMembers}
+      blocksLoadError={blocksLoadError}
+      onUnblock={handleUnblock}
+      unblockingUserId={unblockingUserId}
+      unblockError={unblockError}
       onLogoutAll={handleLogoutAll}
       logoutAllBusy={logoutAllBusy}
       onExportData={handleExportData}

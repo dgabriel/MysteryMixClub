@@ -415,3 +415,239 @@ def test_module_has_script_entrypoint():
 
     assert callable(job.purge_deleted_accounts)
     assert callable(job._run)
+
+
+async def test_hard_delete_of_a_live_account_removes_its_devices_and_linked_identities(db_session):
+    # The admin eject hard-deletes a LIVE account. auth_identities.user_id and
+    # device_push_tokens.user_id have no ON DELETE, so leaving either behind
+    # failed the user delete with an IntegrityError (MysteryMixClub-4vii.36).
+    from app.jobs.purge_accounts import hard_delete_users
+    from app.models.auth_identity import AuthIdentity
+    from app.models.device_push_token import DevicePushToken
+
+    user = User(email="live@example.com", display_name="Live")
+    other = User(email="other@example.com", display_name="Other")
+    db_session.add_all([user, other])
+    await db_session.flush()
+    user_id, other_id = user.id, other.id
+    db_session.add_all(
+        [
+            AuthIdentity(user_id=user_id, provider="apple", subject="apple-sub-1"),
+            DevicePushToken(user_id=user_id, device_token="live-device"),
+            DevicePushToken(user_id=other_id, device_token="other-device"),
+        ]
+    )
+    await db_session.commit()
+
+    await hard_delete_users(db_session, [user_id], ["live@example.com"])
+    await db_session.commit()
+
+    db_session.expire_all()
+    assert await db_session.get(User, user_id) is None
+    remaining = (await db_session.execute(select(DevicePushToken.device_token))).scalars().all()
+    assert remaining == ["other-device"]  # someone else's device is untouched
+    assert (await db_session.execute(select(AuthIdentity))).scalars().all() == []
+
+
+# --------------------------------------------------------------------------- #
+# The eight FK columns with no ON DELETE at all (MysteryMixClub-4vii.38) —
+# each raised IntegrityError on the user delete before the migration/model
+# fix. One test per table: hard_delete_users must succeed, the purged row
+# must behave per its table's chosen ON DELETE (gone for CASCADE, user_id
+# nulled for SET NULL), and an unrelated row must survive untouched.
+# --------------------------------------------------------------------------- #
+
+
+async def _two_users(db_session) -> tuple[uuid.UUID, uuid.UUID]:
+    user = User(email="purged@example.com", display_name="Purged")
+    other = User(email="other@example.com", display_name="Other")
+    db_session.add_all([user, other])
+    await db_session.flush()
+    user_id, other_id = user.id, other.id
+    await db_session.commit()
+    return user_id, other_id
+
+
+async def test_purge_deletes_apple_mix_playlists(db_session):
+    from app.jobs.purge_accounts import hard_delete_users
+    from app.models.apple_mix_playlist import AppleMixPlaylist
+
+    user_id, other_id = await _two_users(db_session)
+    club = await _seed_club(db_session, other_id)
+    mix_ = await _seed_mix(db_session, club.id)
+    db_session.add_all(
+        [
+            AppleMixPlaylist(mix_id=mix_.id, user_id=user_id, playlist_id="apple-1"),
+            AppleMixPlaylist(mix_id=mix_.id, user_id=other_id, playlist_id="apple-2"),
+        ]
+    )
+    await db_session.commit()
+
+    await hard_delete_users(db_session, [user_id], ["purged@example.com"])
+    await db_session.commit()
+
+    db_session.expire_all()
+    assert await db_session.get(User, user_id) is None
+    remaining = (await db_session.execute(select(AppleMixPlaylist.playlist_id))).scalars().all()
+    assert remaining == ["apple-2"]
+
+
+async def test_purge_deletes_spotify_connections(db_session):
+    from app.jobs.purge_accounts import hard_delete_users
+    from app.models.spotify_connection import SpotifyConnection
+
+    user_id, other_id = await _two_users(db_session)
+    db_session.add_all(
+        [
+            SpotifyConnection(
+                user_id=user_id, spotify_user_id="spot-1", refresh_token_encrypted="enc-1"
+            ),
+            SpotifyConnection(
+                user_id=other_id, spotify_user_id="spot-2", refresh_token_encrypted="enc-2"
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    await hard_delete_users(db_session, [user_id], ["purged@example.com"])
+    await db_session.commit()
+
+    db_session.expire_all()
+    assert await db_session.get(User, user_id) is None
+    remaining = (
+        (await db_session.execute(select(SpotifyConnection.spotify_user_id))).scalars().all()
+    )
+    assert remaining == ["spot-2"]
+
+
+async def test_purge_deletes_spotify_mix_playlists(db_session):
+    from app.jobs.purge_accounts import hard_delete_users
+    from app.models.spotify_mix_playlist import SpotifyMixPlaylist
+
+    user_id, other_id = await _two_users(db_session)
+    club = await _seed_club(db_session, other_id)
+    mix_ = await _seed_mix(db_session, club.id)
+    db_session.add(SpotifyMixPlaylist(mix_id=mix_.id, user_id=user_id, playlist_id="sp-mix-1"))
+    await db_session.commit()
+
+    await hard_delete_users(db_session, [user_id], ["purged@example.com"])
+    await db_session.commit()
+
+    db_session.expire_all()
+    assert await db_session.get(User, user_id) is None
+    assert (await db_session.execute(select(SpotifyMixPlaylist))).scalars().all() == []
+
+
+async def test_purge_deletes_oauth_exchange_codes(db_session):
+    from app.jobs.purge_accounts import hard_delete_users
+    from app.models.oauth_exchange_code import OAuthExchangeCode
+
+    user_id, other_id = await _two_users(db_session)
+    db_session.add_all(
+        [
+            OAuthExchangeCode(
+                user_id=user_id, code_hash="ch-1", expires_at=NOW + timedelta(minutes=2)
+            ),
+            OAuthExchangeCode(
+                user_id=other_id, code_hash="ch-2", expires_at=NOW + timedelta(minutes=2)
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    await hard_delete_users(db_session, [user_id], ["purged@example.com"])
+    await db_session.commit()
+
+    db_session.expire_all()
+    assert await db_session.get(User, user_id) is None
+    remaining = (await db_session.execute(select(OAuthExchangeCode.code_hash))).scalars().all()
+    assert remaining == ["ch-2"]
+
+
+async def test_purge_nulls_waitlist_entries_invited_by(db_session):
+    from app.jobs.purge_accounts import hard_delete_users
+    from app.models.waitlist_entry import WaitlistEntry
+
+    user_id, _other_id = await _two_users(db_session)
+    entry = WaitlistEntry(email="waiting@example.com", invited_at=NOW, invited_by=user_id)
+    db_session.add(entry)
+    await db_session.commit()
+    entry_id = entry.id
+
+    await hard_delete_users(db_session, [user_id], ["purged@example.com"])
+    await db_session.commit()
+
+    db_session.expire_all()
+    assert await db_session.get(User, user_id) is None
+    # The entry survives -- only the reference to who invited it is dropped.
+    refreshed = await db_session.get(WaitlistEntry, entry_id)
+    assert refreshed is not None
+    assert refreshed.invited_by is None
+
+
+async def test_purge_nulls_invites_used_by_user_id(db_session):
+    from app.jobs.purge_accounts import hard_delete_users
+
+    user_id, other_id = await _two_users(db_session)
+    club = await _seed_club(db_session, other_id)
+    invite = Invite(
+        club_id=club.id,
+        created_by=other_id,
+        token="tok-" + uuid.uuid4().hex,
+        used_at=NOW,
+        used_by_user_id=user_id,
+    )
+    db_session.add(invite)
+    await db_session.commit()
+    invite_id = invite.id
+
+    await hard_delete_users(db_session, [user_id], ["purged@example.com"])
+    await db_session.commit()
+
+    db_session.expire_all()
+    assert await db_session.get(User, user_id) is None
+    # The invite record survives -- only who redeemed it is dropped.
+    refreshed = await db_session.get(Invite, invite_id)
+    assert refreshed is not None
+    assert refreshed.used_by_user_id is None
+
+
+async def test_purge_nulls_reports_reporter_and_reported_user(db_session):
+    from app.jobs.purge_accounts import hard_delete_users
+    from app.models.report import Report
+
+    reporter_id, reported_id = await _two_users(db_session)
+    club = await _seed_club(db_session, reported_id)
+    mix_ = await _seed_mix(db_session, club.id)
+    sub = await _seed_submission(db_session, mix_.id, reported_id)
+    note = await _seed_note(db_session, mix_.id, reported_id, sub.id)
+    report = Report(
+        reporter_id=reporter_id,
+        reported_user_id=reported_id,
+        club_id=club.id,
+        content_type="note",
+        content_id=note.id,
+        reason="harassment",
+    )
+    db_session.add(report)
+    await db_session.commit()
+    report_id = report.id
+
+    # Purge BOTH sides in one batch -- both FKs on the same report go NULL,
+    # not one at a time (the report has to survive either one alone too, but
+    # exercising both together is the stronger check).
+    await hard_delete_users(
+        db_session, [reporter_id, reported_id], ["purged@example.com", "other@example.com"]
+    )
+    await db_session.commit()
+
+    db_session.expire_all()
+    assert await db_session.get(User, reporter_id) is None
+    assert await db_session.get(User, reported_id) is None
+    # The report survives -- moderation history isn't erased by either side
+    # deleting their account -- but no longer names either party.
+    refreshed = await db_session.get(Report, report_id)
+    assert refreshed is not None
+    assert refreshed.reporter_id is None
+    assert refreshed.reported_user_id is None
+    assert refreshed.reason == "harassment"

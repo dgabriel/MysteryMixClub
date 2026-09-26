@@ -1,5 +1,6 @@
 import { type FormEvent, useState } from "react";
-import { PASSWORD_MIN_LENGTH, type Club } from "../services/api";
+import { PASSWORD_MIN_LENGTH, type BlockedUser, type Club } from "../services/api";
+import type { PushPermissionStatus, PushRegistrationState } from "../ios/push";
 import { Button } from "../components/Button";
 import { PaperSurface } from "../components/PaperSurface";
 import { TextField } from "../components/TextField";
@@ -7,9 +8,13 @@ import { Badge } from "../components/Badge";
 import { Card } from "../components/Card";
 import { ClubName } from "../components/ClubName";
 import { FormError } from "../components/FormError";
+import { CheckmarkIcon } from "../components/CheckmarkIcon";
 import { ConcentricRings } from "../components/ConcentricRings";
 import { CrownIcon } from "../components/CrownIcon";
 import { UserAvatar } from "../components/avatars/UserAvatar";
+
+export type NotificationPreferenceKey =
+  "email_notifications" | "push_lifecycle_enabled" | "push_deadline_reminders_enabled";
 
 type ProfileScreenProps = {
   userId: string | null;
@@ -39,6 +44,34 @@ type ProfileScreenProps = {
    *  as a problem; it never takes the form-error color (ADR 0004 excludes a
    *  third-party outcome the user didn't do anything invalid to cause). */
   googleLinkNotice?: { message: string; isError: boolean } | null;
+  /** null on web (section hides entirely) -- on native iOS, whatever the OS
+   *  already knows about this device's permission (MysteryMixClub-4vii.27,
+   *  IOS-04). Covers anyone who denied or dismissed the onboarding
+   *  auto-prompt, or joined before it existed. */
+  pushStatus?: PushPermissionStatus | null;
+  /** Whether the backend has this device's token for the signed-in account.
+   *  Only meaningful once `pushStatus` is granted; permission alone never
+   *  means push will arrive (MysteryMixClub-4vii.32). */
+  pushRegistration?: PushRegistrationState;
+  onRetryPushRegistration?: () => void;
+  onEnablePush?: () => void;
+  enablingPush?: boolean;
+  enablePushError?: string | null;
+  /** Whether push notifications exist on this platform at all (native iOS) --
+   *  gates whether the two push preference toggles below render, same
+   *  fail-safe-hide reasoning as `googleEnabled`/`pushStatus`. */
+  pushAvailable?: boolean;
+  /** null until the initial profile load resolves. */
+  notificationPrefs?: Record<NotificationPreferenceKey, boolean> | null;
+  onTogglePreference?: (key: NotificationPreferenceKey, value: boolean) => void;
+  savingPref?: NotificationPreferenceKey | null;
+  prefsError?: string | null;
+  /** The viewer's block list (MysteryMixClub-4vii.49); null while loading. */
+  blockedMembers?: BlockedUser[] | null;
+  blocksLoadError?: string | null;
+  onUnblock?: (userId: string) => void;
+  unblockingUserId?: string | null;
+  unblockError?: string | null;
   onLogoutAll: () => void;
   logoutAllBusy?: boolean;
   onExportData: () => void;
@@ -110,6 +143,22 @@ export function ProfileScreen({
   linkingGoogle,
   linkGoogleError,
   googleLinkNotice,
+  pushStatus,
+  pushRegistration = "idle",
+  onRetryPushRegistration,
+  onEnablePush,
+  enablingPush = false,
+  enablePushError,
+  pushAvailable = false,
+  notificationPrefs,
+  onTogglePreference,
+  savingPref,
+  prefsError,
+  blockedMembers = null,
+  blocksLoadError,
+  onUnblock,
+  unblockingUserId = null,
+  unblockError,
   onLogoutAll,
   logoutAllBusy = false,
   onExportData,
@@ -200,6 +249,22 @@ export function ProfileScreen({
               googleLinkNotice={googleLinkNotice}
             />
 
+            {notificationPrefs ? (
+              <NotificationPreferencesSection
+                prefs={notificationPrefs}
+                onTogglePreference={onTogglePreference}
+                savingPref={savingPref}
+                prefsError={prefsError}
+                pushAvailable={pushAvailable}
+                pushStatus={pushStatus}
+                pushRegistration={pushRegistration}
+                onRetryPushRegistration={onRetryPushRegistration}
+                onEnablePush={onEnablePush}
+                enablingPush={enablingPush}
+                enablePushError={enablePushError}
+              />
+            ) : null}
+
             <section className="mt-12 border-t border-ink-hairline pt-10">
               <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-accent">
                 security
@@ -214,6 +279,14 @@ export function ProfileScreen({
                 </Button>
               </div>
             </section>
+
+            <BlockedMembersSection
+              blockedMembers={blockedMembers}
+              loadError={blocksLoadError}
+              onUnblock={onUnblock}
+              unblockingUserId={unblockingUserId}
+              unblockError={unblockError}
+            />
 
             <ExportDataSection
               onExportData={onExportData}
@@ -450,6 +523,241 @@ function AccountSettingsSection({
   );
 }
 
+/**
+ * Notifications: email + the two push preference toggles, plus -- when push
+ * exists on this platform at all (native iOS) -- the OS permission status
+ * and enable action, in the SAME section as the toggles it gates.
+ *
+ * MysteryMixClub-4vii.31 folded a separate "notifications" section (holding
+ * only the permission button) into this one after a real device test showed
+ * exactly the confusion two similarly-worded, separately-titled sections
+ * invites: toggling "push: updates" here does nothing to iOS permission by
+ * itself (it only PATCHes an account preference) and was easy to mistake for
+ * "the" way to enable push, since the two sections described themselves in
+ * nearly the same words. Now there is one place on the page for push, with
+ * the permission step ordered first -- it's the thing that has to happen
+ * before the toggles below it can matter at all.
+ *
+ * Email (MysteryMixClub-4vii.28): the `email_notifications` backend field
+ * has existed since email notifications shipped, but this is the first
+ * frontend control for it -- until now, unsubscribing meant the email's own
+ * unsubscribe link. Every toggle here saves independently and immediately on
+ * click (no separate "save" step, unlike the name/password forms above) --
+ * optimistic in the container, so a failed save reverts the checkbox and
+ * surfaces `prefsError` rather than leaving a stale, unsent state checked.
+ *
+ * The two push toggles, and the permission block above them, only render
+ * when push exists on this platform at all -- same fail-safe-hide reasoning
+ * as `googleEnabled`: a toggle (or a permission button) for a channel that
+ * can never deliver on this platform is confusing UI, not a neutral no-op.
+ */
+function NotificationPreferencesSection({
+  prefs,
+  onTogglePreference,
+  savingPref,
+  prefsError,
+  pushAvailable,
+  pushStatus,
+  pushRegistration = "idle",
+  onRetryPushRegistration,
+  onEnablePush,
+  enablingPush = false,
+  enablePushError,
+}: {
+  prefs: Record<NotificationPreferenceKey, boolean>;
+  onTogglePreference?: (key: NotificationPreferenceKey, value: boolean) => void;
+  savingPref?: NotificationPreferenceKey | null;
+  prefsError?: string | null;
+  pushAvailable: boolean;
+  pushStatus?: PushPermissionStatus | null;
+  pushRegistration?: PushRegistrationState;
+  onRetryPushRegistration?: () => void;
+  onEnablePush?: () => void;
+  enablingPush?: boolean;
+  enablePushError?: string | null;
+}) {
+  const pushInactiveReason = pushAvailable
+    ? pushInactiveReasonFor(pushStatus, pushRegistration)
+    : null;
+
+  return (
+    <section className="mt-12 border-t border-ink-hairline pt-10">
+      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-accent">
+        notifications
+      </h2>
+
+      {pushAvailable && pushStatus ? (
+        <div className="mt-4">
+          {pushStatus === "granted" ? (
+            // Permission is only half of it: the backend must also hold this
+            // device's token before a push can arrive (MysteryMixClub-4vii.32).
+            pushRegistration === "registered" ? (
+              <p className="font-mono text-sm text-ink-muted">push is on for this device</p>
+            ) : pushRegistration === "failed" ? (
+              <>
+                <p className="text-sm leading-[1.72] text-ink-muted">
+                  notifications are allowed on this phone, but this device isn&apos;t connected to
+                  mystery mix club yet, so pushes can&apos;t reach it. check your connection and try
+                  again.
+                </p>
+                <div className="mt-3">
+                  <Button onPaper variant="ghost" type="button" onClick={onRetryPushRegistration}>
+                    try again
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <p className="font-mono text-sm text-ink-muted">connecting this device for push…</p>
+            )
+          ) : pushStatus === "denied" ? (
+            <p className="text-sm leading-[1.72] text-ink-muted">
+              push is off at the iOS level, so the push toggles below won&apos;t do anything until
+              you turn it back on in iOS settings &gt; notifications &gt; mysterymixclub.
+            </p>
+          ) : (
+            <>
+              <p className="text-sm leading-[1.72] text-ink-muted">
+                turn on push to get these on your phone&apos;s lock screen, not just by email.
+              </p>
+              <div className="mt-3">
+                <Button
+                  onPaper
+                  variant="ghost"
+                  type="button"
+                  onClick={onEnablePush}
+                  disabled={enablingPush}
+                >
+                  {enablingPush ? "enabling…" : "turn on push notifications"}
+                </Button>
+              </div>
+              {enablePushError ? (
+                <div className="mt-3">
+                  <FormError onPaper>{enablePushError}</FormError>
+                </div>
+              ) : null}
+            </>
+          )}
+        </div>
+      ) : null}
+
+      <div className="mt-6 space-y-5">
+        <PreferenceCheckbox
+          id="pref-email-notifications"
+          label="email"
+          description="submission and voting reminders, and mix updates, by email."
+          checked={prefs.email_notifications}
+          disabled={Boolean(savingPref)}
+          onChange={(checked) => onTogglePreference?.("email_notifications", checked)}
+        />
+        {pushAvailable ? (
+          <>
+            {/* A push toggle only reads as on when this device can actually
+                receive push (MysteryMixClub-jpem). Otherwise it shows unchecked
+                and disabled with the reason; the stored preference is never
+                touched, so it applies again once push works. */}
+            <PreferenceCheckbox
+              id="pref-push-lifecycle"
+              label="push: updates"
+              description="a nudge when it's your turn to submit or vote, and when a mystery mix wraps up."
+              checked={pushInactiveReason ? false : prefs.push_lifecycle_enabled}
+              disabled={Boolean(savingPref) || pushInactiveReason !== null}
+              inactive={pushInactiveReason !== null}
+              onChange={(checked) => onTogglePreference?.("push_lifecycle_enabled", checked)}
+            />
+            <PreferenceCheckbox
+              id="pref-push-deadline-reminders"
+              label="push: reminders"
+              description="an extra nudge as a submission or voting deadline approaches."
+              checked={pushInactiveReason ? false : prefs.push_deadline_reminders_enabled}
+              disabled={Boolean(savingPref) || pushInactiveReason !== null}
+              inactive={pushInactiveReason !== null}
+              onChange={(checked) =>
+                onTogglePreference?.("push_deadline_reminders_enabled", checked)
+              }
+            />
+            {pushInactiveReason ? (
+              <p className="text-meta leading-[1.6] text-ink-muted">{pushInactiveReason}</p>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+      {prefsError ? (
+        <div className="mt-3">
+          <FormError onPaper>{prefsError}</FormError>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+/** Why push toggles can't deliver on this device right now, or null when they
+ *  can (permission granted and this device registered, MysteryMixClub-jpem). */
+function pushInactiveReasonFor(
+  pushStatus: PushPermissionStatus | null | undefined,
+  pushRegistration: PushRegistrationState,
+): string | null {
+  if (pushStatus === "denied") return "turn on notifications in ios settings to use these.";
+  if (pushStatus !== "granted") return "turn on push above to use these.";
+  if (pushRegistration === "registered") return null;
+  // Still connecting, or the connection failed: the status line above already
+  // says which, so this only says what it means for the toggles.
+  return "these switch on once this device is connected.";
+}
+
+function PreferenceCheckbox({
+  id,
+  label,
+  description,
+  checked,
+  disabled,
+  inactive = false,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  description: string;
+  checked: boolean;
+  disabled?: boolean;
+  /** Can't take effect on this device right now: the label dims too, not just
+   *  the box, so the whole row reads as unavailable. */
+  inactive?: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label
+      htmlFor={id}
+      className={`flex items-start gap-3 ${inactive ? "cursor-not-allowed" : "cursor-pointer"}`}
+    >
+      {/* Same drawn-checkbox construction as OnboardingScreen's consent box,
+          re-solved for the paper surface: `ink-accent` fill (checked) instead
+          of `accent`, `paper` (white) mark instead of `accent-foreground` --
+          `ink-accent` is dark enough on white that a white mark clears the
+          3:1 non-text floor. */}
+      <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center">
+        <input
+          id={id}
+          type="checkbox"
+          checked={checked}
+          disabled={disabled}
+          onChange={(e) => onChange(e.target.checked)}
+          className="peer col-start-1 row-start-1 h-4 w-4 cursor-pointer appearance-none rounded-hair border border-ink-muted bg-transparent transition-colors duration-150 checked:border-ink-accent checked:bg-ink-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-accent focus-visible:ring-offset-2 focus-visible:ring-offset-paper disabled:cursor-not-allowed disabled:opacity-60"
+        />
+        <CheckmarkIcon className="pointer-events-none col-start-1 row-start-1 hidden text-paper peer-checked:block" />
+      </span>
+      <span>
+        <span
+          className={`block font-mono text-mini uppercase tracking-mono-caps ${
+            inactive ? "text-ink-muted" : "text-ink"
+          }`}
+        >
+          {label}
+        </span>
+        <span className="mt-1 block text-meta leading-[1.6] text-ink-muted">{description}</span>
+      </span>
+    </label>
+  );
+}
+
 function SetPasswordForm({
   hasPassword,
   onSetPassword,
@@ -523,6 +831,75 @@ function SetPasswordForm({
         </div>
       </form>
     </>
+  );
+}
+
+/**
+ * Everyone the viewer has blocked, each with an unblock action
+ * (MysteryMixClub-4vii.49, Guideline 1.2). The club page can only unblock
+ * someone still on that club's roster, so this is the one place a block
+ * can always be undone: a member who left, or a club that was deleted.
+ *
+ * Unblocking is recoverable (you can block again), so it's `ghost`, like the
+ * club page's own unblock. Rows sit directly on paper, so they use the `ink`
+ * ramp and `ink-hairline` dividers. The name truncates rather than pushing
+ * the button off a narrow screen (the 4vii.47 lesson).
+ */
+function BlockedMembersSection({
+  blockedMembers,
+  loadError,
+  onUnblock,
+  unblockingUserId,
+  unblockError,
+}: {
+  blockedMembers: BlockedUser[] | null;
+  loadError?: string | null;
+  onUnblock?: (userId: string) => void;
+  unblockingUserId: string | null;
+  unblockError?: string | null;
+}) {
+  return (
+    <section className="mt-12 border-t border-ink-hairline pt-10">
+      <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-accent">
+        blocked members
+      </h2>
+      <p className="mt-2 text-sm leading-[1.72] text-ink-muted">
+        you won&apos;t see notes from anyone you block. they&apos;re never told.
+      </p>
+      {loadError ? (
+        <p role="alert" className="mt-4 text-sm leading-[1.72] text-ink">
+          {loadError}
+        </p>
+      ) : blockedMembers === null ? null : blockedMembers.length === 0 ? (
+        <p className="mt-4 text-sm leading-[1.72] text-ink-muted">
+          you haven&apos;t blocked anyone.
+        </p>
+      ) : (
+        <ul className="mt-4 divide-y divide-ink-hairline border-y border-ink-hairline">
+          {blockedMembers.map((member) => (
+            <li key={member.user_id} className="flex items-center justify-between gap-4 py-3">
+              <span className="min-w-0 truncate text-sm text-ink">{member.display_name}</span>
+              <Button
+                onPaper
+                variant="ghost"
+                type="button"
+                className="shrink-0"
+                onClick={() => onUnblock?.(member.user_id)}
+                disabled={unblockingUserId !== null}
+                aria-label={`unblock ${member.display_name}`}
+              >
+                {unblockingUserId === member.user_id ? "unblocking…" : "unblock"}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {unblockError ? (
+        <div className="mt-3">
+          <FormError onPaper>{unblockError}</FormError>
+        </div>
+      ) : null}
+    </section>
   );
 }
 

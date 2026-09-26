@@ -26,7 +26,7 @@ export function TermsRoute() {
             terms of service
           </h1>
           <p className="mt-2 text-center text-sm leading-[1.72] text-ink-muted">
-            last updated july 2026
+            last updated september 2026
           </p>
 
           <div className="mt-10 space-y-8 text-sm leading-[1.72] text-ink">
@@ -42,9 +42,8 @@ export function TermsRoute() {
                 the basics
               </h2>
               <p className="mt-3">
-                mysterymixclub is currently in beta. features, availability, and these terms may
-                change as the product develops. we'll do our best to give you notice of material
-                changes.
+                features, availability, and these terms may change as the product develops. we'll do
+                our best to give you notice of material changes.
               </p>
             </section>
 
@@ -56,7 +55,8 @@ export function TermsRoute() {
                 access is invite-only. you're responsible for the songs, notes, and display name you
                 submit, and for keeping your sign-in email under your control. don't submit content
                 you don't have the right to share, and don't use the app to harass or impersonate
-                other members.
+                other members. you can report another member's note from within the app, and an
+                organizer can remove a member from a club.
               </p>
             </section>
 
@@ -90,12 +90,12 @@ export function TermsRoute() {
 
             <section>
               <h2 className="font-mono text-mini uppercase tracking-mono-wide text-ink-accent">
-                as-is, beta software
+                no warranties
               </h2>
               <p className="mt-3">
-                mysterymixclub is provided "as is," without warranties of any kind, during this beta
-                period. we're not liable for lost data, service interruptions, or issues arising
-                from third-party platforms this app depends on.
+                mysterymixclub is provided "as is," without warranties of any kind. we're not liable
+                for lost data, service interruptions, or issues arising from third-party platforms
+                this app depends on.
               </p>
             </section>
 

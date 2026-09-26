@@ -8,7 +8,7 @@ import prettier from "eslint-config-prettier";
 export default tseslint.config(
   // `public/` holds static, hand-written browser assets (service worker) that
   // aren't part of the TS app build and have their own global scope — not linted.
-  { ignores: ["dist", "node_modules", "public", "*.config.js", "*.config.ts"] },
+  { ignores: ["dist", "dist-ios", "ios", "node_modules", "public", "*.config.js", "*.config.ts"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

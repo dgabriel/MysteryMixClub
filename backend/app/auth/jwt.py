@@ -15,6 +15,7 @@ __all__ = [
     "GoogleLinkState",
     "create_access_token",
     "decode_access_token",
+    "decode_access_token_session_id",
     "create_oauth_state",
     "decode_oauth_state",
     "create_sign_in_state",
@@ -38,12 +39,17 @@ class SignInState(NamedTuple):
     """Decoded sign-in OAuth-state: the anti-CSRF nonce the callback matches
     against the browser's cookie, the invite token (if any) that has to
     survive the round-trip so a brand-new account can still be invite-gated,
-    and the PKCE code_verifier (MysteryMixClub-ali8.7) the callback sends back
-    to Google alongside the authorization code."""
+    the PKCE code_verifier (MysteryMixClub-ali8.7) the callback sends back
+    to Google alongside the authorization code, and whether this flow was
+    started by the native iOS app via ASWebAuthenticationSession
+    (MysteryMixClub-4vii.21) -- which changes how the callback hands the
+    result back (a one-time exchange code via a custom URL scheme, not a
+    cookie set directly on an https redirect)."""
 
     nonce: str
     invite_token: str | None
     code_verifier: str
+    native: bool
 
 
 class GoogleLinkState(NamedTuple):
@@ -67,14 +73,22 @@ _ACCESS_TOKEN_TTL = timedelta(minutes=60)
 _OAUTH_STATE_TTL = timedelta(minutes=10)
 
 
-def create_access_token(user_id: uuid.UUID) -> str:
-    """Return a signed 60-minute JWT access token for the given user."""
+def create_access_token(user_id: uuid.UUID, session_id: uuid.UUID | None = None) -> str:
+    """Return a signed 60-minute JWT access token for the given user.
+
+    ``session_id`` is the login session this token was issued under, carried as
+    the ``sid`` claim (MysteryMixClub-4vii.36). It lets a request that must not
+    outlive its login -- registering a device for push -- be checked against
+    that session's state instead of trusting a token that stays valid for up to
+    an hour after logout. Omitted only by callers with no session to name."""
     now = datetime.now(timezone.utc)
     claims = {
         "sub": str(user_id),
         "iat": int(now.timestamp()),
         "exp": int((now + _ACCESS_TOKEN_TTL).timestamp()),
     }
+    if session_id is not None:
+        claims["sid"] = str(session_id)
     return jwt.encode(claims, get_settings().secret_key, algorithm=_ALGORITHM)
 
 
@@ -93,6 +107,27 @@ def decode_access_token(token: str) -> uuid.UUID:
         return uuid.UUID(sub)
     except ValueError as exc:
         raise JWTError("subject claim is not a valid user id") from exc
+
+
+def decode_access_token_session_id(token: str) -> uuid.UUID | None:
+    """Verify an access token and return its ``sid`` claim, or ``None`` for a
+    token issued without one (minted before the claim existed; those expire
+    within an hour of the deploy that introduced it).
+
+    Raises ``jose.JWTError`` on any verification failure, or a ``sid`` that is
+    present but not a valid session id -- a malformed claim is never treated as
+    an absent one.
+    """
+    claims = jwt.decode(token, get_settings().secret_key, algorithms=[_ALGORITHM])
+    sid = claims.get("sid")
+    if sid is None:
+        return None
+    if not isinstance(sid, str):
+        raise JWTError("session claim is not a string")
+    try:
+        return uuid.UUID(sid)
+    except ValueError as exc:
+        raise JWTError("session claim is not a valid session id") from exc
 
 
 def create_oauth_state(user_id: uuid.UUID, purpose: str, return_to: str | None = None) -> str:
@@ -133,7 +168,9 @@ def decode_oauth_state(token: str, purpose: str) -> OAuthState:
     return OAuthState(user_id=user_id, return_to=rt if isinstance(rt, str) else None)
 
 
-def create_sign_in_state(nonce: str, code_verifier: str, invite_token: str | None = None) -> str:
+def create_sign_in_state(
+    nonce: str, code_verifier: str, invite_token: str | None = None, *, native: bool = False
+) -> str:
     """Return a signed, 10-minute state token for a sign-in OAuth round-trip
     (ADR 0007).
 
@@ -164,6 +201,8 @@ def create_sign_in_state(nonce: str, code_verifier: str, invite_token: str | Non
     }
     if invite_token:
         claims["invite"] = invite_token
+    if native:
+        claims["native"] = True
     return jwt.encode(claims, get_settings().secret_key, algorithm=_ALGORITHM)
 
 
@@ -189,6 +228,7 @@ def decode_sign_in_state(token: str) -> SignInState:
         nonce=nonce,
         invite_token=invite if isinstance(invite, str) else None,
         code_verifier=code_verifier,
+        native=claims.get("native") is True,
     )
 
 

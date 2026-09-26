@@ -8,13 +8,53 @@
  *  - The refresh token is an HttpOnly cookie the browser manages; we never read
  *    or set it. Endpoints that depend on it use `credentials: 'include'` so the
  *    cookie is sent on the cross-origin (but same-site) request to :8000.
+ *  - Except in the iOS build (ADR 0037): its WebView origin never gets that
+ *    cookie back, so sign-in returns the refresh token in the body, it lives in
+ *    the Keychain (ios/sessionStore), and goes back as `X-Refresh-Token`.
  */
+
+import { IS_NATIVE_BUILD } from "../lib/platform";
+import { clearRefreshToken, loadRefreshToken, saveRefreshToken } from "../ios/sessionStore";
+import {
+  reportNetworkFailure,
+  reportNetworkSuccess,
+  setConnectivityProbe,
+} from "../lib/connectivity";
 
 // Default to the 127.0.0.1 loopback (not "localhost"): the app keeps every
 // origin on one host so the session cookie survives the Spotify OAuth redirect
 // (MYS-85), and Spotify rejects "localhost" redirect URIs.
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+// Exported for the native iOS bridge (ADR 0032): MMCMusicPlugin.createPlaylist
+// needs the same base URL this WebView is already talking to, since it
+// adopts this session's access token rather than maintaining its own.
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 const AUTH_BASE = `${API_BASE_URL}/api/v1/auth`;
+
+// How the connectivity store confirms the API answers again after a network
+// failure (MysteryMixClub-ga4y): any response at all means it's reachable.
+setConnectivityProbe(async () => {
+  try {
+    await fetch(`${API_BASE_URL}/api/v1/healthz`, { cache: "no-store" });
+    return true;
+  } catch {
+    return false;
+  }
+});
+
+/**
+ * The origin to build a real, externally-shareable URL from -- an invite
+ * link, or anything else meant to be pasted somewhere else entirely
+ * (MysteryMixClub-jrm2). `window.location.origin` is wrong on native: it's
+ * the WebView's own bundled-content address (`capacitor://localhost`), not a
+ * real web URL anyone else's device or browser could open. On web,
+ * `API_BASE_URL` is empty/relative by design (deploy-staging.sh builds the
+ * SPA to call its own API same-origin), so `window.location.origin` is the
+ * only correct source there -- and it's already exactly right, since web is
+ * actually served from that origin.
+ */
+export function shareableOrigin(): string {
+  return IS_NATIVE_BUILD ? API_BASE_URL : window.location.origin;
+}
 
 /** Password bounds the backend enforces on register/reset. Mirrored here only so
  *  the UI can hint before a round-trip — the server stays authoritative. */
@@ -36,7 +76,22 @@ export function setStoredAccessToken(token: string | null): void {
 type TokenResponse = {
   access_token: string;
   token_type: string;
+  /** Present only on a sign-in from the iOS app (ADR 0037). */
+  refresh_token?: string;
 };
+
+/** Keep the refresh token a sign-in returned to the iOS app (ADR 0037). The
+ *  backend only ever returns one to the native build's origin. */
+async function keepNativeRefreshToken(data: TokenResponse): Promise<void> {
+  if (IS_NATIVE_BUILD && data.refresh_token) await saveRefreshToken(data.refresh_token);
+}
+
+/** The iOS app's stand-in for the refresh cookie (ADR 0037); empty on web. */
+async function nativeRefreshHeaders(): Promise<Record<string, string>> {
+  if (!IS_NATIVE_BUILD) return {};
+  const token = await loadRefreshToken();
+  return token ? { "X-Refresh-Token": token } : {};
+}
 
 /** Current user profile (GET /api/v1/users/me). A non-empty `display_name`
  *  means the user has completed onboarding; "" is the not-yet-onboarded
@@ -57,6 +112,16 @@ export type UserProfile = {
   has_password: boolean;
   /** Whether a Google identity is already linked (MysteryMixClub-ali8.6). */
   google_linked: boolean;
+  /** Whether the account has email lifecycle/reminder notifications on
+   *  (existing backend field; no frontend control has ever existed for it --
+   *  today it's unsubscribe-link-only). */
+  email_notifications: boolean;
+  /** Push equivalents of email_notifications, independent of it and of each
+   *  other (MysteryMixClub-4vii.25/28, IOS-04). Present regardless of
+   *  whether the account has any registered device -- these are the
+   *  preference, not "can this account currently receive a push." */
+  push_lifecycle_enabled: boolean;
+  push_deadline_reminders_enabled: boolean;
 };
 
 class ApiError extends Error {
@@ -129,6 +194,7 @@ export async function verifyToken(
     throw new ApiError(res.status, await readErrorMessage(res));
   }
   const data = (await res.json()) as TokenResponse;
+  await keepNativeRefreshToken(data);
   return { access_token: data.access_token };
 }
 
@@ -150,6 +216,7 @@ export async function login(email: string, password: string): Promise<{ access_t
     throw new ApiError(res.status, await readErrorMessage(res));
   }
   const data = (await res.json()) as TokenResponse;
+  await keepNativeRefreshToken(data);
   return { access_token: data.access_token };
 }
 
@@ -177,6 +244,7 @@ export async function register(
     throw new ApiError(res.status, await readErrorMessage(res));
   }
   const data = (await res.json()) as TokenResponse;
+  await keepNativeRefreshToken(data);
   return { access_token: data.access_token };
 }
 
@@ -247,38 +315,129 @@ export function googleLoginUrl(inviteToken?: string | null): string {
 }
 
 /**
- * Exchange the HttpOnly refresh cookie for a fresh access token. Returns the
- * new token on success, or null when there is no valid session (401). Any other
- * failure also resolves to null so callers can treat it as "unauthenticated".
+ * Redeem a one-time code from the native Google sign-in flow
+ * (MysteryMixClub-4vii.21) for a real session. Mirrors verifyToken's shape:
+ * called via a normal fetch from the app's own WebView so the resulting
+ * refresh cookie lands in the context that will actually use it, rather
+ * than relying on any cookie the ASWebAuthenticationSession's own callback
+ * response might have set.
  */
-export async function refresh(): Promise<{ access_token: string } | null> {
+export async function exchangeGoogleNativeCode(code: string): Promise<{ access_token: string }> {
+  const res = await fetch(`${AUTH_BASE}/google/native-exchange`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code }),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  const data = (await res.json()) as TokenResponse;
+  await keepNativeRefreshToken(data);
+  return { access_token: data.access_token };
+}
+
+/**
+ * Sign in (or invite-gated sign up) with Apple (MysteryMixClub-4vii.9,
+ * Guideline 4.8). Unlike Google's native fix, there's no one-time exchange
+ * code here: `ASAuthorizationController` runs entirely inside the app with
+ * no browser hand-off, so this call itself is already the app's own fetch
+ * from its own WebView — the session is issued directly. Thrown ApiErrors
+ * carry the backend's real detail string (invite-required, account-exists
+ * conflict, or a generic verification failure) for the caller to show.
+ */
+export async function signInWithApple(
+  identityToken: string,
+  inviteToken?: string | null,
+): Promise<{ access_token: string }> {
+  const res = await fetch(`${AUTH_BASE}/apple/native-verify`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      identity_token: identityToken,
+      invite_token: inviteToken ?? undefined,
+    }),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  const data = (await res.json()) as TokenResponse;
+  await keepNativeRefreshToken(data);
+  return { access_token: data.access_token };
+}
+
+/** The outcome of trying to restore the session: a fresh access token, no
+ *  session to restore, or no network to ask (MysteryMixClub-ga4y), which must
+ *  not be mistaken for being signed out. */
+export type SessionRefresh =
+  { kind: "ok"; access_token: string } | { kind: "none" } | { kind: "offline" };
+
+export async function refreshSession(): Promise<SessionRefresh> {
+  let res: Response;
   try {
-    const res = await fetch(`${AUTH_BASE}/refresh`, {
+    res = await fetch(`${AUTH_BASE}/refresh`, {
       method: "POST",
       credentials: "include",
+      headers: await nativeRefreshHeaders(),
     });
-    if (!res.ok) return null;
-    const data = (await res.json()) as TokenResponse;
-    return { access_token: data.access_token };
   } catch {
-    return null;
+    reportNetworkFailure();
+    return { kind: "offline" };
+  }
+  reportNetworkSuccess();
+  // The server rejected the session outright (logged out elsewhere, expired):
+  // the iOS app's saved token is dead, so stop sending it. Any other failure
+  // (offline, a 5xx) keeps it for the next try.
+  if (res.status === 401 && IS_NATIVE_BUILD) await clearRefreshToken();
+  if (!res.ok) return { kind: "none" };
+  try {
+    const data = (await res.json()) as TokenResponse;
+    return { kind: "ok", access_token: data.access_token };
+  } catch {
+    return { kind: "none" };
   }
 }
 
-/** Invalidate the current session and clear the refresh cookie. Idempotent. */
+/**
+ * Exchange the refresh token for a fresh access token, or null when there's no
+ * usable session. A network failure also resolves to null here; callers that
+ * must tell "offline" from "signed out" use refreshSession().
+ */
+export async function refresh(): Promise<{ access_token: string } | null> {
+  const result = await refreshSession();
+  return result.kind === "ok" ? { access_token: result.access_token } : null;
+}
+
+/** Invalidate the current session and clear the refresh cookie. Idempotent.
+ *  The iOS app also sends its access token, so the server can still find the
+ *  session if the Keychain has no refresh token to send (ADR 0037), and drops
+ *  its saved token whatever the outcome. */
 export async function logout(): Promise<void> {
-  await fetch(`${AUTH_BASE}/logout`, {
-    method: "POST",
-    credentials: "include",
-  });
+  try {
+    const headers = await nativeRefreshHeaders();
+    if (IS_NATIVE_BUILD && accessToken) headers.Authorization = `Bearer ${accessToken}`;
+    await fetch(`${AUTH_BASE}/logout`, {
+      method: "POST",
+      credentials: "include",
+      headers,
+    });
+  } finally {
+    if (IS_NATIVE_BUILD) await clearRefreshToken();
+  }
 }
 
 /** Invalidate all sessions for the current user. */
 export async function logoutAll(): Promise<void> {
-  await fetch(`${AUTH_BASE}/logout-all`, {
-    method: "POST",
-    credentials: "include",
-  });
+  try {
+    await fetch(`${AUTH_BASE}/logout-all`, {
+      method: "POST",
+      credentials: "include",
+      headers: await nativeRefreshHeaders(),
+    });
+  } finally {
+    if (IS_NATIVE_BUILD) await clearRefreshToken();
+  }
 }
 
 type RequestOptions = RequestInit & {
@@ -309,11 +468,24 @@ export async function authenticatedRequest(
     return merged;
   };
 
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    ...rest,
-    credentials: "include",
-    headers: buildHeaders(),
-  });
+  // A request that gets no response at all means we're offline
+  // (MysteryMixClub-ga4y); any response means the API is reachable.
+  const send = async (): Promise<Response> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}${path}`, {
+        ...rest,
+        credentials: "include",
+        headers: buildHeaders(),
+      });
+      reportNetworkSuccess();
+      return response;
+    } catch (error) {
+      reportNetworkFailure();
+      throw error;
+    }
+  };
+
+  const res = await send();
 
   if (res.status !== 401 || !retryOnUnauthorized) {
     return res;
@@ -327,11 +499,40 @@ export async function authenticatedRequest(
   }
   accessToken = refreshed.access_token;
 
-  return fetch(`${API_BASE_URL}${path}`, {
-    ...rest,
-    credentials: "include",
-    headers: buildHeaders(),
+  return send();
+}
+
+/** Register this device for push notifications (MysteryMixClub-4vii.27,
+ *  IOS-04). Upsert by device_token server-side -- safe to call on every app
+ *  launch and login. Throws on any non-2xx (including a 401 from an expired
+ *  session): the caller reports a device as registered only if this resolves
+ *  (MysteryMixClub-4vii.32). */
+export async function registerPushToken(deviceToken: string): Promise<void> {
+  const res = await authenticatedRequest("/api/v1/users/me/push-token", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ device_token: deviceToken }),
   });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+}
+
+/** Remove this device's push registration (called on logout -- PRD IOS-04:
+ *  "remove account associations on logout or deletion"). Throws on any non-2xx
+ *  so the caller can tell the registration was NOT removed. Belt and braces:
+ *  the server itself drops a session's devices when that session logs out
+ *  (MysteryMixClub-4vii.36, ADR 0034), so this covers a device the server's own
+ *  cleanup does not reach (a row with no session). Never a user-facing error:
+ *  logout proceeds either way (MysteryMixClub-4vii.32). */
+export async function unregisterPushToken(deviceToken: string): Promise<void> {
+  const params = new URLSearchParams({ device_token: deviceToken });
+  const res = await authenticatedRequest(`/api/v1/users/me/push-token?${params.toString()}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
 }
 
 /** Fetch the current user's profile. Bearer-auth via authenticatedRequest. */
@@ -395,6 +596,28 @@ export async function updatePreferredService(
   return (await res.json()) as UserProfile;
 }
 
+/** Update any subset of the three independent notification toggles
+ *  (MysteryMixClub-4vii.28, IOS-04) -- email lifecycle/reminder emails, push
+ *  lifecycle updates, push deadline reminders. Each omitted field is left
+ *  untouched server-side. Returns the updated profile. */
+export async function updateNotificationPreferences(
+  updates: Partial<{
+    email_notifications: boolean;
+    push_lifecycle_enabled: boolean;
+    push_deadline_reminders_enabled: boolean;
+  }>,
+): Promise<UserProfile> {
+  const res = await authenticatedRequest("/api/v1/users/me", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as UserProfile;
+}
+
 /** Set a password on an account that doesn't have one yet
  *  (MysteryMixClub-ali8.4/ali8.6, ADR 0007). Throws 409 (via ApiError) if one
  *  is already set -- use forgotPassword/resetPassword to change it instead. */
@@ -449,13 +672,7 @@ export async function exportMyData(): Promise<Record<string, unknown>> {
  *  API's wire spelling exactly (never an index — Monday=0 is a storage
  *  detail the client never sees). */
 export type Weekday =
-  | "monday"
-  | "tuesday"
-  | "wednesday"
-  | "thursday"
-  | "friday"
-  | "saturday"
-  | "sunday";
+  "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday";
 
 /** A club as returned by the backend (GET/POST /api/v1/clubs). */
 export type Club = {
@@ -517,6 +734,10 @@ export type ClubMember = {
   joined_at: string;
   is_organizer: boolean;
   is_admin: boolean;
+  /** MysteryMixClub-4vii.42: true when the viewer has blocked this member, so
+   *  the members UI can badge the row and offer unblock. Undefined/null on
+   *  responses that don't compute the viewer relation (e.g. role changes). */
+  blocked_by_me?: boolean | null;
 };
 
 /** An invite (POST /api/v1/clubs/:id/invites, or POST /api/v1/admin/invites
@@ -787,12 +1008,7 @@ export async function acceptInvite(token: string): Promise<Club> {
 
 /** Streaming platforms the app surfaces, matching the backend's normalized keys. */
 export type PlatformKey =
-  | "spotify"
-  | "youtube"
-  | "youtubeMusic"
-  | "deezer"
-  | "appleMusic"
-  | "bandcamp";
+  "spotify" | "youtube" | "youtubeMusic" | "deezer" | "appleMusic" | "bandcamp";
 
 /** A canonical, platform-agnostic song resolved from a link or a search pick.
  *  `platforms` only contains the platforms that actually have a link. */
@@ -1345,8 +1561,12 @@ export async function getMixSubmissions(mixId: string): Promise<SubmissionResult
 // closed (GET /mixes/:id/results → 409 while still open).
 // --------------------------------------------------------------------------- //
 
-/** A note shown in the reveal — body + author, no edit affordances. */
+/** A note shown in the reveal — body + author, no edit affordances.
+ *  id/author_id (MysteryMixClub-4vii.39): needed to report the note via
+ *  POST /reports and to hide that action on the viewer's own. */
 export type ResultNote = {
+  id: string;
+  author_id: string;
   body: string;
   author_display_name: string;
   created_at: string;
@@ -1632,6 +1852,82 @@ export async function getNotes(submissionId: string): Promise<Note[]> {
 }
 
 // --------------------------------------------------------------------------- //
+// Reports (MysteryMixClub-4vii.13) -- App Store Guideline 1.2's minimum bar
+// for a UGC app: a way to flag another member's content for review. v1
+// covers only notes (the one freeform, attributed surface a member sees from
+// other members) and is deliberately just persistence -- no admin UI yet.
+// --------------------------------------------------------------------------- //
+
+export type ReportReason = "inappropriate_content" | "harassment" | "spam" | "other";
+
+export async function reportNote(
+  noteId: string,
+  reason: ReportReason,
+  detail?: string,
+): Promise<void> {
+  const res = await authenticatedRequest(`/api/v1/reports`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      content_type: "note",
+      content_id: noteId,
+      reason,
+      detail: detail || undefined,
+    }),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+}
+
+// --------------------------------------------------------------------------- //
+// Blocks (MysteryMixClub-4vii.42) -- Guideline 1.2's other half: members can
+// block an abusive user, not just report their content. A block is
+// one-directional and quiet: it only filters the blocker's own reads (the
+// blocked member's notes disappear from every surface the blocker can see);
+// the blocked member is never told and nothing changes for them. Persisted
+// server-side; the read-side enforcement is the backend's, not the client's.
+// --------------------------------------------------------------------------- //
+
+/** One entry of the caller's block list (GET /api/v1/users/me/blocks). */
+export type BlockedUser = {
+  user_id: string;
+  display_name: string;
+  created_at: string;
+};
+
+export async function listBlocks(): Promise<BlockedUser[]> {
+  const res = await authenticatedRequest("/api/v1/users/me/blocks");
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as BlockedUser[];
+}
+
+/** Block a fellow (current or former) club member. Idempotent: re-blocking
+ *  someone already blocked returns the standing block. */
+export async function blockUser(userId: string): Promise<BlockedUser> {
+  const res = await authenticatedRequest("/api/v1/users/me/blocks", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user_id: userId }),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as BlockedUser;
+}
+
+export async function unblockUser(userId: string): Promise<void> {
+  const res = await authenticatedRequest(`/api/v1/users/me/blocks/${userId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+}
+
+// --------------------------------------------------------------------------- //
 // Platform admin (MYS-128). Every endpoint here is platform-admin-only; the
 // backend returns 403 for non-admins. The UI gates the whole page on
 // `is_platform_admin` from /users/me so these are never called by others.
@@ -1786,6 +2082,77 @@ export async function adminInviteFromWaitlist(entryId: string): Promise<Waitlist
     throw new ApiError(res.status, await readErrorMessage(res));
   }
   return (await res.json()) as WaitlistEntry;
+}
+
+/* ------------------------------------------------------------------ */
+/* Member content reports (MysteryMixClub-4vii.48.1, Guideline 1.2).   */
+/* ------------------------------------------------------------------ */
+
+/** A report participant — the reporter or the reported member. Null when the
+ *  account has been purged (reports SET NULL their user FKs, 4vii.38). */
+export type AdminReportParty = {
+  user_id: string;
+  display_name: string;
+  email: string;
+};
+
+/** The reported content, resolved at read time. Null when it no longer
+ *  exists; v1's only kind is "note". */
+export type AdminReportContent = {
+  kind: string;
+  content_id: string;
+  body: string;
+  song_title: string | null;
+  song_artist: string | null;
+  /** Human label of the mix the note sits in ("mix 2 · summer slows"). */
+  mix_label: string | null;
+};
+
+/** A member content report as a platform admin sees it
+ *  (GET /api/v1/admin/reports). Any of the surrounding context can be null
+ *  (purged accounts, deleted content, a removed club) — render those, don't
+ *  drop the row. */
+export type AdminReport = {
+  id: string;
+  reason: string;
+  detail: string | null;
+  status: "open" | "reviewed";
+  created_at: string;
+  club_id: string;
+  club_name: string | null;
+  reporter: AdminReportParty | null;
+  reported_user: AdminReportParty | null;
+  content: AdminReportContent | null;
+};
+
+export type AdminReportPage = { items: AdminReport[]; total: number };
+export type AdminReportStatusFilter = "open" | "reviewed" | "all";
+
+/** One page of member content reports, newest first (platform-admin only). */
+export async function adminListReports(
+  status: AdminReportStatusFilter = "open",
+  offset = 0,
+  limit = 50,
+): Promise<AdminReportPage> {
+  const res = await authenticatedRequest(
+    `/api/v1/admin/reports?status=${status}&limit=${limit}&offset=${offset}`,
+  );
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as AdminReportPage;
+}
+
+/** Mark a report reviewed after acting on it (platform-admin only).
+ *  Idempotent — re-reviewing returns the row unchanged. */
+export async function adminMarkReportReviewed(reportId: string): Promise<AdminReport> {
+  const res = await authenticatedRequest(`/api/v1/admin/reports/${reportId}/review`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+  return (await res.json()) as AdminReport;
 }
 
 export { ApiError };

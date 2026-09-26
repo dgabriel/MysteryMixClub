@@ -29,7 +29,7 @@ describe("HelpRoute", () => {
     const scrollIntoView = vi.fn();
     Element.prototype.scrollIntoView = scrollIntoView;
 
-    renderAt("/help#casual-mode");
+    renderAt("/help#safety");
 
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth" });
   });
@@ -44,7 +44,8 @@ describe("HelpRoute", () => {
   });
 
   it("every section anchor referenced by a hash actually exists on the page", () => {
-    // Guards against a HelpLink and this page's section ids drifting apart.
+    // Guards against a deep link (e.g. /help#safety) and this page's
+    // section ids drifting apart.
     const { container } = renderAt("/help");
     const sectionIds = Array.from(container.querySelectorAll("section[id]")).map((el) => el.id);
 
@@ -55,12 +56,36 @@ describe("HelpRoute", () => {
         "mystery-mixes",
         "submitting-a-song",
         "voting-results",
-        "casual-mode",
         "listening-playlists",
         "notifications",
         "your-account",
+        "safety",
         "other",
       ]),
     );
+  });
+  it("describes no feature members can't reach (rlh6: casual mode, the preferred-service picker)", () => {
+    const { container } = renderAt("/help");
+    const text = container.textContent ?? "";
+
+    expect(text).not.toMatch(/casual|vibe|competitive mode|preferred/i);
+    expect(text).not.toContain("—");
+  });
+
+  it("in the iPhone app, the 'is it free?' answer mentions no tip jar (4vii.50)", async () => {
+    vi.resetModules();
+    vi.doMock("../lib/platform", () => ({ IS_NATIVE_BUILD: true }));
+    const { HelpRoute: NativeHelpRoute } = await import("./HelpRoute");
+
+    const { container } = render(
+      <MemoryRouter>
+        <NativeHelpRoute />
+      </MemoryRouter>,
+    );
+
+    expect(container.textContent).toContain("nothing is paywalled");
+    expect(container.textContent).not.toMatch(/tip jar|tip me|venmo/i);
+    vi.doUnmock("../lib/platform");
+    vi.resetModules();
   });
 });

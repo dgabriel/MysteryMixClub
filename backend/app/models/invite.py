@@ -39,6 +39,8 @@ class Invite(Base):
     # Who consumed it (paired with used_at). Lets the preview endpoint tell
     # "the same visitor checking again" from "someone else hitting a dead
     # link" — mirrors the already-member bypass a club invite gets.
+    # ON DELETE SET NULL (MysteryMixClub-4vii.38): the invite record is worth
+    # keeping; who redeemed it isn't essential once that account is gone.
     used_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )

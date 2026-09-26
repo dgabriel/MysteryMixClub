@@ -42,7 +42,7 @@ The ladder is named for *what the surface is*, not by Z-number, so JSX reads
 | `popover`         | `#151617` | —  | Detached transient surfaces — menus, dropdowns, tooltips. Also the input fill where an input needs one. |
 | `tile`            | `#1A1B1C` | Z2 | Interactive tile, secondary button fill, inset chip inside a card.        |
 | `panel`           | `#28292A` | Z3 | Elevated panel. Also the placeholder block behind offset album art.       |
-| `sheet`           | `#3A3A3C` | Z4 | Modal, drawer, bottom sheet. Ceiling of the ladder.                       |
+| `sheet`           | `#3A3A3C` | Z4 | The mobile nav menu (`TopNav` chrome). Ceiling of the ladder. Not modals: they are white (ADR 0038). |
 | `accent-surface`  | `#1A1512` | —  | Amber-tinted surface for an achievement or callout row — rank 1, an accent rationale block. |
 | `track`           | `#393A3E` | —  | Unfilled portion of a progress or score bar.                             |
 
@@ -69,8 +69,8 @@ There is exactly one accent name. Do not introduce `primary` as a second name
 for the same color.
 
 `accent` as **text** clears AA from `floor` (7.87:1) through `panel` (5.57:1),
-but measures **4.34:1 on `sheet`** and fails there. Amber text does not go on a
-modal, drawer, or bottom sheet; an amber *fill* with `accent-foreground` on it is
+but measures **4.34:1 on `sheet`** and fails there. Amber text does not go on
+`sheet`; an amber *fill* with `accent-foreground` on it is
 fine on any surface. (`accent-hairline` is `#c98b30`-based rather than `accent`
 itself — a deliberate second amber confined to 1px rules at ≤25% alpha, where the
 difference is imperceptible. See ADR 0011; don't "fix" it.)
@@ -363,7 +363,7 @@ Depth is a first-class part of this system. Six shadow tokens:
 | `shadow-z1` | Barely lifted.                                                   |
 | `shadow-z2` | Card at rest.                                                    |
 | `shadow-z3` | Card on hover; elevated panel.                                   |
-| `shadow-z4` | Modal, drawer, album art at rest. Carries its own 1px white ring. |
+| `shadow-z4` | The mobile nav menu, album art at rest. Carries its own 1px white ring. Modals wear `shadow-art-ink` (ADR 0038). |
 | `shadow-art`| Album artwork on hover. Carries its own 1px white ring.          |
 
 **The shadow index does not track the surface index.** This is the rule people
@@ -775,8 +775,8 @@ MYS-121 and MYS-186 darkened the old palette twice specifically to clear
   / ≥24px) need 3:1.
 - **Restricted foregrounds.** `subtle-foreground` is valid on `floor`,
   `sunken`, `card`, and `popover` only — it fails on `tile` and above.
-  `muted-foreground` fails on `sheet`, so **modals and drawers use
-  `foreground` for all text**. `faint-foreground` fails everywhere and is
+  `muted-foreground` fails on `sheet`, so **the mobile nav menu uses
+  `foreground` for all text**. (Modals are white now, ADR 0038.) `faint-foreground` fails everywhere and is
   annotation only. `ghost-foreground` is never text.
 - **Tightest pair in the system:** `muted-foreground` on `panel` at 4.51:1. Any
   Z3 lightness adjustment breaks it. Re-run the contrast pass after any
@@ -787,9 +787,11 @@ MYS-121 and MYS-186 darkened the old palette twice specifically to clear
   3.49, `destructive-text` 3.94, `accent` 4.33 — and the app's two Z4 surfaces
   (the unsaved-changes modal and Apple's reassurance interstitial) both carry
   `foreground` text only, so none of the three is actually rendered. `panel`
-  remains the tightest pair in use.
-- **Amber text in a modal** is 4.33:1 on `sheet` — it must be large or bold
-  there, or not amber.
+  remains the tightest pair in use. **Later superseded:** the "how it works"
+  and report modals shipped afterwards with `muted-foreground` on `sheet`
+  (3.49:1), which is what moved every modal to white (ADR 0038).
+- **Amber text in a modal** is `ink-accent` (4.61:1 on paper), since modals are
+  white (ADR 0038). Amber text on `sheet` (4.33:1) must be large or bold.
 - **A control is never identified by a hairline alone.** Hairlines are
   ~1.2:1 and invisible to the contrast formula, and a `tile`-on-`card` step is
   only 1.126:1. WCAG 1.4.11 requires 3:1 for a boundary that is the *sole* means
@@ -811,10 +813,13 @@ MYS-121 and MYS-186 darkened the old palette twice specifically to clear
   behind a passing audit). Drive the states, or read the markup; one green audit
   is not coverage.
 - **`text-micro` is chrome only** — see Typography.
-- **Modals stay dark on a light page.** A dialog sits *above* the page, so the
-  light surface stops at the scrim, and `sheet`'s own limits still apply:
-  `muted-foreground` is 3.49:1 there and `accent` as text 4.34:1, so modal copy
-  is `foreground`.
+- **Modals are white panels with a clear dark border (ADR 0038).** Every modal
+  uses `components/modalSurface.ts`: a `paper` panel, a 2px `ink` border and
+  `shadow-art-ink` over the dark `bg-floor/80` scrim. Everything inside takes
+  the paper ramp (`ink`, `ink-muted`, `ink-accent`, `ink-destructive`) and the
+  `onPaper` component variants. This replaced "modals stay dark": on `sheet`,
+  `muted-foreground` is 3.49:1, and two modals shipped failing because of it.
+  `TopNav`'s mobile menu is chrome, not a modal, and stays dark.
 
 ---
 

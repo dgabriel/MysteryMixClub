@@ -5,10 +5,12 @@ import { AppleMusicPlaylist } from "./AppleMusicPlaylist";
 import {
   ApiError,
   createApplePlaylist,
+  getAccessToken,
   getAppleDeveloperToken,
   getApplePlaylistLink,
 } from "../services/api";
 import { AppleMusicError, authorizeAppleMusic, preloadAppleMusic } from "../services/musickit";
+import { music, nativeMusicAvailable } from "../ios/music";
 
 vi.mock("../services/api", async () => {
   const actual = await vi.importActual<typeof import("../services/api")>("../services/api");
@@ -17,6 +19,7 @@ vi.mock("../services/api", async () => {
     getAppleDeveloperToken: vi.fn(),
     getApplePlaylistLink: vi.fn(),
     createApplePlaylist: vi.fn(),
+    getAccessToken: vi.fn(),
   };
 });
 
@@ -30,11 +33,29 @@ vi.mock("../services/musickit", async () => {
   return { ...actual, authorizeAppleMusic: vi.fn(), preloadAppleMusic: vi.fn() };
 });
 
+// nativeMusicAvailable defaults to false (below) so every existing web-path
+// test is unaffected; the native describe block below flips it per test.
+// musicErrorMessage comes through real -- it's a pure string-mapping
+// function keyed on `error.code`, worth exercising for real rather than
+// stubbing away the one thing that turns a native rejection into copy.
+vi.mock("../ios/music", async () => {
+  const actual = await vi.importActual<typeof import("../ios/music")>("../ios/music");
+  return {
+    ...actual,
+    nativeMusicAvailable: vi.fn(),
+    music: { ...actual.music, authorize: vi.fn(), createPlaylist: vi.fn() },
+  };
+});
+
 const mockToken = vi.mocked(getAppleDeveloperToken);
 const mockLink = vi.mocked(getApplePlaylistLink);
 const mockCreate = vi.mocked(createApplePlaylist);
 const mockAuthorize = vi.mocked(authorizeAppleMusic);
 const mockPreload = vi.mocked(preloadAppleMusic);
+const mockGetAccessToken = vi.mocked(getAccessToken);
+const mockNativeAvailable = vi.mocked(nativeMusicAvailable);
+const mockNativeAuthorize = vi.mocked(music.authorize);
+const mockNativeCreate = vi.mocked(music.createPlaylist);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -46,6 +67,8 @@ beforeEach(() => {
   });
   mockAuthorize.mockResolvedValue("mut-123");
   mockPreload.mockResolvedValue({ authorize: vi.fn() });
+  mockNativeAvailable.mockReturnValue(false);
+  mockGetAccessToken.mockReturnValue("access-token-123");
 });
 
 describe("AppleMusicPlaylist", () => {
@@ -437,5 +460,69 @@ describe("AppleMusicPlaylist", () => {
 
     expect(await screen.findByText(/9 of 12 songs/i)).toBeInTheDocument();
     expect(screen.queryByText(/all 12 songs/i)).not.toBeInTheDocument();
+  });
+
+  describe("native (Capacitor iOS, MysteryMixClub-4vii.2)", () => {
+    beforeEach(() => {
+      mockNativeAvailable.mockReturnValue(true);
+    });
+
+    it("authorizes and builds via the native plugin, passing the session token through, not MusicKit JS", async () => {
+      mockNativeCreate.mockResolvedValue({
+        playlistName: "Mix: Mix 1",
+        trackCount: 5,
+        totalCount: 5,
+        unmatched: [],
+      });
+      render(<AppleMusicPlaylist mixId="r1" />);
+      const buildButton = await screen.findByRole("button", {
+        name: /build this playlist in apple music/i,
+      });
+      // The mount effect's own getApplePlaylistLink call has now resolved
+      // (beforeEach's "no playlist yet" default) -- only queue the "built"
+      // response now, so it lands on the SECOND call, the one
+      // handleGenerateNative makes after a successful native build. The
+      // native call itself reports no URL (MMCAPIClient never returns one);
+      // the component re-reads this same record rather than fabricate one.
+      mockLink.mockResolvedValueOnce({
+        playlist_url: "https://music.apple.com/library",
+        direct_playlist_url: null,
+        playlist_name: "Mix: Mix 1",
+      });
+
+      await userEvent.click(buildButton);
+      await userEvent.click(screen.getByRole("button", { name: /continue to apple music/i }));
+
+      await waitFor(() => expect(mockNativeAuthorize).toHaveBeenCalled());
+      expect(mockNativeCreate).toHaveBeenCalledWith({
+        mixId: "r1",
+        tzOffsetMinutes: expect.any(Number),
+        apiBaseUrl: expect.any(String),
+        accessToken: "access-token-123",
+      });
+      expect(mockLink).toHaveBeenCalledTimes(2);
+      expect(await screen.findByText(/Mix 1/)).toBeInTheDocument();
+      // The web MusicKit JS path never ran.
+      expect(mockAuthorize).not.toHaveBeenCalled();
+      expect(mockCreate).not.toHaveBeenCalled();
+    });
+
+    it("surfaces a native plugin failure via musicErrorMessage", async () => {
+      mockNativeAuthorize.mockRejectedValue(
+        Object.assign(new Error("Apple Music check failed."), { code: "PERMISSION_REQUIRED" }),
+      );
+
+      render(<AppleMusicPlaylist mixId="r1" />);
+      await userEvent.click(
+        await screen.findByRole("button", { name: /build this playlist in apple music/i }),
+      );
+      await userEvent.click(screen.getByRole("button", { name: /continue to apple music/i }));
+
+      expect(
+        await screen.findByText(/allow apple music access before checking your connection/i),
+      ).toBeInTheDocument();
+      expect(mockNativeCreate).not.toHaveBeenCalled();
+      expect(mockCreate).not.toHaveBeenCalled();
+    });
   });
 });

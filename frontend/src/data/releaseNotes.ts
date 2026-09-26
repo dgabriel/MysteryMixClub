@@ -14,6 +14,17 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: "2026-09-25",
+    items: [
+      "you can now block another member, from a club's member list or right after reporting a note. you won't see their notes, and they're never told. everyone you've blocked is listed in your profile, where you can unblock them.",
+      "every note from another member can be reported at the reveal, and reports come straight to us. hateful or harassing text is now stopped before it's saved, in names, descriptions, and notes.",
+      'new here? a short "how it works" guide walks you through starting or joining a club. find it again anytime under "how it works."',
+      'typo in your email at sign-in? "wrong email? change it" takes you back with it already filled in.',
+      "lost your connection? the app now says so, and picks up where you left off once you're back.",
+      "pop-ups are now white with a dark border so they're easier to read, and the help page is up to date.",
+    ],
+  },
+  {
     date: "2026-09-12",
     items: [
       "your profile now has a full submission history: every song you've ever submitted, across every club, in a sortable, searchable grid (song, artist, club, mix, date, votes, notes). click a row to see who voted and what people noted, once revealed.",
@@ -24,12 +35,6 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     date: "2026-09-10",
     items: [
       "once more than half the club has submitted or voted in a mystery mix, the mix screen now shows who's still missing so it's easy to give them a nudge.",
-    ],
-  },
-  {
-    date: "2026-09-09",
-    items: [
-      "clubs can now anchor submission and voting deadlines to a fixed day and time every week (say, songs due tuesday at noon, votes due saturday at noon) instead of only a rolling window that starts whenever the previous phase closes. set it from the club settings.",
     ],
   },
 ];

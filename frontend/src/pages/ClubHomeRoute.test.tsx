@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { ClubHomeRoute } from "./ClubHomeRoute";
 import { AuthedLayout } from "../components/AuthedLayout";
 import {
   ApiError,
+  blockUser,
   createInvite,
   deleteClub,
   getClub,
@@ -14,11 +15,15 @@ import {
   getResults,
   getMixes,
   removeMember,
+  unblockUser,
   updateClub,
   updateMemberRole,
+  updateMix,
 } from "../services/api";
 import type { Invite, Club, LeaderboardEntry, ClubMember, Mix, MixResults } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
+import { dismissGuide, isGuideDismissed, markJustJoinedClub } from "../data/onboardingGuides";
+import { markLatestReleaseSeen } from "../data/releaseNotes";
 
 // Mock the API module (no network). Keep ApiError real.
 vi.mock("../services/api", async () => {
@@ -32,10 +37,13 @@ vi.mock("../services/api", async () => {
     getResults: vi.fn(),
     createMix: vi.fn(),
     updateClub: vi.fn(),
+    updateMix: vi.fn(),
     removeMember: vi.fn(),
     createInvite: vi.fn(),
     deleteClub: vi.fn(),
     updateMemberRole: vi.fn(),
+    blockUser: vi.fn(),
+    unblockUser: vi.fn(),
   };
 });
 
@@ -50,10 +58,13 @@ const mockGetClubMembers = vi.mocked(getClubMembers);
 const mockGetMixes = vi.mocked(getMixes);
 const mockGetResults = vi.mocked(getResults);
 const mockUpdateClub = vi.mocked(updateClub);
+const mockUpdateMix = vi.mocked(updateMix);
 const mockRemoveMember = vi.mocked(removeMember);
 const mockCreateInvite = vi.mocked(createInvite);
 const mockDeleteClub = vi.mocked(deleteClub);
 const mockUpdateMemberRole = vi.mocked(updateMemberRole);
+const mockBlockUser = vi.mocked(blockUser);
+const mockUnblockUser = vi.mocked(unblockUser);
 const mockUseAuth = vi.mocked(useAuth);
 
 const ORGANIZER_ID = "org-1111";
@@ -245,6 +256,12 @@ describe("ClubHomeRoute", () => {
     mockGetClubMembers.mockResolvedValue(members());
     mockGetMixes.mockResolvedValue([]);
     mockGetResults.mockResolvedValue(resultsWith());
+    mockBlockUser.mockResolvedValue({
+      user_id: MEMBER_ID,
+      display_name: "Bo",
+      created_at: "2026-01-03T00:00:00Z",
+    });
+    mockUnblockUser.mockResolvedValue(undefined);
     setAuth(ORGANIZER_ID);
   });
 
@@ -483,6 +500,109 @@ describe("ClubHomeRoute", () => {
     expect(mockRemoveMember).toHaveBeenCalledWith("club-1", MEMBER_ID);
   });
 
+  // --- Member blocking (MysteryMixClub-4vii.42, Guideline 1.2) ---
+
+  it("block: the block action sits on every non-self row, not your own", async () => {
+    setAuth(ORGANIZER_ID);
+    renderClub();
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+    expect(screen.getByRole("button", { name: /^block bo ?--/i })).toBeInTheDocument();
+    // Your own row carries no self-block control.
+    expect(screen.queryByRole("button", { name: /^block ada ?--/i })).not.toBeInTheDocument();
+  });
+
+  it("block: clicking 'block' calls the api, then the row shows the blocked badge + an unblock action", async () => {
+    const user = userEvent.setup();
+    setAuth(ORGANIZER_ID);
+    renderClub();
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+    await user.click(screen.getByRole("button", { name: /^block bo ?--/i }));
+
+    await waitFor(() => expect(mockBlockUser).toHaveBeenCalledWith(MEMBER_ID));
+    expect(await screen.findByText("blocked")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^unblock bo$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^block bo ?--/i })).not.toBeInTheDocument();
+    // A steady-state reminder of what blocking does appears once anyone is blocked.
+    expect(
+      screen.getByText(/a blocked member's notes are hidden from you/i),
+    ).toBeInTheDocument();
+  });
+
+  it("unblock: a member marked blocked_by_me gets an 'unblock' action that restores the plain row", async () => {
+    const user = userEvent.setup();
+    mockGetClubMembers.mockResolvedValue([
+      ...members().map((m) =>
+        m.user_id === MEMBER_ID ? { ...m, blocked_by_me: true } : m,
+      ),
+    ]);
+    renderClub();
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+    // Server-reported state shows the badge + unblock (which the aria-label
+    // names specifically), never the block action.
+    expect(screen.getByText("blocked")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^unblock bo$/i }));
+
+    await waitFor(() => expect(mockUnblockUser).toHaveBeenCalledWith(MEMBER_ID));
+    await waitFor(() => expect(screen.queryByText("blocked")).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /^block bo ?--/i })).toBeInTheDocument();
+    expect(
+      screen.queryByText(/a blocked member's notes are hidden from you/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("narrow rows (MysteryMixClub-4vii.47): every member control stays present, wrap-capable, and tappable at iPhone portrait width", async () => {
+    // Dawn's repro on iPhone 17 Pro: with organizer controls + a blocked
+    // badge the nowrap row pushed Unblock past the right edge. The fix wraps
+    // the name cluster and the actions cluster; this test pins the wrapping
+    // structure and that unblock still reverses the block from the same row.
+    window.innerWidth = 393; // iPhone portrait
+    window.dispatchEvent(new Event("resize"));
+
+    const user = userEvent.setup();
+    setAuth(ORGANIZER_ID); // organizer controls = the cramped case
+    mockGetClubMembers.mockResolvedValue([
+      ...members().map((m) =>
+        m.user_id === MEMBER_ID ? { ...m, blocked_by_me: true } : m,
+      ),
+    ]);
+    renderClub();
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+    const unblock = screen.getByRole("button", { name: /^unblock bo$/i });
+    const makeAdmin = screen.getByRole("button", { name: /make admin/i });
+    const remove = screen.getByRole("button", { name: /^remove$/i });
+    expect(screen.getByText("blocked")).toBeInTheDocument();
+
+    // Both halves of the cramped row wrap now, so nothing can extend past
+    // the right edge; pin that structure against a relapse to fixed rows.
+    const row = unblock.closest("li");
+    expect(row).not.toBeNull();
+    const rowFlex = row!.querySelector("div");
+    expect(rowFlex?.className).toContain("flex-wrap");
+    expect(unblock.closest("span")?.className).toContain("flex-wrap");
+
+    // ...and the reversal control still works from the same row.
+    await user.click(unblock);
+    await waitFor(() => expect(mockUnblockUser).toHaveBeenCalledWith(MEMBER_ID));
+    expect(makeAdmin).toBeEnabled();
+    expect(remove).toBeEnabled();
+  });
+
+  it("block failure: a calm error lands by the list and the row keeps its block action", async () => {
+    const user = userEvent.setup();
+    mockBlockUser.mockRejectedValue(new Error("boom"));
+    renderClub();
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+    await user.click(screen.getByRole("button", { name: /^block bo ?--/i }));
+
+    expect(await screen.findByText(/couldn't block that member/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^block bo ?--/i })).toBeInTheDocument();
+  });
+
   // --- Co-organizer promote/demote (MYS-99) ---
 
   it("co-organizer badge: renders for a member with is_admin && !is_organizer, not for the fixed organizer or a plain member", async () => {
@@ -627,7 +747,7 @@ describe("ClubHomeRoute", () => {
     await screen.findByRole("heading", { name: "Friday Mixtape" });
 
     // Two "home" controls in the TopNav (ring mark + text link); either routes home.
-    await user.click(screen.getAllByRole("button", { name: /^home$/i })[1]);
+    await user.click(screen.getAllByRole("button", { name: /^my clubs$/i })[1]);
 
     expect(await screen.findByText("HOME CONTENT")).toBeInTheDocument();
   });
@@ -823,5 +943,205 @@ describe("ClubHomeRoute", () => {
     renderClub();
     await screen.findByRole("heading", { name: "Friday Mixtape" });
     expect(screen.queryByText(/of 0 voted/i)).not.toBeInTheDocument();
+  });
+
+  describe("open mix from the club home list (MysteryMixClub-4vii.4)", () => {
+    it("a themed pending mix's 'open mix' button opens it for submissions", async () => {
+      const pending = closedMix({ id: "mix-pending", state: "pending", theme: "late summer feels" });
+      mockGetMixes.mockResolvedValue([pending]);
+      mockUpdateMix.mockResolvedValue({ ...pending, state: "open_submission" });
+
+      renderClub();
+      await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+      await userEvent.click(screen.getByRole("button", { name: /^open mix$/i }));
+
+      expect(mockUpdateMix).toHaveBeenCalledWith("mix-pending", { state: "open_submission" });
+      // Reflects the server's returned state (patched into local state)
+      // rather than a refetch — "upcoming" is gone, its open_submission
+      // label is showing.
+      expect(await screen.findByText(/^submissions open$/i)).toBeInTheDocument();
+      expect(screen.queryByText(/^upcoming$/i)).not.toBeInTheDocument();
+    });
+
+    it("an untitled pending mix has no 'open mix' button, and explains why", async () => {
+      mockGetMixes.mockResolvedValue([
+        closedMix({ id: "mix-untitled", state: "pending", theme: null }),
+      ]);
+
+      renderClub();
+      await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+      expect(screen.queryByRole("button", { name: /^open mix$/i })).not.toBeInTheDocument();
+      expect(
+        screen.getByText(/add a theme before you can open this mystery mix/i),
+      ).toBeInTheDocument();
+    });
+
+    it("a failed open shows a calm error without navigating away", async () => {
+      mockGetMixes.mockResolvedValue([
+        closedMix({ id: "mix-pending", state: "pending", theme: "late summer feels" }),
+      ]);
+      mockUpdateMix.mockRejectedValue(new ApiError(409, "set a theme before opening this mystery mix"));
+
+      renderClub();
+      await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+      await userEvent.click(screen.getByRole("button", { name: /^open mix$/i }));
+
+      expect(
+        await screen.findByText(/set a theme before opening this mystery mix/i),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Friday Mixtape" })).toBeInTheDocument();
+    });
+
+    it("a themed mix #2 has no 'open mix' button while mix #1 is still pending, and explains why", async () => {
+      mockGetMixes.mockResolvedValue([
+        closedMix({ id: "mix-1", mix_number: 1, state: "pending", theme: "mix one" }),
+        closedMix({ id: "mix-2", mix_number: 2, state: "pending", theme: "mix two" }),
+      ]);
+
+      renderClub();
+      await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+      // Only mix #1 (the first mix) is eligible — one "open mix" button, not two.
+      expect(screen.getAllByRole("button", { name: /^open mix$/i })).toHaveLength(1);
+      expect(
+        screen.getByText(/mystery mix 1 must close before this one can open/i),
+      ).toBeInTheDocument();
+    });
+
+    it("mix #2's 'open mix' button appears once mix #1 has closed", async () => {
+      mockGetMixes.mockResolvedValue([
+        closedMix({ id: "mix-1", mix_number: 1, state: "closed" }),
+        closedMix({ id: "mix-2", mix_number: 2, state: "pending", theme: "mix two" }),
+      ]);
+
+      renderClub();
+      await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+      expect(screen.getAllByRole("button", { name: /^open mix$/i })).toHaveLength(1);
+    });
+  });
+
+  describe("club-invite welcome guide (MysteryMixClub-6eo8)", () => {
+    beforeEach(() => {
+      localStorage.clear();
+      // Global setup's own beforeEach marks the release-notes popup seen
+      // before this one runs; the clear() above wipes that back out, so redo
+      // it here or that unrelated modal renders too and getByRole("dialog")
+      // stops being unambiguous.
+      markLatestReleaseSeen();
+    });
+
+    it("auto-shows when the caller just joined this club via invite", async () => {
+      markJustJoinedClub("club-1");
+      renderClub("club-1");
+
+      const dialog = await screen.findByRole("dialog");
+      expect(dialog).toHaveAccessibleName(/you're in/i);
+      // The real club name replaces the mockup's placeholder "the listening room".
+      expect(within(dialog).getByText(/friday/i)).toBeInTheDocument();
+      expect(within(dialog).getByText(/mixtape/i)).toBeInTheDocument();
+      for (const step of [
+        "join your friends",
+        "submit your songs",
+        "listen to the mix",
+        "vote for your favorites",
+      ]) {
+        expect(within(dialog).getByText(step)).toBeInTheDocument();
+      }
+    });
+
+    it("does not show on an ordinary visit (no just-joined flag set)", async () => {
+      renderClub("club-1");
+
+      await screen.findByRole("heading", { name: "Friday Mixtape" });
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("does not show while the club is still loading", async () => {
+      let resolveClub: (club: Club) => void = () => {};
+      mockGetClub.mockReturnValue(
+        new Promise((resolve) => {
+          resolveClub = resolve;
+        }),
+      );
+      markJustJoinedClub("club-1");
+      renderClub("club-1");
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      resolveClub(clubWith());
+      expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    });
+
+    it("does not show when the club fails to load", async () => {
+      mockGetClub.mockRejectedValue(new ApiError(500, "boom"));
+      markJustJoinedClub("club-1");
+      renderClub("club-1");
+
+      await screen.findByText("boom");
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("the just-joined flag is one-shot: a second club-home mount never auto-shows from the same flag", async () => {
+      markJustJoinedClub("club-1");
+      const { unmount } = renderClub("club-1");
+      await screen.findByRole("dialog");
+      unmount();
+
+      renderClub("club-1");
+      await screen.findByRole("heading", { name: "Friday Mixtape" });
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("dismissing (close button) persists per account and leaves the member in the club", async () => {
+      const user = userEvent.setup();
+      markJustJoinedClub("club-1");
+      renderClub("club-1");
+
+      await screen.findByRole("dialog");
+      await user.click(screen.getByRole("button", { name: /dismiss welcome guide/i }));
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Friday Mixtape" })).toBeInTheDocument();
+      expect(isGuideDismissed("invite", ORGANIZER_ID)).toBe(true);
+    });
+
+    it("the primary CTA ('let's go') dismisses without navigating away", async () => {
+      const user = userEvent.setup();
+      markJustJoinedClub("club-1");
+      renderClub("club-1");
+
+      const dialog = await screen.findByRole("dialog");
+      await user.click(within(dialog).getByRole("button", { name: "let's go" }));
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Friday Mixtape" })).toBeInTheDocument();
+    });
+
+    it("Escape dismisses the guide", async () => {
+      const user = userEvent.setup();
+      markJustJoinedClub("club-1");
+      renderClub("club-1");
+
+      await screen.findByRole("dialog");
+      await user.keyboard("{Escape}");
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("'how it works' reopens the guide at any time, even without ever having joined via invite", async () => {
+      const user = userEvent.setup();
+      dismissGuide("invite", ORGANIZER_ID);
+      renderClub("club-1");
+
+      await screen.findByRole("heading", { name: "Friday Mixtape" });
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: /how it works/i }));
+
+      expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    });
   });
 });

@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router";
 import { ClubHomeScreen } from "./ClubHomeScreen";
 import {
   ApiError,
+  blockUser,
   createInvite,
   deleteClub,
   getClub,
@@ -11,6 +12,8 @@ import {
   getResults,
   getMixes,
   removeMember,
+  shareableOrigin,
+  unblockUser,
   updateClub,
   updateMemberRole,
   updateMix,
@@ -23,6 +26,7 @@ import {
 } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 import { usePolling } from "../hooks/usePolling";
+import { consumeJustJoinedClub, dismissGuide, isGuideDismissed } from "../data/onboardingGuides";
 
 /**
  * Protected club-home route. Loads the club and its members in parallel,
@@ -50,6 +54,14 @@ export function ClubHomeRoute() {
 
   const [savingMixId, setSavingMixId] = useState<string | null>(null);
   const [updateMixError, setUpdateMixError] = useState<string | null>(null);
+  const [openingMixId, setOpeningMixId] = useState<string | null>(null);
+  // Separate from openingMixId on purpose: both the catch's setOpenMixError
+  // and the finally's setOpeningMixId(null) fire in the same synchronous
+  // continuation, which React 18 batches into one render -- scoping the error
+  // to openingMixId would make it clear itself the instant it's set, since
+  // openingMixId is already back to null by the render that would show it.
+  const [openErrorMixId, setOpenErrorMixId] = useState<string | null>(null);
+  const [openMixError, setOpenMixError] = useState<string | null>(null);
 
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [generatingInvite, setGeneratingInvite] = useState(false);
@@ -72,6 +84,35 @@ export function ClubHomeRoute() {
   // Member self-leave (MYS-97).
   const [leavingClub, setLeavingClub] = useState(false);
   const [leaveClubError, setLeaveClubError] = useState<string | null>(null);
+
+  // Member blocking (MysteryMixClub-4vii.42, Guideline 1.2): any member's
+  // control over whose notes reach them. One busy/error pair covers both
+  // block and unblock -- the two never run at once.
+  const [blockingUserId, setBlockingUserId] = useState<string | null>(null);
+  const [blockError, setBlockError] = useState<string | null>(null);
+
+  // Club-invite welcome guide (MysteryMixClub-6eo8). The lazy initializer
+  // reads-and-clears the one-shot "just joined" flag exactly once at mount,
+  // regardless of when `userId` below resolves -- consumeJustJoinedClub
+  // removes its localStorage key on read, so calling it again on a later
+  // re-render (e.g. once userId loads) would always read false.
+  const [justJoinedThisClub] = useState(() => (id ? consumeJustJoinedClub(id) : false));
+  const [showInviteGuide, setShowInviteGuide] = useState(false);
+
+  useEffect(() => {
+    if (!justJoinedThisClub || !userId) return;
+    if (!isGuideDismissed("invite", userId)) {
+      // Syncing from external state (localStorage), same pattern the rule
+      // already accepts elsewhere (see MixDetailRoute's load() effect).
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setShowInviteGuide(true);
+    }
+  }, [justJoinedThisClub, userId]);
+
+  function dismissInviteGuide() {
+    if (userId) dismissGuide("invite", userId);
+    setShowInviteGuide(false);
+  }
 
   useEffect(() => {
     if (!id) return;
@@ -181,7 +222,7 @@ export function ClubHomeRoute() {
       const invite = await createInvite(id);
       // Canonical invite path is /invite/:token (what the backend emails too);
       // /join/:token still resolves as a legacy alias.
-      setInviteUrl(`${window.location.origin}/invite/${invite.token}`);
+      setInviteUrl(`${shareableOrigin()}/invite/${invite.token}`);
     } catch (err) {
       setInviteError(
         err instanceof ApiError ? err.message : "couldn't generate an invite. try again.",
@@ -212,6 +253,33 @@ export function ClubHomeRoute() {
       return false;
     } finally {
       setSavingMixId(null);
+    }
+  }
+
+  // Open a pending mix for submissions, from the club home list itself
+  // (MysteryMixClub-4vii.4) rather than only from the mix's own detail page's
+  // collapsed tools panel — that was real, reported organizer confusion, not
+  // a missing feature: opening has always been this one manual PATCH, just
+  // hard to find. Own saving/error state, separate from theme-editing above,
+  // since the two are different actions that can be mid-flight on different
+  // rows at once.
+  async function handleOpenMix(mixId: string): Promise<boolean> {
+    if (!id) return false;
+    setOpeningMixId(mixId);
+    setOpenErrorMixId(null);
+    setOpenMixError(null);
+    try {
+      const updated = await updateMix(mixId, { state: "open_submission" });
+      setMixes((current) => current.map((r) => (r.id === mixId ? updated : r)));
+      return true;
+    } catch (err) {
+      setOpenErrorMixId(mixId);
+      setOpenMixError(
+        err instanceof ApiError ? err.message : "couldn't open this mystery mix. try again.",
+      );
+      return false;
+    } finally {
+      setOpeningMixId(null);
     }
   }
 
@@ -297,6 +365,42 @@ export function ClubHomeRoute() {
     }
   }
 
+  async function handleBlockMember(memberUserId: string) {
+    setBlockingUserId(memberUserId);
+    setBlockError(null);
+    try {
+      await blockUser(memberUserId);
+      // Patch the flag locally; the members list is small and nothing else
+      // changed. The enforcement itself is server-side on every read.
+      setMembers((current) =>
+        current.map((m) => (m.user_id === memberUserId ? { ...m, blocked_by_me: true } : m)),
+      );
+    } catch (err) {
+      setBlockError(
+        err instanceof ApiError ? err.message : "couldn't block that member. try again.",
+      );
+    } finally {
+      setBlockingUserId(null);
+    }
+  }
+
+  async function handleUnblockMember(memberUserId: string) {
+    setBlockingUserId(memberUserId);
+    setBlockError(null);
+    try {
+      await unblockUser(memberUserId);
+      setMembers((current) =>
+        current.map((m) => (m.user_id === memberUserId ? { ...m, blocked_by_me: false } : m)),
+      );
+    } catch (err) {
+      setBlockError(
+        err instanceof ApiError ? err.message : "couldn't unblock that member. try again.",
+      );
+    } finally {
+      setBlockingUserId(null);
+    }
+  }
+
   // While loading (or if the club never resolved without an error), keep the
   // screen in its loading state. The screen reads `club` only after the
   // loading/error guards, so the empty placeholder is never rendered.
@@ -341,6 +445,10 @@ export function ClubHomeRoute() {
       onUpdateMix={handleUpdateMix}
       savingMixId={savingMixId}
       updateMixError={updateMixError}
+      onOpenSubmissions={handleOpenMix}
+      openingMixId={openingMixId}
+      openErrorMixId={openErrorMixId}
+      openMixError={openMixError}
       inviteUrl={inviteUrl}
       onGenerateInvite={handleGenerateInvite}
       generatingInvite={generatingInvite}
@@ -360,7 +468,14 @@ export function ClubHomeRoute() {
       onLeaveClub={handleLeaveClub}
       leavingClub={leavingClub}
       leaveClubError={leaveClubError}
+      onBlockMember={handleBlockMember}
+      onUnblockMember={handleUnblockMember}
+      blockingUserId={blockingUserId}
+      blockError={blockError}
       onOpenClubSongs={() => navigate(`/clubs/${id}/songs`)}
+      showInviteGuide={showInviteGuide}
+      onDismissInviteGuide={dismissInviteGuide}
+      onReopenInviteGuide={() => setShowInviteGuide(true)}
     />
   );
 }

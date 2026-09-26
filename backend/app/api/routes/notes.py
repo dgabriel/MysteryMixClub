@@ -46,6 +46,8 @@ from app.models.mix import Mix
 from app.models.note import Note
 from app.models.submission import Submission
 from app.models.user import User
+from app.services.blocks import blocked_user_ids
+from app.services.content_filter import reject_if_flagged
 
 router = APIRouter(tags=["notes"])
 
@@ -115,6 +117,9 @@ async def leave_note(
     submission = await _load_submission(submission_id, db)
     mix_ = await _load_mix(submission.mix_id, db)
     await _load_club_as_member(mix_.club_id, current_user, db)
+    # Content filter (MysteryMixClub-4vii.43, Guideline 1.2): notes are the
+    # app's primary member-to-member free-text surface; reject at write.
+    reject_if_flagged(payload.body)
 
     if not await _notes_open(mix_, current_user.id, db):
         raise HTTPException(
@@ -153,6 +158,7 @@ async def edit_note(
     submission = await _load_submission(submission_id, db)
     mix_ = await _load_mix(submission.mix_id, db)
     await _load_club_as_member(mix_.club_id, current_user, db)
+    reject_if_flagged(payload.body)  # see leave_note (MysteryMixClub-4vii.43)
 
     if not await _notes_open(mix_, current_user.id, db):
         raise HTTPException(
@@ -193,6 +199,13 @@ async def list_notes(
     # full set is revealed once the mix is closed (the reveal).
     if mix_.state != "closed":
         stmt = stmt.where(Note.author_id == current_user.id)
+    else:
+        # MysteryMixClub-4vii.42: a blocked member's notes never reach the
+        # blocker, the reveal surface included. Blocks are one-way and quiet --
+        # other members' reads are untouched (ADR 0035).
+        blocked = await blocked_user_ids(db, current_user.id)
+        if blocked:
+            stmt = stmt.where(Note.author_id.notin_(blocked))
 
     rows = await db.execute(stmt)
     return [_to_response(note, display_name) for note, display_name in rows.all()]

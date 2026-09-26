@@ -30,6 +30,9 @@ class WaitlistEntry(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     invited_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # ON DELETE SET NULL (MysteryMixClub-4vii.38): just records which admin
+    # sent the invite; the waitlist entry itself should outlive that admin's
+    # own account.
     invited_by: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )

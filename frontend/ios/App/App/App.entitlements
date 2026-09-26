@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Universal Links (MysteryMixClub-4vii.10): lets magic-link email,
+	     Google's OAuth redirect, and invite links open inside the app
+	     instead of Safari when tapped, degrading gracefully to a normal
+	     page load when the app isn't installed. Requires a matching
+	     apple-app-site-association hosted at each domain's root -- inert
+	     without one. Requires the Associated Domains capability enabled
+	     for this App ID in the Apple Developer portal. The domain is the
+	     MMC_APP_DOMAIN build setting: staging for Debug (Xcode Run), prod
+	     for Release (Archive, so TestFlight and the App Store). The same
+	     setting picks the API the web bundle talks to (vite.ios.config.ts),
+	     so the two can never point at different servers. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:$(MMC_APP_DOMAIN)</string>
+	</array>
+	<!-- Sign in with Apple (MysteryMixClub-4vii.9, Guideline 4.8). Requires the
+	     "Sign In with Apple" capability enabled for this App ID in the Apple
+	     Developer portal (a manual, one-time step -- see docs/ios/README.md)
+	     and a provisioning profile regenerated after enabling it; without
+	     that, code signing with this entitlement present fails or the
+	     capability silently does nothing on-device. -->
+	<key>com.apple.developer.applesignin</key>
+	<array>
+		<string>Default</string>
+	</array>
+	<!-- Push notifications (MysteryMixClub-4vii.27, IOS-04). Requires the
+	     "Push Notifications" capability enabled for this App ID in the Apple
+	     Developer portal (a manual, one-time step -- see docs/ios/README.md)
+	     plus an APNs Auth Key configured server-side, and a provisioning
+	     profile regenerated after enabling the capability; without that,
+	     code signing with this entitlement present fails or registration
+	     silently never completes on-device. This value is NOT what ships: the
+	     signed aps-environment comes from the provisioning profile (observed: a
+	     development-signed archive is signed "development" while this file says
+	     "production"; Apple documents that exporting for distribution re-signs
+	     with the distribution profile). The backend uses APNs' production
+	     gateway only (docs/adr/0033), so push is tested on TestFlight builds;
+	     verify an exported build with scripts/ios-check-push-entitlement.sh. -->
+	<key>aps-environment</key>
+	<string>production</string>
+</dict>
+</plist>

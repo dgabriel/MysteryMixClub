@@ -42,16 +42,24 @@ from app.models.note import Note
 from app.models.submission import Submission
 from app.models.user import User
 from app.services.deadline_scheduling import compute_phase_deadline
+from app.services.blocks import blocked_user_ids
+from app.services.content_filter import reject_if_flagged
 from app.services.source_tracks import source_fields
 from app.services.playlist_jobs import enqueue_playlist_job
 from app.models.vote import Vote
 from app.services.email import EmailSender, get_email_sender
 from app.services.most_noted import compute_most_noted
+from app.services.apple_push_token import ApplePushTokenService, get_apple_push_token_service
 from app.services.notifications import (
     MixEvent,
     gather_recipients,
     organizer_recipient,
     queue_mix_event,
+)
+from app.services.push_notifications import (
+    gather_push_recipients,
+    organizer_push_recipients,
+    queue_push_event,
 )
 from app.services.youtube_backfill import has_pending
 from app.services.youtube_playlist import build_watch_videos_url, normalize_video_ids
@@ -340,6 +348,8 @@ async def advance_mix_state(
         club.current_mix = mix_.mix_number
         events.append((mix_, "submission_open"))
     elif new_state == "open_voting":
+        # When voting began: the halfway nudge measures from here to the deadline.
+        mix_.voting_opened_at = func.now()
         # Stamp the voting deadline from the club window (MYS-159), unless the
         # organizer already set one explicitly — don't clobber a manual value.
         if mix_.voting_deadline is None:
@@ -412,6 +422,17 @@ async def rollback_mix_to_submission(mix_: Mix, club: Club, db: AsyncSession) ->
     mix_.submission_warning_sent_at = None
     mix_.voting_warning_sent_at = None
     mix_.empty_round_notice_sent_at = None
+    # So do the push nudges (MysteryMixClub-bfqo): the reopened submission
+    # phase gets its own halfway / due-morning / last-few, and voting, when it
+    # reopens, is stamped and nudged afresh.
+    mix_.voting_opened_at = None
+    mix_.push_submission_reminder_sent_at = None
+    mix_.push_voting_reminder_sent_at = None
+    mix_.push_submission_halfway_sent_at = None
+    mix_.push_voting_halfway_sent_at = None
+    mix_.push_submission_due_morning_sent_at = None
+    mix_.push_voting_due_morning_sent_at = None
+    mix_.push_submission_last_few_sent_at = None
     # The ballot set may change under a reopened submission phase; stale votes
     # would poison results and could insta-satisfy the voting quorum on the
     # next pass. Notes are kept — they're appreciation, remain state-gated, and
@@ -668,6 +689,7 @@ async def update_mix(
     db: AsyncSession = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
     settings: Settings = Depends(get_settings),
+    push_token_service: ApplePushTokenService = Depends(get_apple_push_token_service),
 ) -> MixResponse:
     mix_ = await _load_mix(round_id, db)
     club = await _load_club_as_organizer(
@@ -676,6 +698,10 @@ async def update_mix(
 
     updates = payload.model_dump(exclude_unset=True)
     new_state = updates.pop("state", None)
+    # Content filter (MysteryMixClub-4vii.43, Guideline 1.2): the theme and
+    # description are member-visible free text; reject flagged terms at write.
+    reject_if_flagged(updates.get("theme"))
+    reject_if_flagged(updates.get("description"))
     # Lifecycle emails to fire once the transition commits (MYS-109). Collected as
     # (mix, event) so an auto-opened next mix notifies for *its* opening.
     events: list[tuple[Mix, MixEvent]] = []
@@ -733,6 +759,24 @@ async def update_mix(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="another mix is already active",
                 )
+            # Forward-only opening order (MysteryMixClub-4vii.4): a mix may
+            # open only as the club's first mix, or once the mix immediately
+            # before it (by number) has closed. The "already active" check
+            # above only rules out a currently-running earlier mix
+            # (open_submission/open_voting) -- it says nothing about an
+            # earlier mix still sitting `pending`, which this closes.
+            if mix_.mix_number > 1:
+                previous = await db.scalar(
+                    select(Mix).where(
+                        Mix.club_id == mix_.club_id,
+                        Mix.mix_number == mix_.mix_number - 1,
+                    )
+                )
+                if previous is None or previous.state != "closed":
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="the previous mystery mix must close first",
+                    )
         if is_rollback:
             # Serialize with the deadline force-advance job and the vote-cast
             # auto-close (MYS-145/MYS-69) under the same FOR UPDATE discipline,
@@ -773,16 +817,30 @@ async def update_mix(
     # so a failed commit below means no emails go out.
     if events:
         recipients = await gather_recipients(db, mix_.club_id)
+        push_recipients = await gather_push_recipients(db, mix_.club_id)
         # needs_theme (MYS-211) is organizer-only, never the whole club.
-        theme_notice_recipients = (
-            await organizer_recipient(db, club)
-            if any(event == "needs_theme" for _, event in events)
-            else []
+        needs_theme_present = any(event == "needs_theme" for _, event in events)
+        theme_notice_recipients = await organizer_recipient(db, club) if needs_theme_present else []
+        theme_notice_push_recipients = (
+            await organizer_push_recipients(db, club) if needs_theme_present else []
         )
         for event_mix, event in events:
-            event_recipients = theme_notice_recipients if event == "needs_theme" else recipients
+            is_needs_theme = event == "needs_theme"
+            event_recipients = theme_notice_recipients if is_needs_theme else recipients
+            event_push_recipients = (
+                theme_notice_push_recipients if is_needs_theme else push_recipients
+            )
             queue_mix_event(
                 background_tasks, sender, settings, event_recipients, club, event_mix, event
+            )
+            queue_push_event(
+                background_tasks,
+                push_token_service,
+                settings,
+                event_push_recipients,
+                club,
+                event_mix,
+                event,
             )
 
     # Queue the shared-account Spotify playlist generation the moment voting
@@ -827,6 +885,7 @@ async def extend_voting_deadline(
     db: AsyncSession = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
     settings: Settings = Depends(get_settings),
+    push_token_service: ApplePushTokenService = Depends(get_apple_push_token_service),
 ) -> MixResponse:
     """Push a mix's voting deadline to an organizer-chosen time, up to 48h past
     the current deadline (MYS-180).
@@ -871,9 +930,25 @@ async def extend_voting_deadline(
     # Let the deadline job send a fresh "12h left" warning against the new
     # deadline — the old marker refers to a deadline that no longer applies.
     locked.voting_warning_sent_at = None
+    # Likewise the due-morning nudge: it was (or will be) aimed at the old due
+    # day. Halfway is left alone: half the original time really has passed.
+    locked.push_voting_due_morning_sent_at = None
+    # ...and the ~24h push, its twin of the warning reset just above, so the
+    # new deadline gets its own "about a day left" too.
+    locked.push_voting_reminder_sent_at = None
 
     recipients = await gather_recipients(db, club.id)
     queue_mix_event(background_tasks, sender, settings, recipients, club, locked, "voting_extended")
+    push_recipients = await gather_push_recipients(db, club.id)
+    queue_push_event(
+        background_tasks,
+        push_token_service,
+        settings,
+        push_recipients,
+        club,
+        locked,
+        "voting_extended",
+    )
 
     await db.commit()
     await db.refresh(locked)
@@ -971,6 +1046,11 @@ async def get_mix_playlist(
         )
 
     submissions = list(await db.scalars(select(Submission).where(Submission.mix_id == round_id)))
+    # Blocks filter the submitter note per-viewer: a blocked member's text
+    # never reaches the blocker, even inside a mix they share. The song row
+    # itself stays -- a member can still judge a blocked submitter's pick
+    # (MysteryMixClub-4vii.42, ADR 0035).
+    blocked = await blocked_user_ids(db, current_user.id)
     # Anonymous + shuffled (technical-design §8). Sort by id first so Postgres heap
     # order doesn't affect the result, then seed the shuffle on the mix id for a
     # stable per-mix order that's consistent across all playlist platforms (MYS-151).
@@ -1007,7 +1087,7 @@ async def get_mix_playlist(
                 platforms=platforms,
                 preferred_url=_preferred_url(platforms, current_user.preferred_service),
                 is_own=s.user_id == current_user.id,
-                submitter_note=s.note,
+                submitter_note=None if s.user_id in blocked else s.note,
             )
         )
         if s.youtube_video_id:
@@ -1048,6 +1128,13 @@ async def get_mix_playlist(
 
 
 class ResultNote(WireModel):
+    # id/author_id (MysteryMixClub-4vii.39): the reveal rendered notes
+    # read-only with no report action at all -- Guideline 1.2 review found
+    # reporting only ever reached the live open_voting composer (SongNotes),
+    # never the post-close reveal. Needed to POST /reports (content_id) and
+    # to hide the action on the viewer's own note.
+    id: str
+    author_id: str
     body: str
     author_display_name: str
     created_at: datetime
@@ -1211,7 +1298,16 @@ async def get_mix_results(
         )
     ).all()
     voters_by_submission: dict[uuid.UUID, list[ResultVoter]] = {}
+    # Blocks re-shape the reveal per-viewer: a blocked member's notes and
+    # submitter note drop out, and they leave the voter-attribution lists --
+    # but aggregate counts and the shared scoreboard stay intact, because the
+    # closed mix is the record of a mix the blocker took part in
+    # (MysteryMixClub-4vii.42, ADR 0035).
+    blocked = await blocked_user_ids(db, current_user.id)
+
     for submission_id, voter_id, display_name, weight in voter_rows:
+        if voter_id in blocked:
+            continue
         voters_by_submission.setdefault(submission_id, []).append(
             ResultVoter(user_id=str(voter_id), display_name=display_name, weight=weight)
         )
@@ -1229,8 +1325,12 @@ async def get_mix_results(
     ).all()
     notes_by_submission: dict[uuid.UUID, list[ResultNote]] = {}
     for note, display_name in note_rows:
+        if note.author_id in blocked:
+            continue
         notes_by_submission.setdefault(note.submission_id, []).append(
             ResultNote(
+                id=str(note.id),
+                author_id=str(note.author_id),
                 body=note.body,
                 author_display_name=display_name,
                 created_at=note.created_at,
@@ -1250,7 +1350,7 @@ async def get_mix_results(
             album=s.album,
             album_art_url=s.album_art_url,
             platforms=s.platform_links or {},
-            submitter_note=s.note,
+            submitter_note=None if s.user_id in blocked else s.note,
             vote_count=votes_by_submission.get(s.id, 0),
             notes=notes_by_submission.get(s.id, []),
             voters=voters_by_submission.get(s.id, []),
@@ -1281,7 +1381,7 @@ async def get_mix_results(
         for i, (uid, total) in enumerate(ranked_players)
     ]
 
-    most_noted = await compute_most_noted(round_id, db)
+    most_noted = await compute_most_noted(round_id, db, exclude_author_ids=blocked)
     most_noted_result = MostNotedResult(
         note_count=most_noted.note_count,
         winners=[
@@ -1292,6 +1392,8 @@ async def get_mix_results(
                 note_count=w.note_count,
                 notes=[
                     ResultNote(
+                        id=str(n.id),
+                        author_id=str(n.author_id),
                         body=n.body,
                         author_display_name=n.author_display_name,
                         created_at=n.created_at,

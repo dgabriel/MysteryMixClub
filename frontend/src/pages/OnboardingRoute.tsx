@@ -19,8 +19,15 @@ import { useAuth } from "../hooks/useAuth";
  */
 export function OnboardingRoute() {
   const navigate = useNavigate();
-  const { status, profileStatus, needsOnboarding, displayName, tosAccepted, applyDisplayName, applyTosAccepted } =
-    useAuth();
+  const {
+    status,
+    profileStatus,
+    needsOnboarding,
+    displayName,
+    tosAccepted,
+    applyDisplayName,
+    applyTosAccepted,
+  } = useAuth();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,6 +53,10 @@ export function OnboardingRoute() {
       const profile = await acceptTerms(name);
       applyDisplayName(profile.display_name);
       applyTosAccepted();
+      // No push prompt here any more (MysteryMixClub-gxh3): the post-login
+      // PushActivationPrompt (AuthedLayout) explains first, then asks, so the
+      // one-shot iOS system prompt isn't spent on someone who hasn't been told
+      // why. Firing it here too would stack two prompts on arrival at /home.
       navigate("/home", { replace: true });
     } catch {
       // acceptTerms throws ApiError on a non-2xx response (and the wrapper

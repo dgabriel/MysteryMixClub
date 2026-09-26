@@ -7,6 +7,10 @@ import { AuthedLayout } from "../components/AuthedLayout";
 import { ApiError, getClubs } from "../services/api";
 import type { Club } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
+import { dismissGuide } from "../data/onboardingGuides";
+import { markLatestReleaseSeen } from "../data/releaseNotes";
+
+const DEFAULT_USER_ID = "11111111-1111-1111-1111-111111111111";
 
 // Mock the API module (no network). Keep ApiError real so instanceof / status work.
 vi.mock("../services/api", async () => {
@@ -76,6 +80,11 @@ describe("HomeRoute (My Clubs)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    // Pre-dismissed by default so the rest of this suite (predating the
+    // welcome guide) sees the same DOM it always has -- the guide's own
+    // trigger/dismissal/reopen behavior gets its own describe block below,
+    // which clears this back out per test.
+    dismissGuide("emptyClubs", DEFAULT_USER_ID);
     logout.mockResolvedValue(undefined);
     mockGetClubs.mockResolvedValue([clubWith()]);
     mockUseAuth.mockReturnValue({
@@ -87,7 +96,7 @@ describe("HomeRoute (My Clubs)", () => {
       logoutAll: vi.fn(),
       displayName: "ada",
       email: "ada@example.com",
-      userId: "11111111-1111-1111-1111-111111111111",
+      userId: DEFAULT_USER_ID,
       profileStatus: "ready",
       needsOnboarding: false,
       isPlatformAdmin: false,
@@ -107,6 +116,20 @@ describe("HomeRoute (My Clubs)", () => {
 
     expect(await screen.findByRole("heading", { name: "Friday Mixtape" })).toBeInTheDocument();
     expect(mockGetClubs).toHaveBeenCalledTimes(1);
+  });
+
+  it("'how it works' stays visible and reopens the guide even when the member already has clubs (MysteryMixClub-h0ea)", async () => {
+    // Suppress the unrelated ReleaseNotesModal auto-popup so it doesn't make
+    // the dialog query ambiguous -- same reasoning as the guide-specific
+    // describe block below.
+    markLatestReleaseSeen();
+    const user = userEvent.setup();
+    renderHome();
+
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
+    await user.click(screen.getByRole("button", { name: /how it works/i }));
+
+    expect(await screen.findByRole("heading", { name: /music is better/i })).toBeInTheDocument();
   });
 
   it("groups completed clubs below active ones under a 'completed' heading with the crown marker", async () => {
@@ -293,5 +316,117 @@ describe("HomeRoute (My Clubs)", () => {
     await user.click(await screen.findByRole("button", { name: /^admin$/i }));
 
     expect(await screen.findByText("ADMIN CONTENT")).toBeInTheDocument();
+  });
+
+  describe("empty-clubs welcome guide (MysteryMixClub-6eo8)", () => {
+    beforeEach(() => {
+      // The outer beforeEach dismisses it up front; these tests want the
+      // pristine, never-seen state instead.
+      localStorage.clear();
+      // AuthedLayout's unrelated release-notes popup also auto-shows on a
+      // cleared localStorage -- seed it as already-seen so `getByRole("dialog")`
+      // stays unambiguous for the guide under test here.
+      markLatestReleaseSeen();
+      mockGetClubs.mockResolvedValue([]);
+    });
+
+    it("auto-shows once the club list loads empty for an account that hasn't dismissed it", async () => {
+      renderHome();
+
+      const dialog = await screen.findByRole("dialog");
+      expect(dialog).toHaveAccessibleName(/music is better/i);
+      for (const step of ["start a club", "invite your friends", "submit your songs", "listen and vote"]) {
+        expect(within(dialog).getByText(step)).toBeInTheDocument();
+      }
+    });
+
+    it("does not show once the account has any club at all", async () => {
+      mockGetClubs.mockResolvedValue([clubWith()]);
+      renderHome();
+
+      await screen.findByRole("heading", { name: "Friday Mixtape" });
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("does not show while the club list is still loading", async () => {
+      let resolveClubs: (clubs: Club[]) => void = () => {};
+      mockGetClubs.mockReturnValue(
+        new Promise((resolve) => {
+          resolveClubs = resolve;
+        }),
+      );
+      renderHome();
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      resolveClubs([]);
+      expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    });
+
+    it("does not show when the club list fails to load", async () => {
+      mockGetClubs.mockRejectedValue(new ApiError(500, "boom"));
+      renderHome();
+
+      await screen.findByRole("alert");
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("does not reappear on a later visit once dismissed via the close button", async () => {
+      const user = userEvent.setup();
+      const { unmount } = renderHome();
+
+      await user.click(await screen.findByRole("button", { name: /dismiss welcome guide/i }));
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      // Leaving the page behind: dismissal must persist, not just clear local state.
+      unmount();
+
+      renderHome();
+      await screen.findByText("no clubs yet");
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("Escape dismisses the guide and persists the dismissal", async () => {
+      const user = userEvent.setup();
+      renderHome();
+
+      await screen.findByRole("dialog");
+      await user.keyboard("{Escape}");
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+      renderHome();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("the guide's own CTA navigates to /clubs/new (the real create-club flow) and dismisses", async () => {
+      const user = userEvent.setup();
+      renderHome();
+
+      const dialog = await screen.findByRole("dialog");
+      await user.click(within(dialog).getByRole("button", { name: "create a club" }));
+
+      expect(await screen.findByText("NEW CLUB CONTENT")).toBeInTheDocument();
+    });
+
+    it("closing the guide (not the CTA) leaves the member on their clubs page", async () => {
+      const user = userEvent.setup();
+      renderHome();
+
+      await user.click(await screen.findByRole("button", { name: /dismiss welcome guide/i }));
+
+      expect(screen.queryByText("NEW CLUB CONTENT")).not.toBeInTheDocument();
+      expect(await screen.findByText("no clubs yet")).toBeInTheDocument();
+    });
+
+    it("'how it works' reopens the guide even after it was dismissed", async () => {
+      const user = userEvent.setup();
+      renderHome();
+
+      await user.click(await screen.findByRole("button", { name: /dismiss welcome guide/i }));
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: /how it works/i }));
+
+      expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    });
   });
 });

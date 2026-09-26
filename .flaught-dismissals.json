@@ -183,7 +183,7 @@
       "dismissed_at": "2026-09-09T16:03:14.167Z",
       "reason": "False positive / no second pin exists to diverge from -- ci.yml's npm install -g @flaught/core@0.10.0 is the only place a Flaught version is pinned anywhere in this repo; .advreview.yml declares no version.",
       "context": {
-        "title": "Hard\u2011coded Flaught version in CI may diverge from repo pin, causing inconsistency",
+        "title": "Hard‑coded Flaught version in CI may diverge from repo pin, causing inconsistency",
         "file": ".github/workflows/ci.yml"
       },
       "expires_at": null
@@ -194,7 +194,7 @@
       "dismissed_at": "2026-09-09T16:03:14.304Z",
       "reason": "Fixed at the config level -- .advreview.yml's tools:/test_inversion:/scope_creep:/noise_budget:/severity_gate: blocks are now all explicit (this same PR), closing the exact confusion this finding describes.",
       "context": {
-        "title": "Commented\u2011out default tool block in .advreview.yml may cause future confusion",
+        "title": "Commented‑out default tool block in .advreview.yml may cause future confusion",
         "file": ".advreview.yml"
       },
       "expires_at": null
@@ -502,7 +502,7 @@
       "dismissed_at": "2026-09-10T02:08:45.764Z",
       "reason": "Real finding, out of scope for this dependency-only PR. Tracked separately in MysteryMixClub-feuy (filed when Flaught's linter tool first surfaced these 5 pre-existing eslint warnings, ADR 0025).",
       "context": {
-        "title": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\n/home/runner/work/MysteryMixClub/MysteryMixClub/frontend/src/pages/MixDetailRoute.tsx:286:10\n  284 |\n  285 |   useEffect(() => {\n> 286 |     void load();\n      |          ^^^^ Avoid calling setState() directly within an effect\n  287 |   }, [load]);\n  288 |\n  289 |   // Poll every 60s so state transitions (submission \u2192 voting \u2192 closed) and",
+        "title": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\n/home/runner/work/MysteryMixClub/MysteryMixClub/frontend/src/pages/MixDetailRoute.tsx:286:10\n  284 |\n  285 |   useEffect(() => {\n> 286 |     void load();\n      |          ^^^^ Avoid calling setState() directly within an effect\n  287 |   }, [load]);\n  288 |\n  289 |   // Poll every 60s so state transitions (submission → voting → closed) and",
         "file": "/home/runner/work/MysteryMixClub/MysteryMixClub/frontend/src/pages/MixDetailRoute.tsx"
       },
       "expires_at": null
@@ -601,7 +601,7 @@
       "dismissed_at": "2026-09-11T00:01:41.298Z",
       "reason": "Skeptic-refuted, and correctly so: --config-from-base's exact tradeoff (PR-specific .advreview.yml edits reviewed under stale config until merged) is the intended, explicitly documented behavior -- ADR 0026 accepts this tradeoff by design, security over self-referential convenience, matching this repo's existing dependency_sanity/dismissals posture from ADR 0023.",
       "context": {
-        "title": "`--config-from-base` hides PR\u2011specific .advreview.yml changes, risking missed security tooling",
+        "title": "`--config-from-base` hides PR‑specific .advreview.yml changes, risking missed security tooling",
         "file": ".github/workflows/ci.yml"
       },
       "expires_at": null
@@ -623,7 +623,7 @@
       "dismissed_at": "2026-09-11T00:01:41.581Z",
       "reason": "Skeptic-refuted, and correctly so: this exit-code branching (1 blocks, other nonzero warns) is pre-existing, unchanged by this PR, and was a deliberate design decision from ADR 0017 to distinguish a real gate trip from a tool/config fault (e.g. no GROQ_API_KEY reachable on a fork PR) -- not a new gap introduced here.",
       "context": {
-        "title": "Exit\u2011code handling masks tool\u2011faults, allowing silent CI degradation",
+        "title": "Exit‑code handling masks tool‑faults, allowing silent CI degradation",
         "file": ".github/workflows/ci.yml"
       },
       "expires_at": null
@@ -634,7 +634,7 @@
       "dismissed_at": "2026-09-11T00:01:41.715Z",
       "reason": "This is upstream's own new recommended default (0.11.0's flaught init now emits max_tokens: 8192), not an aggressive value we invented. max_tokens is a ceiling on output length, not a mandate to use it -- normal-size findings cost the same; only previously-truncated reasoning-heavy responses now complete, which is the documented fix for the exact Groq 400 this repo hit live on PR #291.",
       "context": {
-        "title": "Increasing `max_tokens` to 8192 may cause provider\u2011level throttling or higher costs",
+        "title": "Increasing `max_tokens` to 8192 may cause provider‑level throttling or higher costs",
         "file": ".advreview.yml"
       },
       "expires_at": null
@@ -667,7 +667,7 @@
       "dismissed_at": "2026-09-11T00:53:28.584Z",
       "reason": "Real finding, out of scope for this PR. Tracked separately in MysteryMixClub-feuy since Flaught's linter tool first surfaced these 5 pre-existing eslint warnings (ADR 0025).",
       "context": {
-        "title": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\n/Users/dgabriel/claudeProjects/MysteryMixClub/frontend/src/pages/MixDetailRoute.tsx:287:10\n  285 |\n  286 |   useEffect(() => {\n> 287 |     void load();\n      |          ^^^^ Avoid calling setState() directly within an effect\n  288 |   }, [load]);\n  289 |\n  290 |   // Poll every 60s so state transitions (submission \u2192 voting \u2192 closed) and",
+        "title": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\n/Users/dgabriel/claudeProjects/MysteryMixClub/frontend/src/pages/MixDetailRoute.tsx:287:10\n  285 |\n  286 |   useEffect(() => {\n> 287 |     void load();\n      |          ^^^^ Avoid calling setState() directly within an effect\n  288 |   }, [load]);\n  289 |\n  290 |   // Poll every 60s so state transitions (submission → voting → closed) and",
         "file": "/Users/dgabriel/claudeProjects/MysteryMixClub/frontend/src/pages/MixDetailRoute.tsx"
       },
       "expires_at": null
@@ -876,8 +876,1383 @@
       "dismissed_at": "2026-09-12T15:40:24.675Z",
       "reason": "Agreeing with the skeptic's own refutation: pull-requests: write is required by this same job's later step (flaught report ... | gh pr comment), which posts the review as a PR comment. Already scoped to only this job (not the workflow-level contents: read grant shared by frontend/backend), per ADR 0020.",
       "context": {
-        "title": "Workflow grants pull\u2011request write permission, enabling potential abuse",
+        "title": "Workflow grants pull‑request write permission, enabling potential abuse",
         "file": ".github/workflows/ci.yml"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:ac565dba12aa21117939aa6090ef8d46",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-13T17:33:52.575Z",
+      "reason": "False positive, and the quoted snippet doesn't match the actual file: the real line 143 is console.error(`[ios-proof] ${next} failed:`, error) -- not the console.log(...resultMessage) shown as evidence. Even evaluated correctly, next is typed Action = 'signIn'|'signOut'|'connect'|'build'|'check'|'open', a closed union of hardcoded literals this code writes itself, never derived from user or network input, so there is no format-string injection surface. error is a separate console.error argument, not interpolated into the format string at all.",
+      "context": {
+        "title": "Unsafe format string in MusicProof logging",
+        "file": "frontend/src/ios/MusicProof.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:50558470f0590dc1c336088c297a91fb",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-13T17:57:52.852Z",
+      "reason": "Already verified concretely, not just assumed safe: full test suite (669/669) passes under vitest 5, tsc -b is clean, and this repo has no usage of any of vitest 5's actual breaking-change APIs (no toMatchSnapshot, no sequential test/suite option). Node 22+ requirement is also already satisfied (CI: Node 24, local: Node 26).",
+      "context": {
+        "title": "Major version bump of Vitest may break test suite compatibility",
+        "file": "frontend/package.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:a1592d20efc3dbfeadea998a89d9b84c",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-13T17:57:52.990Z",
+      "reason": "The existing 669-test suite passing under the new runner is the compatibility validation for a test-tooling upgrade -- there is no separate class of test that validates 'the test runner itself works,' short of the suite it runs. Vitest is devDependency-only test tooling, not app code with its own behavior to newly test.",
+      "context": {
+        "title": "No tests added to validate compatibility of upgraded dev dependencies",
+        "file": "frontend/package-lock.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:c54520cd2148032b3b1695e04ead6bf9",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:32:20.382Z",
+      "reason": "False positive, verified against current file: the assertion expect(screen.getAllByRole('button', { name: /^my clubs$/i })).toHaveLength(2) is present unchanged on the very next line (TopNav.test.tsx:85). Only the preceding comment's text was updated to match the label rename; the tool's diff-hunk heuristic likely mis-grouped the comment-only edit as isolated from the adjacent assertion line.",
+      "context": {
+        "title": "A test body was replaced with comments",
+        "file": "frontend/src/components/TopNav.test.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:9e8749b44c63ec50c20e5b8f3eb77e0d",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:32:20.523Z",
+      "reason": "Same false positive as D-0001 (deterministic finding on the identical claim) -- the assertion is present and unweakened, verified directly against the file.",
+      "context": {
+        "title": "Test body replaced with comment in TopNav test",
+        "file": "frontend/src/components/TopNav.test.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:72558fc8e130734384e76ba5d82e98b5",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:32:20.659Z",
+      "reason": "Mischaracterizes PR scope, not a bug: the rename intentionally applies to web too, per Dawn's explicit request in this session ('I think we need to change Home to My Clubs... navigation is confusing'). Several commits on this PR are deliberately general web fixes surfaced via iOS testing (the About-page Link bug, the open-mix-from-list feature), not iOS-exclusive -- that is this PR's actual, deliberate scope, not scope drift.",
+      "context": {
+        "title": "UI rename from \"home\" to \"my clubs\" affects all platforms",
+        "file": "frontend/src/components/TopNav.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:09c305fd7b3a1fd14e4715f0ca51f9e3",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:32:20.795Z",
+      "reason": "False positive: the tests exist. ClubHomeRoute.test.tsx has 'a themed mix #2 has no open mix button while mix #1 is still pending, and explains why' (line 881) and 'mix #2's open mix button appears once mix #1 has closed' (line 897), directly covering canOpenMix's hidden/disabled behavior. The LLM's own report notes a 100,000-char prompt truncation that likely excluded the test-file diff from what it reviewed.",
+      "context": {
+        "title": "Missing tests for forward-only mix opening UI logic",
+        "file": "frontend/src/pages/ClubHomeScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:b2dc4dcf3d58ee38944a4a58f6bc7bbd",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:32:20.935Z",
+      "reason": "Plausible in isolation but not a new regression: the new previous-mix check uses the exact same unlocked select(Mix)...scalar() pattern as the pre-existing 'another mix is already active' check three lines above it in the same function -- same file, same transaction, same discipline. If this class of race is a real concern it already existed before this PR; tracked as a real follow-up (MysteryMixClub-4vii.6) to add FOR UPDATE to both checks together rather than inconsistently to only the new one.",
+      "context": {
+        "title": "Potential race condition in forward-only mix opening check",
+        "file": "backend/app/api/routes/mixes.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:1f2ae8365f3e8f0afc097550627b09cd",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:32:21.077Z",
+      "reason": "No logging or persistence occurs anywhere in this flow -- verified via direct grep for print/NSLog/log. in both MusicPlugin.swift and MMCAPIClient.swift: zero matches. adoptSession's accessToken = token is a plain in-memory assignment, identical in kind to signIn()'s existing, already-accepted token handling (MMCAPIClient's own doc comment: 'never written to disk, the keychain, or the WebView').",
+      "context": {
+        "title": "Access token passed to native plugin without sanitization",
+        "file": "frontend/ios/App/App/MusicPlugin.swift"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:29ba5aa12f6cbeef75885ae4dd0bc58b",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:41:06.751Z",
+      "reason": "Re-assertion of an already-dismissed concern (prior run's F-005, same underlying claim). No logging of the token occurs anywhere (verified via grep, zero print/NSLog/log. calls touching it in either Swift file) -- adoptSession's assignment is a plain in-memory store, identical in kind to signIn()'s existing, already-accepted handling. 'Malicious plugin interception' isn't a credible threat model here: MMCMusicPlugin is the only plugin this app registers, no third-party plugin code is loaded. The Capacitor bridge carrying plain JS objects to native is the platform's only JS-to-native mechanism, not something this PR introduced or could avoid.",
+      "context": {
+        "title": "Access token exposed via Capacitor bridge to native code",
+        "file": "frontend/ios/App/App/MusicPlugin.swift"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:545a50a1cc6f41bc46fe9e9c98aec1b4",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:41:06.889Z",
+      "reason": "Inverted reasoning: excluding /admin from the iOS route table cannot bypass a server-side guard, because the two are independent -- the backend's authorization checks on admin endpoints are completely unaffected by which frontend routes exist. If anything this is additional restriction (one fewer client entry point on iOS), not a bypass. Matches the PRD's explicit requirement that platform-admin stays web-only (IOS-05).",
+      "context": {
+        "title": "Build‑time route exclusion creates divergent code paths",
+        "file": "frontend/src/App.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:54c6790f2826591347bc35786ae3e370",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:41:07.025Z",
+      "reason": "Process/PR-scope opinion, not a correctness defect. The rename and mobile menu are deliberate, explicit scope for this PR -- Dawn asked for the rename directly in this session ('I think we need to change Home to My Clubs'), and the hamburger menu was the fix for a real, already-reported bug (status bar overlap + unusable horizontal nav on mobile width) found while testing this same PR's core change. Both are tested (17 TopNav tests, all passing) and verified on a physical device.",
+      "context": {
+        "title": "Extensive UI rename and mobile menu added in same PR",
+        "file": "frontend/src/components/TopNav.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:b8d5bc1c638a9764094d60028e3c4633",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:41:07.162Z",
+      "reason": "Process/PR-scope opinion, not a correctness defect, and factually not 'unrelated': the capacitor.config.ts/vite.ios.config.ts/env-template changes are directly required for the PR's own stated goal (the real app reaching its backend and being debuggable inside the Capacitor shell) -- without the CORS origin and API base URL changes, the core feature this PR ships would not function at all.",
+      "context": {
+        "title": "Multiple unrelated configuration changes bundled together",
+        "file": "frontend/capacitor.config.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:5a95503e8cb3e0d35e8a3b2581b79e12",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:41:07.301Z",
+      "reason": "Mischaracterizes normal, intended behavior: import.meta.env.VITE_PLATFORM is undefined on every build except the iOS one by design, and undefined === 'capacitor' deterministically evaluates to false -- exactly the desired default (IS_NATIVE_BUILD false everywhere except the iOS build). This is not unexpected or undefined behavior in the JS sense; it's a normal, correct boolean comparison.",
+      "context": {
+        "title": "Platform flag may be undefined in non‑iOS builds",
+        "file": "frontend/src/lib/platform.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:8bf77f93fbf327452ad260d6b4123d64",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:41:07.439Z",
+      "reason": "Factually incorrect reading of the code: the mobile panel uses JS conditional rendering (`{menuOpen ? (...) : null}`), not CSS-based hiding -- it is not in the DOM at all when closed, so there is no 'unconditional rendering... relying on CSS to hide' and no reflow cost while closed. The sm:hidden CSS classes mentioned only apply to the always-mounted hamburger toggle button and desktop nav row, a separate and correct responsive-breakpoint technique already explained in the surrounding code comments.",
+      "context": {
+        "title": "Unconditional rendering of mobile menu panel may cause layout thrashing",
+        "file": "frontend/src/components/TopNav.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:f362f180a5e5df2686930a597ccffeb9",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:41:07.576Z",
+      "reason": "Known, already-documented tradeoff, not an oversight -- the code comment directly above this rule explains exactly why !important is necessary here (Tailwind's own text-sm utility class already sets font-size at equal-or-higher specificity than a bare element selector, so !important is the only way this override actually takes effect without a global type-scale change).",
+      "context": {
+        "title": "Hard‑coded CSS fix for iOS auto‑zoom uses !important",
+        "file": "frontend/src/index.css"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:fa758e5cb4972a19d2325d320ef8f91e",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-14T19:41:07.713Z",
+      "reason": "Already covered by the existing assertion, not missing: getAllByRole('button', { name: /^my clubs$/i }) matching exactly 2 elements IS the verification that both controls (the ring mark, whose accessible name comes from its aria-label, and the text link) share the same accessible name -- a mismatch between the visual label and the aria-label would make this exact assertion fail.",
+      "context": {
+        "title": "TopNav test only checks button count, not accessibility labels after rename",
+        "file": "frontend/src/components/TopNav.test.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:f230a5ad14c5a4f7ef0c47a047dcdd27",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T00:12:19.538Z",
+      "reason": "Inherent to Capacitor+Xcode: appId/appName in capacitor.config.ts (JS build tool) and PRODUCT_BUNDLE_IDENTIFIER in project.pbxproj / Info.plist (native Xcode build) are separate toolchains with no shared runtime -- npx cap sync does not propagate the identifier into the native project by design. Centralizing via codegen would be new infra for a 3-location, rarely-changed value; out of scope for this release-hygiene fix.",
+      "context": {
+        "title": "Bundle identifier hard‑coded in multiple disparate files",
+        "file": "frontend/capacitor.config.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:3e862051d2fd5af8c8ca38dd5cfa92b4",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T00:12:19.680Z",
+      "reason": "Same root cause as F-0001: capacitor.config.ts's appName and Info.plist's CFBundleDisplayName are independent config surfaces in Capacitor's own architecture, not an accidental duplication introduced here.",
+      "context": {
+        "title": "App display name duplicated across config and plist",
+        "file": "frontend/ios/App/App/Info.plist"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:ce5f789a07a5ea1acabb57e6cbd2226c",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T00:12:19.843Z",
+      "reason": "Pre-existing content, not introduced by this PR -- the email line was already in docs/ios/README.md since PR #326 (commit f4e5769), predating this branch. This PR only edited the neighboring App ID line in the same list. Repository is private; the address is the project owner's own, already recorded as the account tied to the Apple Developer team registering this app.",
+      "context": {
+        "title": "Personal email address exposed in documentation",
+        "file": "docs/ios/README.md"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:def623c2a06f4937beb508883afa4e2c",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T00:25:44.649Z",
+      "reason": "Not unrelated -- discovered and fixed as part of implementing this exact ticket: while wiring the release build's HTTPS base URL, I found the WebView's origin (capacitor://localhost) was missing from staging's live ALLOWED_ORIGINS despite being documented in staging.env.example since #329, verified with a CORS preflight and fixed on the Droplet. The doc update explains why that matters for whoever reads this file next.",
+      "context": {
+        "title": "Docs include unrelated CORS and origin details",
+        "file": "docs/ios/README.md"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:9a5bedf9825dfae28d57b519eb05e27a",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T00:25:44.786Z",
+      "reason": "The finding's own premise is inaccurate: the line it quotes already is the override mechanism (VITE_IOS_API_BASE_URL env var), not a hardcoded coupling -- changing the staging domain requires no code change, just setting that env var. A literal default value is normal and matches every other default in this codebase (e.g. api.ts's own http://127.0.0.1:8000 default).",
+      "context": {
+        "title": "Hard‑coded staging HTTPS URL couples build to a specific domain",
+        "file": "frontend/vite.ios.config.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:b897af8ee0a2482179e52e5baca8d1a5",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T00:25:44.923Z",
+      "reason": "Not a real leak: the URL a developer sees echoed back is one they themselves just typed into VITE_IOS_API_BASE_URL on their own machine/CI config -- there's no code path where this surfaces someone else's infrastructure info to an untrusted party. This is a fail-closed build guard, not a runtime error surfaced to end users.",
+      "context": {
+        "title": "Error message may expose internal non‑HTTPS endpoint URLs",
+        "file": "frontend/vite.ios.config.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:868dbffd16d1fd158457a5d17143a837",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T00:25:45.059Z",
+      "reason": "Stylistic opinion, not a defect -- this project's own CLAUDE.md explicitly calls for comments that capture non-obvious WHY context (a hidden constraint, a subtle invariant), which is exactly what this comment does. Reduced further after the F-0002 fix moved the substantive rationale into iosApiBaseUrl.ts's own docstring.",
+      "context": {
+        "title": "Verbose comment block in Vite config may become outdated",
+        "file": "frontend/vite.ios.config.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:6404c226b9d3511ac89406e6b9fe0853",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T22:25:24.275Z",
+      "reason": "api.ts is browser-only by construction -- this project has no SSR/Node rendering path anywhere (plain Vite SPA). window.location.origin was ALREADY used directly at both call sites before this PR (that's the exact bug being fixed); shareableOrigin only wraps that pre-existing access behind a platform branch, it doesn't introduce a new window dependency into a previously window-free module.",
+      "context": {
+        "title": "shareableOrigin accesses window in non‑browser contexts",
+        "file": "frontend/src/services/api.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:d810b0ece65aef957854b7fd6c671e45",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T22:25:24.410Z",
+      "reason": "api.ts is already platform-aware by design -- its own top-of-file comment documents API_BASE_URL being 'exported for the native iOS bridge (ADR 0032)' and resolved differently per-platform via vite.ios.config.ts vs vite.config.ts. IS_NATIVE_BUILD is already a first-class, widely-imported concept across this codebase (App.tsx's route table, etc.); one more small platform branch in the same module that already owns API_BASE_URL is consistent with the existing pattern, not a new coupling.",
+      "context": {
+        "title": "Platform detection introduced in API service creates tight coupling",
+        "file": "frontend/src/services/api.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:61ef4adc1beb10901b92fa6853bb3b4d",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T22:25:24.548Z",
+      "reason": "The native test asserts shareableOrigin() === API_BASE_URL generically (whatever that constant resolves to), so a VITE_API_BASE_URL override is already implicitly covered -- it isn't hardcoded against one literal value. window.location.origin being undefined isn't a reachable case in any real browser/WebView. On the resetModules concern: the new describe block is the last one in the file (tests run in declaration order) and explicitly calls vi.doUnmock + a second vi.resetModules() at the end of its own test to restore state -- it doesn't leak into tests that already ran before it or (there are none) after it.",
+      "context": {
+        "title": "shareableOrigin tests lack coverage for custom API_BASE_URL and edge cases",
+        "file": "frontend/src/services/api.test.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:2da3838f97240d2202d16989165a2af4",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T22:25:24.686Z",
+      "reason": "Not reachable on a real native build: MysteryMixClub-4vii.12 made vite.ios.config.ts's resolveIosApiBaseUrl() throw at build time unless VITE_IOS_API_BASE_URL resolves to an https:// URL (default https://staging.mysterymixclub.com), and its define block always injects that validated value as a concrete string -- import.meta.env.VITE_API_BASE_URL can never be undefined in an actual native build, so api.ts's own 127.0.0.1 fallback is dead code on iOS specifically, not a reachable leak.",
+      "context": {
+        "title": "Potential leakage of internal API base URL in invite links on native builds",
+        "file": "frontend/src/services/api.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:58be1298a8dd229bbb72764ad634c7c3",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T22:25:24.823Z",
+      "reason": "This import IS the fix -- adopting the new shared shareableOrigin() helper at both call sites instead of the broken window.location.origin is the entire point of this PR, not incidental scope expansion.",
+      "context": {
+        "title": "Unrelated import of shareableOrigin in AdminRoute and ClubHomeRoute",
+        "file": "frontend/src/pages/AdminRoute.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:4e37b0e457fb275c5f8705e0739d9b8a",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T22:31:30.638Z",
+      "reason": "Re-asserting the prior dismissal with the specific mechanism spelled out: IS_NATIVE_BUILD and API_BASE_URL are not independently-set values that could diverge -- both VITE_PLATFORM and VITE_API_BASE_URL are baked in by the SAME vite.ios.config.ts define block in the SAME build invocation, and resolveIosApiBaseUrl() throws synchronously during config evaluation (before that define block even runs) if the URL isn't https://. There is no code path that produces a bundle where IS_NATIVE_BUILD reads true at runtime while VITE_API_BASE_URL was left unset -- they are set together, atomically, by construction, not by convention.",
+      "context": {
+        "title": "Invite links may expose internal API base URL if env is misconfigured",
+        "file": "frontend/src/services/api.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:57ebd03aaf0f562bf581d8aa625689a4",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T22:31:30.775Z",
+      "reason": "Same as the prior round: this project has no SSR/Node rendering path anywhere -- it's a plain Vite SPA, and api.ts already assumed a browser (fetch, credentials:'include' cookies) long before this change. window.location.origin was already called directly at both existing call sites; this doesn't add a new browser dependency to a previously platform-neutral module.",
+      "context": {
+        "title": "Potential ReferenceError in non‑browser environments due to window access",
+        "file": "frontend/src/services/api.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:0153be397dac7f823f9e792771952cab",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T22:31:30.913Z",
+      "reason": "api.ts already documents itself as platform-aware (its own header comment: API_BASE_URL 'exported for the native iOS bridge (ADR 0032)'), and IS_NATIVE_BUILD is already a first-class concept imported across the codebase (App.tsx's route table). One more small platform branch in the module that already owns API_BASE_URL is consistent with the established pattern.",
+      "context": {
+        "title": "API service now contains platform‑specific UI logic",
+        "file": "frontend/src/services/api.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:99838362c3294d59f55b11ce78c3de79",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T22:31:31.054Z",
+      "reason": "vitest.config.ts sets environment: 'jsdom' project-wide, which always provides window.location.origin -- there is no configuration in this suite where it's absent, so this isn't a reachable flakiness risk here. The native test already asserts against the live API_BASE_URL constant (not a hardcoded string), so an env override is implicitly covered without needing a separate case.",
+      "context": {
+        "title": "shareableOrigin tests miss critical edge cases and rely on real window",
+        "file": "frontend/src/services/api.test.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:d8acbe9d39f41b66918478f3ca4ec917",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T22:31:31.193Z",
+      "reason": "Same architectural-opinion finding as F-003 from a different angle -- api.ts already exports platform-relevant surface (API_BASE_URL itself). Not a defect.",
+      "context": {
+        "title": "Exporting UI helper from API module pollutes public API surface",
+        "file": "frontend/src/services/api.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:409f3714b9fbdf4025fc5032edb49ffd",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T22:31:31.329Z",
+      "reason": "This dependency is the fix itself (replacing the broken window.location.origin with the shared helper), not incidental scope. Bundle-size impact of one small conditional function is not measurable.",
+      "context": {
+        "title": "AdminRoute and ClubHomeRoute now depend on shareableOrigin helper",
+        "file": "frontend/src/pages/AdminRoute.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:1d6deab566008acf7b2d6361530cdae8",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T22:31:31.469Z",
+      "reason": "Factually incorrect premise: shareableOrigin() is not 'merely returning a constant' -- it's a conditional that returns one of two different values (API_BASE_URL or window.location.origin) depending on IS_NATIVE_BUILD, which is exactly why it can't be inlined as a single constant at either call site.",
+      "context": {
+        "title": "Unnecessary function call for each invite generation",
+        "file": "frontend/src/pages/ClubHomeRoute.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:47802c294038a535f42ed6ae4f9de4e0",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T23:36:26.042Z",
+      "reason": "Verified: frontend/public/ (the only source of dotfiles in dist/, alongside Vite's own compiled output) currently contains only fonts/, llms.txt, manifest.json, robots.txt, service-worker.js, and .well-known/ -- no .env, no .git, nothing sensitive. More importantly, frontend/public/ is Vite's publicDir by design: everything placed there is meant to be served verbatim at the site root, dotfile or not (that's the entire point of this PR -- we WANT .well-known/apple-app-site-association served). A stray secret dropped into public/ would already be equally exposed via a non-dotted filename; the previous dist/* bug only ever provided accidental, unintended protection that nothing relied on -- it's what was silently breaking Universal Links.",
+      "context": {
+        "title": "Potential exposure of sensitive dotfiles via blanket copy",
+        "file": "scripts/deploy-prod.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:9f57363731531474861357465c47b52a",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T23:36:26.174Z",
+      "reason": "Same reasoning as F-0001 -- staging's public/ directory is the identical source tree as prod's, both fully public by design, nothing sensitive present today.",
+      "context": {
+        "title": "Same dotfile exposure risk introduced to staging deployment",
+        "file": "scripts/deploy-staging.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:8e0d704fc423e84e79d7d395a551ff06",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T23:36:26.313Z",
+      "reason": "A whitelist would change the script's fundamental design, not fix a defect in this one-line change -- 'copy the whole build output' is the pre-existing, intended behavior (that's why the script already does find -delete + cp -r dist/* on the ENTIRE tree, not a curated subset). This fix makes that already-intended behavior actually correct rather than accidentally partial.",
+      "context": {
+        "title": "Tight coupling to build artifact layout without validation",
+        "file": "scripts/deploy-prod.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:3233473d6492438e685b01cfce314d43",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T23:36:26.465Z",
+      "reason": "Reasonable future idea, but out of scope for a one-line bash bug fix -- these deploy scripts have no existing test suite of any kind (they're ops scripts, not application code), and a live-deploy smoke test is a different, larger piece of infrastructure than this PR touches.",
+      "context": {
+        "title": "No automated verification for dotfile inclusion",
+        "file": "scripts/deploy-prod.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:3153af2b39b18589c5484a0b1ae678ae",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T23:41:13.777Z",
+      "reason": "Same reasoning as the prior round: frontend/public/ (the only source of dotfiles alongside Vite's own compiled output) currently contains nothing sensitive, and it's Vite's publicDir by design -- everything placed there is meant to be publicly served, dotfile or not. That is the entire point of this fix (we WANT .well-known served). A stray secret in public/ would be equally exposed via a non-dotted filename; this isn't a new class of risk the dist/. change introduces.",
+      "context": {
+        "title": "Unrestricted deployment of any dotfile may expose future secrets",
+        "file": "scripts/deploy-prod.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:36a94a9621c73a2e09f8e4cc0186b2b0",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T23:41:13.913Z",
+      "reason": "Committing .flaught-dismissals.json is the tool's own required workflow, not scope creep -- its own CLI output says verbatim 'Commit .flaught-dismissals.json so CI picks up this dismissal' after every dismiss. Every PR in this repo that has needed a dismissal has committed the updated file in the same PR all session.",
+      "context": {
+        "title": "Bulk addition of Flaught dismissals unrelated to the deploy fix",
+        "file": ".flaught-dismissals.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:3e830c1f86af49ead18d58a81bba5b19",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T23:41:14.056Z",
+      "reason": "Both scripts are shebanged #!/usr/bin/env bash explicitly (verified), not /bin/sh -- there is no dash/POSIX-sh portability concern here, they already commit to bash throughout (set -euo pipefail, [[ ]], etc. elsewhere in both files).",
+      "context": {
+        "title": "Bash‑specific glob semantics make the script non‑portable",
+        "file": "scripts/deploy-prod.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:8832c008536ab4a552dc36f67f2fb512",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T23:41:14.193Z",
+      "reason": "Real but pre-existing duplication -- deploy-staging.sh and deploy-prod.sh were already near-identical scripts with the same structure before this PR (same find -delete pattern, same comment style, etc. throughout both files). This fix corrects the same bug in both already-duplicated locations rather than introducing new duplication; extracting a shared helper is a legitimate but separate refactor, out of scope for a targeted one-line bug fix in two places.",
+      "context": {
+        "title": "Duplicated copy logic across prod and staging scripts",
+        "file": "scripts/deploy-staging.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:6ac763f2dce5d7944ef6482f20e594d6",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T23:41:14.329Z",
+      "reason": "Factually incorrect -- verified directly: 'cp -r src/. dest/' does NOT create a literal '.' entry in the destination. find dest -maxdepth 1 after the copy shows exactly dest, dest/index.html, dest/.well-known -- no spurious '.' directory. This is standard, well-known cp/rsync/tar idiom for including dotfiles, not a bug.",
+      "context": {
+        "title": "`cp -r dist/.` may create an extra `.` directory entry in the target",
+        "file": "scripts/deploy-prod.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:49f03647b497b9b7aced291661d2e018",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T23:58:33.126Z",
+      "reason": "Pre-existing characteristic of the script, not introduced by this fix -- the find -delete then cp -r dist/* pattern (non-atomic by construction) already existed in both scripts before this PR; the only change here is dist/* -> dist/. to stop dropping dotfiles. Atomicity/rollback is a legitimate but separate improvement to the deploy strategy as a whole, out of scope for a targeted one-line bug fix.",
+      "context": {
+        "title": "Non‑atomic deploy can leave web root empty on copy failure",
+        "file": "scripts/deploy-prod.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:cc5c160fbcb0e74f7752b51553e2f1de",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-15T23:58:33.265Z",
+      "reason": "Same pre-existing duplication raised in two prior rounds of this same review -- deploy-staging.sh and deploy-prod.sh were already near-identical scripts before this PR. This fix corrects the same bug in both already-duplicated locations; extracting a shared helper is a legitimate but separate refactor.",
+      "context": {
+        "title": "Duplicated deployment logic across prod and staging scripts",
+        "file": "scripts/deploy-staging.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:63773b06fc222c8aa9dfebd4b222ec35",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T00:14:41.387Z",
+      "reason": "Repeat of a finding already dismissed twice in this same review chain (rounds 1 and 2) -- frontend/public/ (the only source of dotfiles in dist/ besides Vite's own compiled output) is verified clean of anything sensitive today, and is Vite's publicDir by design: everything there is meant to be publicly served. This is not a new risk class introduced by dist/* -> dist/., it's the deploy script finally doing what it was always meant to do.",
+      "context": {
+        "title": "Accidental deployment of hidden VCS metadata (e.g., .git) if present in dist",
+        "file": "scripts/deploy-prod.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:7c78dded9bd30aced2e2ed6dbb18e8a6",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T00:14:41.521Z",
+      "reason": "'dist' is Vite's own actual, already-hardcoded output directory name -- both scripts already reference it by name multiple times elsewhere (npm run build, cd into frontend, etc.), predating this PR entirely. This one-line fix doesn't introduce a new coupling to the path; it fixes a glob bug within an already-dist-specific script.",
+      "context": {
+        "title": "Hard‑coded build artifact path couples deployment scripts to Vite output layout",
+        "file": "scripts/deploy-staging.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:ee16e501cdd062f30d2592c163a262d5",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T00:14:41.662Z",
+      "reason": "Stylistic opinion, not a defect -- this project's own CLAUDE.md calls for comments capturing non-obvious WHY context (a hidden constraint, a subtle bug), which is exactly what this comment does for a bug that was genuinely non-obvious (a silent bash glob gap that broke Universal Links for days without any error anywhere).",
+      "context": {
+        "title": "Verbose inline comment duplicates dismissal rationale, adding noise",
+        "file": "scripts/deploy-prod.sh"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:b131456151ae7f4da930cce8d14059fb",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T02:48:48.127Z",
+      "reason": "Deliberate design tradeoff, documented in the plugin's own header comment: these are plain consumables with NO server-tracked entitlement to protect -- nothing unlocks based on a tip. A spoofed local purchase (which requires jailbreaking, not something StoreKit's own real-purchase flow allows) would only fool the spoofer's own device into showing a thank-you message with zero effect on any other user, club feature, or access control -- there is no security boundary being crossed. The 'revenue tracking impossible' point is a real but separate product nicety (analytics), not a functional or security defect.",
+      "context": {
+        "title": "No server‑side receipt verification for consumable purchases",
+        "file": "frontend/ios/App/App/TipsPlugin.swift"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:1d28fb7594ccf7a74a85606e9d02818a",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T02:48:48.272Z",
+      "reason": "Fixed -- added two tests: an empty-array getProducts response renders nothing, and a 'pending' purchase status (e.g. Ask to Buy) shows neither a thank-you nor an error, matching the same pattern already used for 'cancelled'.",
+      "context": {
+        "title": "Missing tests for pending purchase and empty product list paths",
+        "file": "frontend/src/components/NativeTipJar.test.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:1492b3133038f00f68e8181ee3e15cb1",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T02:48:48.409Z",
+      "reason": "Three static string literals across a Swift file (needs them to call StoreKit), a docs file (needs them to tell Dawn what to create in App Store Connect), and a test fixture (needs realistic ids) -- there's no meaningful way to share a literal across Swift/Markdown/TypeScript without introducing a build-time codegen step, which would be real new infrastructure for values that are set once at IAP product creation and essentially never change.",
+      "context": {
+        "title": "Hard‑coded StoreKit product IDs duplicated across code, docs, and tests",
+        "file": "frontend/ios/App/App/TipsPlugin.swift"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:50307ac7f1d9955c74de1aa73f8b5749",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T02:48:48.548Z",
+      "reason": "Same mocking strategy already established for every native Capacitor plugin wrapper in this codebase (see AppleMusicPlaylist.test.tsx's identical vi.mock(\"../ios/music\", ...) pattern) -- not a new gap introduced here, it's this project's existing, accepted approach to testing native-bridge code from the JS side. Real-device verification (which this PR also includes: ARCHIVE SUCCEEDED + simulator BUILD SUCCEEDED) is what actually exercises the Capacitor runtime registration.",
+      "context": {
+        "title": "Mocking strategy for Capacitor plugin may mask real integration bugs",
+        "file": "frontend/src/components/NativeTipJar.test.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:8d082b70d074fa45615abf61a6822dd1",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T02:48:48.692Z",
+      "reason": "Same architectural point as F-0001 from a different angle -- there is no entitlement to track because tips deliberately unlock nothing. Nothing here mixes UI and payment handling incorrectly; NativeTipJar owns presentation, MMCTipsPlugin owns the StoreKit transaction, cleanly separated same as the existing Apple Music plugin boundary.",
+      "context": {
+        "title": "Tip feature is client‑only with no backend entitlement, violating separation of concerns",
+        "file": "frontend/src/components/NativeTipJar.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:64ffe228fbc0e6368a10481178b5abf4",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T02:48:48.828Z",
+      "reason": "The docs describe exactly the feature shipped in this PR and the one manual setup step required for it to function at all -- this is core to the change, not unrelated scope.",
+      "context": {
+        "title": "Documentation updates unrelated to code change",
+        "file": "docs/ios/README.md"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:1fcd4235a6f0eebd6ba9e12b4b5d5f34",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T02:54:00.203Z",
+      "reason": "Fixed -- added a test that unmounts before getProducts resolves, then resolves it, asserting no throw (the cancelled flag correctly guards the post-unmount setState).",
+      "context": {
+        "title": "Missing test for component unmount during async product load",
+        "file": "frontend/src/components/NativeTipJar.test.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:ea5daa7250de02d77976082a9200cb68",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T02:54:00.343Z",
+      "reason": "Repeat of a finding already dismissed in the prior review round with the same reasoning: three static string literals across Swift/Markdown/TypeScript-test-fixture have no meaningful shared-source mechanism without introducing real build-time codegen infrastructure for values set once and never changed.",
+      "context": {
+        "title": "Hard‑coded StoreKit product IDs duplicated across Swift, docs, and tests",
+        "file": "frontend/ios/App/App/TipsPlugin.swift"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:348e821c3b036c4af7d3ccbb37282c9a",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T02:54:00.496Z",
+      "reason": "Repeat of a finding already dismissed in the prior review round -- deliberate design tradeoff documented in the plugin's own header comment: plain consumables with no entitlement to protect, so a spoofed local purchase (requiring a jailbreak) only fools the spoofer's own device with zero effect on any other user or feature.",
+      "context": {
+        "title": "No server‑side receipt verification for consumable purchases",
+        "file": "frontend/ios/App/App/TipsPlugin.swift"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:3786a023e82ffe4044caa39528bcaeb0",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T02:54:00.632Z",
+      "reason": "Same established pattern as this codebase's existing AppleMusicPlaylist.tsx, which branches on nativeMusicAvailable() the identical way -- not new coupling introduced here, it's how every native-vs-web UI branch in this app already works.",
+      "context": {
+        "title": "Conditional UI logic tightly couples platform detection to business UI",
+        "file": "frontend/src/pages/AboutRoute.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:39c5f294179a6670a88e9f172dd68672",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T02:54:00.767Z",
+      "reason": "Stylistic preference -- the file already has one top-level describe() wrapping all cases, matching this session's other new test files (e.g. ReportContentModal.test.tsx) in this same codebase. Nested per-scenario describe blocks aren't this project's established convention.",
+      "context": {
+        "title": "Large inline test file without logical grouping",
+        "file": "frontend/src/components/NativeTipJar.test.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:829bb7d059275aa01d1858d58cb3cf5a",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T03:31:55.895Z",
+      "reason": "False positive: this is a pre-existing negative test (test_state_signed_elsewhere_is_rejected, unrelated to this PR's diff) that deliberately signs a JWT with the WRONG secret ('not-the-secret') to verify the callback rejects a forged state. It is a test fixture demonstrating rejection, not a real credential.",
+      "context": {
+        "title": "python.jwt.security.jwt-hardcode.jwt-python-hardcoded-secret",
+        "file": "backend/tests/test_auth_google.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:58610d6e121f38fd607347cd8b74c24c",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T03:31:56.055Z",
+      "reason": "Same underlying line as D-0001 (LLM's quoted snippet doesn't match the actual file content -- hallucinated). test_state_signed_elsewhere_is_rejected intentionally signs with a wrong secret to prove signature verification rejects it; not a real secret, and not part of this PR's diff at all.",
+      "context": {
+        "title": "Hardcoded JWT secret in test suite",
+        "file": "backend/tests/test_auth_google.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:c3f0a34f6bb3f59d2c7f0ae8aa2e9931",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T03:31:56.194Z",
+      "reason": "SignInState.native is a keyword-only parameter with a default (native: bool = False) on create_sign_in_state, and decode_sign_in_state always constructs the tuple explicitly by name. Every consumer in the codebase accesses fields by attribute (.native, .nonce, .code_verifier), never positional unpacking, so there is no breaking-change risk.",
+      "context": {
+        "title": "SignInState tuple signature changed, risk of breaking callers",
+        "file": "backend/app/auth/jwt.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:2b73d74df5578d74498ab0de452371bd",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T03:31:56.331Z",
+      "reason": "The exchange code is generated via secrets.token_urlsafe(32) (app/auth/tokens.py), the same cryptographically-random, 256-bit token already used for magic-link and password-reset tokens elsewhere in this codebase with no additional rate limiting -- brute-forcing it within the 2-minute TTL is infeasible. Consistent with existing precedent, not a new gap.",
+      "context": {
+        "title": "OAuthExchangeCode exchange endpoint lacks rate limiting",
+        "file": "backend/app/api/routes/auth.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:2650a399209465d9394cb975daa34ba6",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T03:31:56.466Z",
+      "reason": "This test already exists: test_native_failure_also_redirects_to_the_custom_scheme (backend/tests/test_auth_google.py, added in this PR) asserts an invite_required failure redirects to the mysterymixclub:// scheme with outcome=invite_required and no code param. The finding's claim that this path is untested is incorrect.",
+      "context": {
+        "title": "Missing test for native error redirect path",
+        "file": "backend/tests/test_auth_google.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:73afb069132495ea9970e428dc967c9d",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T03:31:56.605Z",
+      "reason": "The UI changes (GoogleSignInButton onClick variant, EmailEntryScreen wiring, LoginRoute native handler, iOS plugin registration) are the client half of the same native sign-in fix, not incidental scope creep -- the backend exchange-code endpoint has no caller without them. Docs updates document this same change per repo convention (every other fix this cycle added a corresponding docs/ios/README.md section).",
+      "context": {
+        "title": "Extensive UI changes beyond core auth fix",
+        "file": "frontend/src/components/GoogleSignInButton.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:5b17663c3f91bd9fb4bfbf55e09d8502",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T03:32:35.345Z",
+      "reason": "Addressed: added cross-reference comments in both GoogleAuthPlugin.swift (callbackScheme) and auth.py (_NATIVE_CALLBACK_SCHEME) pointing at each other, so a future edit to one is flagged for the other. Also corrected a stale comment claiming Info.plist CFBundleURLTypes registration was needed (verified false during this fix's development -- ASWebAuthenticationSession intercepts the scheme itself).",
+      "context": {
+        "title": "Duplicate native callback scheme string in Swift and Python",
+        "file": "frontend/ios/App/App/GoogleAuthPlugin.swift"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:3ad742b6072ca8aff0e652c30ddf2fc6",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T14:31:56.771Z",
+      "reason": "Addressed: AppleSignInError messages in apple_signin.py no longer interpolate claim values (aud/iss) or wrapped third-party JOSEError text -- every message is now a fixed, static string describing the failure category only. Verified no test or other code depends on the removed interpolation.",
+      "context": {
+        "title": "python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure",
+        "file": "backend/app/api/routes/auth.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:8c3371317976d1bbf801cd8b75cef14d",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T14:31:56.918Z",
+      "reason": "Addressed: same fix as D-0001. logger.warning still logs str(exc) for diagnosability, but exc's message is now always a static category string (e.g. 'unexpected audience', 'identity token has expired') with no claim values or token fragments -- nothing sensitive reaches the log.",
+      "context": {
+        "title": "Logging exception may expose sensitive Apple token data",
+        "file": "backend/app/api/routes/auth.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:aac43ed50b7458450b15184488f608a5",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T14:31:57.057Z",
+      "reason": "Addressed: same fix. The logger.warning template itself is unchanged (it has to log something to be useful), but what it interpolates is now a fixed, non-secret category string rather than claim values or wrapped library exception text.",
+      "context": {
+        "title": "Potential credential leakage via logger message template",
+        "file": "backend/app/api/routes/auth.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:f1ba228138b4bfef6d487fe93c71bfaf",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T14:31:57.194Z",
+      "reason": "Addressed: added assertions to the 'renders alongside google' test confirming both buttons sit in separate flex-1 wrappers that are siblings inside one shared flex row, not just that both buttons exist.",
+      "context": {
+        "title": "LoginRoute test does not verify side‑by‑side layout",
+        "file": "frontend/src/pages/LoginRoute.test.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:a4f291d0b0ac74127d92b157aad380b5",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T14:31:57.329Z",
+      "reason": "Factually incorrect: flex-1 was never added to the button components (GoogleSignInButton.tsx/AppleSignInButton.tsx) -- only to the wrapper divs in EmailEntryScreen.tsx that use them, which is exactly where layout decisions belong. Only min-w-0 was added to the button components themselves, which is a no-op when the button isn't inside a constrained flex parent (removes a default min-content floor, doesn't impose stretching) -- it doesn't reduce reusability in an unconstrained context.",
+      "context": {
+        "title": "Button components now embed layout constraints (min‑w‑0, flex‑1)",
+        "file": "frontend/src/components/AppleSignInButton.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:7d990aea39da334ac3d4edc427ec16e6",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T14:31:57.467Z",
+      "reason": "False positive: MysteryMixClub-<id> bead references in inline comments are this codebase's established, deliberate convention throughout -- the exact same pattern appears in dozens of already-shipped, reviewed comments across this session's own work (e.g. every existing comment citing MysteryMixClub-4vii.21, MysteryMixClub-ali8.4, etc.). Not a new or inconsistent pattern.",
+      "context": {
+        "title": "Cryptic inline comments add noise",
+        "file": "frontend/src/components/GoogleSignInButton.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:e9aea24f7b3b6b47107f2de741598c13",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T16:17:36.798Z",
+      "reason": "Addressed: signIn() now rejects outright if a call is already pending instead of silently overwriting pendingCall, so a second tap while the sheet is presenting can no longer leave the first call's promise unresolved.",
+      "context": {
+        "title": "Potential race condition with pendingCall in AppleAuthPlugin",
+        "file": "frontend/ios/App/App/AppleAuthPlugin.swift"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:5a81bedb7b3dcb210db5cb893e2ecf9c",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T16:17:36.934Z",
+      "reason": "Addressed: the margin is now gated on Capacitor.getPlatform() === 'ios' at the call site in EmailEntryScreen.tsx, so web gets no margin at all -- previously it applied unconditionally to both. Verified via a new test (LoginRoute.test.tsx) asserting the margin class is present on ios and absent on web.",
+      "context": {
+        "title": "Platform‑specific layout hack embedded in EmailEntryScreen",
+        "file": "frontend/src/pages/EmailEntryScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:3f1276fa37051c7e97ed9c8d68808083",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T16:17:37.069Z",
+      "reason": "Frontend portion addressed: added tests asserting the native-only margin behavior on both platforms. The Swift portion (AppleAuthPlugin's non-canceled-error path) is intentionally not covered by XCTest -- this codebase verifies every native Swift plugin (GoogleAuthPlugin, TipsPlugin, MusicPlugin) via a real xcodebuild archive rather than unit tests, an established, consistent convention for this project, not an oversight specific to this PR.",
+      "context": {
+        "title": "Missing tests for Apple sign‑in error handling and UI margin change",
+        "file": "frontend/ios/App/App/AppleAuthPlugin.swift"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:d87e8023b2ad83a2be1268783fd113b1",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T16:23:40.626Z",
+      "reason": "Addressed: removed the direct Capacitor import from EmailEntryScreen.tsx. It now takes a new isNativeIOS boolean prop, same pattern as every other native/web difference this presentational component already takes as a prop (onNativeGoogleSignIn, onNativeAppleSignIn) -- the actual Capacitor.getPlatform() call moved to LoginRoute.tsx, which is the container that already owns platform detection for this screen.",
+      "context": {
+        "title": "UI component directly queries Capacitor platform, breaking separation of concerns",
+        "file": "frontend/src/pages/EmailEntryScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:142037eee60588dc09ef2a706fbb39f5",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T16:23:40.780Z",
+      "reason": "Re-raise of a finding already dismissed in this PR's prior round: this codebase verifies every native Swift plugin (GoogleAuthPlugin, TipsPlugin, MusicPlugin, and now AppleAuthPlugin) via a real xcodebuild archive rather than XCTest, an established, consistent convention, not an oversight specific to this change. The new guard and requestedScopes assignment were both verified this way (ARCHIVE SUCCEEDED).",
+      "context": {
+        "title": "AppleAuthPlugin lacks unit tests for new signIn guard and requestedScopes",
+        "file": "frontend/ios/App/App/AppleAuthPlugin.swift"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:543b18778091e37b12fb65534e98abbf",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T16:23:40.917Z",
+      "reason": "Re-raise of a finding already dismissed in this PR's prior round: same Swift-XCTest-convention reasoning as F-0001 above.",
+      "context": {
+        "title": "Missing tests for AppleAuthPlugin non‑canceled error path",
+        "file": "frontend/ios/App/App/AppleAuthPlugin.swift"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:06946968fb847632b9eec6e133dd8e27",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T16:23:41.054Z",
+      "reason": "Deliberate, not accidental scope: the logo nudge was explicitly requested by the user in the same conversation as the .email scope fix, and both are small native-iOS changes that need the same xcodebuild-archive verification cycle -- bundling them avoided a second unrelated native rebuild for a one-line change. Not unrelated scope creep from nowhere.",
+      "context": {
+        "title": "Login logo margin tweak unrelated to Apple .email scope fix",
+        "file": "frontend/src/pages/EmailEntryScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:d30ff80497bbc454a6cce4dbf7065927",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-16T16:23:41.188Z",
+      "reason": "The 10px value is a specific, deliberate device-measured offset from live TestFlight testing (not a design-system spacing token), and is used in exactly one place with a comment explaining why -- introducing a named constant for a single one-off pixel nudge would be overengineering for what it is.",
+      "context": {
+        "title": "Magic‑number CSS class \"mt-[10px]\" hard‑coded in component",
+        "file": "frontend/src/pages/EmailEntryScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:c808944375cb3ec10838dac486fde9fd",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:23:54.532Z",
+      "reason": "Factually incorrect about the backend: UserProfileUpdate (backend/app/api/routes/users.py) has every field Optional with default None, and update_me only applies fields explicitly provided (partial PATCH semantics). This exact pattern is already used by updateDisplayName, updatePreferredService, and acceptTerms in this same file -- sending a partial body to PATCH /users/me is the established, safe convention, not new risk.",
+      "context": {
+        "title": "`updateNotificationPreferences` PATCH may unintentionally overwrite other profile fields",
+        "file": "frontend/src/services/api.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:53042a835c9068b1c6c0677828c00f63",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:23:54.667Z",
+      "reason": "Not a real vulnerability: GET/PATCH /users/me is authenticated via get_current_user and returns only the calling user's own profile -- there is no cross-user enumeration path. The same reasoning would flag every other boolean already on this response (has_password, google_linked, tos_accepted, email_notifications), none of which were flagged when they shipped.",
+      "context": {
+        "title": "New notification preference fields exposed to web client may leak user privacy preferences",
+        "file": "frontend/src/services/api.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:12e72157e414d1721a4f37707b729a58",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:31:02.652Z",
+      "reason": "Not exploitable: updateNotificationPreferences is only ever called internally with a hardcoded whitelisted key (see handleTogglePreference), never with user-controlled property names. Even if it were, the backend's UserProfileUpdate (Pydantic) already strictly whitelists fields server-side -- TypeScript's Partial<> was never the enforcement boundary. This reasoning would flag every typed API call in the codebase.",
+      "context": {
+        "title": "Client‑side type enforcement may allow arbitrary fields in PATCH",
+        "file": "frontend/src/services/api.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:7904b75662dbbdced07f3c86f0055d08",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:31:02.787Z",
+      "reason": "Based on a mistaken premise: pushAvailable (platform capability) and the OS permission status are intentionally independent -- the preferences toggles reflect an ACCOUNT-level setting that exists regardless of whether OS permission was ever granted (matches the separate NotificationsSection component, which already owns the permission-status UI on its own). Nothing in NotificationPreferencesSection reads pushPermissionStatus, so there is no gating behavior to test here. Also cites a nonexistent file (ProfileScreen.test.tsx does not exist; ProfileScreen is tested via ProfileRoute.test.tsx).",
+      "context": {
+        "title": "Missing tests for push‑availability gating logic",
+        "file": "frontend/src/pages/ProfileScreen.test.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:b2b871ab615c4874cccc7497be3d46ab",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:31:02.923Z",
+      "reason": "Factually wrong: the dependency is unidirectional, not bidirectional. ProfileRoute.tsx imports the type from ProfileScreen.tsx; ProfileScreen.tsx imports nothing from ProfileRoute.tsx. A presentational component exporting its own prop-type contract for its container to import is a standard, idiomatic React pattern, not tight coupling.",
+      "context": {
+        "title": "Cross‑module type export creates tight coupling between UI and container",
+        "file": "frontend/src/pages/ProfileRoute.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:728e871df910d7d11bfed0e2b7bd808b",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:31:03.059Z",
+      "reason": "Generic size nitpick with no concrete failure scenario. ProfileScreen.tsx already held multiple analogous section components (ArchivedClubs, AccountSettingsSection, SetPasswordForm, NotificationsSection) before this PR -- NotificationPreferencesSection/PreferenceCheckbox follow the exact same established per-section-component pattern, not a new concern.",
+      "context": {
+        "title": "ProfileScreen component now exceeds typical size, mixing concerns",
+        "file": "frontend/src/pages/ProfileScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:b49d2fc538628b106ac4c3936d10c515",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:31:03.196Z",
+      "reason": "Factually incorrect about vitest semantics: toHaveBeenCalledWith already performs an exact deep-equal match on the arguments (not a subset/partial match like expect.objectContaining) -- an extra field in the payload would already fail this assertion.",
+      "context": {
+        "title": "Mocks for updateNotificationPreferences do not assert exact payload shape",
+        "file": "frontend/src/pages/ProfileRoute.test.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:40fdb672e32eea36f03dd3762d3ef596",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:36:30.773Z",
+      "reason": "Same as previous round's finding: factually the dependency is unidirectional (ProfileRoute imports from ProfileScreen; ProfileScreen imports nothing from ProfileRoute). A presentational component exporting its own prop-type contract for its container to import is standard, idiomatic React, not reverse coupling.",
+      "context": {
+        "title": "Container imports UI type, creating reverse dependency",
+        "file": "frontend/src/pages/ProfileRoute.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:4aef0e7ba5a6f186c4b249b02ae30d0d",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:36:30.907Z",
+      "reason": "Doesn't apply to this system's deployment topology: frontend and backend are a single monorepo deployed atomically by the same CI/CD pipeline to one Droplet per environment (docs/ci-cd.md) -- there is no independent-version-skew scenario where this frontend build runs against a backend lacking these fields. UserProfileResponse also declares all three fields as required (non-Optional), not nullable, so the backend itself guarantees their presence on every response.",
+      "context": {
+        "title": "Assumes new profile fields are always present, risking runtime errors",
+        "file": "frontend/src/pages/ProfileRoute.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:b34030e15105b1a7300ba8c030334205",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:36:31.042Z",
+      "reason": "Same reasoning as F-002: this project has no independent frontend/backend version-skew path (single monorepo, atomic deploy per docs/ci-cd.md), and the backend schema declares these three fields as required, not optional -- there is no real scenario for a profile payload missing them to test against.",
+      "context": {
+        "title": "Missing test for missing notification fields in backend response",
+        "file": "frontend/src/pages/ProfileRoute.test.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:6d94cfa8ca9461536e8893443f0d0e01",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:36:31.177Z",
+      "reason": "Same generic size nitpick as the previous round, no concrete failure scenario. ProfileScreen.tsx already held multiple analogous section components (ArchivedClubs, AccountSettingsSection, SetPasswordForm, NotificationsSection) before this PR; NotificationPreferencesSection/PreferenceCheckbox follow that exact established pattern.",
+      "context": {
+        "title": "Large inline NotificationPreferencesSection bloats ProfileScreen",
+        "file": "frontend/src/pages/ProfileScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:b318d8490b18858f5f353ebd3707f8d4",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:36:31.320Z",
+      "reason": "Same theme as the previous round's F-003: TypeScript's Partial<> was never the enforcement boundary. updateNotificationPreferences is only ever called internally with hardcoded whitelisted keys, and the backend's Pydantic model already strictly whitelists fields server-side regardless of what the client sends.",
+      "context": {
+        "title": "Potential over‑permissive PATCH payload if future callers misuse updateNotificationPreferences",
+        "file": "frontend/src/services/api.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:180434a7ef210e9c50bb6dadd82c7b34",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:53:02.346Z",
+      "reason": "Not a new pattern: this is the exact secret-management convention this entire project already uses for every credential (SECRET_KEY, DATABASE_URL, GOOGLE_CLIENT_SECRET, and APPLE_MUSIC_PRIVATE_KEY itself, same one-line \\\\n-escaped PEM). .env.example files ship with blank placeholders only, never real values; the actual secret lives solely in /etc/mysterymixclub/{staging,prod}.env on each Droplet, never in git. This is standard 12-factor config, not the anti-pattern described, and matches docs/git-hygiene.md's own 'never commit real secret values' rule this doc explicitly restates.",
+      "context": {
+        "title": "Guidance to store PEM key in env may encourage secret leakage",
+        "file": "docs/staging-setup.md"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:2d3c8263c2f8da014acdcc9eaaa0b73f",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:53:02.479Z",
+      "reason": "Intentional, not accidental: this triplication (.env.example + staging.env.example + prod.env.example) is exactly docs/ci-cd.md's own documented 'Adding a new secret' 4-step routine, followed identically by every other secret already in this codebase (APPLE_MUSIC_*, GOOGLE_CLIENT_*, RESEND_*). Staging and prod are separate Droplets that must never share secret values, so genuinely separate templates are required, not consolidatable.",
+      "context": {
+        "title": "Duplicate push‑notification env entries across multiple files",
+        "file": ".env.example"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:e8f75cfa4eaeff419759f439cceaa45a",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:53:02.619Z",
+      "reason": "Factually incorrect about the architecture: APPLE_MUSIC_TEAM_ID is not an Apple-Music-specific setting removed when Apple Music is 'disabled' -- Apple Music is hidden by omitting APPLE_MUSIC_KEY_ID/APPLE_MUSIC_PRIVATE_KEY per the already-documented 'all three or none' gate; the Team ID is a stable Apple Developer account identifier that can be set with zero Apple Music configuration otherwise (explicitly documented in this same PR: 'no Apple Music setup required to fill it in'). This reuse was also implemented and merged in Phase 1 (PR #349, apple_push_token.py) -- this docs PR describes already-shipped code, it doesn't introduce the coupling.",
+      "context": {
+        "title": "Push service reuses Apple Music team ID, creating hidden coupling",
+        "file": "docs/ios/README.md"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:3bd308b26a29c451d58cda870539ebc5",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:53:02.755Z",
+      "reason": "Skeptic already refuted this at 10% confidence: prod.env.example is a template with no real values, not a runtime deployment artifact, and this PR's own bd issue (MysteryMixClub-4vii.29) explicitly scopes 'document the same keys in .env.example, staging.env.example, prod.env.example' as in-scope work, following docs/ci-cd.md's routine.",
+      "context": {
+        "title": "Env example changes exceed documentation scope",
+        "file": "scripts/prod.env.example"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:17d2bf4113bc92a25ca8d4f375fa4594",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:53:02.890Z",
+      "reason": "Same as F-0001, also already refuted by the skeptic at 10% confidence: staging.env.example is a documentation template with no real values; adding the new keys here is explicitly in this PR's scoped bd issue and follows the existing 'Adding a new secret' routine.",
+      "context": {
+        "title": "Staging env example modified for push notifications",
+        "file": "scripts/staging.env.example"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:64dc66188fffbdfb22a1c70263dfbd68",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:58:25.702Z",
+      "reason": "Already refuted by the skeptic pass itself at 10% confidence: this is the same env-var secret storage pattern APPLE_MUSIC_PRIVATE_KEY already uses in this exact codebase, not a new approach. Real values never live in git -- only in each Droplet's own env file, per docs/git-hygiene.md.",
+      "context": {
+        "title": "Storing APNs private key in environment variable risks secret leakage",
+        "file": ".env.example"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:fb06e161ccca68a1df68109c46c10a7a",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:58:25.836Z",
+      "reason": "Same restated finding as the previous round, already dismissed: APPLE_MUSIC_TEAM_ID is a stable Apple Developer account identifier, not a feature flag tied to Apple Music being enabled -- it can be set with zero Apple Music configuration (documented explicitly in this same PR). This reuse was implemented and merged in Phase 1 (PR #349, apple_push_token.py); this docs PR describes already-shipped code, it doesn't introduce the coupling.",
+      "context": {
+        "title": "Hidden coupling between Push service and Apple Music team ID",
+        "file": "docs/ci-cd.md"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:09614e06e86e89c8e654dc2f04d6505b",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:58:25.988Z",
+      "reason": "Same restated finding as the previous round, already dismissed: this is exactly docs/ci-cd.md's own documented 'Adding a new secret' routine, followed identically by every other secret in this codebase (APPLE_MUSIC_*, GOOGLE_CLIENT_*, RESEND_*), and explicitly scoped as in-work by this PR's own bd issue (MysteryMixClub-4vii.29: 'document the same keys in .env.example, staging.env.example, prod.env.example').",
+      "context": {
+        "title": "Env template changes extend beyond iOS docs scope",
+        "file": "scripts/staging.env.example"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:507028ab2d1307070d5bb10924cc67ed",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:58:26.130Z",
+      "reason": "Generic verbosity nitpick with no concrete failure scenario, and matches this repo's own established documentation density -- the pre-existing 'Sign in with Apple' and 'Enabling Apple Music'/'Enabling Google Sign-In' sections in these same two files are comparably long and detailed. Length here isn't duplication; each subsection documents a distinct concern (auth mechanism, gateway environment, manual portal steps, data model, preferences, cadence, deep-linking, copy restraint, retirement).",
+      "context": {
+        "title": "Excessively verbose documentation increases risk of drift",
+        "file": "docs/ios/README.md"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:31f06280b545fc2874334e1c527deb5b",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T19:58:26.269Z",
+      "reason": "No such doc-generation/doc-accuracy test convention exists anywhere in this codebase to extend -- this asks for infrastructure this project has never built, for a markdown/env-example documentation PR. Env var name mismatches degrade gracefully already (an unrecognized/renamed key just leaves the pydantic-settings field at its default, i.e. push reports unconfigured), not a runtime crash, which is the documented intended behavior.",
+      "context": {
+        "title": "No tests added to verify documentation accuracy",
+        "file": "docs/ci-cd.md"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:5d615db49f78c26c668d23856f394b28",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T20:04:30.636Z",
+      "reason": "Describes an already-implemented, already-merged Phase 1 architectural decision (PR #349, apple_push_token.py/push_notifications.py hardcode the production APNs URL), not something introduced by this docs PR. A sandbox toggle would be dead code for this project's actual workflow: every build this project ships, TestFlight included, is Release-signed and Release-signed builds always use APNs production regardless of environment -- there is no debug-build-from-Xcode path in this project's tested/documented process (confirmed by every native feature's own xcodebuild archive verification step using the Release/archive configuration, never a debug scheme).",
+      "context": {
+        "title": "No sandbox APNs environment makes push testing unsafe",
+        "file": "docs/ios/README.md"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:b329e88cc52faeb2c7d048e7e79cc16c",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T20:04:30.948Z",
+      "reason": "Not accidental duplication -- these three files serve three different purposes for three different audiences, exactly matching Apple Music's and Google Sign-In's own already-established doc structure: ci-cd.md's table says WHAT the secret is and when it's required, ios/README.md's section explains WHY (architecture/design decisions), and staging-setup.md's walkthrough explains HOW to provision it operationally. This is the established pattern for every credential in this repo, not new risk.",
+      "context": {
+        "title": "Push notification setup docs duplicated across multiple files",
+        "file": "docs/ci-cd.md"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:5eaeb9ae10511ad1f08b9a8032263af6",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T20:04:31.220Z",
+      "reason": "No such env-placeholder-format validation convention exists anywhere in this codebase to extend, for either Apple Music's identical PEM format or this one. PEM parsing/validation is delegated entirely to python-jose (jwt.encode) at the point of use, not something this project unit-tests the format of ahead of time -- a malformed value fails loudly at first use (ApplePushTokenError), which is the same behavior APPLE_MUSIC_PRIVATE_KEY already has.",
+      "context": {
+        "title": "No validation tests for new env placeholder formatting",
+        "file": ".env.example"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:1ef9437277436414e17f35f2f59fc86e",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T20:04:31.627Z",
+      "reason": "Same generic verbosity nitpick as the previous two rounds, already dismissed -- matches this repo's own established documentation density for comparable sections (Sign in with Apple's section in the same file is similarly long), and each subsection documents a genuinely distinct concern rather than duplicating the others.",
+      "context": {
+        "title": "Verbose push notification docs increase cognitive load",
+        "file": "docs/ios/README.md"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:4e199a5ed5a23bf1ffb7897735adf28e",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T21:56:56.097Z",
+      "reason": "False positive from the test_weakening heuristic reacting to re-indentation, not a real weakening: this whole test was nested one level deeper inside a new describe block (indentation shifted every line), and the diff tool's line-matching saw the pre-existing 'await user.click(button)' line shift down past a newly ADDED assertion+comment and misread it as a deletion. No assertion was removed -- every original expect() in this test is still present and unchanged; a new expect() for the toggle's presence was added, not swapped in for a deleted one.",
+      "context": {
+        "title": "A test body was replaced with comments",
+        "file": "frontend/src/pages/ProfileRoute.test.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:57c0da1c0ac93a84c036f485b555255c",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T23:45:10.227Z",
+      "reason": "Already refuted by the skeptic pass itself at 10% confidence: this restates the PR's own explicit, stated intent (merging the permission button into this section) as if it were an accidental architectural violation. It's a deliberate design decision made specifically to fix the confusion two separately-titled sections caused during real device testing.",
+      "context": {
+        "title": "NotificationPreferencesSection now handles both permission UI and preference toggles, violating separation of concerns",
+        "file": "frontend/src/pages/ProfileScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:f09cdd00cc16f81878d26f4bcd4f7332",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T23:45:10.359Z",
+      "reason": "Already refuted by the skeptic pass itself at 10% confidence: the expanded prop list is a direct, necessary consequence of the intentional merge this PR describes, not unplanned API growth.",
+      "context": {
+        "title": "Expanded prop list for NotificationPreferencesSection increases component surface area",
+        "file": "frontend/src/pages/ProfileScreen.tsx"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:dafcd8a7a0c6fac39185f8621a895dbf",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-17T23:45:10.500Z",
+      "reason": "This is the required, sanctioned mechanism for this exact CI tool: dismissing a false positive on the same branch/PR where it was raised, and committing .flaught-dismissals.json, is literally what the tool's own error message instructs ('Commit .flaught-dismissals.json so CI picks up this dismissal'). Not scope creep -- necessary plumbing for the adversarial-review system this repo already uses.",
+      "context": {
+        "title": "Unrelated .flaught-dismissals.json entry added",
+        "file": ".flaught-dismissals.json"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:99a79736f432c80a90cf1fdeee183933",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-20T15:15:57.417Z",
+      "reason": "False positive: cutoff = min(apns_timestamp, sent_at) only ever NARROWS what may be deleted. If the APNs timestamp T is earlier than the send start, a row registered after the send began has updated_at > sent_at > T and is kept, not deleted; if T is later, sent_at is used. Covered by test_dispatch_keeps_a_registration_made_after_the_send_began and test_dispatch_never_retires_a_registration_made_after_the_send_even_if_apns_says_later.",
+      "context": {
+        "title": "Incorrect cutoff calculation can delete newer token registrations",
+        "file": "backend/app/services/push_notifications.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:1d85ee12bec36a72dd00813cc3bdea5c",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-20T15:15:57.565Z",
+      "reason": "False positive: no caller of send_push/_dispatch_one/_retire_device_token exists outside push_notifications.py (grepped app, jobs, scripts), no string-outcome comparison remains anywhere, every in-module caller and the test fakes were updated in this PR, and mypy over the whole app passes.",
+      "context": {
+        "title": "`send_push` now returns `PushResult` but callers may still expect a string",
+        "file": "backend/app/services/push_notifications.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:086d36b739023b704e0f2527871f1402",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-20T15:15:57.711Z",
+      "reason": "False positive (already refuted by the skeptic): _accepted_topics is deliberately per-process state, documented as such; set add/contains are atomic under the GIL and one asyncio loop, and a missing entry only makes retirement more conservative, never less.",
+      "context": {
+        "title": "Process‑wide mutable `_accepted_topics` set is not thread‑safe",
+        "file": "backend/app/services/push_notifications.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:b2343e493130d178ea2bee7babe81e89",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-20T15:50:17.042Z",
+      "reason": "False positive: the flagged line is a comment inside the loadPush() test HELPER (frontend/src/ios/push.test.ts), which also calls vi.resetModules(), imports the module and opens the push session. It is not a test body and no test was removed or weakened; this PR adds ~30 tests to the file.",
+      "context": {
+        "title": "A test body was replaced with comments",
+        "file": "frontend/src/ios/push.test.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:03eb4bfe014e55beac3a4e4b4a1338af",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-20T16:02:37.352Z",
+      "reason": "Accepted limitation, not a false positive: the generated ios/App/App/capacitor.config.json is gitignored and absent in CI, and the bead forbids hand-editing it, so a unit test can only pin the source. To narrow the gap this PR also tests the chain that produces it (ios:sync runs 'cap sync ios'; the Xcode build phase runs 'npm run ios:sync' with alwaysOutOfDate), and the sync was run and its generated output read while developing. The remaining proof, that the installed build shows a foreground banner, is device evidence tracked in MysteryMixClub-4vii.30.",
+      "context": {
+        "title": "Test validates source config, not generated runtime config",
+        "file": "frontend/src/ios/capacitorConfig.test.ts"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:fdbbcd0f61283d9c5f3a178c78962d61",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-20T16:33:33.062Z",
+      "reason": "Not a defect: in scope. Bead MysteryMixClub-4vii.35 explicitly requires establishing the effective APNs environment through evidence and 'ultimately an APNs response', and JWT minting alone is not acceptance. The PR title said 'docs' for a change that also adds tooling; it is retitled feat. The service is a self-contained, tested, read-only diagnostic with no new dependency.",
+      "context": {
+        "title": "Introduces new backend service and CLI script unrelated to documentation intent",
+        "file": "backend/app/services/apns_probe.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:ea11e57128901a44be184334c2636195",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-20T16:33:33.205Z",
+      "reason": "Not a defect: an operator-run diagnostic (python -m scripts.probe_apns_environment), not wired into any deploy pipeline or timer; it sends a silent background push or a fake-token request and only reads the database. Covered by tests of every exit code, no token/key in the output, no-devices and unsignable-key paths, and independently reviewed twice.",
+      "context": {
+        "title": "CLI script `probe_apns_environment.py` adds operational tooling not covered by docs PR",
+        "file": "backend/scripts/probe_apns_environment.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:61cb09707959185b69993dea941b4f1a",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-20T16:33:33.345Z",
+      "reason": "Design opinion, not a defect: parse_apns_error is the single bounded parser (size cap, plain-word reason only, no log injection) for untrusted APNs bodies. Making it public so the probe reuses it, rather than duplicating or importing a private name, keeps one place that defines how those bodies are read. No other module referenced the old private name.",
+      "context": {
+        "title": "`parse_apns_error` made public, breaking encapsulation",
+        "file": "backend/app/services/push_notifications.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:9c89d6879d2009f9a28a590261e466ac",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-20T16:33:33.488Z",
+      "reason": "False positive: the tool prints a fixed status line (HTTP status, an APNs reason word, and the topic, which is the public bundle id) to the terminal of the operator who ran it on the box. No key, JWT or device token is ever printed (asserted by tests), and anyone able to run it already holds the credentials. Whether Apple accepts the key is not a secret to its holder.",
+      "context": {
+        "title": "Potential leakage of APNs credential validation outcome via stdout",
+        "file": "backend/scripts/probe_apns_environment.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:0e046d6ac1c42cf8235fbefe0a81fa5b",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-20T16:33:33.635Z",
+      "reason": "Design opinion, not a defect: the probe deliberately shares the push sender's APNs error parser so both interpret Apple's responses identically; divergent parsing of the same untrusted bodies would be the maintenance risk. The dependency is one-way (probe -> push_notifications) and there is no cycle.",
+      "context": {
+        "title": "`apns_probe` tightly couples to `push_notifications` via `parse_apns_error` import",
+        "file": "backend/app/services/apns_probe.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:396bd650d621a403821745c7785feda3",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-20T23:01:44.312Z",
+      "reason": "False positive: Literal is imported (from typing import Literal, push_notifications.py line 44) and NudgeKind is used by mypy-clean code. The module imports in every test; the full backend suite (1625 tests) and CI's Backend job pass.",
+      "context": {
+        "title": "Missing import for Literal causes NameError",
+        "file": "backend/app/services/push_notifications.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:43e61aa88f9f3866bc6490b400c4c6a0",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-20T23:01:44.458Z",
+      "reason": "Intended design, not a defect: a job pass sends at most one push per mix, and the far/12h reminders take precedence. The nudge is not lost: it stays due for an hour after its moment (NUDGE_GRACE), so the next 15-minute pass sends it, unless it lands within an hour of that reminder, where suppressing it is the documented rule (test_halfway_is_suppressed_when_it_lands_on_the_24h_push).",
+      "context": {
+        "title": "`_process_mix` returns early after far push, suppressing nudges",
+        "file": "backend/app/jobs/advance_mixes.py"
+      },
+      "expires_at": null
+    },
+    {
+      "fingerprint": "sha256:6833258d625f5e36e86f689c5326f7c9",
+      "dismissed_by": "dgabriel@gmail.com",
+      "dismissed_at": "2026-09-20T23:01:44.599Z",
+      "reason": "Deliberate at-most-once semantics, the job's established pattern (_process_mix docstring: 'Commits its own mutation before sending ... so a send failure can never re-fire an already-recorded advance/warning'). The 12h warning and ~24h push stamp-then-send the same way. Re-sending on failure would risk duplicate pushes to every device, which is worse than a rare dropped nudge; per-device failures are already isolated in _dispatch_one.",
+      "context": {
+        "title": "Marker is persisted before push is sent, risking lost nudges on failure",
+        "file": "backend/app/jobs/advance_mixes.py"
       },
       "expires_at": null
     }

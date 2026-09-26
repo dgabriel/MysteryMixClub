@@ -5,6 +5,7 @@ import { RouterProvider, createMemoryRouter } from "react-router";
 import { MixDetailRoute } from "./MixDetailRoute";
 import {
   addNote,
+  blockUser,
   castVotes,
   deleteSubmission,
   editNote,
@@ -21,6 +22,7 @@ import {
   getMix,
   getSpotifyStatus,
   getVoteCounts,
+  reportNote,
   resolveSong,
   submitSong,
   updateMix,
@@ -57,8 +59,10 @@ vi.mock("../services/api", async () => {
     getNotes: vi.fn(),
     addNote: vi.fn(),
     editNote: vi.fn(),
+    blockUser: vi.fn(),
     getSpotifyStatus: vi.fn(),
     getVoteCounts: vi.fn(),
+    reportNote: vi.fn(),
   };
 });
 vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
@@ -81,6 +85,8 @@ const mockAddNote = vi.mocked(addNote);
 const mockEditNote = vi.mocked(editNote);
 const mockGetSpotifyStatus = vi.mocked(getSpotifyStatus);
 const mockGetVoteCounts = vi.mocked(getVoteCounts);
+const mockReportNote = vi.mocked(reportNote);
+const mockBlockUser = vi.mocked(blockUser);
 const mockResolveSong = vi.mocked(resolveSong);
 const mockSubmitSong = vi.mocked(submitSong);
 const mockUseAuth = vi.mocked(useAuth);
@@ -320,6 +326,12 @@ describe("MixDetailRoute", () => {
       votes_per_player: 3,
     });
     mockGetNotes.mockResolvedValue([]);
+    mockReportNote.mockResolvedValue(undefined);
+    mockBlockUser.mockResolvedValue({
+      user_id: OTHER,
+      display_name: "Bob",
+      created_at: "2026-01-02T00:00:00Z",
+    });
     mockAddNote.mockResolvedValue({
       id: "n1",
       submission_id: "p1",
@@ -2508,6 +2520,53 @@ describe("MixDetailRoute", () => {
       expect(within(card).getByText("Bob")).toBeInTheDocument();
     });
 
+    it("offers 'report' on another member's note, not the viewer's own (MysteryMixClub-4vii.13)", async () => {
+      const user = userEvent.setup();
+      setupVoting({ entries: [entry({ submission_id: "p1", title: "Debaser" })] });
+      mockGetNotes.mockResolvedValue([
+        {
+          id: "n1",
+          submission_id: "p1",
+          mix_id: "r1",
+          author_id: OTHER,
+          author_display_name: "Bob",
+          body: "this slaps",
+          created_at: "2026-01-01T00:00:00Z",
+        },
+        {
+          id: "n2",
+          submission_id: "p1",
+          mix_id: "r1",
+          author_id: ORGANIZER,
+          author_display_name: "x",
+          body: "my own note",
+          created_at: "2026-01-01T00:00:01Z",
+        },
+      ]);
+      renderMix();
+
+      await screen.findByRole("button", { name: "add a vote to Debaser" });
+      const card = cardFor("Debaser");
+      await user.click(within(card).getByRole("button", { name: /^notes$/i }));
+      await within(card).findByText("this slaps");
+
+      // Exactly one report affordance -- for Bob's note, not the viewer's own.
+      expect(within(card).getAllByRole("button", { name: "report" })).toHaveLength(1);
+
+      await user.click(within(card).getByRole("button", { name: "report" }));
+      const dialog = await screen.findByRole("dialog");
+      await user.click(within(dialog).getByRole("radio", { name: "spam" }));
+      await user.click(within(dialog).getByRole("button", { name: "submit report" }));
+
+      await waitFor(() => expect(mockReportNote).toHaveBeenCalledWith("n1", "spam", ""));
+      // The block follow-up (MysteryMixClub-4vii.42) keeps the dialog open
+      // after a successful report; [done] dismisses it.
+      expect(await screen.findByText(/report sent/i)).toBeInTheDocument();
+      expect(within(screen.getByRole("dialog")).getByRole("button", { name: /block bob/i })).toBeInTheDocument();
+      await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "done" }));
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
     it("revealing a submission with no notes shows the empty state", async () => {
       const user = userEvent.setup();
       setupVoting({ entries: [entry({ submission_id: "p1", title: "Debaser" })] });
@@ -2774,7 +2833,15 @@ describe("MixDetailRoute", () => {
             source_url: null,
             platforms: { spotify: "https://open.spotify.com/track/x" },
             submitter_note: null,
-            notes: [{ body: "this one got me", author_display_name: "Ada", created_at: "x" }],
+            notes: [
+              {
+                id: "note-1",
+                author_id: "user-ada",
+                body: "this one got me",
+                author_display_name: "Ada",
+                created_at: "x",
+              },
+            ],
           },
         ],
       });
@@ -2875,8 +2942,20 @@ describe("MixDetailRoute", () => {
               artist: "Billie Eilish",
               note_count: 2,
               notes: [
-                { body: "an absolute banger", author_display_name: "Ada", created_at: "x" },
-                { body: "haunting bassline", author_display_name: "Cal", created_at: "y" },
+                {
+                  id: "note-2",
+                  author_id: "user-ada",
+                  body: "an absolute banger",
+                  author_display_name: "Ada",
+                  created_at: "x",
+                },
+                {
+                  id: "note-3",
+                  author_id: "user-cal",
+                  body: "haunting bassline",
+                  author_display_name: "Cal",
+                  created_at: "y",
+                },
               ],
             },
           ],
@@ -2898,6 +2977,45 @@ describe("MixDetailRoute", () => {
       expect(within(section).getByText("Cal")).toBeInTheDocument();
     });
 
+    it("Most Noted: notes offer 'report', same as the picks list (MysteryMixClub-4vii.39)", async () => {
+      const user = userEvent.setup();
+      setupClosed({
+        submissions: [sub({ vote_count: 2, notes: [] })],
+        most_noted: {
+          note_count: 1,
+          winners: [
+            {
+              submission_id: "s1",
+              title: "Bad Guy",
+              artist: "Billie Eilish",
+              note_count: 1,
+              notes: [
+                {
+                  id: "note-mn-1",
+                  author_id: OTHER,
+                  body: "an absolute banger",
+                  author_display_name: "Ada",
+                  created_at: "x",
+                },
+              ],
+            },
+          ],
+        },
+      });
+      renderMix();
+
+      await screen.findByRole("heading", { name: /most noted/i });
+      const section = sectionFor(/most noted/i);
+      await user.click(within(section).getByRole("button", { name: "report" }));
+      const dialog = await screen.findByRole("dialog");
+      await user.click(within(dialog).getByRole("radio", { name: "inappropriate content" }));
+      await user.click(within(dialog).getByRole("button", { name: "submit report" }));
+
+      await waitFor(() =>
+        expect(mockReportNote).toHaveBeenCalledWith("note-mn-1", "inappropriate_content", ""),
+      );
+    });
+
     it("Most Noted: a tie renders both winners as co-recognized", async () => {
       setupClosed({
         submissions: [
@@ -2912,14 +3030,30 @@ describe("MixDetailRoute", () => {
               title: "Bad Guy",
               artist: "Billie Eilish",
               note_count: 3,
-              notes: [{ body: "loved it", author_display_name: "Ada", created_at: "x" }],
+              notes: [
+                {
+                  id: "note-4",
+                  author_id: "user-ada",
+                  body: "loved it",
+                  author_display_name: "Ada",
+                  created_at: "x",
+                },
+              ],
             },
             {
               submission_id: "s2",
               title: "Vienna",
               artist: "Billy Joel",
               note_count: 3,
-              notes: [{ body: "timeless", author_display_name: "Cal", created_at: "y" }],
+              notes: [
+                {
+                  id: "note-5",
+                  author_id: "user-cal",
+                  body: "timeless",
+                  author_display_name: "Cal",
+                  created_at: "y",
+                },
+              ],
             },
           ],
         },
@@ -3208,7 +3342,15 @@ describe("MixDetailRoute", () => {
             artist: "Billie Eilish",
             submitter_note: "a banger",
             vote_count: 2,
-            notes: [{ body: "this slaps", author_display_name: "Ada", created_at: "x" }],
+            notes: [
+              {
+                id: "note-6",
+                author_id: "user-ada",
+                body: "this slaps",
+                author_display_name: "Ada",
+                created_at: "x",
+              },
+            ],
           }),
         ],
       });
@@ -3236,8 +3378,20 @@ describe("MixDetailRoute", () => {
             title: "Bad Guy",
             vote_count: 1,
             notes: [
-              { body: "this slaps", author_display_name: "Ada", created_at: "x" },
-              { body: "on repeat", author_display_name: "Cal", created_at: "y" },
+              {
+                id: "note-7",
+                author_id: "user-ada",
+                body: "this slaps",
+                author_display_name: "Ada",
+                created_at: "x",
+              },
+              {
+                id: "note-8",
+                author_id: "user-cal",
+                body: "on repeat",
+                author_display_name: "Cal",
+                created_at: "y",
+              },
             ],
           }),
         ],
@@ -3260,6 +3414,101 @@ describe("MixDetailRoute", () => {
       // collapses again
       await user.click(within(card).getByRole("button", { name: /hide 2 notes/i }));
       expect(within(card).queryByText("this slaps")).not.toBeInTheDocument();
+    });
+
+    it("Submissions: offers 'report' on a completed mix's notes too, not just while voting (MysteryMixClub-4vii.39)", async () => {
+      const user = userEvent.setup();
+      setupClosed({
+        submissions: [
+          sub({
+            title: "Bad Guy",
+            vote_count: 2,
+            notes: [
+              {
+                id: "note-9",
+                author_id: OTHER,
+                body: "this slaps",
+                author_display_name: "Ada",
+                created_at: "x",
+              },
+              {
+                id: "note-10",
+                author_id: ORGANIZER, // the viewer's own -- no report on this one
+                author_display_name: "x",
+                body: "my own take",
+                created_at: "y",
+              },
+            ],
+          }),
+        ],
+      });
+      renderMix();
+
+      await screen.findByRole("heading", { name: /the picks/i });
+      const card = cardFor("Bad Guy");
+      await user.click(within(card).getByRole("button", { name: /show 2 notes/i }));
+
+      expect(within(card).getAllByRole("button", { name: "report" })).toHaveLength(1);
+      await user.click(within(card).getByRole("button", { name: "report" }));
+      const dialog = await screen.findByRole("dialog");
+      await user.click(within(dialog).getByRole("radio", { name: "harassment" }));
+      await user.click(within(dialog).getByRole("button", { name: "submit report" }));
+
+      await waitFor(() => expect(mockReportNote).toHaveBeenCalledWith("note-9", "harassment", ""));
+      // The block follow-up (MysteryMixClub-4vii.42) keeps the dialog open
+      // after a successful report; [done] dismisses it.
+      expect(await screen.findByText(/report sent/i)).toBeInTheDocument();
+      expect(within(screen.getByRole("dialog")).getByRole("button", { name: /block ada/i })).toBeInTheDocument();
+      await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "done" }));
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("Submissions: blocking a note's author from the report dialog refetches and hides their notes (MysteryMixClub-4vii.42)", async () => {
+      const user = userEvent.setup();
+      mockGetResults.mockResolvedValueOnce(
+        results({
+          submissions: [
+            sub({
+              title: "Bad Guy",
+              vote_count: 2,
+              notes: [
+                {
+                  id: "note-9",
+                  author_id: OTHER,
+                  body: "this slaps",
+                  author_display_name: "Ada",
+                  created_at: "x",
+                },
+              ],
+            }),
+          ],
+        }),
+      );
+      mockGetResults.mockResolvedValue(
+        results({ submissions: [sub({ title: "Bad Guy", vote_count: 2, notes: [] })] }),
+      );
+      mockGetMix.mockResolvedValue(mix({ state: "closed" }));
+      renderMix();
+
+      await screen.findByRole("heading", { name: /the picks/i });
+      const card = cardFor("Bad Guy");
+      await user.click(within(card).getByRole("button", { name: /show 1 note/i }));
+      await user.click(within(card).getByRole("button", { name: "report" }));
+      const dialog = await screen.findByRole("dialog");
+      await user.click(within(dialog).getByRole("radio", { name: "harassment" }));
+      await user.click(within(dialog).getByRole("button", { name: "submit report" }));
+
+      await waitFor(() => expect(mockReportNote).toHaveBeenCalledWith("note-9", "harassment", ""));
+
+      // Accepting the block follow-up blocks the author server-side, then the
+      // route refetches results; the server's filtered response drops their
+      // notes. That unmounts the now-empty notes list (and its dialog) — the
+      // author's note simply disappearing is the visible confirmation.
+      await user.click(within(dialog).getByRole("button", { name: /block ada/i }));
+      await waitFor(() => expect(mockBlockUser).toHaveBeenCalledWith(OTHER));
+      await waitFor(() => expect(mockGetResults).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+      expect(screen.queryByText("this slaps")).not.toBeInTheDocument();
     });
 
     it("Submissions: the caller's own submission is labelled 'you'", async () => {

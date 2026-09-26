@@ -21,6 +21,19 @@ class User(Base):
     email_notifications: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("true")
     )
+    # Push equivalents of email_notifications, independent of it and of each
+    # other (MysteryMixClub-4vii.25, IOS-04 PRD): a lifecycle-update channel
+    # (submission/voting opens, mix closes) and a deadline-reminder channel.
+    # Both default on, same reasoning as email_notifications -- the actual
+    # gate on whether push can reach a device at all is the OS permission
+    # grant + a live DevicePushToken row, not this preference; this only
+    # covers "the user asked not to be pushed for this category."
+    push_lifecycle_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
+    push_deadline_reminders_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
     # Argon2 hash, NULL for accounts that only use magic link (ADR 0007). Set at
     # password signup or password reset; never returned to a client.
     password_hash: Mapped[Optional[str]] = mapped_column(String, nullable=True)

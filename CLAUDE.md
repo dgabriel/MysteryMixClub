@@ -1,5 +1,12 @@
 # MysteryMixClub — Claude Code Context
 
+## Git workflow guidance
+
+Before branching, committing, pushing, merging, rebasing, or recovering git
+history, use `.agents/skills/mmc-git-hygiene/SKILL.md` and read
+`docs/git-hygiene.md`. The document is the canonical git policy; the skill
+provides workflow routing without duplicating it.
+
 ## On Every Session Start
 
 Run these steps before writing any code:
@@ -88,7 +95,7 @@ Design System v1.0 — dark surfaces, one amber accent (ADR 0009).
 | `popover`           | `#151617` | Menus, dropdowns, tooltips, input fills                      |
 | `tile`              | `#1A1B1C` | Z2 — interactive tile, secondary button                      |
 | `panel`             | `#28292A` | Z3 — elevated panel                                          |
-| `sheet`             | `#3A3A3C` | Z4 — modal, drawer, bottom sheet                             |
+| `sheet`             | `#3A3A3C` | Z4 — mobile nav menu (modals are white, ADR 0038)            |
 | `foreground`        | `#F7F5F1` | Primary text and active icons                                |
 | `muted-foreground`  | `#8E8F93` | Supporting text, captions, mono labels                       |
 | `accent`            | `#F3821D` | **Action, achievement, brand. Never decorative.**            |

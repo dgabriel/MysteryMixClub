@@ -6,10 +6,15 @@ import {
   adminCreateInvite,
   adminDeleteUser,
   adminInviteFromWaitlist,
+  adminListReports,
   adminListWaitlist,
+  adminMarkReportReviewed,
   adminSearchUsers,
   connectSpotify,
   getSpotifyStatus,
+  shareableOrigin,
+  type AdminReport,
+  type AdminReportStatusFilter,
   type AdminUser,
   type SpotifyStatus,
   type WaitlistEntry,
@@ -38,6 +43,16 @@ export function AdminRoute() {
   const [platformInviteUrl, setPlatformInviteUrl] = useState<string | null>(null);
   const [generatingInvite, setGeneratingInvite] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
+
+  // Member content reports (MysteryMixClub-4vii.48.1, Guideline 1.2): the
+  // moderation queue. Server-side filter + pagination; "show more" appends
+  // the next page. The status filter re-fetches from page one.
+  const [reports, setReports] = useState<AdminReport[]>([]);
+  const [reportsStatus, setReportsStatus] = useState<AdminReportStatusFilter>("open");
+  const [reportsTotal, setReportsTotal] = useState(0);
+  const [reportsLoading, setReportsLoading] = useState(true);
+  const [reportsError, setReportsError] = useState<string | null>(null);
+  const [reviewingReportId, setReviewingReportId] = useState<string | null>(null);
 
   // Waitlist (MYS-215, temporary).
   const [waitlistEntries, setWaitlistEntries] = useState<WaitlistEntry[]>([]);
@@ -113,8 +128,79 @@ export function AdminRoute() {
     };
   }, [isPlatformAdmin]);
 
+  useEffect(() => {
+    if (!isPlatformAdmin) return;
+    let active = true;
+    // The load/error resets live in handleReportsStatusChange (and the initial
+    // state), not here — synchronous setState in an effect body trips
+    // react-hooks/set-state-in-effect.
+    adminListReports(reportsStatus)
+      .then((page) => {
+        if (!active) return;
+        setReports(page.items);
+        setReportsTotal(page.total);
+      })
+      .catch((err: unknown) => {
+        if (active) {
+          setReportsError(
+            err instanceof ApiError ? err.message : "couldn't load reports.",
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setReportsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [isPlatformAdmin, reportsStatus]);
+
   if (!isPlatformAdmin) {
     return <Navigate to="/home" replace />;
+  }
+
+  async function handleLoadMoreReports() {
+    // Resets live here in the handler, not the effect — synchronous setState
+    // inside an effect body trips react-hooks/set-state-in-effect.
+    setReportsLoading(true);
+    setReportsError(null);
+    try {
+      const page = await adminListReports(reportsStatus, reports.length);
+      setReports((current) => [...current, ...page.items]);
+      setReportsTotal(page.total);
+    } catch (err) {
+      setReportsError(err instanceof ApiError ? err.message : "couldn't load more reports.");
+    } finally {
+      setReportsLoading(false);
+    }
+  }
+
+  function handleReportsStatusChange(status: AdminReportStatusFilter) {
+    if (status === reportsStatus) return;
+    setReportsStatus(status);
+    setReportsLoading(true);
+    setReportsError(null);
+  }
+
+  async function handleMarkReportReviewed(reportId: string) {
+    setReviewingReportId(reportId);
+    setReportsError(null);
+    try {
+      const updated = await adminMarkReportReviewed(reportId);
+      if (reportsStatus === "open") {
+        // The open queue no longer contains it; total shrinks with it.
+        setReports((current) => current.filter((r) => r.id !== reportId));
+        setReportsTotal((total) => Math.max(0, total - 1));
+      } else {
+        setReports((current) => current.map((r) => (r.id === reportId ? updated : r)));
+      }
+    } catch (err) {
+      setReportsError(
+        err instanceof ApiError ? err.message : "couldn't mark that reviewed. try again.",
+      );
+    } finally {
+      setReviewingReportId(null);
+    }
   }
 
   async function handleInviteFromWaitlist(entryId: string) {
@@ -186,7 +272,7 @@ export function AdminRoute() {
     try {
       const invite = await adminCreateInvite();
       // Canonical invite path is /invite/:token (matches the per-club flow).
-      setPlatformInviteUrl(`${window.location.origin}/invite/${invite.token}`);
+      setPlatformInviteUrl(`${shareableOrigin()}/invite/${invite.token}`);
     } catch (err) {
       setInviteError(
         err instanceof ApiError ? err.message : "couldn't generate an invite. try again.",
@@ -208,6 +294,15 @@ export function AdminRoute() {
       onDeleteUser={handleDeleteUser}
       deletingUserId={deletingUserId}
       deleteError={deleteError}
+      reports={reports}
+      reportsStatus={reportsStatus}
+      onReportsStatusChange={handleReportsStatusChange}
+      reportsTotal={reportsTotal}
+      reportsLoading={reportsLoading}
+      reportsError={reportsError}
+      onMarkReportReviewed={handleMarkReportReviewed}
+      reviewingReportId={reviewingReportId}
+      onLoadMoreReports={handleLoadMoreReports}
       platformInviteUrl={platformInviteUrl}
       generatingInvite={generatingInvite}
       inviteError={inviteError}

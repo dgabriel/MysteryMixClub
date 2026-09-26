@@ -4,6 +4,7 @@ import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Literal
+from urllib.parse import urlencode
 
 from fastapi import (
     APIRouter,
@@ -20,7 +21,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import EmailStr, Field
 
 from app.api.wire import WireModel
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.invites import (
@@ -34,6 +35,7 @@ from app.auth.jwt import (
     JWTError,
     create_access_token,
     create_sign_in_state,
+    decode_access_token_session_id,
     decode_google_link_state,
     decode_sign_in_state,
 )
@@ -41,14 +43,23 @@ from app.auth.passwords import hash_password, verify_password
 from app.auth.tokens import generate_token, hash_token
 from app.config import Settings, get_settings
 from app.db.session import get_db
+from app.models.auth_identity import AuthIdentity
 from app.models.club import Club
 from app.models.invite import Invite
 from app.models.login_attempt import LoginAttempt
 from app.models.magic_link_token import MagicLinkToken
 from app.models.oauth_callback_attempt import OAuthCallbackAttempt
+from app.models.oauth_exchange_code import OAuthExchangeCode
 from app.models.password_reset_token import PasswordResetToken
+from app.models.device_push_token import DevicePushToken
 from app.models.session import Session
 from app.models.user import User
+from app.services.apple_signin import (
+    AppleJWKSClient,
+    AppleSignInError,
+    get_apple_jwks_client,
+    verify_apple_identity_token,
+)
 from app.services.email import EmailSender, get_email_sender
 from app.services.google_oauth import (
     GoogleApiError,
@@ -96,6 +107,16 @@ _REFRESH_COOKIE_SAMESITE: Literal["lax"] = "lax"
 # the server-side expiry check both derive from this so they can never drift.
 _REFRESH_TOKEN_TTL = timedelta(days=30)
 _REFRESH_TOKEN_MAX_AGE = int(_REFRESH_TOKEN_TTL.total_seconds())
+# The iOS app's WebView origin (Capacitor's default iOS scheme). Its requests to
+# the API are cross-site, so the SameSite=Lax refresh cookie is never sent back
+# (MysteryMixClub-kw2u). A browser sets Origin itself and page script cannot,
+# so a web page -- even one running injected script -- can never ask for the
+# refresh token in a response body (ADR 0037).
+_NATIVE_APP_ORIGIN = "capacitor://localhost"
+# How the iOS app presents its Keychain-held refresh token instead of the cookie.
+# A custom header can't be sent cross-site without a CORS preflight, so this
+# adds no CSRF surface.
+_REFRESH_TOKEN_HEADER = "X-Refresh-Token"
 _DEVICE_HINT_MAX_LENGTH = 255
 
 # Anti-CSRF nonce for the Google round-trip (ADR 0007). Scoped to the Google
@@ -109,6 +130,16 @@ _GOOGLE_NONCE_SAMESITE: Literal["lax"] = "lax"
 # usable nonce lying around; matches the signed state's own 10-minute TTL.
 _GOOGLE_NONCE_MAX_AGE = 600
 _GOOGLE_UNCONFIGURED_MESSAGE = "google sign-in is not configured on this server"
+
+# Native iOS hand-off (MysteryMixClub-4vii.21): the custom URL scheme
+# ASWebAuthenticationSession's callback matches internally -- no
+# CFBundleURLTypes registration needed, since the session (not iOS's normal
+# URL-scheme dispatch) is what intercepts it. A one-time exchange code rides
+# in this URL rather than a session cookie -- see OAuthExchangeCode's own
+# docstring for why. Must match `callbackScheme` in
+# frontend/ios/App/App/GoogleAuthPlugin.swift.
+_NATIVE_CALLBACK_SCHEME = "mysterymixclub"
+_OAUTH_EXCHANGE_CODE_TTL = timedelta(minutes=2)
 # Per-IP throttle on the callback itself (MysteryMixClub-ali8.8) — every other
 # unauthenticated auth endpoint rate-limits per email, but the callback has no
 # email until *after* exchange_code, which is exactly the call being abused.
@@ -171,6 +202,10 @@ class MagicLinkResponse(WireModel):
 class VerifyResponse(WireModel):
     access_token: str
     token_type: str = "bearer"
+    # Only for the iOS app (ADR 0037): its WebView origin never gets the
+    # refresh cookie, so it holds this in the Keychain instead. Omitted for
+    # every other caller (routes use response_model_exclude_none).
+    refresh_token: str | None = None
 
 
 class LogoutResponse(WireModel):
@@ -347,8 +382,12 @@ async def _issue_session(
     refresh token to :func:`_set_refresh_cookie`. Shared by every endpoint that
     logs someone in, so all of them issue sessions identically (TD 5)."""
     raw_refresh_token = generate_token()
+    # Named up front so the access token can carry it as its `sid` claim
+    # (MysteryMixClub-4vii.36) before the row is flushed.
+    session_id = uuid.uuid4()
     db.add(
         Session(
+            id=session_id,
             user_id=user_id,
             refresh_token_hash=hash_token(raw_refresh_token),
             device_hint=user_agent[:_DEVICE_HINT_MAX_LENGTH] if user_agent else None,
@@ -357,7 +396,19 @@ async def _issue_session(
             invalidated_at=None,
         )
     )
-    return create_access_token(user_id), raw_refresh_token
+    return create_access_token(user_id, session_id), raw_refresh_token
+
+
+def _native_refresh_token(origin: str | None, raw_refresh_token: str) -> str | None:
+    """The raw refresh token to return in the body, for the iOS app only
+    (ADR 0037); ``None`` for every other caller, who relies on the cookie."""
+    return raw_refresh_token if origin == _NATIVE_APP_ORIGIN else None
+
+
+def _presented_refresh_token(cookie_token: str | None, header_token: str | None) -> str | None:
+    """The refresh token this request presents: the cookie (web), else the
+    ``X-Refresh-Token`` header (the iOS app, ADR 0037)."""
+    return cookie_token or header_token or None
 
 
 def _set_refresh_cookie(response: Response, raw_refresh_token: str, settings: Settings) -> None:
@@ -374,15 +425,43 @@ def _set_refresh_cookie(response: Response, raw_refresh_token: str, settings: Se
     )
 
 
+async def _drop_signed_out_devices(db: AsyncSession, user_id: uuid.UUID) -> None:
+    """Delete this user's push devices that belong to a signed-out session, or to
+    no session at all (registered before sessions were tracked). A device bound
+    to a session that is still live is kept: a brand-new login can register one
+    between the sessions UPDATE and this DELETE, and that must not be lost.
+    The caller commits (MysteryMixClub-4vii.36)."""
+    await db.execute(
+        delete(DevicePushToken).where(
+            DevicePushToken.user_id == user_id,
+            or_(
+                DevicePushToken.session_id.is_(None),
+                DevicePushToken.session_id.in_(
+                    select(Session.id).where(
+                        Session.user_id == user_id, Session.invalidated_at.is_not(None)
+                    )
+                ),
+            ),
+        )
+    )
+
+
 async def _invalidate_all_sessions(db: AsyncSession, user_id: uuid.UUID, now: datetime) -> None:
     """Invalidate every currently-active session for one user; other users'
     sessions and already-invalidated rows are untouched (TD 5, security 9).
-    The caller commits."""
+    The caller commits.
+
+    Also drops the devices registered for push under the signed-out sessions
+    (:func:`_drop_signed_out_devices`): signed out everywhere means no phone
+    keeps receiving this account's pushes -- logout-all and a password reset
+    alike (MysteryMixClub-4vii.36). The UPDATE's row locks serialize this
+    against an in-flight registration exactly as in /auth/logout."""
     await db.execute(
         update(Session)
         .where(Session.user_id == user_id, Session.invalidated_at.is_(None))
         .values(invalidated_at=now)
     )
+    await _drop_signed_out_devices(db, user_id)
 
 
 @router.post("/request", response_model=MagicLinkResponse, response_model_exclude_none=True)
@@ -462,7 +541,7 @@ async def request_magic_link(
     return response
 
 
-@router.get("/verify", response_model=VerifyResponse)
+@router.get("/verify", response_model=VerifyResponse, response_model_exclude_none=True)
 async def verify_magic_link(
     token: str,
     response: Response,
@@ -471,6 +550,7 @@ async def verify_magic_link(
     settings: Settings = Depends(get_settings),
     email_sender: EmailSender = Depends(get_email_sender),
     user_agent: str | None = Header(default=None),
+    origin: str | None = Header(default=None),
     invite: str | None = None,
 ) -> VerifyResponse:
     now = datetime.now(timezone.utc)
@@ -525,16 +605,20 @@ async def verify_magic_link(
 
     _set_refresh_cookie(response, raw_refresh_token, settings)
 
-    return VerifyResponse(access_token=access_token)
+    return VerifyResponse(
+        access_token=access_token,
+        refresh_token=_native_refresh_token(origin, raw_refresh_token),
+    )
 
 
-@router.post("/login", response_model=VerifyResponse)
+@router.post("/login", response_model=VerifyResponse, response_model_exclude_none=True)
 async def login_with_password(
     payload: PasswordLoginRequest,
     response: Response,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
     user_agent: str | None = Header(default=None),
+    origin: str | None = Header(default=None),
 ) -> VerifyResponse:
     """Sign in with email + password (ADR 0007). Magic link is unaffected; an
     account with no password set simply can't sign in this way."""
@@ -581,10 +665,18 @@ async def login_with_password(
     await db.commit()
 
     _set_refresh_cookie(response, raw_refresh_token, settings)
-    return VerifyResponse(access_token=access_token)
+    return VerifyResponse(
+        access_token=access_token,
+        refresh_token=_native_refresh_token(origin, raw_refresh_token),
+    )
 
 
-@router.post("/register", response_model=VerifyResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/register",
+    response_model=VerifyResponse,
+    response_model_exclude_none=True,
+    status_code=status.HTTP_201_CREATED,
+)
 async def register_with_password(
     payload: PasswordRegisterRequest,
     response: Response,
@@ -593,6 +685,7 @@ async def register_with_password(
     settings: Settings = Depends(get_settings),
     email_sender: EmailSender = Depends(get_email_sender),
     user_agent: str | None = Header(default=None),
+    origin: str | None = Header(default=None),
 ) -> VerifyResponse:
     """Create a NEW invite-gated account with a password and sign it in
     (ADR 0007).
@@ -649,7 +742,10 @@ async def register_with_password(
         )
 
     _set_refresh_cookie(response, raw_refresh_token, settings)
-    return VerifyResponse(access_token=access_token)
+    return VerifyResponse(
+        access_token=access_token,
+        refresh_token=_native_refresh_token(origin, raw_refresh_token),
+    )
 
 
 @router.post(
@@ -748,7 +844,18 @@ async def reset_password(
     # enforces single use (same as magic link, TD 5).
     email = token_row.email if token_row is not None else None
     if token_row is not None:
-        await db.delete(token_row)
+        # A Core DELETE, not `db.delete(token_row)`: if a racing request (another
+        # reset with the same link, or the account's deletion, which removes its
+        # tokens) already consumed the row, the ORM delete matches nothing and
+        # raises StaleDataError (a 500). Losing that race means the link is spent,
+        # the same neutral 401 as any other bad token.
+        consumed = await db.scalar(
+            delete(PasswordResetToken)
+            .where(PasswordResetToken.id == token_row.id)
+            .returning(PasswordResetToken.id)
+        )
+        if consumed is None:
+            token_row = None
 
     if token_row is None or email is None or token_row.expires_at <= now:
         await db.commit()
@@ -792,20 +899,32 @@ def _log_safe(value: str | None, limit: int = 100) -> str:
     return "none" if value is None else repr(value[:limit])
 
 
-def _google_redirect(settings: Settings, outcome: str) -> RedirectResponse:
-    """Bounce back to the SPA with an outcome flag for the login screen.
+def _google_redirect(
+    settings: Settings, outcome: str, *, native: bool = False, exchange_code: str | None = None
+) -> RedirectResponse:
+    """Bounce back with an outcome flag -- to the SPA's login screen normally,
+    or to the native app via its custom URL scheme when this flow was started
+    by ASWebAuthenticationSession (MysteryMixClub-4vii.21). ``exchange_code``
+    is only ever set alongside ``native`` and only on a successful sign-in;
+    the app's own JS redeems it via POST /auth/google/native-exchange.
 
     Everything after Google's redirect is a top-level browser navigation, so
-    failures can't be JSON — they have to be a landing page the user can read.
+    failures can't be JSON — they have to be a landing page (or, for native, a
+    URL ASWebAuthenticationSession's completion handler can parse) the caller
+    can read.
 
     Always clears the nonce cookie: it authorizes exactly one callback, and
     every exit from that callback — success or any rejection — consumes it. A
     surviving nonce could satisfy a later flow.
     """
-    response = RedirectResponse(
-        url=f"{settings.app_base_url.rstrip('/')}/login?google={outcome}",
-        status_code=status.HTTP_303_SEE_OTHER,
-    )
+    if native:
+        params = {"outcome": outcome}
+        if exchange_code:
+            params["code"] = exchange_code
+        url = f"{_NATIVE_CALLBACK_SCHEME}://auth/google?{urlencode(params)}"
+    else:
+        url = f"{settings.app_base_url.rstrip('/')}/login?google={outcome}"
+    response = RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
     response.delete_cookie(
         key=_GOOGLE_NONCE_COOKIE_NAME,
         path=_GOOGLE_NONCE_COOKIE_PATH,
@@ -857,6 +976,7 @@ async def google_enabled(
 @router.get("/google/login")
 async def google_login(
     invite_token: str | None = None,
+    native: bool = False,
     settings: Settings = Depends(get_settings),
     client: GoogleOAuthClient = Depends(get_google_oauth_client),
 ) -> RedirectResponse:
@@ -869,6 +989,12 @@ async def google_login(
     ``invite_token`` rides through the round-trip inside the signed state so a
     brand-new account can still be invite-gated on the way back (ADR 0007: every
     new signup goes through the invite gate, whichever method it uses).
+
+    ``native=true`` marks a flow started by the iOS app's
+    ASWebAuthenticationSession rather than a normal browser tab
+    (MysteryMixClub-4vii.21) -- carried the same way through the signed state
+    so the callback knows to hand back a one-time exchange code via a custom
+    URL scheme instead of setting a session cookie directly.
 
     Also carries a PKCE challenge (MysteryMixClub-ali8.7) so the code
     exchange can only be completed by whoever holds the matching verifier,
@@ -883,7 +1009,8 @@ async def google_login(
     code_verifier, code_challenge = generate_pkce_pair()
     response = RedirectResponse(
         url=client.authorize_url(
-            create_sign_in_state(nonce, code_verifier, invite_token), code_challenge
+            create_sign_in_state(nonce, code_verifier, invite_token, native=native),
+            code_challenge,
         ),
         status_code=status.HTTP_302_FOUND,
     )
@@ -965,10 +1092,14 @@ async def google_callback(
             except JWTError:
                 pass  # neither decode worked; handled by the invalid_state check below
 
-    def _redirect(outcome: str) -> RedirectResponse:
+    def _redirect(outcome: str, *, exchange_code: str | None = None) -> RedirectResponse:
         if link_state is not None:
+            # Account-linking starts only from an already-authenticated web
+            # Profile page today, never natively -- MysteryMixClub-4vii.21
+            # scoped its fix to sign-in only.
             return _google_link_redirect(settings, outcome)
-        return _google_redirect(settings, outcome)
+        is_native = sign_in_state.native if sign_in_state is not None else False
+        return _google_redirect(settings, outcome, native=is_native, exchange_code=exchange_code)
 
     if error or not code or not state:
         logger.info("google callback: denied or missing code/state (error=%s)", _log_safe(error))
@@ -1033,11 +1164,6 @@ async def google_callback(
         return _redirect(_GOOGLE_SIGNUP_OUTCOMES.get(exc.detail, "error"))
 
     user_id = user.id
-    # The access token is deliberately discarded rather than put in the redirect
-    # URL: a query string lands in browser history, referrers, and server logs.
-    # The SPA's on-mount /auth/refresh turns the cookie into one immediately.
-    _, raw_refresh_token = await _issue_session(db, user_id, user_agent, now)
-    await db.commit()
 
     if welcome_email is not None:
         queue_club_joined(
@@ -1050,9 +1176,218 @@ async def google_callback(
             welcome_email[1],
         )
 
+    if sign_in_state.native:
+        # Don't issue the session here -- a query string lands in browser
+        # history, referrers, and server logs, and there's no cookie jar
+        # shared with the app's own WebView to set one into anyway
+        # (MysteryMixClub-4vii.21). Hand back a one-time code instead; the
+        # app's own JS redeems it via POST /auth/google/native-exchange,
+        # which is what actually issues the session.
+        raw_code = generate_token()
+        db.add(
+            OAuthExchangeCode(
+                user_id=user_id,
+                code_hash=hash_token(raw_code),
+                expires_at=now + _OAUTH_EXCHANGE_CODE_TTL,
+            )
+        )
+        await db.commit()
+        return _redirect("ok", exchange_code=raw_code)
+
+    # The access token is deliberately discarded rather than put in the redirect
+    # URL: a query string lands in browser history, referrers, and server logs.
+    # The SPA's on-mount /auth/refresh turns the cookie into one immediately.
+    _, raw_refresh_token = await _issue_session(db, user_id, user_agent, now)
+    await db.commit()
+
     response = _redirect("ok")
     _set_refresh_cookie(response, raw_refresh_token, settings)
     return response
+
+
+class GoogleNativeExchangeRequest(WireModel):
+    code: str
+
+
+@router.post(
+    "/google/native-exchange", response_model=VerifyResponse, response_model_exclude_none=True
+)
+async def google_native_exchange(
+    payload: GoogleNativeExchangeRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    user_agent: str | None = Header(default=None),
+    origin: str | None = Header(default=None),
+) -> VerifyResponse:
+    """Redeem a one-time code from the native Google sign-in flow
+    (MysteryMixClub-4vii.21) for a real session -- called via a normal fetch
+    from the app's own WebView, the same "land on a code, fetch to redeem it"
+    shape /auth/verify already uses for magic links, so the resulting
+    refresh cookie is set in the exact context that will actually use it.
+    """
+    now = datetime.now(timezone.utc)
+
+    code_row = await db.scalar(
+        select(OAuthExchangeCode).where(OAuthExchangeCode.code_hash == hash_token(payload.code))
+    )
+    # Single-use enforcement: any matching code is hard-deleted on lookup,
+    # whether it was valid or already expired (matches /auth/verify).
+    if code_row is not None:
+        await db.delete(code_row)
+
+    if code_row is None or code_row.expires_at <= now:
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="that sign-in code is invalid or has expired",
+        )
+
+    user_id = code_row.user_id
+    access_token, raw_refresh_token = await _issue_session(db, user_id, user_agent, now)
+    await db.commit()
+
+    _set_refresh_cookie(response, raw_refresh_token, settings)
+    return VerifyResponse(
+        access_token=access_token,
+        refresh_token=_native_refresh_token(origin, raw_refresh_token),
+    )
+
+
+async def _find_identity_owner(db: AsyncSession, provider: str, subject: str) -> User | None:
+    """The user already linked to (``provider``, ``subject``), if any
+    (MysteryMixClub-4vii.9) -- the generalized replacement for querying
+    ``User.google_id`` directly, shared by every provider's sign-in and
+    account-link flow."""
+    return await db.scalar(
+        select(User)
+        .join(AuthIdentity, AuthIdentity.user_id == User.id)
+        .where(
+            AuthIdentity.provider == provider,
+            AuthIdentity.subject == subject,
+            User.deleted_at.is_(None),
+        )
+    )
+
+
+async def _upsert_identity_link(
+    db: AsyncSession, user: User, provider: str, subject: str, *, log_context: str
+) -> None:
+    """Attach (``provider``, ``subject``) to ``user``, replacing any existing
+    identity of the same provider on this account (MysteryMixClub-4vii.9).
+
+    The caller has already established that ``subject`` belongs to nobody
+    else (either via :func:`_find_identity_owner` returning nothing, or an
+    explicit ``already_linked_elsewhere`` check) -- this only ever replaces
+    *this account's own* prior identity for the provider, never steals one
+    from another account. ``user.google_id`` is kept in sync for the
+    provider that still has a legacy column (read by users.py's profile
+    response and the GDPR account-deletion purge) -- see AuthIdentity's own
+    docstring for why that column isn't dropped outright.
+    """
+    existing = await db.scalar(
+        select(AuthIdentity).where(
+            AuthIdentity.user_id == user.id, AuthIdentity.provider == provider
+        )
+    )
+    if existing is not None and existing.subject != subject:
+        # Replacing a live link, not filling in a blank one -- notable enough
+        # to log, since to a user later reviewing their linked identities a
+        # silent swap would be indistinguishable from a hijack.
+        logger.warning(
+            "%s: relinking user %s from %s subject %s to %s",
+            log_context,
+            user.id,
+            provider,
+            existing.subject,
+            subject,
+        )
+        existing.subject = subject
+    elif existing is None:
+        db.add(AuthIdentity(user_id=user.id, provider=provider, subject=subject))
+    if provider == "google":
+        user.google_id = subject
+
+
+async def _resolve_identity_account(
+    db: AsyncSession,
+    provider: str,
+    subject: str,
+    email: str,
+    invite_token: str | None,
+    settings: Settings,
+    now: datetime,
+    *,
+    allow_email_match: bool = True,
+) -> tuple[User, tuple[uuid.UUID, str] | None]:
+    """Map a verified third-party identity to an account, creating one if
+    needed. Shared by Google and Apple sign-in (MysteryMixClub-4vii.9) --
+    originally Google-only (as ``_resolve_google_account``), generalized onto
+    :class:`AuthIdentity` when Apple Sign-In needed the same shape.
+
+    Three cases, in order:
+
+    1. **Already linked** — an ``auth_identities`` row for this provider and
+       subject. Straight sign-in.
+    2. **Same verified email**, when ``allow_email_match`` — link this
+       identity onto that account and sign in. Deliberately NOT invite-gated:
+       the account already exists, and the provider has just proven ownership
+       of its address more strongly than anything else in this system does.
+       If the account already had a *different* identity for this provider,
+       the new one wins: whoever currently controls the verified address is
+       the rightful owner, and leaving the stale link would lock them out of
+       their own account. ``allow_email_match=False`` is for Apple's private
+       relay email (MysteryMixClub-4vii.9 identity-conflict hardening): a
+       relay address is real and Apple-verified, but proves nothing about who
+       owns any *other* mailbox, so it must never silently attach to an
+       unrelated existing account by email match the way a real address can.
+    3. **Nobody** — a brand-new account, which IS invite-gated exactly like
+       magic-link and password sign-up (ADR 0007).
+
+    Returns the user plus any club-welcome email the caller should queue.
+
+    Note (MysteryMixClub-4vii.9 scope): case 2 above still allows a *silent*
+    relink onto an account that already has a different identity for this
+    provider when the emails match -- deliberate, existing, tested behavior
+    for Google (test_existing_link_is_replaced_by_the_current_google_identity)
+    carried over unchanged rather than reversed here. Tightening this to
+    require authenticated re-linking instead is a real product/security
+    tradeoff with live-user lockout risk, not a bug fix, so it wasn't bundled
+    into this change; see MysteryMixClub-4vii.9's follow-up note.
+    """
+    user = await _find_identity_owner(db, provider, subject)
+    if user is not None:
+        return user, None
+
+    existing_by_email = await db.scalar(
+        select(User).where(User.email == email, User.deleted_at.is_(None))
+    )
+    if existing_by_email is not None:
+        if not allow_email_match:
+            # MysteryMixClub-4vii.9 identity-conflict hardening: a private
+            # relay address can't prove ownership of this account the way a
+            # real email can, so this must never silently link OR fall
+            # through to creating a second account with the same (unique)
+            # email -- that would just crash on the users.email constraint.
+            # The account genuinely exists; the user has to prove it another
+            # way (password/magic link) and link this identity from Settings.
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail=_ACCOUNT_EXISTS_MESSAGE
+            )
+        await _upsert_identity_link(
+            db, existing_by_email, provider, subject, log_context=f"{provider} callback"
+        )
+        return existing_by_email, None
+
+    invite_row = await _load_valid_invite(db, invite_token, now, email=email)
+    user = await _create_invited_user(db, email, invite_row, settings, now)
+    db.add(AuthIdentity(user_id=user.id, provider=provider, subject=subject))
+    if provider == "google":
+        user.google_id = subject
+    # Capture the PK before further async work (project MissingGreenlet gotcha).
+    user_id = user.id
+    welcome_email = await _join_invite_club(db, user_id, invite_row)
+    return user, welcome_email
 
 
 async def _resolve_google_account(
@@ -1063,64 +1398,56 @@ async def _resolve_google_account(
     settings: Settings,
     now: datetime,
 ) -> tuple[User, tuple[uuid.UUID, str] | None]:
-    """Map a verified Google identity to an account, creating one if needed.
-
-    Three cases, in order:
-
-    1. **Already linked** — a user carries this ``google_id``. Straight sign-in.
-    2. **Same verified email** — link ``google_id`` onto that account and sign
-       in. Deliberately NOT invite-gated: the account already exists, and
-       Google has just proven ownership of its address more strongly than
-       anything else in this system does. If the account was already linked to
-       a *different* Google identity, the new one wins: whoever currently
-       controls the verified address is the rightful owner, and leaving the
-       stale link would lock them out of their own account.
-    3. **Nobody** — a brand-new account, which IS invite-gated exactly like
-       magic-link and password sign-up (ADR 0007).
-
-    Returns the user plus any club-welcome email the caller should queue.
-    """
-    user = await db.scalar(
-        select(User).where(User.google_id == google_subject, User.deleted_at.is_(None))
+    """Google's own call into the shared :func:`_resolve_identity_account`
+    (kept as a named wrapper since it's the callback's call site and the
+    subject of most of this file's existing tests)."""
+    return await _resolve_identity_account(
+        db, "google", google_subject, email, invite_token, settings, now
     )
-    if user is not None:
-        return user, None
-
-    user = await db.scalar(select(User).where(User.email == email, User.deleted_at.is_(None)))
-    if user is not None:
-        if user.google_id is not None and user.google_id != google_subject:
-            # Replacing a live link, not filling in a blank one. Google won't
-            # verify one address on two accounts, so reaching this at all is
-            # notable — log it, because to a user later reviewing their linked
-            # identities a silent swap is indistinguishable from a hijack.
-            logger.warning(
-                "google callback: relinking user %s from google_id %s to %s",
-                user.id,
-                user.google_id,
-                google_subject,
-            )
-        user.google_id = google_subject
-        return user, None
-
-    invite_row = await _load_valid_invite(db, invite_token, now, email=email)
-    user = await _create_invited_user(db, email, invite_row, settings, now)
-    user.google_id = google_subject
-    # Capture the PK before further async work (project MissingGreenlet gotcha).
-    user_id = user.id
-    welcome_email = await _join_invite_club(db, user_id, invite_row)
-    return user, welcome_email
 
 
-async def _link_google_identity(db: AsyncSession, user_id: uuid.UUID, google_subject: str) -> str:
-    """Link ``google_subject`` onto ``user_id``'s account (MysteryMixClub-ali8.4).
+async def _resolve_apple_account(
+    db: AsyncSession,
+    apple_subject: str,
+    email: str,
+    is_private_email: bool,
+    invite_token: str | None,
+    settings: Settings,
+    now: datetime,
+) -> tuple[User, tuple[uuid.UUID, str] | None]:
+    """Apple's own call into the shared :func:`_resolve_identity_account`
+    (MysteryMixClub-4vii.9) -- never matches by email when it's Apple's
+    private relay address (``is_private_email``), per the identity-conflict
+    hardening in :func:`_resolve_identity_account`'s own docstring."""
+    return await _resolve_identity_account(
+        db,
+        "apple",
+        apple_subject,
+        email,
+        invite_token,
+        settings,
+        now,
+        allow_email_match=not is_private_email,
+    )
+
+
+async def _link_identity(
+    db: AsyncSession, user_id: uuid.UUID, provider: str, subject: str, *, log_context: str
+) -> str:
+    """Link (``provider``, ``subject``) onto ``user_id``'s account
+    (MysteryMixClub-4vii.9, generalizing MysteryMixClub-ali8.4's Google-only
+    original).
 
     Returns an outcome flag for the settings-page redirect:
 
     - ``"linked"`` — success.
     - ``"already_linked_elsewhere"`` — the identity belongs to a *different*
-      account. Google won't verify one address for two accounts, but two
-      different Google accounts can still collide with our side by
-      coincidence, so this is a real, reachable case, not defensive-only.
+      account. The provider itself won't verify one address for two
+      accounts, but two different provider accounts can still collide with
+      our side by coincidence, so this is a real, reachable case, not
+      defensive-only. Also the backstop for MysteryMixClub-4vii.9's identity-
+      conflict hardening: a subject already linked to one MMC user can never
+      be reassigned to another by this flow.
     - ``"error"`` — the account was deleted mid-flow.
     """
     user = await db.scalar(select(User).where(User.id == user_id, User.deleted_at.is_(None)))
@@ -1128,30 +1455,148 @@ async def _link_google_identity(db: AsyncSession, user_id: uuid.UUID, google_sub
         return "error"
 
     conflicting_owner = await db.scalar(
-        select(User.id).where(User.google_id == google_subject, User.id != user_id)
+        select(AuthIdentity.user_id).where(
+            AuthIdentity.provider == provider,
+            AuthIdentity.subject == subject,
+            AuthIdentity.user_id != user_id,
+        )
     )
     if conflicting_owner is not None:
         return "already_linked_elsewhere"
 
-    if user.google_id is not None and user.google_id != google_subject:
-        # Replacing a live link, not filling in a blank one -- same
-        # notable-enough-to-log case _resolve_google_account treats this way.
-        logger.warning(
-            "google link: relinking user %s from google_id %s to %s",
-            user_id,
-            user.google_id,
-            google_subject,
-        )
-    user.google_id = google_subject
+    await _upsert_identity_link(db, user, provider, subject, log_context=log_context)
     return "linked"
 
 
-@router.post("/refresh", response_model=VerifyResponse)
+async def _link_google_identity(db: AsyncSession, user_id: uuid.UUID, google_subject: str) -> str:
+    """Google's own call into the shared :func:`_link_identity`
+    (MysteryMixClub-ali8.4) -- kept as a named wrapper since it's the
+    callback's call site and the subject of most of this file's existing
+    tests."""
+    return await _link_identity(db, user_id, "google", google_subject, log_context="google link")
+
+
+class AppleNativeSignInRequest(WireModel):
+    identity_token: str
+    invite_token: str | None = None
+
+
+@router.post(
+    "/apple/native-verify", response_model=VerifyResponse, response_model_exclude_none=True
+)
+async def apple_native_sign_in(
+    payload: AppleNativeSignInRequest,
+    response: Response,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    keys_client: AppleJWKSClient = Depends(get_apple_jwks_client),
+    email_sender: EmailSender = Depends(get_email_sender),
+    user_agent: str | None = Header(default=None),
+    origin: str | None = Header(default=None),
+) -> VerifyResponse:
+    """Sign in (or sign up, invite-gated) with Apple (MysteryMixClub-4vii.9,
+    Guideline 4.8) -- the native counterpart to /google/native-exchange, but
+    structurally simpler: `ASAuthorizationController` runs entirely inside the
+    app with no browser hand-off, so there's no redirect, state, nonce, or
+    PKCE dance here, and no web equivalent either (Sign in with Apple's own
+    web flow needs a whole separate JS SDK + redirect configuration that
+    Guideline 4.8 doesn't require, since it only reaches the iOS binary).
+
+    The identity token itself is verified against Apple's public keys
+    (app.services.apple_signin) — nothing here trusts an unverified client
+    claim about who signed in. On success, issues a session directly (no
+    one-time exchange code needed the way Google's ASWebAuthenticationSession
+    fix requires): this endpoint IS the app's own fetch from its own
+    WebView, not an external redirect landing outside it, so there's no
+    "wrong cookie jar" problem to route around.
+    """
+    try:
+        identity = await verify_apple_identity_token(
+            payload.identity_token,
+            bundle_id=settings.apple_sign_in_bundle_id,
+            keys_client=keys_client,
+        )
+    except AppleSignInError as exc:
+        # The specific reason (bad signature, wrong audience/issuer, expired,
+        # malformed) never reaches the client -- "that sign-in didn't work" is
+        # deliberately generic there -- but it belongs in the log, not thrown
+        # away, or a real failure is undiagnosable without guessing.
+        logger.warning("apple sign-in: identity token failed verification: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="that sign-in didn't work"
+        ) from None
+
+    if not identity.email_verified:
+        # Apple only ever issues a verified email in the identity token in the
+        # first place, but this stays an explicit check rather than an assert
+        # -- never trust a claim silently just because it's normally true.
+        logger.warning("apple sign-in: refusing an unverified apple email")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="that sign-in didn't work"
+        )
+
+    now = datetime.now(timezone.utc)
+    try:
+        user, welcome_email = await _resolve_apple_account(
+            db,
+            identity.subject,
+            identity.email.lower(),
+            identity.is_private_email,
+            payload.invite_token,
+            settings,
+            now,
+        )
+    except HTTPException as exc:
+        # Same shared invite-gate helpers Google's callback uses, but this is a
+        # JSON endpoint rather than a top-level navigation, so the caller gets
+        # the real status/detail straight through instead of a redirect flag.
+        await db.rollback()
+        raise exc
+
+    user_id = user.id
+    if welcome_email is not None:
+        queue_club_joined(
+            background_tasks,
+            email_sender,
+            settings,
+            identity.email.lower(),
+            user_id,
+            welcome_email[0],
+            welcome_email[1],
+        )
+
+    access_token, raw_refresh_token = await _issue_session(db, user_id, user_agent, now)
+    await db.commit()
+
+    _set_refresh_cookie(response, raw_refresh_token, settings)
+    return VerifyResponse(
+        access_token=access_token,
+        refresh_token=_native_refresh_token(origin, raw_refresh_token),
+    )
+
+
+def session_is_live(session: Session | None, now: datetime) -> bool:
+    """Whether a session may still authenticate: it exists, has not been logged
+    out, and is inside the refresh-token lifetime (the sessions table has no
+    expires_at, so expiry derives from created_at). The single definition used by
+    /auth/refresh and by the routes that must not outlive a logout
+    (MysteryMixClub-4vii.36)."""
+    return (
+        session is not None
+        and session.invalidated_at is None
+        and session.created_at > now - _REFRESH_TOKEN_TTL
+    )
+
+
+@router.post("/refresh", response_model=VerifyResponse, response_model_exclude_none=True)
 async def refresh_access_token(
     refresh_token: str | None = Cookie(default=None, alias=_REFRESH_COOKIE_NAME),
+    header_refresh_token: str | None = Header(default=None, alias=_REFRESH_TOKEN_HEADER),
     db: AsyncSession = Depends(get_db),
 ) -> VerifyResponse:
     now = datetime.now(timezone.utc)
+    refresh_token = _presented_refresh_token(refresh_token, header_refresh_token)
 
     if refresh_token is None:
         raise HTTPException(
@@ -1166,18 +1611,14 @@ async def refresh_access_token(
     # Neutral 401 for any failure mode (no session / logged out / expired) so the
     # caller can't distinguish the reasons (TD 5). Expiry derives from created_at
     # since the sessions table has no expires_at column.
-    if (
-        session is None
-        or session.invalidated_at is not None
-        or session.created_at <= now - _REFRESH_TOKEN_TTL
-    ):
+    if session is None or not session_is_live(session, now):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=_INVALID_SESSION_MESSAGE,
         )
 
     session.last_used_at = now
-    access_token = create_access_token(session.user_id)
+    access_token = create_access_token(session.user_id, session.id)
     await db.commit()
 
     return VerifyResponse(access_token=access_token)
@@ -1196,23 +1637,58 @@ def _clear_refresh_cookie(response: Response, settings: Settings) -> None:
     )
 
 
+def _bearer_session_id(authorization: str | None) -> uuid.UUID | None:
+    """The ``sid`` of a valid, unexpired Bearer access token, or ``None``."""
+    if authorization is None or not authorization.lower().startswith("bearer "):
+        return None
+    try:
+        return decode_access_token_session_id(authorization[len("bearer ") :].strip())
+    except JWTError:
+        return None
+
+
 @router.post("/logout", response_model=LogoutResponse)
 async def logout(
     response: Response,
     refresh_token: str | None = Cookie(default=None, alias=_REFRESH_COOKIE_NAME),
+    header_refresh_token: str | None = Header(default=None, alias=_REFRESH_TOKEN_HEADER),
+    authorization: str | None = Header(default=None),
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> LogoutResponse:
     # Logout is idempotent: always clear the cookie and return 200, whether the
     # cookie is missing, unmatched, or already invalidated (TD 5). Only an
     # active session for the presented token is invalidated.
+    refresh_token = _presented_refresh_token(refresh_token, header_refresh_token)
+    # FOR UPDATE: a device registration for this session takes FOR UPDATE on
+    # the same row, so it either commits first (and is deleted just below)
+    # or runs after this commits and sees the session as logged out and is
+    # refused -- an upload already in flight can never recreate the row
+    # afterwards (MysteryMixClub-4vii.36).
+    session: Session | None = None
     if refresh_token is not None:
         session = await db.scalar(
-            select(Session).where(Session.refresh_token_hash == hash_token(refresh_token))
+            select(Session)
+            .where(Session.refresh_token_hash == hash_token(refresh_token))
+            .with_for_update()
         )
-        if session is not None and session.invalidated_at is None:
-            session.invalidated_at = datetime.now(timezone.utc)
-            await db.commit()
+    else:
+        # No refresh token at all (the iOS app lost its Keychain entry, or an
+        # older build that never had one): fall back to the session the Bearer
+        # access token was issued under, so logout still revokes it and its
+        # push devices (MysteryMixClub-kw2u, ADR 0037). This only ever ends the
+        # session the token already belongs to; it grants nothing.
+        session_id = _bearer_session_id(authorization)
+        if session_id is not None:
+            session = await db.scalar(
+                select(Session).where(Session.id == session_id).with_for_update()
+            )
+    if session is not None and session.invalidated_at is None:
+        session.invalidated_at = datetime.now(timezone.utc)
+        # The devices registered under this login go with it, whether or not
+        # the client's own DELETE ever ran or reached us.
+        await db.execute(delete(DevicePushToken).where(DevicePushToken.session_id == session.id))
+        await db.commit()
 
     _clear_refresh_cookie(response, settings)
     return LogoutResponse(message="logged out")
@@ -1222,9 +1698,11 @@ async def logout(
 async def logout_all(
     response: Response,
     refresh_token: str | None = Cookie(default=None, alias=_REFRESH_COOKIE_NAME),
+    header_refresh_token: str | None = Header(default=None, alias=_REFRESH_TOKEN_HEADER),
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> LogoutResponse:
+    refresh_token = _presented_refresh_token(refresh_token, header_refresh_token)
     # The presenting session identifies the user regardless of its own
     # invalidated_at state, so an already-invalidated cookie can still log out
     # the user's other devices. No identifiable session => 401 (no user to act

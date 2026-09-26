@@ -30,8 +30,10 @@ class AppleMixPlaylist(Base):
     mix_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("mixes.id"), nullable=False, index=True
     )
+    # ON DELETE CASCADE (MysteryMixClub-4vii.38): genuinely this user's own
+    # data (their own library playlist), so it goes with them.
     user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     playlist_id: Mapped[str] = mapped_column(String(255), nullable=False)
     # The name as created in Apple, shown so a member can find the playlist in

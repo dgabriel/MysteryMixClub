@@ -3,6 +3,7 @@ import { useBlocker, useNavigate, useParams } from "react-router";
 import {
   ApiError,
   addNote,
+  blockUser,
   castVotes,
   deleteSubmission,
   editNote,
@@ -18,6 +19,7 @@ import {
   getResults,
   getMix,
   getVoteCounts,
+  reportNote,
   submitSong,
   updateMix,
   updateSubmissionNote,
@@ -28,6 +30,7 @@ import {
   type Note,
   type PlatformKey,
   type PlaylistEntry,
+  type ReportReason,
   type ResolvedSong,
   type ResultNote,
   type ResultSubmission,
@@ -44,6 +47,7 @@ import {
 import { useAuth } from "../hooks/useAuth";
 import { usePolling } from "../hooks/usePolling";
 import { Button } from "../components/Button";
+import { MODAL_PANEL, MODAL_SCRIM } from "../components/modalSurface";
 import { Badge } from "../components/Badge";
 import { Card } from "../components/Card";
 import { PaperSurface } from "../components/PaperSurface";
@@ -59,6 +63,7 @@ import { ConcentricRings } from "../components/ConcentricRings";
 import { SongSearchCard } from "../components/songs/SongSearchCard";
 import { SourceBadge } from "../components/SourceBadge";
 import { AppleMusicPlaylist } from "../components/AppleMusicPlaylist";
+import { ReportContentModal } from "../components/ReportContentModal";
 import { SpotifyPlaylist } from "../components/SpotifyPlaylist";
 import {
   SongsMaybeMissing,
@@ -69,7 +74,6 @@ import { CrownIcon } from "../components/CrownIcon";
 import { MedalIcon } from "../components/MedalIcon";
 import { MusicNoteIcon } from "../components/MusicNoteIcon";
 import { DeadlineChip } from "../components/DeadlineChip";
-import { HelpLink } from "../components/HelpLink";
 import { toDatetimeLocalValue } from "../utils/deadline";
 
 /**
@@ -503,6 +507,22 @@ export function MixDetailRoute() {
     }
   }
 
+  // MysteryMixClub-4vii.42: blocking an author from the reveal's report
+  // dialog re-pulls the reveal afterwards -- the server computes it
+  // per-viewer (no blocked notes, no blocked submitter note, no blocked voter
+  // attribution), so a refetch is the truthful refresh and spares the client
+  // any re-derivation of Most Noted.
+  async function handleBlockAuthor(authorId: string): Promise<void> {
+    await blockUser(authorId);
+    try {
+      if (id && mix?.state === "closed") {
+        setResults(await getResults(id));
+      }
+    } catch {
+      // The block stands regardless; the reveal catches up on next load.
+    }
+  }
+
   async function handleEditMix(input: { theme?: string | null; description?: string | null }) {
     if (!id) return;
     setSavingEdit(true);
@@ -623,21 +643,19 @@ export function MixDetailRoute() {
   return (
     <>
       {/* `useBlocker` renders in-app UI, not a native `window.confirm`, so this
-          is a real modal and takes the top of the surface ladder: a `sheet`
-          (Z4) panel wearing `shadow-z4`. That shadow token carries its own 1px
-          white ring, so the panel deliberately has no `border`. `sheet` is the
-          one surface `muted-foreground` fails on, so the copy is `foreground`. */}
+          is a real modal: the shared white panel with a dark border (ADR 0038),
+          so its copy is `ink`. */}
       {blocker.state === "blocked" ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-floor/80 px-4">
-          <div className="w-full max-w-sm rounded-tile bg-sheet px-6 py-5 shadow-z4">
-            <p className="text-sm leading-[1.72] text-foreground">
+        <div className={MODAL_SCRIM}>
+          <div className={`w-full max-w-sm px-6 py-5 ${MODAL_PANEL}`}>
+            <p className="text-sm leading-[1.72] text-ink">
               {leaveWarningMessage(mix, mySubmissions.length, submissionCap)}
             </p>
             <div className="mt-6 flex gap-4">
-              <Button type="button" onClick={() => blocker.proceed()}>
+              <Button onPaper type="button" onClick={() => blocker.proceed()}>
                 leave
               </Button>
-              <Button type="button" variant="ghost" onClick={() => blocker.reset()}>
+              <Button onPaper type="button" variant="ghost" onClick={() => blocker.reset()}>
                 stay
               </Button>
             </div>
@@ -774,6 +792,7 @@ export function MixDetailRoute() {
                 onCast={handleCastVotes}
                 onSelectionChange={() => setVotesSaved(false)}
                 onActionError={setActionError}
+                onBlockAuthor={handleBlockAuthor}
               />
             ) : (
               <>
@@ -789,7 +808,12 @@ export function MixDetailRoute() {
                       : []
                   }
                 />
-                <ResultsSection results={results} userId={userId} onActionError={setActionError} />
+                <ResultsSection
+                  results={results}
+                  userId={userId}
+                  onActionError={setActionError}
+                  onBlockAuthor={handleBlockAuthor}
+                />
               </>
             )}
           </section>
@@ -1514,7 +1538,6 @@ function ComposerSlot({
       <SongSearchCard
         eyebrow="this mix"
         heading={heading}
-        helpAnchor="submitting-a-song"
         idPrefix={idPrefix}
         submitting={submitting}
         noteText={noteText}
@@ -1872,6 +1895,7 @@ function VotingSection({
   onCast,
   onSelectionChange,
   onActionError,
+  onBlockAuthor,
 }: {
   mixId: string;
   entries: PlaylistEntry[];
@@ -1891,6 +1915,7 @@ function VotingSection({
   onCast: (selected: string[]) => void;
   onSelectionChange: () => void;
   onActionError: (message: string | null) => void;
+  onBlockAuthor: (authorId: string) => Promise<void>;
 }) {
   // Seeded from the caller's saved votes; the parent remounts this component
   // (via key) whenever the saved set changes, re-seeding the selection.
@@ -2004,7 +2029,11 @@ function VotingSection({
                 />
                 {/* Vibers don't vote, but they can still leave notes — it's how
                     they take part (MYS-132). */}
-                <SongNotes submissionId={entry.submission_id} onActionError={onActionError} />
+                <SongNotes
+                  submissionId={entry.submission_id}
+                  onActionError={onActionError}
+                  onBlockAuthor={onBlockAuthor}
+                />
               </Card>
             </li>
           ))}
@@ -2030,7 +2059,6 @@ function VotingSection({
       <div className="flex items-baseline justify-between gap-4">
         <span className="flex items-baseline gap-2">
           <PaperSectionHeading>cast your votes</PaperSectionHeading>
-          <HelpLink anchor="voting-results" onPaper />
         </span>
         <span
           aria-live="polite"
@@ -2280,7 +2308,11 @@ function VotingSection({
                     title={entry.title}
                     source={entry.source}
                   />
-                  <SongNotes submissionId={entry.submission_id} onActionError={onActionError} />
+                  <SongNotes
+                    submissionId={entry.submission_id}
+                    onActionError={onActionError}
+                    onBlockAuthor={onBlockAuthor}
+                  />
                 </div>
               </div>
             </li>
@@ -2505,17 +2537,38 @@ function SongNotes({
   submissionId,
   onActionError,
   composerHint,
+  onBlockAuthor,
 }: {
   submissionId: string;
   onActionError: (message: string | null) => void;
   composerHint?: string;
+  /** Post-reveal (the vibe picks section) other members' notes are visible
+   *  here too, so a successful report also offers to block the author
+   *  (MysteryMixClub-4vii.42). */
+  onBlockAuthor?: (authorId: string) => Promise<void>;
 }) {
+  const { userId } = useAuth();
   const [notes, setNotes] = useState<Note[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [open, setOpen] = useState(false);
   const [composing, setComposing] = useState(false);
   const [draft, setDraft] = useState("");
   const [posting, setPosting] = useState(false);
+  const [reportingNote, setReportingNote] = useState<Note | null>(null);
+
+  async function submitReport(note: Note, reason: ReportReason, detail: string) {
+    await reportNote(note.id, reason, detail);
+    // With the block offer wired the modal owns closing (it shows "report
+    // sent" plus the follow-up, then dismisses itself); otherwise close now.
+    if (!onBlockAuthor) setReportingNote(null);
+  }
+
+  async function blockFromReport(authorId: string): Promise<void> {
+    await onBlockAuthor?.(authorId);
+    // The author's notes leave this list at once; the server filters every
+    // later fetch, so this is just the no-reload nicety.
+    setNotes((current) => current.filter((n) => n.author_id !== authorId));
+  }
 
   const reveal = useCallback(async () => {
     const next = !open;
@@ -2669,9 +2722,24 @@ function SongNotes({
               {notes.map((note) => (
                 <li key={note.id}>
                   <p className="text-sm leading-[1.65] text-foreground">{note.body}</p>
-                  <span className="mt-1 block font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
-                    {note.author_display_name}
-                  </span>
+                  <div className="mt-1 flex items-center gap-3">
+                    <span className="block font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
+                      {note.author_display_name}
+                    </span>
+                    {/* Reporting your own note makes no sense -- and during
+                        open_voting this list only ever holds the caller's own
+                        note anyway (MYS-67), so this only ever shows post-reveal
+                        on someone else's (MysteryMixClub-4vii.13). */}
+                    {note.author_id !== userId ? (
+                      <button
+                        type="button"
+                        onClick={() => setReportingNote(note)}
+                        className="font-mono uppercase tracking-mono-caps text-mini text-muted-foreground underline underline-offset-[3px] hover:text-foreground"
+                      >
+                        report
+                      </button>
+                    ) : null}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -2682,24 +2750,95 @@ function SongNotes({
           ) : null}
         </>
       ) : null}
+
+      {reportingNote ? (
+        <ReportContentModal
+          contentPreview={reportingNote.body}
+          onSubmit={(reason, detail) => submitReport(reportingNote, reason, detail)}
+          onDismiss={() => setReportingNote(null)}
+          blockTarget={
+            onBlockAuthor
+              ? {
+                  userId: reportingNote.author_id,
+                  displayName: reportingNote.author_display_name,
+                }
+              : undefined
+          }
+          onBlock={onBlockAuthor ? () => blockFromReport(reportingNote.author_id) : undefined}
+        />
+      ) : null}
     </div>
   );
 }
 
 /** A list of reveal notes (body + author), shared by Most Noted and each
- *  submission card. Calm, read-only — no composer in the closed view. */
-function ResultNoteList({ notes }: { notes: ResultNote[] }) {
+ *  submission card. Calm, read-only — no composer in the closed view. Still
+ *  reportable, though (MysteryMixClub-4vii.13/4vii.39): the reveal is the
+ *  ONLY place a vibing viewer's or a completed mix's notes are ever visible
+ *  to other members, so a report action has to live here too, not just on
+ *  SongNotes' live open_voting composer+list. Same report pattern as
+ *  SongNotes: ReportContentModal itself surfaces a submit failure, so this
+ *  doesn't need its own error state. */
+function ResultNoteList({
+  notes,
+  userId,
+  onBlockAuthor,
+}: {
+  notes: ResultNote[];
+  userId: string | null;
+  /** MysteryMixClub-4vii.42: when provided, a successful report offers to
+   *  block the note's author too (Guideline 1.2 asks for both). */
+  onBlockAuthor?: (authorId: string) => Promise<void>;
+}) {
+  const [reportingNote, setReportingNote] = useState<ResultNote | null>(null);
+
   return (
-    <ul className="space-y-3">
-      {notes.map((note, i) => (
-        <li key={i}>
-          <p className="text-sm leading-[1.65] text-foreground">{note.body}</p>
-          <span className="mt-1 block font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
-            {note.author_display_name}
-          </span>
-        </li>
-      ))}
-    </ul>
+    <>
+      <ul className="space-y-3">
+        {notes.map((note) => (
+          <li key={note.id}>
+            <p className="text-sm leading-[1.65] text-foreground">{note.body}</p>
+            <div className="mt-1 flex items-center gap-3">
+              <span className="block font-mono uppercase tracking-mono-caps text-mini text-muted-foreground">
+                {note.author_display_name}
+              </span>
+              {note.author_id !== userId ? (
+                <button
+                  type="button"
+                  onClick={() => setReportingNote(note)}
+                  className="font-mono uppercase tracking-mono-caps text-mini text-muted-foreground underline underline-offset-[3px] hover:text-foreground"
+                >
+                  report
+                </button>
+              ) : null}
+            </div>
+          </li>
+        ))}
+      </ul>
+
+      {reportingNote ? (
+        <ReportContentModal
+          contentPreview={reportingNote.body}
+          onSubmit={async (reason, detail) => {
+            await reportNote(reportingNote.id, reason, detail);
+            // With the block offer configured the modal owns closing (it
+            // shows "report sent" plus the follow-up); without it we close
+            // straight away, as the dialog always has.
+            if (!onBlockAuthor) setReportingNote(null);
+          }}
+          onDismiss={() => setReportingNote(null)}
+          blockTarget={
+            onBlockAuthor
+              ? {
+                  userId: reportingNote.author_id,
+                  displayName: reportingNote.author_display_name,
+                }
+              : undefined
+          }
+          onBlock={onBlockAuthor}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -2752,7 +2891,15 @@ function topPlayers(groups: PlayerGroup[]): PlayerGroup[] {
  * toggle so a long thread doesn't bury the picks list (MYS-72). Used on the
  * picks cards; Most Noted keeps its notes open, since seeing them is the point.
  */
-function CollapsibleNotes({ notes }: { notes: ResultNote[] }) {
+function CollapsibleNotes({
+  notes,
+  userId,
+  onBlockAuthor,
+}: {
+  notes: ResultNote[];
+  userId: string | null;
+  onBlockAuthor?: (authorId: string) => Promise<void>;
+}) {
   const [open, setOpen] = useState(false);
   const label = `${notes.length} ${notes.length === 1 ? "note" : "notes"}`;
   return (
@@ -2767,7 +2914,7 @@ function CollapsibleNotes({ notes }: { notes: ResultNote[] }) {
       </button>
       {open ? (
         <div className="mt-4">
-          <ResultNoteList notes={notes} />
+          <ResultNoteList notes={notes} userId={userId} onBlockAuthor={onBlockAuthor} />
         </div>
       ) : null}
     </div>
@@ -2791,10 +2938,12 @@ function ResultsSection({
   results,
   userId,
   onActionError,
+  onBlockAuthor,
 }: {
   results: MixResults | null;
   userId: string | null;
   onActionError: (message: string | null) => void;
+  onBlockAuthor?: (authorId: string) => Promise<void>;
 }) {
   if (!results) {
     return <p className="text-sm leading-[1.72] text-muted-foreground">no submissions</p>;
@@ -2803,7 +2952,14 @@ function ResultsSection({
   // A vibing viewer gets the trimmed reveal — winner(s) + Most Noted + their own
   // song's notes, no rankings or vote counts (MYS-112).
   if (results.viewer_is_vibing) {
-    return <VibingReveal results={results} onActionError={onActionError} />;
+    return (
+      <VibingReveal
+        results={results}
+        userId={userId}
+        onActionError={onActionError}
+        onBlockAuthor={onBlockAuthor}
+      />
+    );
   }
 
   if (results.submissions.length === 0) {
@@ -2817,7 +2973,13 @@ function ResultsSection({
 
   return (
     <div className="animate-fade-in space-y-12">
-      {most_noted.winners.length > 0 ? <MostNotedSection winners={most_noted.winners} /> : null}
+      {most_noted.winners.length > 0 ? (
+        <MostNotedSection
+          winners={most_noted.winners}
+          userId={userId}
+          onBlockAuthor={onBlockAuthor}
+        />
+      ) : null}
 
       {winners.length > 0 ? <WinnersSection winners={winners} nameFor={nameFor} /> : null}
 
@@ -2882,7 +3044,13 @@ function ResultsSection({
                             .join(", ")}
                         </p>
                       ) : null}
-                      {s.notes.length > 0 ? <CollapsibleNotes notes={s.notes} /> : null}
+                      {s.notes.length > 0 ? (
+                        <CollapsibleNotes
+                          notes={s.notes}
+                          userId={userId}
+                          onBlockAuthor={onBlockAuthor}
+                        />
+                      ) : null}
                     </div>
                   </div>
                 </Card>
@@ -2954,19 +3122,35 @@ function RankBadge({ rank }: { rank: number }) {
  */
 function VibingReveal({
   results,
+  userId,
   onActionError,
+  onBlockAuthor,
 }: {
   results: MixResults;
+  userId: string | null;
   onActionError: (message: string | null) => void;
+  onBlockAuthor?: (authorId: string) => Promise<void>;
 }) {
   const { most_noted, winners, picks } = results;
   return (
     <div className="animate-fade-in space-y-12">
-      {most_noted.winners.length > 0 ? <MostNotedSection winners={most_noted.winners} /> : null}
+      {most_noted.winners.length > 0 ? (
+        <MostNotedSection
+          winners={most_noted.winners}
+          userId={userId}
+          onBlockAuthor={onBlockAuthor}
+        />
+      ) : null}
 
       {winners.length > 0 ? <VibeWinnersSection winners={winners} /> : null}
 
-      {picks.length > 0 ? <VibePicksSection picks={picks} onActionError={onActionError} /> : null}
+      {picks.length > 0 ? (
+        <VibePicksSection
+          picks={picks}
+          onActionError={onActionError}
+          onBlockAuthor={onBlockAuthor}
+        />
+      ) : null}
     </div>
   );
 }
@@ -3015,9 +3199,11 @@ function VibeWinnersSection({ winners }: { winners: WinnerReveal[] }) {
 function VibePicksSection({
   picks,
   onActionError,
+  onBlockAuthor,
 }: {
   picks: RevealPick[];
   onActionError: (message: string | null) => void;
+  onBlockAuthor?: (authorId: string) => Promise<void>;
 }) {
   return (
     <section>
@@ -3047,7 +3233,11 @@ function VibePicksSection({
                 <p className="mt-2 text-meta leading-[1.6] text-foreground">“{p.submitter_note}”</p>
               ) : null}
               <PlatformLinks platforms={p.platforms} title={p.title} source={p.source} />
-              <SongNotes submissionId={p.submission_id} onActionError={onActionError} />
+              <SongNotes
+                submissionId={p.submission_id}
+                onActionError={onActionError}
+                onBlockAuthor={onBlockAuthor}
+              />
             </Card>
           </li>
         ))}
@@ -3066,7 +3256,15 @@ function VibePicksSection({
  * a tie co-recognizes at most a handful of picks and is the rare case, not the
  * shape of the list.
  */
-function MostNotedSection({ winners }: { winners: MostNotedWinner[] }) {
+function MostNotedSection({
+  winners,
+  userId,
+  onBlockAuthor,
+}: {
+  winners: MostNotedWinner[];
+  userId: string | null;
+  onBlockAuthor?: (userId: string) => Promise<void>;
+}) {
   const tie = winners.length > 1;
   return (
     <section>
@@ -3093,7 +3291,7 @@ function MostNotedSection({ winners }: { winners: MostNotedWinner[] }) {
               ) : null}
               {w.notes.length > 0 ? (
                 <div className="mt-5 border-t border-hairline-soft pt-5">
-                  <ResultNoteList notes={w.notes} />
+                  <ResultNoteList notes={w.notes} userId={userId} onBlockAuthor={onBlockAuthor} />
                 </div>
               ) : null}
             </Card>

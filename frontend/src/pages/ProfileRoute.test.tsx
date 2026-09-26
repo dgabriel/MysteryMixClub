@@ -10,12 +10,23 @@ import {
   getClubs,
   getGoogleEnabled,
   getMe,
+  listBlocks,
   setPassword,
   startGoogleLink,
+  unblockUser,
   updateDisplayName,
+  updateNotificationPreferences,
 } from "../services/api";
 import type { Club, UserProfile } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
+import {
+  nativePushAvailable,
+  onAppResume,
+  pushPermissionStatus,
+  requestPushPermissionAndRegister,
+  syncPushRegistration,
+} from "../ios/push";
+import { usePushRegistration } from "../hooks/usePushRegistration";
 
 // Mock the API module (no network). Keep ApiError real.
 vi.mock("../services/api", async () => {
@@ -29,10 +40,27 @@ vi.mock("../services/api", async () => {
     getGoogleEnabled: vi.fn(),
     setPassword: vi.fn(),
     startGoogleLink: vi.fn(),
+    updateNotificationPreferences: vi.fn(),
+    listBlocks: vi.fn(),
+    unblockUser: vi.fn(),
   };
 });
 
 vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
+// MysteryMixClub-4vii.27 (IOS-04): the manual "enable notifications" section
+// is native-only, gated the same way EmailEntryScreen's camera-cutout margin
+// and LoginRoute's native sign-in buttons are -- mock the wrapper wholesale,
+// default to "not native" so every pre-existing test stays unaffected.
+vi.mock("../ios/push", () => ({
+  nativePushAvailable: vi.fn(),
+  pushPermissionStatus: vi.fn(),
+  requestPushPermissionAndRegister: vi.fn(),
+  syncPushRegistration: vi.fn(),
+  onAppResume: vi.fn(),
+}));
+// MysteryMixClub-4vii.32: whether the backend has this device's token is its
+// own state, separate from OS permission.
+vi.mock("../hooks/usePushRegistration", () => ({ usePushRegistration: vi.fn() }));
 
 const mockGetClubs = vi.mocked(getClubs);
 const mockGetMe = vi.mocked(getMe);
@@ -41,6 +69,15 @@ const mockExportMyData = vi.mocked(exportMyData);
 const mockGetGoogleEnabled = vi.mocked(getGoogleEnabled);
 const mockSetPassword = vi.mocked(setPassword);
 const mockStartGoogleLink = vi.mocked(startGoogleLink);
+const mockUpdateNotificationPreferences = vi.mocked(updateNotificationPreferences);
+const mockListBlocks = vi.mocked(listBlocks);
+const mockUnblockUser = vi.mocked(unblockUser);
+const mockNativePushAvailable = vi.mocked(nativePushAvailable);
+const mockPushPermissionStatus = vi.mocked(pushPermissionStatus);
+const mockRequestPushPermissionAndRegister = vi.mocked(requestPushPermissionAndRegister);
+const mockSyncPushRegistration = vi.mocked(syncPushRegistration);
+const mockOnAppResume = vi.mocked(onAppResume);
+const mockUsePushRegistration = vi.mocked(usePushRegistration);
 const mockUseAuth = vi.mocked(useAuth);
 const applyDisplayName = vi.fn();
 const mockLogoutAll = vi.fn();
@@ -95,7 +132,16 @@ function clubWith(overrides: Partial<Club> = {}): Club {
 
 function profileWith(
   displayName: string,
-  overrides: Partial<Pick<UserProfile, "has_password" | "google_linked">> = {},
+  overrides: Partial<
+    Pick<
+      UserProfile,
+      | "has_password"
+      | "google_linked"
+      | "email_notifications"
+      | "push_lifecycle_enabled"
+      | "push_deadline_reminders_enabled"
+    >
+  > = {},
 ): UserProfile {
   return {
     id: "user-1",
@@ -106,6 +152,9 @@ function profileWith(
     tos_accepted: true,
     has_password: false,
     google_linked: false,
+    email_notifications: true,
+    push_lifecycle_enabled: true,
+    push_deadline_reminders_enabled: true,
     ...overrides,
   };
 }
@@ -133,6 +182,12 @@ describe("ProfileRoute", () => {
     mockGetClubs.mockResolvedValue([]);
     mockGetMe.mockResolvedValue(profileWith("Ada"));
     mockGetGoogleEnabled.mockResolvedValue({ enabled: false });
+    mockNativePushAvailable.mockReturnValue(false);
+    mockPushPermissionStatus.mockResolvedValue("prompt");
+    mockSyncPushRegistration.mockResolvedValue("idle");
+    mockOnAppResume.mockReturnValue(() => {});
+    mockUsePushRegistration.mockReturnValue("registered");
+    mockListBlocks.mockResolvedValue([]);
   });
 
   it("renders the current display name and only the completed clubs, newest first", async () => {
@@ -161,9 +216,7 @@ describe("ProfileRoute", () => {
   });
 
   it("empty archive: shows a calm note", async () => {
-    mockGetClubs.mockResolvedValue([
-      clubWith({ state: "active", completed_at: null }),
-    ]);
+    mockGetClubs.mockResolvedValue([clubWith({ state: "active", completed_at: null })]);
 
     renderProfile();
 
@@ -240,7 +293,7 @@ describe("ProfileRoute", () => {
     await screen.findByText(/archived/i);
 
     // Two "home" controls in the TopNav (ring mark + text link); either routes home.
-    await user.click(screen.getAllByRole("button", { name: /^home$/i })[1]);
+    await user.click(screen.getAllByRole("button", { name: /^my clubs$/i })[1]);
 
     expect(await screen.findByText("HOME CONTENT")).toBeInTheDocument();
   });
@@ -295,6 +348,64 @@ describe("ProfileRoute", () => {
     await user.click(screen.getByRole("button", { name: /download my data/i }));
 
     expect(await screen.findByText(/boom/i)).toBeInTheDocument();
+  });
+
+  describe("blocked members (MysteryMixClub-4vii.49)", () => {
+    const blocked = [
+      { user_id: "user-2", display_name: "Grace", created_at: "2026-09-24T12:00:00Z" },
+      { user_id: "user-3", display_name: "Linus", created_at: "2026-09-24T12:05:00Z" },
+    ];
+
+    it("lists every blocked member by name, each with an unblock action", async () => {
+      mockListBlocks.mockResolvedValue(blocked);
+
+      renderProfile();
+
+      expect(await screen.findByText("Grace")).toBeInTheDocument();
+      expect(screen.getByText("Linus")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "unblock Grace" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "unblock Linus" })).toBeInTheDocument();
+    });
+
+    it("empty: says nobody is blocked", async () => {
+      renderProfile();
+
+      expect(await screen.findByText(/you haven't blocked anyone/i)).toBeInTheDocument();
+    });
+
+    it("unblock: calls the API and removes only that member's row", async () => {
+      mockListBlocks.mockResolvedValue(blocked);
+      mockUnblockUser.mockResolvedValue(undefined);
+      const user = userEvent.setup();
+
+      renderProfile();
+      await user.click(await screen.findByRole("button", { name: "unblock Grace" }));
+
+      expect(mockUnblockUser).toHaveBeenCalledWith("user-2");
+      await waitFor(() => expect(screen.queryByText("Grace")).not.toBeInTheDocument());
+      expect(screen.getByText("Linus")).toBeInTheDocument();
+    });
+
+    it("unblock failure: keeps the row and shows a calm error", async () => {
+      mockListBlocks.mockResolvedValue(blocked);
+      mockUnblockUser.mockRejectedValue(new ApiError(500, "unblock failed"));
+      const user = userEvent.setup();
+
+      renderProfile();
+      await user.click(await screen.findByRole("button", { name: "unblock Grace" }));
+
+      expect(await screen.findByText(/unblock failed/i)).toBeInTheDocument();
+      expect(screen.getByText("Grace")).toBeInTheDocument();
+    });
+
+    it("load failure: only this section shows the error; the rest of the profile renders", async () => {
+      mockListBlocks.mockRejectedValue(new ApiError(500, "blocks unavailable"));
+
+      renderProfile();
+
+      expect(await screen.findByText(/blocks unavailable/i)).toBeInTheDocument();
+      expect(screen.getByText(/archived/i)).toBeInTheDocument();
+    });
   });
 
   describe("account settings: set password", () => {
@@ -362,7 +473,9 @@ describe("ProfileRoute", () => {
 
     it("not linked: clicking the button starts the link flow and navigates to the authorize url", async () => {
       mockGetGoogleEnabled.mockResolvedValue({ enabled: true });
-      mockStartGoogleLink.mockResolvedValue({ authorize_url: "https://accounts.google.com/o/oauth2/authorize" });
+      mockStartGoogleLink.mockResolvedValue({
+        authorize_url: "https://accounts.google.com/o/oauth2/authorize",
+      });
       const user = userEvent.setup();
       const originalLocation = window.location;
       // jsdom doesn't implement navigation; stub `location` so the assignment
@@ -399,7 +512,9 @@ describe("ProfileRoute", () => {
       await screen.findByText(/archived/i);
 
       expect(await screen.findByText("linked")).toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: /link google account/i })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /link google account/i }),
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -430,6 +545,419 @@ describe("ProfileRoute", () => {
       // Only the one profile fetch from the initial load -- "already_linked_elsewhere"
       // doesn't warrant a re-fetch since nothing changed.
       expect(mockGetMe).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe("notifications (MysteryMixClub-4vii.27/28/31, IOS-04)", () => {
+    it("hides push permission/preferences on web, keeping only the email toggle", async () => {
+      mockNativePushAvailable.mockReturnValue(false);
+
+      renderProfile();
+      await screen.findByText(/archived/i);
+
+      expect(await screen.findByText("notifications")).toBeInTheDocument();
+      expect(screen.getByRole("checkbox", { name: /email/i })).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /turn on push notifications/i }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByRole("checkbox", { name: /push: updates/i })).not.toBeInTheDocument();
+    });
+
+    describe("permission (folded into the same section as the toggles, MysteryMixClub-4vii.31)", () => {
+      it("prompt: shows the enable button alongside the preference toggles, and clicking it requests + registers", async () => {
+        const user = userEvent.setup();
+        mockNativePushAvailable.mockReturnValue(true);
+        mockPushPermissionStatus.mockResolvedValue("prompt");
+        mockRequestPushPermissionAndRegister.mockResolvedValue("granted");
+
+        renderProfile();
+        await screen.findByText(/archived/i);
+
+        const button = await screen.findByRole("button", { name: /turn on push notifications/i });
+        // The toggles render in the same section regardless of permission state.
+        expect(screen.getByRole("checkbox", { name: /push: updates/i })).toBeInTheDocument();
+        await user.click(button);
+
+        expect(mockRequestPushPermissionAndRegister).toHaveBeenCalledOnce();
+        expect(await screen.findByText(/push is on for this device/i)).toBeInTheDocument();
+        expect(
+          screen.queryByRole("button", { name: /turn on push notifications/i }),
+        ).not.toBeInTheDocument();
+      });
+
+      it("prompt: shows an error and re-enables the button if the request unexpectedly rejects", async () => {
+        // Expected to log the raw error for debugging (see the handler's own
+        // comment) -- suppress it so the test output stays clean.
+        const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+        const user = userEvent.setup();
+        mockNativePushAvailable.mockReturnValue(true);
+        mockPushPermissionStatus.mockResolvedValue("prompt");
+        mockRequestPushPermissionAndRegister.mockRejectedValue(new Error("native bridge error"));
+
+        renderProfile();
+        await screen.findByText(/archived/i);
+
+        const button = await screen.findByRole("button", { name: /turn on push notifications/i });
+        await user.click(button);
+
+        expect(mockRequestPushPermissionAndRegister).toHaveBeenCalledOnce();
+        expect(await screen.findByText("that didn't work. try again.")).toBeInTheDocument();
+        const retryButton = await screen.findByRole("button", {
+          name: /turn on push notifications/i,
+        });
+        expect(retryButton).not.toBeDisabled();
+
+        consoleSpy.mockRestore();
+      });
+
+      it("shows the toggles while push permission status is still loading, before showing the enable button/status", async () => {
+        mockNativePushAvailable.mockReturnValue(true);
+        // Never resolves within this test -- simulates the async
+        // pushPermissionStatus() call still being in flight.
+        mockPushPermissionStatus.mockReturnValue(new Promise(() => {}));
+        mockGetMe.mockResolvedValue(profileWith("Ada", { push_lifecycle_enabled: true }));
+
+        renderProfile();
+        await screen.findByText(/archived/i);
+
+        expect(await screen.findByText("notifications")).toBeInTheDocument();
+        expect(screen.getByRole("checkbox", { name: /push: updates/i })).toBeInTheDocument();
+        expect(
+          screen.queryByRole("button", { name: /turn on push notifications/i }),
+        ).not.toBeInTheDocument();
+        expect(screen.queryByText(/push is on for this device/i)).not.toBeInTheDocument();
+      });
+
+      it("granted: shows a status line, no button", async () => {
+        mockNativePushAvailable.mockReturnValue(true);
+        mockPushPermissionStatus.mockResolvedValue("granted");
+
+        renderProfile();
+        await screen.findByText(/archived/i);
+
+        expect(await screen.findByText(/push is on for this device/i)).toBeInTheDocument();
+        expect(
+          screen.queryByRole("button", { name: /turn on push notifications/i }),
+        ).not.toBeInTheDocument();
+      });
+
+      describe("registration is not permission (MysteryMixClub-4vii.32)", () => {
+        it("granted but still connecting: does not claim push is on", async () => {
+          mockNativePushAvailable.mockReturnValue(true);
+          mockPushPermissionStatus.mockResolvedValue("granted");
+          mockUsePushRegistration.mockReturnValue("registering");
+
+          renderProfile();
+          await screen.findByText(/archived/i);
+
+          expect(await screen.findByText(/connecting this device for push/i)).toBeInTheDocument();
+          expect(screen.queryByText(/push is on for this device/i)).not.toBeInTheDocument();
+        });
+
+        it("granted but no registration attempt yet: reads as connecting, never as on", async () => {
+          mockNativePushAvailable.mockReturnValue(true);
+          mockPushPermissionStatus.mockResolvedValue("granted");
+          mockUsePushRegistration.mockReturnValue("idle");
+
+          renderProfile();
+          await screen.findByText(/archived/i);
+
+          expect(await screen.findByText(/connecting this device for push/i)).toBeInTheDocument();
+          expect(screen.queryByText(/push is on for this device/i)).not.toBeInTheDocument();
+        });
+
+        it("granted but the registration failed: says so plainly and offers a retry", async () => {
+          const user = userEvent.setup();
+          mockNativePushAvailable.mockReturnValue(true);
+          mockPushPermissionStatus.mockResolvedValue("granted");
+          mockUsePushRegistration.mockReturnValue("failed");
+
+          renderProfile();
+          await screen.findByText(/archived/i);
+
+          expect(
+            await screen.findByText(/isn't connected to mystery mix club yet/i),
+          ).toBeInTheDocument();
+          expect(screen.queryByText(/push is on for this device/i)).not.toBeInTheDocument();
+          mockSyncPushRegistration.mockClear();
+
+          await user.click(screen.getByRole("button", { name: /try again/i }));
+
+          expect(mockSyncPushRegistration).toHaveBeenCalledOnce();
+        });
+
+        it("makes sure a registration is under way when permission is already granted", async () => {
+          mockNativePushAvailable.mockReturnValue(true);
+          mockPushPermissionStatus.mockResolvedValue("granted");
+
+          renderProfile();
+          await screen.findByText(/archived/i);
+
+          await waitFor(() => expect(mockSyncPushRegistration).toHaveBeenCalled());
+        });
+
+        it("does not try to register when permission is not granted", async () => {
+          mockNativePushAvailable.mockReturnValue(true);
+          for (const status of ["prompt", "denied"] as const) {
+            mockPushPermissionStatus.mockResolvedValue(status);
+            mockSyncPushRegistration.mockClear();
+
+            const { unmount } = renderProfile();
+            await screen.findByText(/archived/i);
+            await screen.findByText("notifications");
+
+            expect(mockSyncPushRegistration).not.toHaveBeenCalled();
+            unmount();
+          }
+        });
+
+        it("picks up a permission granted in iOS Settings when the app returns to the foreground", async () => {
+          mockNativePushAvailable.mockReturnValue(true);
+          mockPushPermissionStatus.mockResolvedValueOnce("denied");
+          let resumed: () => void = () => {};
+          mockOnAppResume.mockImplementation((callback) => {
+            resumed = callback;
+            return () => {};
+          });
+
+          renderProfile();
+          await screen.findByText(/archived/i);
+          expect(
+            await screen.findByText(/won't do anything until you turn it back on/i),
+          ).toBeInTheDocument();
+
+          mockPushPermissionStatus.mockResolvedValue("granted");
+          resumed();
+
+          expect(await screen.findByText(/push is on for this device/i)).toBeInTheDocument();
+          expect(mockSyncPushRegistration).toHaveBeenCalled();
+        });
+
+        it("on web: no push status and no registration work at all", async () => {
+          mockNativePushAvailable.mockReturnValue(false);
+
+          renderProfile();
+          await screen.findByText(/archived/i);
+
+          expect(mockSyncPushRegistration).not.toHaveBeenCalled();
+          expect(mockOnAppResume).not.toHaveBeenCalled();
+        });
+      });
+
+      it("denied: points to iOS Settings instead of re-prompting, but still shows the toggles", async () => {
+        mockNativePushAvailable.mockReturnValue(true);
+        mockPushPermissionStatus.mockResolvedValue("denied");
+
+        renderProfile();
+        await screen.findByText(/archived/i);
+
+        expect(
+          await screen.findByText(/won't do anything until you turn it back on/i),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByRole("button", { name: /turn on push notifications/i }),
+        ).not.toBeInTheDocument();
+        expect(mockRequestPushPermissionAndRegister).not.toHaveBeenCalled();
+        // The account-level toggles stay visible/interactive even while OS
+        // permission is off -- they're independent of it (MysteryMixClub-4vii.31).
+        expect(screen.getByRole("checkbox", { name: /push: updates/i })).toBeInTheDocument();
+      });
+    });
+
+    describe("push toggles only read as on when this device can receive push (MysteryMixClub-jpem)", () => {
+      async function renderNative(
+        status: "granted" | "denied" | "prompt",
+        registration: "idle" | "registering" | "registered" | "failed",
+      ) {
+        mockNativePushAvailable.mockReturnValue(true);
+        mockPushPermissionStatus.mockResolvedValue(status);
+        mockUsePushRegistration.mockReturnValue(registration);
+        renderProfile();
+        await screen.findByText(/archived/i);
+      }
+
+      it.each([
+        ["denied", "idle", /turn on notifications in ios settings/i],
+        ["prompt", "idle", /turn on push above/i],
+        ["granted", "registering", /switch on once this device is connected/i],
+        ["granted", "failed", /switch on once this device is connected/i],
+      ] as const)(
+        "%s / %s: push toggles unchecked, disabled, with the reason; email untouched",
+        async (status, registration, reason) => {
+          await renderNative(status, registration);
+
+          expect(await screen.findByText(reason)).toBeInTheDocument();
+          for (const name of [/push: updates/i, /push: reminders/i]) {
+            const toggle = screen.getByRole("checkbox", { name });
+            expect(toggle).not.toBeChecked();
+            expect(toggle).toBeDisabled();
+          }
+          const email = screen.getByRole("checkbox", { name: /^email/i });
+          expect(email).toBeChecked();
+          expect(email).toBeEnabled();
+          // The stored preferences (both true) were never rewritten.
+          expect(mockUpdateNotificationPreferences).not.toHaveBeenCalled();
+        },
+      );
+
+      it("granted and registered: toggles show the stored preferences and work", async () => {
+        await renderNative("granted", "registered");
+
+        const updates = await screen.findByRole("checkbox", { name: /push: updates/i });
+        expect(updates).toBeChecked();
+        expect(updates).toBeEnabled();
+        expect(screen.queryByText(/to use these|switch on once/i)).not.toBeInTheDocument();
+      });
+    });
+
+    describe("preferences (MysteryMixClub-4vii.28, IOS-04)", () => {
+      it("web: shows only the email toggle, checked from the loaded profile", async () => {
+        mockNativePushAvailable.mockReturnValue(false);
+        mockGetMe.mockResolvedValue(
+          profileWith("Ada", {
+            email_notifications: true,
+            push_lifecycle_enabled: false,
+            push_deadline_reminders_enabled: false,
+          }),
+        );
+
+        renderProfile();
+        await screen.findByText(/archived/i);
+
+        expect(await screen.findByText("notifications")).toBeInTheDocument();
+        const emailToggle = screen.getByRole("checkbox", { name: /email/i });
+        expect(emailToggle).toBeChecked();
+        expect(screen.queryByRole("checkbox", { name: /push: updates/i })).not.toBeInTheDocument();
+        expect(
+          screen.queryByRole("checkbox", { name: /push: reminders/i }),
+        ).not.toBeInTheDocument();
+      });
+
+      it("native: shows all three toggles, each reflecting the loaded profile", async () => {
+        mockNativePushAvailable.mockReturnValue(true);
+        mockPushPermissionStatus.mockResolvedValue("granted");
+        mockGetMe.mockResolvedValue(
+          profileWith("Ada", {
+            email_notifications: false,
+            push_lifecycle_enabled: true,
+            push_deadline_reminders_enabled: false,
+          }),
+        );
+
+        renderProfile();
+        await screen.findByText(/archived/i);
+
+        expect(await screen.findByText("notifications")).toBeInTheDocument();
+        expect(screen.getByRole("checkbox", { name: /email/i })).not.toBeChecked();
+        expect(screen.getByRole("checkbox", { name: /push: updates/i })).toBeChecked();
+        expect(screen.getByRole("checkbox", { name: /push: reminders/i })).not.toBeChecked();
+      });
+
+      it("toggling a preference saves immediately, no separate save step", async () => {
+        const user = userEvent.setup();
+        mockNativePushAvailable.mockReturnValue(false);
+        mockGetMe.mockResolvedValue(profileWith("Ada", { email_notifications: true }));
+        mockUpdateNotificationPreferences.mockResolvedValue(
+          profileWith("Ada", { email_notifications: false }),
+        );
+
+        renderProfile();
+        await screen.findByText(/archived/i);
+
+        const emailToggle = await screen.findByRole("checkbox", { name: /email/i });
+        await user.click(emailToggle);
+
+        expect(mockUpdateNotificationPreferences).toHaveBeenCalledWith({
+          email_notifications: false,
+        });
+        await waitFor(() => expect(emailToggle).not.toBeChecked());
+      });
+
+      it("reverts the checkbox and shows an error when the save fails", async () => {
+        const user = userEvent.setup();
+        mockNativePushAvailable.mockReturnValue(false);
+        mockGetMe.mockResolvedValue(profileWith("Ada", { email_notifications: true }));
+        mockUpdateNotificationPreferences.mockRejectedValue(new Error("network error"));
+
+        renderProfile();
+        await screen.findByText(/archived/i);
+
+        const emailToggle = await screen.findByRole("checkbox", { name: /email/i });
+        await user.click(emailToggle);
+
+        expect(await screen.findByText("that didn't save. try again.")).toBeInTheDocument();
+        await waitFor(() => expect(emailToggle).toBeChecked());
+      });
+
+      it("saving a push toggle is optimistic too, and reverts on failure", async () => {
+        const user = userEvent.setup();
+        mockNativePushAvailable.mockReturnValue(true);
+        mockPushPermissionStatus.mockResolvedValue("granted");
+        mockGetMe.mockResolvedValue(profileWith("Ada", { push_lifecycle_enabled: true }));
+        mockUpdateNotificationPreferences.mockResolvedValue(
+          profileWith("Ada", { push_lifecycle_enabled: false }),
+        );
+
+        renderProfile();
+        await screen.findByText(/archived/i);
+
+        const pushToggle = await screen.findByRole("checkbox", { name: /push: updates/i });
+        await user.click(pushToggle);
+
+        expect(mockUpdateNotificationPreferences).toHaveBeenCalledWith({
+          push_lifecycle_enabled: false,
+        });
+        await waitFor(() => expect(pushToggle).not.toBeChecked());
+
+        // Now the revert-on-failure path, same toggle -- it reverts to its
+        // last known-good state (now unchecked, from the successful save
+        // above), not to whatever it was on the very first page load.
+        mockUpdateNotificationPreferences.mockRejectedValue(new Error("network error"));
+        await user.click(pushToggle);
+
+        expect(await screen.findByText("that didn't save. try again.")).toBeInTheDocument();
+        await waitFor(() => expect(pushToggle).not.toBeChecked());
+      });
+
+      it("disables every toggle while one save is in flight, so a second click can't race the first", async () => {
+        const user = userEvent.setup();
+        mockNativePushAvailable.mockReturnValue(true);
+        mockPushPermissionStatus.mockResolvedValue("granted");
+        mockGetMe.mockResolvedValue(
+          profileWith("Ada", { email_notifications: true, push_lifecycle_enabled: true }),
+        );
+        let resolveFirst!: (p: UserProfile) => void;
+        mockUpdateNotificationPreferences.mockReturnValue(
+          new Promise<UserProfile>((r) => {
+            resolveFirst = r;
+          }),
+        );
+
+        renderProfile();
+        await screen.findByText(/archived/i);
+
+        const emailToggle = await screen.findByRole("checkbox", { name: /email/i });
+        const pushToggle = await screen.findByRole("checkbox", { name: /push: updates/i });
+        await user.click(emailToggle);
+
+        // The first save is still in flight: every toggle is disabled, and a
+        // click on a DIFFERENT preference must not fire a second, overlapping
+        // PATCH that could race the first (MysteryMixClub-4vii.28 Flaught
+        // finding F-001).
+        expect(emailToggle).toBeDisabled();
+        expect(pushToggle).toBeDisabled();
+        await user.click(pushToggle);
+        expect(mockUpdateNotificationPreferences).toHaveBeenCalledTimes(1);
+        expect(mockUpdateNotificationPreferences).toHaveBeenCalledWith({
+          email_notifications: false,
+        });
+
+        resolveFirst(
+          profileWith("Ada", { email_notifications: false, push_lifecycle_enabled: true }),
+        );
+        await waitFor(() => expect(emailToggle).not.toBeDisabled());
+        expect(pushToggle).toBeChecked();
+      });
     });
   });
 });

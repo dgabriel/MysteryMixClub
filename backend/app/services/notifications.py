@@ -15,6 +15,7 @@ Two dispatch paths share the same body-building code:
 
 from __future__ import annotations
 
+import html as _html
 import logging
 import uuid
 from dataclasses import dataclass
@@ -377,6 +378,56 @@ def send_waitlist_invite(
         "<p>it expires in 48 hours.</p>"
     )
     sender.send(email, subject, body)
+
+
+def send_report_filed_notice(
+    sender: EmailSender,
+    settings: Settings,
+    *,
+    club_name: str,
+    reporter_name: str,
+    reported_name: str,
+    reason: str,
+    detail: str | None,
+    note_body: str,
+    song_label: str,
+    mix_label: str,
+) -> None:
+    """Email the moderation contact that a member content report landed
+    (MysteryMixClub-4vii.48 — Guideline 1.2's contact + timely-response prong;
+    the report is only *available* on /admin, this makes it *seen*).
+
+    Operator mail, not member mail: no preference check, no unsubscribe
+    footer (same reasoning as the waitlist invite). Every interpolated value
+    is member-controlled text (display names, club name, the note itself),
+    so it's HTML-escaped — this email exists to quote content that was just
+    flagged as objectionable.
+
+    Best-effort by construction: the route queues this as a BackgroundTask
+    after the report is committed, and a delivery failure is logged here
+    rather than raised, so email trouble can never un-file or delay the
+    report itself."""
+    esc = _html.escape
+    display_reason = reason.replace("_", " ")
+    subject = f"[content report] {display_reason} in {club_name}"
+    body = (
+        f"<p><strong>{esc(reported_name)}</strong>'s note in <strong>{esc(club_name)}</strong> "
+        f"({esc(mix_label)}) was reported for <strong>{esc(display_reason)}</strong> "
+        f"by {esc(reporter_name)}.</p>"
+        f'<blockquote style="margin:12px 0;padding-left:12px;border-left:3px solid #ddd">'
+        f"{esc(note_body)}</blockquote>"
+        f"<p>{esc(song_label)}</p>"
+        + (
+            f"<p><strong>what the reporter added:</strong> &ldquo;{esc(detail)}&rdquo;</p>"
+            if detail
+            else ""
+        )
+        + "<p>review the queue on the /admin screen and mark it handled.</p>"
+    )
+    try:
+        sender.send(settings.moderation_contact_email, subject, body)
+    except Exception:  # best-effort: log loudly, never surface to the reporter
+        logger.exception("failed to email the moderation contact about report in %s", club_name)
 
 
 def queue_club_joined(

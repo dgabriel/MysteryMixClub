@@ -75,3 +75,44 @@ class Mix(Base):
     empty_round_notice_sent_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Same bookkeeping shape as submission_warning_sent_at/voting_warning_sent_at,
+    # for push's own additional far-out reminder (MysteryMixClub-4vii.26, IOS-04):
+    # push sends a reminder at both ~24h before a deadline AND the same 1-12h
+    # window email already uses -- these two columns cover only the *extra*
+    # 24h one, since the 1-12h push reminder reuses the email columns' own
+    # "already warned" check (one warning event, two channels).
+    push_submission_reminder_sent_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    push_voting_reminder_sent_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # When the mix entered open_voting. Only voting needs its own stamp (the
+    # submission phase already has submission_opened_at): the halfway nudge
+    # measures from a phase's opening to its deadline, and the voting deadline
+    # alone cannot say when voting began in weekly_anchor mode. NULL for a mix
+    # that was already voting when this column shipped, which simply gets no
+    # voting halfway nudge.
+    voting_opened_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Once-per-phase bookkeeping for the push-only nudges (MysteryMixClub-bfqo),
+    # same shape as the reminder markers above. "Halfway" and "due morning" are
+    # per phase; "last few" is a submission-phase notice only (voting has no
+    # equivalent). Kept apart from the reminder columns because each is a
+    # genuinely separate notice that must be able to fire after the others.
+    push_submission_halfway_sent_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    push_voting_halfway_sent_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    push_submission_due_morning_sent_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    push_voting_due_morning_sent_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    push_submission_last_few_sent_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

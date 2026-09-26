@@ -7,7 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import Field, StringConstraints, model_validator
 
 from app.api.wire import WireModel
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, literal_column, or_, select, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.auth import (
@@ -18,16 +19,21 @@ from app.api.routes.auth import (
     _GOOGLE_UNCONFIGURED_MESSAGE,
     _PASSWORD_MAX_LENGTH,
     _PASSWORD_MIN_LENGTH,
+    session_is_live,
 )
 from app.api.routes.mixes import ResultNote, ResultVoter
-from app.auth.deps import get_current_user
+from app.auth.deps import get_current_session_id, get_current_user
 from app.auth.jwt import create_google_link_state
 from app.auth.passwords import hash_password
 from app.auth.tokens import generate_token
 from app.config import Settings, get_settings
 from app.db.session import get_db
+from app.services.blocks import blocked_user_ids
+from app.services.content_filter import reject_if_flagged
 from app.models.club import Club
+from app.models.auth_identity import AuthIdentity
 from app.models.club_member import ClubMember
+from app.models.device_push_token import DevicePushToken
 from app.models.login_attempt import LoginAttempt
 from app.models.mix import Mix
 from app.models.note import Note
@@ -64,6 +70,13 @@ class UserProfileResponse(WireModel):
     # 409s otherwise), and "linked" vs "link google" accordingly.
     has_password: bool
     google_linked: bool
+    apple_linked: bool
+    # Push equivalents of email_notifications, independent of it and of each
+    # other (MysteryMixClub-4vii.25, IOS-04). Present regardless of whether
+    # the account has any registered device -- these are the preference, not
+    # "can this account currently receive a push."
+    push_lifecycle_enabled: bool
+    push_deadline_reminders_enabled: bool
 
 
 class UserProfileUpdate(WireModel):
@@ -72,19 +85,26 @@ class UserProfileUpdate(WireModel):
     display_name: DisplayName | None = None
     preferred_service: PreferredService | None = None
     email_notifications: bool | None = None
+    push_lifecycle_enabled: bool | None = None
+    push_deadline_reminders_enabled: bool | None = None
     # Accepting the Terms of Service / Privacy Policy (MYS-183). Only `true` is
     # a meaningful value — there's no client-initiated "unaccept" — so this is
     # the sole literal accepted; the server stamps its own timestamp below,
     # never trusting one from the client.
     accept_terms: Literal[True] | None = None
 
-    # display_name and email_notifications map to NOT NULL columns: allow omission
-    # (partial update) but reject an explicit null (422).
+    # These map to NOT NULL columns: allow omission (partial update) but
+    # reject an explicit null (422).
     @model_validator(mode="before")
     @classmethod
     def _reject_explicit_null(cls, data):
         if isinstance(data, dict):
-            for field in ("display_name", "email_notifications"):
+            for field in (
+                "display_name",
+                "email_notifications",
+                "push_lifecycle_enabled",
+                "push_deadline_reminders_enabled",
+            ):
                 if field in data and data[field] is None:
                     raise ValueError(f"{field} may not be null")
         return data
@@ -138,7 +158,15 @@ class UserDataExportResponse(WireModel):
     club_memberships: list[ExportClubMembership]
 
 
-def _to_profile(user: User, settings: Settings) -> UserProfileResponse:
+async def _to_profile(user: User, settings: Settings, db: AsyncSession) -> UserProfileResponse:
+    apple_linked = (
+        await db.scalar(
+            select(AuthIdentity.id).where(
+                AuthIdentity.user_id == user.id, AuthIdentity.provider == "apple"
+            )
+        )
+        is not None
+    )
     return UserProfileResponse(
         id=str(user.id),
         display_name=user.display_name,
@@ -149,15 +177,19 @@ def _to_profile(user: User, settings: Settings) -> UserProfileResponse:
         tos_accepted=user.tos_accepted_at is not None,
         has_password=user.password_hash is not None,
         google_linked=user.google_id is not None,
+        apple_linked=apple_linked,
+        push_lifecycle_enabled=user.push_lifecycle_enabled,
+        push_deadline_reminders_enabled=user.push_deadline_reminders_enabled,
     )
 
 
 @router.get("/me", response_model=UserProfileResponse)
 async def get_me(
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> UserProfileResponse:
-    return _to_profile(current_user, settings)
+    return await _to_profile(current_user, settings, db)
 
 
 @router.get("/me/export", response_model=UserDataExportResponse)
@@ -184,7 +216,7 @@ async def export_me(
 
     return UserDataExportResponse(
         exported_at=datetime.now(timezone.utc),
-        profile=_to_profile(current_user, settings),
+        profile=await _to_profile(current_user, settings, db),
         submissions=[
             ExportSubmission(
                 id=str(s.id),
@@ -295,6 +327,11 @@ async def get_my_submission_history(
     submission_ids = [s.id for s, _mix, _name in rows]
     closed_submission_ids = {s.id for s, mix_, _name in rows if mix_.state == "closed"}
 
+    # Blocks apply here too (MysteryMixClub-4vii.42, ADR 0035): the member's
+    # own history must not leak a blocked member's notes or vote attribution
+    # back to them.
+    blocked = await blocked_user_ids(db, current_user.id)
+
     vote_counts: dict[uuid.UUID, int] = {}
     voters_by_submission: dict[uuid.UUID, list[ResultVoter]] = {}
     if closed_submission_ids:
@@ -315,6 +352,8 @@ async def get_my_submission_history(
             )
         ).all()
         for submission_id, voter_id, display_name, weight in voter_rows:
+            if voter_id in blocked:
+                continue
             voters_by_submission.setdefault(submission_id, []).append(
                 ResultVoter(user_id=str(voter_id), display_name=display_name, weight=weight)
             )
@@ -337,8 +376,16 @@ async def get_my_submission_history(
         # can't sway votes (MYS-67); the full set is revealed once closed.
         if mix_state != "closed" and note.author_id != current_user.id:
             continue
+        if note.author_id in blocked:
+            continue
         notes_by_submission.setdefault(note.submission_id, []).append(
-            ResultNote(body=note.body, author_display_name=display_name, created_at=note.created_at)
+            ResultNote(
+                id=str(note.id),
+                author_id=str(note.author_id),
+                body=note.body,
+                author_display_name=display_name,
+                created_at=note.created_at,
+            )
         )
 
     return [
@@ -375,12 +422,15 @@ async def update_me(
     settings: Settings = Depends(get_settings),
 ) -> UserProfileResponse:
     fields = payload.model_dump(exclude_unset=True, exclude={"accept_terms"})
+    # Content filter (MysteryMixClub-4vii.43, Guideline 1.2): the display name
+    # is shown next to everything the member authors; reject at the one write.
+    reject_if_flagged(fields.get("display_name"))
     for field, value in fields.items():
         setattr(current_user, field, value)
     if payload.accept_terms:
         current_user.tos_accepted_at = datetime.now(timezone.utc)
     await db.commit()
-    return _to_profile(current_user, settings)
+    return await _to_profile(current_user, settings, db)
 
 
 # Calm, actionable detail when the caller still organizes a live club.
@@ -414,27 +464,226 @@ async def delete_me(
 
     now = datetime.now(timezone.utc)
     former_email = current_user.email
+    # The email-keyed reset tokens FIRST, before the user row is touched: password
+    # reset takes its token row and then the user, so taking them in the other
+    # order here deadlocks with a reset in flight (a cycle that predates
+    # MysteryMixClub-4vii.36 and that its stress test exposed; ADR 0034).
+    await db.execute(delete(PasswordResetToken).where(PasswordResetToken.email == former_email))
     current_user.deleted_at = now
     current_user.email = f"deleted+{current_user.id}@deleted.invalid"
     # Drop every credential and anything else keyed to the real address, while
     # that address is still known — after the tombstone above it can't be
-    # matched again (ADR 0007). google_id is a third-party identifier for a
-    # person who asked to be forgotten, so it goes for the same reason as the
-    # password hash (TD 10), not merely because it's UNIQUE: leaving it would
-    # also make the same Google account's next sign-up collide with a tombstone
-    # the resolution queries can no longer see.
+    # matched again (ADR 0007). google_id/auth_identities rows are third-party
+    # identifiers for a person who asked to be forgotten, so they go for the
+    # same reason as the password hash (TD 10), not merely because they're
+    # UNIQUE: leaving them would also make the same provider account's next
+    # sign-up collide with a tombstone the resolution queries can no longer
+    # see (MysteryMixClub-4vii.9 generalized this from google_id alone).
     current_user.password_hash = None
     current_user.google_id = None
-    await db.execute(delete(PasswordResetToken).where(PasswordResetToken.email == former_email))
-    await db.execute(delete(LoginAttempt).where(LoginAttempt.email == former_email))
-
+    await db.execute(delete(AuthIdentity).where(AuthIdentity.user_id == current_user.id))
     # Kill every still-active session so refresh tokens die with the account.
+    # This comes BEFORE the device delete below on purpose: logout, logout-all,
+    # password reset and push registration all take a session and then a device
+    # row, and the opposite order here deadlocks with a concurrent logout
+    # (MysteryMixClub-4vii.36, ADR 0034). This is a local ordering for the writers
+    # that touch device rows, not a global lock order for the codebase.
     await db.execute(
         update(Session)
         .where(Session.user_id == current_user.id, Session.invalidated_at.is_(None))
         .values(invalidated_at=now)
     )
+    # Same reasoning as AuthIdentity above -- a forgotten account's device
+    # shouldn't keep receiving its old club's pushes (MysteryMixClub-4vii.25).
+    await db.execute(delete(DevicePushToken).where(DevicePushToken.user_id == current_user.id))
+    await db.execute(delete(LoginAttempt).where(LoginAttempt.email == former_email))
 
+    await db.commit()
+
+
+# --------------------------------------------------------------------------- #
+# Push notification device registration (MysteryMixClub-4vii.25, IOS-04).
+# --------------------------------------------------------------------------- #
+
+
+class RegisterPushTokenRequest(WireModel):
+    device_token: str = Field(min_length=1, max_length=512)
+
+
+class RegisterPushTokenResponse(WireModel):
+    message: str = "registered"
+
+
+@router.post("/me/push-token", response_model=RegisterPushTokenResponse)
+async def register_push_token(
+    payload: RegisterPushTokenRequest,
+    current_user: User = Depends(get_current_user),
+    session_id: uuid.UUID | None = Depends(get_current_session_id),
+    db: AsyncSession = Depends(get_db),
+) -> RegisterPushTokenResponse:
+    """Register (or re-register) a device for push notifications.
+
+    Upsert by `device_token`, not by (user, token): a device can only ever
+    receive push for one account at a time, so a token that already exists --
+    same device signing in as someone else, or simply re-registering on
+    launch -- gets reassigned to the caller rather than erroring or leaving a
+    stale second row. One user can have many rows (many devices); this never
+    touches any row but the one matching this exact token.
+
+    The registration is bound to the login session the access token was issued
+    under (MysteryMixClub-4vii.36), because an access token stays valid for up
+    to an hour after logout and an upload can be in flight when logout runs:
+
+    - The session must be live. It is read FOR UPDATE, and /auth/logout takes the
+      same row FOR UPDATE, so a registration either commits before logout (and
+      logout deletes it) or runs after and is refused -- it can never recreate a
+      row for an account that has signed out. Refused with the same neutral 401
+      as any other unauthenticated request.
+    - A token already held by another session is only taken over by a session
+      that is at least as new. A late upload from an older login (the previous
+      account, on a phone that has since signed in as someone else) therefore
+      cannot overwrite the newer account's ownership; refused with 409.
+    - A token issued before the claim existed carries no session (those tokens
+      expire within the hour of the deploy). It can register a new device or
+      re-register an unbound one, but it never takes a device that a session
+      owns (409): with nothing to compare, a stale request could otherwise
+      overwrite a newer sign-in's device.
+    """
+    # Lock order matters: USERS row first, then the session. Account deletion
+    # (`delete_me`) takes the users row exclusively (a key update on the unique
+    # email) and only afterwards touches sessions. Registration used to take the
+    # session row and only reach the users row later, through the
+    # device insert's foreign key; those opposite orders deadlock (reproduced
+    # with two connections). So take the user row first, in the weakest mode that
+    # still conflicts with that: FOR KEY SHARE. (The admin eject of a LIVE account,
+    # `hard_delete_users`, deletes sessions and reaches the users row last, so it
+    # can still deadlock with a registration racing it; see ADR 0034 "Known
+    # limits". It is admin-initiated and one of the two requests fails cleanly.)
+    # FOR KEY SHARE does NOT conflict with changes to non-key columns (a profile edit, a password change, a ToS
+    # acceptance), so ordinary account activity never blocks a registration.
+    # SQLAlchemy needs BOTH flags for that mode: `key_share=True` alone compiles
+    # to FOR NO KEY UPDATE, which does. Re-reading under the lock means a user
+    # who was deleted (soft or hard) a moment ago is refused even when the token
+    # carries no session: a hard-deleted user has no row at all.
+    user_row = (
+        await db.execute(
+            select(User.deleted_at)
+            .where(User.id == current_user.id)
+            .with_for_update(read=True, key_share=True)
+        )
+    ).one_or_none()
+    if user_row is None or user_row.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="not authenticated")
+
+    session_created_at = None
+    if session_id is not None:
+        session = await db.scalar(
+            select(Session)
+            .where(Session.id == session_id, Session.user_id == current_user.id)
+            .with_for_update()
+        )
+        if session is None or not session_is_live(session, datetime.now(timezone.utc)):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="not authenticated"
+            )
+        session_created_at = session.created_at
+
+    # One atomic upsert (not select-then-write): a dead-token verdict from APNs
+    # only retires a registration that predates it, so every registration --
+    # new, reassigned, or the same user re-registering -- stamps `updated_at`
+    # itself, and a concurrent retire can neither make this a no-op nor raise.
+    # clock_timestamp(), not now(), so it is the moment of this statement
+    # rather than the transaction's start (MysteryMixClub-4vii.33).
+    takeover_allowed = None
+    if session_created_at is not None:
+        # The conflicting row's own session_id, named literally. In an ON CONFLICT
+        # ... WHERE there is no enclosing SELECT for SQLAlchemy to correlate
+        # against (`.correlate()` does nothing here), so referencing the mapped
+        # column would compile to `FROM sessions, device_push_tokens`: the
+        # subquery would then span the whole table and, once two or more bound
+        # rows exist, raise "more than one row returned by a subquery" (a 500).
+        # A literal column adds no FROM item, so this stays tied to the one row.
+        conflicting_row_session_id = literal_column(
+            f"{DevicePushToken.__tablename__}.session_id", type_=DevicePushToken.session_id.type
+        )
+        owner_session_created_at = (
+            select(Session.created_at)
+            .where(Session.id == conflicting_row_session_id)
+            .scalar_subquery()
+        )
+        takeover_allowed = or_(
+            DevicePushToken.session_id.is_(None),
+            owner_session_created_at <= session_created_at,
+        )
+    else:
+        # No session to compare with: only an unbound row may be taken.
+        takeover_allowed = DevicePushToken.session_id.is_(None)
+    registered = await db.scalar(
+        insert(DevicePushToken)
+        .values(
+            user_id=current_user.id,
+            device_token=payload.device_token,
+            session_id=session_id,
+            updated_at=func.clock_timestamp(),
+        )
+        .on_conflict_do_update(
+            index_elements=[DevicePushToken.device_token],
+            set_={
+                "user_id": current_user.id,
+                "session_id": session_id,
+                "updated_at": func.clock_timestamp(),
+            },
+            where=takeover_allowed,
+        )
+        .returning(DevicePushToken.id)
+    )
+    if registered is None:
+        # The conflicting row belongs to a newer sign-in: this request is stale.
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="this device was registered by a newer sign-in",
+        )
+    if session_id is not None:
+        # One device token per login session: APNs can change a device's token
+        # while the app runs (the app then registers the new one), and the token
+        # it replaces is dead. Dropping it here, in the same transaction and with
+        # no cooperation from the client, keeps a stale registration from
+        # lingering until APNs reports it, and it is deleted with the session on
+        # logout either way (MysteryMixClub-4vii.37). A session is one login on one
+        # install, so it never legitimately holds two. Registrations of ONE session
+        # are serialized by the session row lock above (FOR UPDATE, not FOR SHARE):
+        # with only a shared lock, two concurrent registrations of different tokens
+        # whose rows both already exist each lock their own row through the upsert
+        # and then wait on the other's in this delete, a deadlock (reproduced).
+        # Different sessions and accounts are unaffected.
+        await db.execute(
+            delete(DevicePushToken).where(
+                DevicePushToken.session_id == session_id,
+                DevicePushToken.device_token != payload.device_token,
+            )
+        )
+    await db.commit()
+    return RegisterPushTokenResponse()
+
+
+@router.delete("/me/push-token", status_code=status.HTTP_204_NO_CONTENT)
+async def unregister_push_token(
+    device_token: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Remove a device's push registration (called on logout, MysteryMixClub-
+    4vii.25/PRD IOS-04: "remove account associations on logout or deletion").
+    Scoped to the caller's own rows -- deleting a token registered to a
+    different account is a no-op, not an error, since the caller has no way
+    to know that happened and there's nothing actionable to tell them."""
+    await db.execute(
+        delete(DevicePushToken).where(
+            DevicePushToken.device_token == device_token,
+            DevicePushToken.user_id == current_user.id,
+        )
+    )
     await db.commit()
 
 

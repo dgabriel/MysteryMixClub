@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { LoginRoute } from "./LoginRoute";
 import {
   ApiError,
+  exchangeGoogleNativeCode,
   forgotPassword,
   getGoogleEnabled,
   getWaitlistEnabled,
@@ -12,8 +13,12 @@ import {
   login,
   register,
   requestMagicLink,
+  signInWithApple,
 } from "../services/api";
+import { Capacitor } from "@capacitor/core";
 import { useAuth } from "../hooks/useAuth";
+import { appleAuth, nativeAppleAuthAvailable } from "../ios/appleAuth";
+import { googleAuth, nativeGoogleAuthAvailable } from "../ios/googleAuth";
 
 // Mock only the API module so no network is touched. ApiError stays real so
 // LoginRoute's instanceof-based status mapping works.
@@ -21,6 +26,7 @@ vi.mock("../services/api", async () => {
   const actual = await vi.importActual<typeof import("../services/api")>("../services/api");
   return {
     ApiError: actual.ApiError,
+    API_BASE_URL: actual.API_BASE_URL,
     PASSWORD_MIN_LENGTH: actual.PASSWORD_MIN_LENGTH,
     PASSWORD_MAX_LENGTH: actual.PASSWORD_MAX_LENGTH,
     requestMagicLink: vi.fn(),
@@ -31,9 +37,23 @@ vi.mock("../services/api", async () => {
     forgotPassword: vi.fn(),
     googleLoginUrl: vi.fn(),
     getGoogleEnabled: vi.fn(),
+    exchangeGoogleNativeCode: vi.fn(),
+    signInWithApple: vi.fn(),
   };
 });
 vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
+vi.mock("../ios/googleAuth", () => ({
+  googleAuth: { signIn: vi.fn() },
+  nativeGoogleAuthAvailable: vi.fn(),
+}));
+vi.mock("../ios/appleAuth", () => ({
+  appleAuth: { signIn: vi.fn() },
+  nativeAppleAuthAvailable: vi.fn(),
+}));
+// EmailEntryScreen checks Capacitor.getPlatform() directly (not through the
+// ios/*Auth wrappers above, which are mocked wholesale) to gate the login
+// logo's native-only top margin (MysteryMixClub-4vii.24).
+vi.mock("@capacitor/core", () => ({ Capacitor: { getPlatform: vi.fn() } }));
 
 const mockRequestMagicLink = vi.mocked(requestMagicLink);
 const mockGetWaitlistEnabled = vi.mocked(getWaitlistEnabled);
@@ -42,7 +62,14 @@ const mockRegister = vi.mocked(register);
 const mockForgotPassword = vi.mocked(forgotPassword);
 const mockGoogleLoginUrl = vi.mocked(googleLoginUrl);
 const mockGetGoogleEnabled = vi.mocked(getGoogleEnabled);
+const mockExchangeGoogleNativeCode = vi.mocked(exchangeGoogleNativeCode);
+const mockSignInWithApple = vi.mocked(signInWithApple);
 const mockUseAuth = vi.mocked(useAuth);
+const mockNativeGoogleAuthAvailable = vi.mocked(nativeGoogleAuthAvailable);
+const mockNativeAppleAuthAvailable = vi.mocked(nativeAppleAuthAvailable);
+const mockGetPlatform = vi.mocked(Capacitor.getPlatform);
+const mockAppleAuthSignIn = vi.mocked(appleAuth.signIn);
+const mockGoogleAuthSignIn = vi.mocked(googleAuth.signIn);
 const setAccessToken = vi.fn();
 
 // EmailEntryScreen links to /about (MYS-155), which needs a Router context.
@@ -86,6 +113,15 @@ describe("LoginRoute", () => {
     // default — every existing "email us" assertion in this file relies on
     // this resolving to false.
     mockGetWaitlistEnabled.mockResolvedValue({ enabled: false });
+    // Default: not native, so the existing web (<a href>) Google tests below
+    // keep exercising the ordinary redirect path unchanged.
+    mockNativeGoogleAuthAvailable.mockReturnValue(false);
+    // Apple is native-only in every case, so this stays false unless a test
+    // opts in.
+    mockNativeAppleAuthAvailable.mockReturnValue(false);
+    // Default: web, so the login logo's native-only top margin test below is
+    // the only place this needs to be "ios".
+    mockGetPlatform.mockReturnValue("web");
   });
 
   it("redirects an already-authenticated user to /home", () => {
@@ -99,6 +135,71 @@ describe("LoginRoute", () => {
       </MemoryRouter>,
     );
     expect(screen.getByText("HOME")).toBeInTheDocument();
+  });
+
+  describe("while the startup session restore is in flight (MysteryMixClub-4vii.51)", () => {
+    function renderWithHome() {
+      return render(
+        <MemoryRouter initialEntries={["/login"]}>
+          <Routes>
+            <Route path="/login" element={<LoginRoute />} />
+            <Route path="/home" element={<div>HOME</div>} />
+          </Routes>
+        </MemoryRouter>,
+      );
+    }
+
+    function setStatus(status: "loading" | "unauthenticated" | "authenticated") {
+      mockUseAuth.mockReturnValue({ status, setAccessToken } as unknown as ReturnType<
+        typeof useAuth
+      >);
+    }
+
+    it("shows the loading state, never the sign-in form", () => {
+      setStatus("loading");
+
+      renderWithHome();
+
+      expect(screen.getByText(/verifying/i)).toBeInTheDocument();
+      expect(screen.queryByLabelText(/^email$/i)).not.toBeInTheDocument();
+      expect(screen.queryByText("HOME")).not.toBeInTheDocument();
+    });
+
+    it("then resolves to the sign-in form when there's no session", async () => {
+      setStatus("loading");
+      const { rerender } = renderWithHome();
+
+      setStatus("unauthenticated");
+      rerender(
+        <MemoryRouter initialEntries={["/login"]}>
+          <Routes>
+            <Route path="/login" element={<LoginRoute />} />
+            <Route path="/home" element={<div>HOME</div>} />
+          </Routes>
+        </MemoryRouter>,
+      );
+
+      expect(await screen.findByLabelText(/^email$/i)).toBeInTheDocument();
+      expect(screen.queryByText(/verifying/i)).not.toBeInTheDocument();
+    });
+
+    it("or straight to /home when the session was restored", () => {
+      setStatus("loading");
+      const { rerender } = renderWithHome();
+
+      setStatus("authenticated");
+      rerender(
+        <MemoryRouter initialEntries={["/login"]}>
+          <Routes>
+            <Route path="/login" element={<LoginRoute />} />
+            <Route path="/home" element={<div>HOME</div>} />
+          </Routes>
+        </MemoryRouter>,
+      );
+
+      expect(screen.getByText("HOME")).toBeInTheDocument();
+      expect(screen.queryByLabelText(/^email$/i)).not.toBeInTheDocument();
+    });
   });
 
   it("shows invite-required contact info upfront, before any submission — email revealed only on click", async () => {
@@ -126,7 +227,7 @@ describe("LoginRoute", () => {
     // The shared nav is authed-only; none of its links appear here.
     expect(screen.queryByRole("button", { name: /^profile$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^logout$/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^home$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^my clubs$/i })).not.toBeInTheDocument();
   });
 
   it("happy path: submits a trimmed email and shows CheckEmail with that email", async () => {
@@ -136,9 +237,7 @@ describe("LoginRoute", () => {
     renderLogin();
 
     // EmailEntry visible
-    expect(
-      screen.getByRole("button", { name: /send sign-in link/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /send sign-in link/i })).toBeInTheDocument();
 
     const input = screen.getByLabelText(/email/i);
     // Leading/trailing whitespace should be trimmed by the screen before submit.
@@ -180,9 +279,7 @@ describe("LoginRoute", () => {
     // CheckEmail is NOT shown.
     expect(screen.queryByText("check your email")).not.toBeInTheDocument();
     // Still on the email entry form.
-    expect(
-      screen.getByRole("button", { name: /send sign-in link/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /send sign-in link/i })).toBeInTheDocument();
   });
 
   it("edge case: empty input does not call requestMagicLink and stays on the form", async () => {
@@ -255,7 +352,7 @@ describe("LoginRoute", () => {
     expect(screen.getByRole("link", { name: /^help$/i })).toHaveAttribute("href", "/help");
   });
 
-  it("back affordance on CheckEmail returns to the email entry form", async () => {
+  it("'wrong email? change it' returns to the form with the address pre-filled and focused", async () => {
     mockRequestMagicLink.mockResolvedValue({ devToken: null });
     const user = userEvent.setup();
 
@@ -265,16 +362,24 @@ describe("LoginRoute", () => {
     await user.click(screen.getByRole("button", { name: /send sign-in link/i }));
 
     await screen.findByText("check your email");
-    // The button is conditional on the async waitlist-off check (MYS-215),
-    // so wait for it rather than assuming it's already resolved.
-    await user.click(await screen.findByRole("button", { name: /use a different email/i }));
+    await user.click(screen.getByRole("button", { name: /wrong email\? change it/i }));
 
     await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: /send sign-in link/i }),
-      ).toBeInTheDocument(),
+      expect(screen.getByRole("button", { name: /send sign-in link/i })).toBeInTheDocument(),
     );
     expect(screen.queryByText("check your email")).not.toBeInTheDocument();
+    // The typo comes back to be corrected, not retyped (MysteryMixClub-ksnr).
+    const field = screen.getByLabelText(/^email$/i);
+    expect(field).toHaveValue("user@example.com");
+    expect(field).toHaveFocus();
+  });
+
+  it("an ordinary arrival at /login starts with an empty, unfocused email field", () => {
+    renderLogin();
+
+    const field = screen.getByLabelText(/^email$/i);
+    expect(field).toHaveValue("");
+    expect(field).not.toHaveFocus();
   });
 
   it("a stashed invite hides the waitlist block entirely — it's not needed", async () => {
@@ -346,7 +451,9 @@ describe("LoginRoute", () => {
     // The real form is here now, not just a link back to /login.
     expect(await screen.findByRole("button", { name: /^join$/i })).toBeInTheDocument();
     expect(screen.getByText(/no invite yet\?/i)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^use a different email$/i })).not.toBeInTheDocument();
+    // A typo isn't a missing account: the way back stays even with the
+    // waitlist on (MysteryMixClub-ksnr).
+    expect(screen.getByRole("button", { name: /wrong email\? change it/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^email us$/i })).not.toBeInTheDocument();
   });
 
@@ -363,7 +470,9 @@ describe("LoginRoute", () => {
     await user.type(passwordInput(), "correct-horse");
     await user.click(screen.getByRole("button", { name: /^sign in$/i }));
 
-    await waitFor(() => expect(mockLogin).toHaveBeenCalledWith("user@example.com", "correct-horse"));
+    await waitFor(() =>
+      expect(mockLogin).toHaveBeenCalledWith("user@example.com", "correct-horse"),
+    );
     expect(setAccessToken).toHaveBeenCalledWith("acc-1");
     // Magic link is untouched by the password path.
     expect(mockRequestMagicLink).not.toHaveBeenCalled();
@@ -535,17 +644,18 @@ describe("LoginRoute", () => {
     await waitFor(() => expect(mockForgotPassword).toHaveBeenCalledWith("user@example.com"));
     // Never phrased as "sent" — a 200 says nothing about the address.
     expect(await screen.findByText(/if that email has a password set/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /set a new password with this link/i })).toHaveAttribute(
-      "href",
-      "/auth/reset-password?token=reset-tok",
-    );
+    expect(
+      screen.getByRole("link", { name: /set a new password with this link/i }),
+    ).toHaveAttribute("href", "/auth/reset-password?token=reset-tok");
   });
 
   // --- google (ADR 0007) ---------------------------------------------------- //
 
   it("google: renders a real link to the redirect endpoint, carrying any stashed invite", async () => {
     localStorage.setItem("pendingInvitePath", "/invite/inv-789");
-    mockGoogleLoginUrl.mockReturnValue("http://api.test/api/v1/auth/google/login?invite_token=inv-789");
+    mockGoogleLoginUrl.mockReturnValue(
+      "http://api.test/api/v1/auth/google/login?invite_token=inv-789",
+    );
 
     try {
       renderLogin();
@@ -601,9 +711,7 @@ describe("LoginRoute", () => {
 
   it("google: ?google=invite_required reuses the same copy as the other sign-up paths", () => {
     renderLogin("/login?google=invite_required");
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      /you need an invite to create an account/i,
-    );
+    expect(screen.getByRole("alert")).toHaveTextContent(/you need an invite to create an account/i);
   });
 
   it("google: ?google=denied and an unknown outcome each get calm copy", () => {
@@ -640,9 +748,7 @@ describe("LoginRoute", () => {
   // the same sentence from the user's own submit is an error.
   it("google: outcome messages are plain, while the same words from a form submit get the error color", async () => {
     localStorage.setItem("pendingInvitePath", "/invite/inv-789");
-    mockRegister.mockRejectedValue(
-      new ApiError(403, "you need an invite to create an account"),
-    );
+    mockRegister.mockRejectedValue(new ApiError(403, "you need an invite to create an account"));
     const user = userEvent.setup();
 
     try {
@@ -675,6 +781,230 @@ describe("LoginRoute", () => {
     await openPasswordTab(user);
 
     expect(screen.queryByText(/google sign-in was cancelled/i)).not.toBeInTheDocument();
+  });
+
+  // --- native google (MysteryMixClub-4vii.21) -------------------------------- //
+
+  it("native google: renders a button (not a link) that drives ASWebAuthenticationSession", async () => {
+    mockNativeGoogleAuthAvailable.mockReturnValue(true);
+    renderLogin();
+
+    expect(await screen.findByRole("button", { name: /sign in with google/i })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /sign in with google/i })).not.toBeInTheDocument();
+  });
+
+  it("native google: a successful sign-in exchanges the code and authenticates", async () => {
+    const user = userEvent.setup();
+    mockNativeGoogleAuthAvailable.mockReturnValue(true);
+    mockGoogleAuthSignIn.mockResolvedValue({ outcome: "ok", code: "one-time-code" });
+    mockExchangeGoogleNativeCode.mockResolvedValue({ access_token: "native-token" });
+    renderLogin();
+
+    await user.click(await screen.findByRole("button", { name: /sign in with google/i }));
+
+    await waitFor(() => {
+      expect(mockExchangeGoogleNativeCode).toHaveBeenCalledWith("one-time-code");
+    });
+    expect(setAccessToken).toHaveBeenCalledWith("native-token");
+  });
+
+  it("native google: carries a stashed invite token into the native sign-in call", async () => {
+    const user = userEvent.setup();
+    localStorage.setItem("pendingInvitePath", "/invite/inv-789");
+    mockNativeGoogleAuthAvailable.mockReturnValue(true);
+    mockGoogleAuthSignIn.mockResolvedValue({ outcome: "ok", code: "c" });
+    mockExchangeGoogleNativeCode.mockResolvedValue({ access_token: "t" });
+
+    try {
+      renderLogin();
+
+      await user.click(await screen.findByRole("button", { name: /sign in with google/i }));
+
+      await waitFor(() => {
+        expect(mockGoogleAuthSignIn).toHaveBeenCalledWith(
+          expect.objectContaining({ inviteToken: "inv-789" }),
+        );
+      });
+    } finally {
+      localStorage.clear();
+    }
+  });
+
+  it("native google: a cancelled sheet shows no error", async () => {
+    const user = userEvent.setup();
+    mockNativeGoogleAuthAvailable.mockReturnValue(true);
+    mockGoogleAuthSignIn.mockResolvedValue({ outcome: "cancelled", code: "" });
+    renderLogin();
+
+    await user.click(await screen.findByRole("button", { name: /sign in with google/i }));
+
+    await waitFor(() => {
+      expect(mockGoogleAuthSignIn).toHaveBeenCalled();
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(setAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("native google: a non-ok outcome shows the same calm copy as the web redirect path", async () => {
+    const user = userEvent.setup();
+    mockNativeGoogleAuthAvailable.mockReturnValue(true);
+    mockGoogleAuthSignIn.mockResolvedValue({ outcome: "invite_required", code: "" });
+    renderLogin();
+
+    await user.click(await screen.findByRole("button", { name: /sign in with google/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/you need an invite/i);
+    expect(setAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("native google: a rejected plugin call shows the generic error copy", async () => {
+    const user = userEvent.setup();
+    mockNativeGoogleAuthAvailable.mockReturnValue(true);
+    mockGoogleAuthSignIn.mockRejectedValue(new Error("native bridge exploded"));
+    renderLogin();
+
+    await user.click(await screen.findByRole("button", { name: /sign in with google/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/that sign-in didn't work/i);
+    expect(setAccessToken).not.toHaveBeenCalled();
+  });
+
+  // --- native apple (MysteryMixClub-4vii.9) ---------------------------------- //
+
+  it("native apple: renders alongside google when both are available natively", async () => {
+    mockNativeGoogleAuthAvailable.mockReturnValue(true);
+    mockNativeAppleAuthAvailable.mockReturnValue(true);
+    renderLogin();
+
+    // Both awaited (not a mix of findByRole/getByRole): the side-by-side
+    // layout only settles once the async getGoogleEnabled() check resolves,
+    // so Apple can render a render tick before Google does.
+    const apple = await screen.findByRole("button", { name: /sign in with apple/i });
+    const google = await screen.findByRole("button", { name: /sign in with google/i });
+    expect(apple).toBeInTheDocument();
+    expect(google).toBeInTheDocument();
+    // Side by side, not stacked (MysteryMixClub-4vii.24): each button sits
+    // in its own flex-1 wrapper, and those wrappers are siblings inside one
+    // shared flex row (not each in a separate full-width block).
+    expect(apple.parentElement).not.toBe(google.parentElement);
+    expect(apple.parentElement?.parentElement).toBe(google.parentElement?.parentElement);
+    expect(apple.parentElement?.parentElement?.className).toContain("flex");
+    expect(apple.parentElement?.className).toContain("flex-1");
+    expect(google.parentElement?.className).toContain("flex-1");
+  });
+
+  it("native apple: a successful sign-in exchanges the identity token and authenticates", async () => {
+    const user = userEvent.setup();
+    mockNativeAppleAuthAvailable.mockReturnValue(true);
+    mockAppleAuthSignIn.mockResolvedValue({ outcome: "ok", identityToken: "signed-jwt" });
+    mockSignInWithApple.mockResolvedValue({ access_token: "apple-token" });
+    renderLogin();
+
+    await user.click(await screen.findByRole("button", { name: /sign in with apple/i }));
+
+    await waitFor(() => {
+      expect(mockSignInWithApple).toHaveBeenCalledWith("signed-jwt", null);
+    });
+    expect(setAccessToken).toHaveBeenCalledWith("apple-token");
+  });
+
+  it("native apple: carries a stashed invite token into the exchange call", async () => {
+    const user = userEvent.setup();
+    localStorage.setItem("pendingInvitePath", "/invite/inv-789");
+    mockNativeAppleAuthAvailable.mockReturnValue(true);
+    mockAppleAuthSignIn.mockResolvedValue({ outcome: "ok", identityToken: "signed-jwt" });
+    mockSignInWithApple.mockResolvedValue({ access_token: "t" });
+
+    try {
+      renderLogin();
+
+      await user.click(await screen.findByRole("button", { name: /sign in with apple/i }));
+
+      await waitFor(() => {
+        expect(mockSignInWithApple).toHaveBeenCalledWith("signed-jwt", "inv-789");
+      });
+    } finally {
+      localStorage.clear();
+    }
+  });
+
+  it("native apple: a cancelled sheet shows no error", async () => {
+    const user = userEvent.setup();
+    mockNativeAppleAuthAvailable.mockReturnValue(true);
+    mockAppleAuthSignIn.mockResolvedValue({ outcome: "cancelled" });
+    renderLogin();
+
+    await user.click(await screen.findByRole("button", { name: /sign in with apple/i }));
+
+    await waitFor(() => {
+      expect(mockAppleAuthSignIn).toHaveBeenCalled();
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(setAccessToken).not.toHaveBeenCalled();
+    expect(mockSignInWithApple).not.toHaveBeenCalled();
+  });
+
+  it("native apple: the backend's own detail string is shown as-is on failure", async () => {
+    const user = userEvent.setup();
+    mockNativeAppleAuthAvailable.mockReturnValue(true);
+    mockAppleAuthSignIn.mockResolvedValue({ outcome: "ok", identityToken: "signed-jwt" });
+    mockSignInWithApple.mockRejectedValue(
+      new ApiError(403, "you need an invite to create an account"),
+    );
+    renderLogin();
+
+    await user.click(await screen.findByRole("button", { name: /sign in with apple/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /you need an invite to create an account/i,
+    );
+    expect(setAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("native apple: a rejected plugin call shows the generic error copy", async () => {
+    const user = userEvent.setup();
+    mockNativeAppleAuthAvailable.mockReturnValue(true);
+    mockAppleAuthSignIn.mockRejectedValue(new Error("native bridge exploded"));
+    renderLogin();
+
+    await user.click(await screen.findByRole("button", { name: /sign in with apple/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/that sign-in didn't work/i);
+    expect(setAccessToken).not.toHaveBeenCalled();
+  });
+
+  // --- login logo native-only top margin (MysteryMixClub-4vii.24) ----------- //
+
+  it("nudges the login logo down on native iOS to clear the camera cutout", () => {
+    mockGetPlatform.mockReturnValue("ios");
+    renderLogin();
+
+    const heading = screen.getByRole("heading", { level: 1 });
+    expect(heading.parentElement?.parentElement?.className).toContain("mt-[10px]");
+  });
+
+  it("does not add the native camera-cutout margin on web", () => {
+    mockGetPlatform.mockReturnValue("web");
+    renderLogin();
+
+    const heading = screen.getByRole("heading", { level: 1 });
+    expect(heading.parentElement?.parentElement?.className).not.toContain("mt-[10px]");
+  });
+
+  // --- beta badge hidden on native (MysteryMixClub-4vii.41: Guideline 2.2) - //
+
+  it("shows the beta badge on web", () => {
+    mockGetPlatform.mockReturnValue("web");
+    renderLogin();
+
+    expect(screen.getByText("beta")).toBeInTheDocument();
+  });
+
+  it("hides the beta badge on native iOS -- a beta label belongs in TestFlight, not the App Store build", () => {
+    mockGetPlatform.mockReturnValue("ios");
+    renderLogin();
+
+    expect(screen.queryByText("beta")).not.toBeInTheDocument();
   });
 
   // --- form semantics and validation ---------------------------------------- //

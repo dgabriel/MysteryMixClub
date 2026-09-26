@@ -174,6 +174,14 @@ this cross-site return; the nonce cookie is Lax for the same reason.
 - If valid: issue a new access token, return to client
 - If invalid or expired: return 401, redirect to magic link request
 - The user experiences none of this — it is fully silent
+- **The iOS app (ADR 0037)** never gets the cookie back: its WebView origin,
+  `capacitor://localhost`, is cross-site to the API. A sign-in from exactly that
+  `Origin` also returns `refresh_token` in the body (never to any other
+  origin), the app keeps it in the Keychain, and presents it as the
+  `X-Refresh-Token` header. `/auth/refresh`, `/auth/logout` and
+  `/auth/logout-all` read the cookie first, then that header. With neither,
+  `/auth/logout` falls back to the Bearer access token's `sid`, so logout
+  always revokes.
 
 ### Session Management
 
@@ -181,12 +189,19 @@ this cross-site return; the nonce cookie is Lax for the same reason.
 - Sessions store: user ID, refresh token hash, device hint (user agent), created at, last used at, invalidated at
 - "Log out of all devices" sets `invalidated_at` on all active sessions for that user
 - All subsequent refresh attempts against invalidated sessions return 401
+- Access tokens carry the session they were issued under as a `sid` claim. Almost every route ignores it
+  (an access token stays valid until it expires, by design), but a route whose effect must not outlive a
+  logout checks that session is still live. Device push registration (`POST /users/me/push-token`) is the
+  first: it needs a live session, `/auth/logout` deletes that session's `device_push_tokens` rows in the same
+  transaction, and a token already held by a newer session cannot be taken back by an older one
+  (ADR 0034). Tokens issued before the claim existed have no `sid`: they can register a new or unbound device but never take one a session owns, until they expire (at most an hour).
 
 ### Security Rules
 
 - Magic link tokens: single-use, 15-minute expiry, cryptographically random, hard-deleted on use
 - Access tokens: JWT, 60-minute expiry, signed with server secret, never stored in localStorage or cookies
 - Refresh tokens: 30-day expiry, stored as a hash in the database, HttpOnly Secure cookie on client
+  (on iOS, the Keychain instead; returned in a body only to the app's own origin, ADR 0037)
 - Rate limiting on `/auth/request` — maximum 5 magic link requests per email per hour
 - Rate limiting on `/auth/forgot-password` — same 5 per email per hour
 - Brute-force protection on `/auth/login` — maximum 10 FAILED attempts per email
@@ -375,6 +390,40 @@ body                TEXT NOT NULL (max 280 chars)
 created_at          TIMESTAMP
 ```
 
+### reports
+```
+id                  UUID PRIMARY KEY
+reporter_id         UUID REFERENCES users(id) ON DELETE SET NULL (nullable)
+reported_user_id    UUID REFERENCES users(id) ON DELETE SET NULL (nullable; denormalized at write from the content's author)
+club_id             UUID REFERENCES clubs(id)
+content_type        TEXT CHECK (content_type IN ('note'))
+content_id          UUID NOT NULL
+reason              TEXT CHECK (reason IN ('inappropriate_content', 'harassment', 'spam', 'other'))
+detail              TEXT (nullable)
+status              TEXT CHECK (status IN ('open', 'reviewed')) DEFAULT 'open'
+created_at          TIMESTAMP
+```
+> App Store Guideline 1.2's reporting half (MysteryMixClub-4vii.13). Review is
+> a direct table query, not a console — the operational process lives in
+> docs/ios/README.md's moderation posture. `SET NULL` (4vii.38): the
+> moderation record survives either party's account purge; `blocks`, by
+> contrast, cascade-deletes with either account (ADR 0035).
+
+### blocks
+```
+blocker_id          UUID REFERENCES users(id) ON DELETE CASCADE
+blocked_id          UUID REFERENCES users(id) ON DELETE CASCADE
+created_at          TIMESTAMP
+PRIMARY KEY (blocker_id, blocked_id)
+```
+> Guideline 1.2's blocking half (MysteryMixClub-4vii.42, ADR 0035):
+> one-directional and quiet — the blocker's own reads are filtered everywhere
+> they can see the blocked member's text (notes, submitter_note, submission
+> history, per-viewer Most Noted, `voters[]`); the blocked member's experience
+> is unchanged and never notified. Blocking an already-left/removed clubmate
+> is allowed; only self-blocks (400) and never-clubmates (neutral 404) are
+> rejected.
+
 ### magic_link_tokens
 ```
 id                  UUID PRIMARY KEY
@@ -535,6 +584,27 @@ POST   /submissions/:id/notes   Leave a note on a submission
 GET    /submissions/:id/notes   Get notes on a submission
 ```
 
+### Moderation (Guideline 1.2)
+```
+POST   /reports                 Report UGC (v1: notes; content_type/reason constrained); commits to the admin queue before a best-effort email alert is queued for the moderation contact (4vii.48) — 4vii.13
+POST   /users/me/blocks         Block a current/former clubmate (201; idempotent re-POST -> 200; 400 self, neutral 404 never-clubmates) — 4vii.42, ADR 0035
+GET    /users/me/blocks         List the caller's blocks (newest first)
+DELETE /users/me/blocks/:userId Unblock (204; 404 if no standing block)
+GET    /admin/reports           Platform-admin queue: ?status=open|reviewed|all (default open), limit+offset, newest first; per-row context (club, both parties, the note) resolved null-safe — 4vii.48.1
+POST   /admin/reports/:id/review  Mark a report reviewed (idempotent 200; 404 unknown) — 4vii.48.1
+```
+> Reads are filtered per-viewer: any response that would show the caller a
+> blocked author's text (notes, submitter_note, submission history,
+> per-viewer Most Noted, `voters[]`) excludes it; members lists carry
+> `blocked_by_me`. Details in ADR 0035.
+>
+> Writes are filtered server-side (`app/services/content_filter.py`, ADR 0036):
+> a curated hate/harassment denylist checked with normalized, whole-word
+> matching on every member-visible free-text write (display name, club
+> name/description, mix theme/description, submission note, note body). A
+> flagged write 422s with the generic message "that text isn't allowed here —
+> try something else." — the flagged term is never echoed.
+
 ---
 
 ## 8. Song Identity & Cross-Platform Link Resolution
@@ -674,10 +744,10 @@ Aligned with commitments in `problem-statement.md`.
 - No analytics pipelines that store individual user behavior by default
 - Aggregate-only metrics at launch (total clubs, total mystery mixes, total submissions — no user-level tracking)
 - Individual taste profiles are a future opt-in feature — the data collection layer is not built until that feature is explicitly scoped
-- Right to be forgotten: `DELETE /users/me` cascades to all submissions, votes, notes, sessions, and club membership records. Soft delete with a scheduled hard purge within 30 days.
+- Right to be forgotten: `DELETE /users/me` cascades to all submissions, votes, notes, sessions, club membership records, linked Google/Apple sign-in identities, and push device registrations. Soft delete with a scheduled hard purge within 30 days.
 - No third-party analytics scripts (no Google Analytics, no Mixpanel) in v1
 - Ad provider must be vetted for political content policy before any ad integration is implemented
-- **Subprocessors (GDPR Art. 28, MYS-184):** two third parties process personal data on our behalf — Resend (email addresses, for magic links/notifications) and DigitalOcean (hosts the app servers and database). Both have a standard DPA covering their processing. The song-lookup/playback integrations (Spotify, YouTube, Apple Music, Deezer) only ever receive a title/artist/ISRC — never anything tying a lookup back to a specific user — so they are not subprocessors of personal data. Keep this section in sync with the Privacy Policy's "subprocessors" section (`frontend/src/pages/PrivacyRoute.tsx`).
+- **Subprocessors (GDPR Art. 28, MYS-184):** four third parties process personal data on our behalf — Resend (email addresses, for magic links/notifications), DigitalOcean (hosts the app servers and database), Google (account id/name/email for Sign-In, `MysteryMixClub-ali8.4`), and Apple (account identifier/email for Sign in with Apple, and APNs push delivery — `4vii.9`/`4vii.25`). Resend and DigitalOcean have a standard DPA; Google's and Apple's own terms govern their side. The Apple Music *user* token (MYS-105) is used once, in memory, to create a playlist and is never persisted. The song-lookup/playback integrations (Spotify, YouTube, Apple Music, Deezer) only ever receive a title/artist/ISRC — never anything tying a lookup back to a specific user — so they are not subprocessors of personal data. Keep this section in sync with the Privacy Policy's "subprocessors" section (`frontend/src/pages/PrivacyRoute.tsx`).
 
 ---
 

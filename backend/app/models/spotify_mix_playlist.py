@@ -21,8 +21,14 @@ class SpotifyMixPlaylist(Base):
     mix_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("mixes.id"), nullable=False, index=True
     )
+    # `user_id` here is the connected account used to generate the club's
+    # (shared) Spotify playlist, not a per-viewer row -- see
+    # spotify_playlist_generation.py. ON DELETE CASCADE (MysteryMixClub-4vii.38):
+    # that account is admin-managed, not a member's own self-service account,
+    # so deleting it is a deliberate action and losing this row along with it
+    # is an accepted, understood consequence, not a surprise.
     user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     playlist_id: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(

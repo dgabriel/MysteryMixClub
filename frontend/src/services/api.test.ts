@@ -22,16 +22,22 @@ import {
   logout,
   logoutAll,
   refresh,
+  refreshSession,
+  registerPushToken,
   removeMember,
   requestMagicLink,
   setPassword,
   setStoredAccessToken,
+  shareableOrigin,
   startGoogleLink,
   updateDisplayName,
   updateClub,
   updateMemberRole,
+  unregisterPushToken,
+  updateNotificationPreferences,
   verifyToken,
 } from "./api";
+import { isOffline, resetConnectivityForTests } from "../lib/connectivity";
 import type {
   AdminMetrics,
   AdminSignupTrend,
@@ -234,6 +240,27 @@ describe("api.ts", () => {
     });
   });
 
+  describe("offline (MysteryMixClub-ga4y)", () => {
+    afterEach(() => resetConnectivityForTests());
+
+    it("refreshSession tells no network apart from no session", async () => {
+      vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new TypeError("Load failed"));
+      await expect(refreshSession()).resolves.toEqual({ kind: "offline" });
+      expect(isOffline()).toBe(true);
+
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(emptyResponse(401));
+      await expect(refreshSession()).resolves.toEqual({ kind: "none" });
+      expect(isOffline()).toBe(false);
+    });
+
+    it("a request that gets no response marks the app offline and still throws", async () => {
+      vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new TypeError("Load failed"));
+
+      await expect(authenticatedRequest("/api/v1/users/me")).rejects.toThrow("Load failed");
+      expect(isOffline()).toBe(true);
+    });
+  });
+
   describe("logout / logoutAll", () => {
     it("logout POSTs to /auth/logout with credentials include", async () => {
       const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(emptyResponse(204));
@@ -359,6 +386,71 @@ describe("api.ts", () => {
     });
   });
 
+  describe("registerPushToken (MysteryMixClub-4vii.32)", () => {
+    it("POSTs the device token (Bearer + credentials) and resolves on 200", async () => {
+      setStoredAccessToken("my-token");
+      const fetchMock = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(jsonResponse(200, { message: "registered" }));
+
+      await expect(registerPushToken("device-token-abc")).resolves.toBeUndefined();
+
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(`${API_BASE}/api/v1/users/me/push-token`);
+      expect(init?.method).toBe("POST");
+      expect(init?.credentials).toBe("include");
+      expect(JSON.parse(String(init?.body))).toEqual({ device_token: "device-token-abc" });
+      expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer my-token");
+    });
+
+    it("throws ApiError on a non-2xx response, so a rejected upload is never mistaken for a registration", async () => {
+      setStoredAccessToken("my-token");
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(500, { detail: "boom" }));
+
+      const err = await registerPushToken("device-token-abc").catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(ApiError);
+      expect((err as ApiError).status).toBe(500);
+    });
+
+    it("throws when the session is gone (401, and the silent refresh fails too)", async () => {
+      setStoredAccessToken("stale-token");
+      vi.spyOn(globalThis, "fetch")
+        .mockResolvedValueOnce(jsonResponse(401, { detail: "not authenticated" }))
+        .mockResolvedValueOnce(emptyResponse(401));
+
+      const err = await registerPushToken("device-token-abc").catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(ApiError);
+      expect((err as ApiError).status).toBe(401);
+    });
+  });
+
+  describe("unregisterPushToken (MysteryMixClub-4vii.32)", () => {
+    it("DELETEs the device token (Bearer + credentials) and resolves on 204", async () => {
+      setStoredAccessToken("my-token");
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(emptyResponse(204));
+
+      await expect(unregisterPushToken("device token/abc")).resolves.toBeUndefined();
+
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(`${API_BASE}/api/v1/users/me/push-token?device_token=device+token%2Fabc`);
+      expect(init?.method).toBe("DELETE");
+      expect(init?.credentials).toBe("include");
+      expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer my-token");
+    });
+
+    it("throws ApiError on a non-2xx response, so a registration that was NOT removed is never mistaken for one that was", async () => {
+      setStoredAccessToken("my-token");
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(500, { detail: "boom" }));
+
+      const err = await unregisterPushToken("device-token-abc").catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(ApiError);
+      expect((err as ApiError).status).toBe(500);
+    });
+  });
+
   describe("getMe", () => {
     // MYS-35: UserProfile must carry `id`. Annotating the fixture as UserProfile
     // means this object literal only typechecks once UserProfile gains `id`
@@ -374,6 +466,9 @@ describe("api.ts", () => {
       tos_accepted: true,
       has_password: false,
       google_linked: false,
+      email_notifications: true,
+      push_lifecycle_enabled: true,
+      push_deadline_reminders_enabled: true,
     };
 
     it("GETs /api/v1/users/me (Bearer + credentials) and resolves the parsed profile on 200", async () => {
@@ -439,6 +534,9 @@ describe("api.ts", () => {
       tos_accepted: true,
       has_password: false,
       google_linked: false,
+      email_notifications: true,
+      push_lifecycle_enabled: true,
+      push_deadline_reminders_enabled: true,
     };
 
     it("PATCHes /api/v1/users/me with a JSON body and returns the parsed profile on 200", async () => {
@@ -467,6 +565,71 @@ describe("api.ts", () => {
       const err = await updateDisplayName("x".repeat(100)).catch((e: unknown) => e);
       expect(err).toBeInstanceOf(ApiError);
       expect(err).toMatchObject({ status: 422, message: "display name too long" });
+    });
+  });
+
+  describe("updateNotificationPreferences (MysteryMixClub-4vii.28, IOS-04)", () => {
+    const profile: UserProfile = {
+      id: "11111111-1111-1111-1111-111111111111",
+      display_name: "Alice",
+      email: "alice@example.com",
+      preferred_service: null,
+      is_platform_admin: false,
+      tos_accepted: true,
+      has_password: false,
+      google_linked: false,
+      email_notifications: false,
+      push_lifecycle_enabled: true,
+      push_deadline_reminders_enabled: true,
+    };
+
+    it("PATCHes /api/v1/users/me with only the given fields and returns the parsed profile on 200", async () => {
+      setStoredAccessToken("my-token");
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, profile));
+
+      await expect(updateNotificationPreferences({ email_notifications: false })).resolves.toEqual(
+        profile,
+      );
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(`${API_BASE}/api/v1/users/me`);
+      expect(init?.method).toBe("PATCH");
+      expect(init?.credentials).toBe("include");
+      // Exactly the given field, no others -- this call never sends the two
+      // fields it wasn't asked to change.
+      expect(init?.body).toBe(JSON.stringify({ email_notifications: false }));
+      const headers = new Headers(init?.headers);
+      expect(headers.get("Content-Type")).toBe("application/json");
+      expect(headers.get("Authorization")).toBe("Bearer my-token");
+    });
+
+    it("can update more than one field in a single call", async () => {
+      setStoredAccessToken("my-token");
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, profile));
+
+      await updateNotificationPreferences({
+        push_lifecycle_enabled: false,
+        push_deadline_reminders_enabled: false,
+      });
+
+      const [, init] = fetchMock.mock.calls[0];
+      expect(init?.body).toBe(
+        JSON.stringify({ push_lifecycle_enabled: false, push_deadline_reminders_enabled: false }),
+      );
+    });
+
+    it("throws ApiError with the backend detail on a non-2xx response", async () => {
+      setStoredAccessToken("my-token");
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse(422, { detail: "email_notifications may not be null" }),
+      );
+
+      const err = await updateNotificationPreferences({ email_notifications: false }).catch(
+        (e: unknown) => e,
+      );
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err).toMatchObject({ status: 422, message: "email_notifications may not be null" });
     });
   });
 
@@ -510,13 +673,11 @@ describe("api.ts", () => {
   describe("startGoogleLink", () => {
     it("GETs /api/v1/users/me/google/link (Bearer + credentials) and resolves the authorize_url", async () => {
       setStoredAccessToken("my-token");
-      const fetchMock = vi
-        .spyOn(globalThis, "fetch")
-        .mockResolvedValue(
-          jsonResponse(200, {
-            authorize_url: "https://accounts.google.com/o/oauth2/v2/auth?state=x",
-          }),
-        );
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse(200, {
+          authorize_url: "https://accounts.google.com/o/oauth2/v2/auth?state=x",
+        }),
+      );
 
       await expect(startGoogleLink()).resolves.toEqual({
         authorize_url: "https://accounts.google.com/o/oauth2/v2/auth?state=x",
@@ -1488,7 +1649,15 @@ describe("api.ts", () => {
           platforms: { spotify: "https://open.spotify.com/track/x" },
           submitter_note: "a banger",
           vote_count: 3,
-          notes: [{ body: "this slaps", author_display_name: "Ada", created_at: "x" }],
+          notes: [
+            {
+              id: "note-1",
+              author_id: "user-ada",
+              body: "this slaps",
+              author_display_name: "Ada",
+              created_at: "x",
+            },
+          ],
           voters: [{ user_id: "user-3", display_name: "Cal", weight: 1 }],
         },
       ],
@@ -1501,7 +1670,15 @@ describe("api.ts", () => {
             title: "Debaser",
             artist: "Pixies",
             note_count: 1,
-            notes: [{ body: "this slaps", author_display_name: "Ada", created_at: "x" }],
+            notes: [
+              {
+                id: "note-1",
+                author_id: "user-ada",
+                body: "this slaps",
+                author_display_name: "Ada",
+                created_at: "x",
+              },
+            ],
           },
         ],
       },
@@ -1546,6 +1723,119 @@ describe("api.ts", () => {
         status: 500,
         message: "request failed (500)",
       });
+    });
+  });
+
+  describe("iOS app session (MysteryMixClub-kw2u, ADR 0037)", () => {
+    const store = {
+      loadRefreshToken: vi.fn(),
+      saveRefreshToken: vi.fn(),
+      clearRefreshToken: vi.fn(),
+    };
+
+    async function nativeApi() {
+      vi.resetModules();
+      vi.doMock("../lib/platform", () => ({ IS_NATIVE_BUILD: true }));
+      vi.doMock("../ios/sessionStore", () => store);
+      return import("./api");
+    }
+
+    beforeEach(() => {
+      store.loadRefreshToken.mockReset().mockResolvedValue("kept-refresh");
+      store.saveRefreshToken.mockReset().mockResolvedValue(undefined);
+      store.clearRefreshToken.mockReset().mockResolvedValue(undefined);
+    });
+
+    afterEach(() => {
+      vi.doUnmock("../lib/platform");
+      vi.doUnmock("../ios/sessionStore");
+      vi.resetModules();
+    });
+
+    it("keeps the refresh token a sign-in returns, and hands back only the access token", async () => {
+      const api = await nativeApi();
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse(200, { access_token: "a", token_type: "bearer", refresh_token: "r" }),
+      );
+
+      await expect(api.login("ios@example.com", "pw")).resolves.toEqual({ access_token: "a" });
+      expect(store.saveRefreshToken).toHaveBeenCalledWith("r");
+    });
+
+    it("refresh sends the saved token in X-Refresh-Token", async () => {
+      const api = await nativeApi();
+      const fetchMock = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(jsonResponse(200, { access_token: "fresh", token_type: "bearer" }));
+
+      await expect(api.refresh()).resolves.toEqual({ access_token: "fresh" });
+      const headers = fetchMock.mock.calls[0][1]?.headers as Record<string, string>;
+      expect(headers["X-Refresh-Token"]).toBe("kept-refresh");
+    });
+
+    it("a rejected refresh (401) forgets the saved token; a server error keeps it", async () => {
+      const api = await nativeApi();
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(emptyResponse(500));
+      await api.refresh();
+      expect(store.clearRefreshToken).not.toHaveBeenCalled();
+
+      fetchMock.mockResolvedValue(emptyResponse(401));
+      await api.refresh();
+      expect(store.clearRefreshToken).toHaveBeenCalledTimes(1);
+    });
+
+    it("logout sends the saved token and the access token, then forgets the saved token", async () => {
+      const api = await nativeApi();
+      api.setStoredAccessToken("access");
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(emptyResponse(200));
+
+      await api.logout();
+
+      const headers = fetchMock.mock.calls[0][1]?.headers as Record<string, string>;
+      expect(headers["X-Refresh-Token"]).toBe("kept-refresh");
+      expect(headers.Authorization).toBe("Bearer access");
+      expect(store.clearRefreshToken).toHaveBeenCalled();
+    });
+
+    it("logout forgets the saved token even when the request fails", async () => {
+      const api = await nativeApi();
+      vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("offline"));
+
+      await expect(api.logout()).rejects.toThrow("offline");
+      expect(store.clearRefreshToken).toHaveBeenCalled();
+    });
+  });
+
+  it("web never sends X-Refresh-Token or an access token to logout", async () => {
+    setStoredAccessToken("access");
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(emptyResponse(200));
+
+    await refresh();
+    await logout();
+
+    for (const [, init] of fetchMock.mock.calls) {
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      expect(headers["X-Refresh-Token"]).toBeUndefined();
+      expect(headers.Authorization).toBeUndefined();
+    }
+  });
+
+  describe("shareableOrigin (MysteryMixClub-jrm2)", () => {
+    it("uses window.location.origin on web", () => {
+      expect(shareableOrigin()).toBe(window.location.origin);
+    });
+
+    it("uses the real API base URL on native, never window.location.origin", async () => {
+      vi.resetModules();
+      vi.doMock("../lib/platform", () => ({ IS_NATIVE_BUILD: true }));
+
+      const nativeApi = await import("./api");
+
+      expect(nativeApi.shareableOrigin()).toBe(nativeApi.API_BASE_URL);
+      expect(nativeApi.shareableOrigin()).not.toBe(window.location.origin);
+
+      vi.doUnmock("../lib/platform");
+      vi.resetModules();
     });
   });
 });

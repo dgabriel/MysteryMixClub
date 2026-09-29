@@ -25,9 +25,11 @@ to shield from a Spotify hiccup.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import random
 import uuid
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -40,7 +42,12 @@ from app.models.mix import Mix
 from app.models.spotify_connection import SpotifyConnection
 from app.models.spotify_mix_playlist import SpotifyMixPlaylist
 from app.models.submission import Submission
-from app.services.spotify_client import SpotifyClient, SpotifyNotFoundError
+from app.services.spotify_client import (
+    IsrcLookup,
+    SpotifyApiError,
+    SpotifyClient,
+    SpotifyNotFoundError,
+)
 from app.services.source_tracks import Source, source_fields
 from app.services.spotify_playlist import playlist_description, playlist_name
 from app.services.spotify_token_crypto import decrypt_refresh_token, encrypt_refresh_token
@@ -52,6 +59,18 @@ logger = logging.getLogger("app.services.spotify_playlist_generation")
 # track (no ISRC — Bandcamp/YouTube) can never match a catalog, versus an
 # ISRC-backed track this catalog simply doesn't carry.
 UnmatchedReason = Literal["source_only", "no_catalog_match"]
+
+# A 429 gets one retry after the wait Spotify asked for, capped: this runs in the
+# background worker, out of any request, so waiting a few seconds is cheap.
+_MAX_RETRY_AFTER_SECONDS = 10.0
+_DEFAULT_RETRY_AFTER_SECONDS = 1.0
+# A run where at least this share of the uncached lookups ERRORED (as opposed to
+# cleanly not matching) is a broken integration, not a catalog gap, and must not
+# publish a truncated playlist as if it had succeeded.
+_MAX_ERROR_SHARE = 0.5
+
+# Indirection so tests can skip the real wait.
+_sleep = asyncio.sleep
 
 
 @dataclass
@@ -73,6 +92,25 @@ class GeneratedPlaylist:
     track_count: int
     total_count: int
     unmatched: list[UnmatchedSubmission] = field(default_factory=list)
+
+
+def _failure_label(result: IsrcLookup) -> str:
+    """A short fixed label for aggregating failures, never containing user data."""
+    return f"http-{result.status}" if result.status else (result.reason or "unknown")
+
+
+async def _lookup_isrc(client: SpotifyClient, isrc: str, token: str) -> IsrcLookup:
+    """One ISRC lookup, retried once after a 429 for the wait Spotify asked for."""
+    result = await client.lookup_track_by_isrc(isrc, token)
+    if result.status == 429:
+        wait = min(
+            result.retry_after if result.retry_after is not None else _DEFAULT_RETRY_AFTER_SECONDS,
+            _MAX_RETRY_AFTER_SECONDS,
+        )
+        logger.warning("spotify rate limited an ISRC lookup; retrying once after %.1fs", wait)
+        await _sleep(wait)
+        result = await client.lookup_track_by_isrc(isrc, token)
+    return result
 
 
 def playlist_account_user_id(settings: Settings) -> uuid.UUID | None:
@@ -127,6 +165,13 @@ async def generate_mix_playlist(
     concerns, so it's usable from a plain background/job context too."""
     access_token = await _playlist_account_access_token(client, db, connection)
 
+    # Read from the ORM objects now. The best-effort cache commit below rolls back on
+    # failure, which expires them, and touching an expired attribute in an async
+    # session raises MissingGreenlet: the "never fail on the cache write" promise
+    # only holds if nothing after it needs these.
+    name = playlist_name(club.name, mix_.mix_number, mix_.theme)
+    description = playlist_description(club.name, mix_.mix_number, mix_.theme)
+
     submissions = list(await db.scalars(select(Submission).where(Submission.mix_id == round_id)))
     # Same seeded shuffle as get_mix_playlist so Spotify and YouTube always agree (MYS-151).
     # Sort first for a stable input — Postgres order without ORDER BY is not guaranteed.
@@ -137,16 +182,40 @@ async def generate_mix_playlist(
     unmatched: list[UnmatchedSubmission] = []
     app_token = await client.app_access_token()
     cached_anything = False
+    already_cached = hits = misses = errors = 0
+    error_reasons: Counter[str] = Counter()
+    rate_limited = False
 
     for s in submissions:
         uri = s.spotify_track_uri
-        # Source-only tracks (MYS-201) have no ISRC to search by — they simply go
-        # unmatched, like any other track Spotify's catalog doesn't carry.
-        if not uri and app_token and s.isrc:
-            uri = await client.search_track_uri_by_isrc(s.isrc, app_token)
-            if uri:
-                s.spotify_track_uri = uri
-                cached_anything = True
+        if uri:
+            already_cached += 1
+        elif s.isrc:
+            # Source-only tracks (MYS-201) have no ISRC to search by, so they skip
+            # this block and simply go unmatched, like any track Spotify lacks.
+            if app_token is None or rate_limited:
+                # No token, or Spotify is still throttling us after a retry: asking
+                # again cannot help and would only deepen the throttle.
+                errors += 1
+                error_reasons["no-app-token" if app_token is None else "skipped-after-429"] += 1
+            else:
+                result = await _lookup_isrc(client, s.isrc, app_token)
+                if result.outcome == "hit" and result.uri:
+                    uri = result.uri
+                    s.spotify_track_uri = uri
+                    cached_anything = True
+                    hits += 1
+                elif result.outcome == "miss":
+                    misses += 1
+                else:
+                    errors += 1
+                    label = _failure_label(result)
+                    if label not in error_reasons:
+                        # First sighting of each distinct failure only; the summary
+                        # below carries the counts, and this never names the track.
+                        logger.warning("spotify ISRC lookup failed (%s)", label)
+                    error_reasons[label] += 1
+                    rate_limited = result.status == 429
         if uri:
             matched_uris.append(uri)
         else:
@@ -162,16 +231,44 @@ async def generate_mix_playlist(
                 )
             )
 
+    attempted = hits + misses + errors
+    logger.info(
+        "spotify playlist for mix %s: %d submissions, %d already cached, %d newly matched, "
+        "%d not on spotify, %d lookup errors%s",
+        round_id,
+        len(submissions),
+        already_cached,
+        hits,
+        misses,
+        errors,
+        f" ({', '.join(f'{k} x{v}' for k, v in error_reasons.most_common())})"
+        if error_reasons
+        else "",
+    )
+
     # Best-effort: persist newly resolved URIs, but never fail on the cache write
-    # — the playlist is built from the in-memory uris regardless.
+    # — the playlist is built from the in-memory uris regardless. Done before the
+    # error gate below so a failed run still keeps the progress it made and a
+    # re-run only has to resolve the remainder.
     if cached_anything:
         try:
             await db.commit()
         except Exception:
             await db.rollback()
+            logger.warning(
+                "could not persist newly resolved spotify track URIs for mix %s",
+                round_id,
+                exc_info=True,
+            )
 
-    name = playlist_name(club.name, mix_.mix_number, mix_.theme)
-    description = playlist_description(club.name, mix_.mix_number, mix_.theme)
+    if attempted and errors >= attempted * _MAX_ERROR_SHARE:
+        # Refuse before touching the playlist: replace_tracks on an existing one
+        # would swap a good playlist for a truncated set. The job is recorded as
+        # failed with this text, which GET /mixes/{id}/spotify-playlist surfaces.
+        detail = ", ".join(f"{k} x{v}" for k, v in error_reasons.most_common())
+        raise SpotifyApiError(
+            f"spotify ISRC lookup failed for {errors} of {attempted} tracks ({detail})"
+        )
 
     # Keyed by (mix, shared account) — since the account is the same for every
     # caller, this is effectively one playlist per mix (MYS-169).

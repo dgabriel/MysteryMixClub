@@ -699,6 +699,16 @@ per-platform lookups ranked against the query rather than trusted blindly
   the ordinary backfill path.
 - **Spotify** — deep link only (keyless); `submissions.spotify_track_uri` is
   resolved separately, lazily, at playlist-create time (MYS-83).
+  Playlist generation tells a clean **miss** (Spotify does not carry the ISRC)
+  apart from an **error** (429, refusal, outage, timeout, or no app token). It
+  logs one summary line per run (submissions, already cached, newly matched, not
+  on Spotify, lookup errors by reason), retries a 429 once after the `Retry-After`
+  Spotify sent (capped at 10 s) and stops asking if it persists, and when at least
+  half of the uncached lookups errored it persists the URIs it did resolve and then
+  **fails the job before touching the playlist**, so a truncated set never replaces
+  a good one. The failed status and error text surface through
+  `GET /mixes/:id/spotify-playlist`. A failed Spotify job is not re-enqueued
+  automatically; only voting-open enqueues one (MysteryMixClub-gz6c).
 - **Bandcamp** — deep link only; Bandcamp's API is partner-only, so there is
   nothing keyless to resolve an exact link against.
 

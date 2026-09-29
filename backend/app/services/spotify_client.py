@@ -11,9 +11,12 @@ Two token flows live here:
   tracks) in the connecting user's own library. Token exchange and refresh are
   server-side; the client secret never leaves the backend.
 
-Matching (:meth:`search_track_uri_by_isrc`) is best-effort and never raises —
-an unconfigured app, a non-200, or no match all yield ``None`` so one bad track
-can't sink a whole playlist. Writes raise :class:`SpotifyAuthError` (the user must
+Matching is best-effort and never raises, so one bad track can't sink a whole
+playlist. :meth:`lookup_track_by_isrc` reports *why* a track did not match (a clean
+miss versus an error with its HTTP status), which the playlist generator needs to
+tell "Spotify does not carry it" from "Spotify is refusing us";
+:meth:`search_track_uri_by_isrc` is the same call reduced to the URI-or-``None`` an
+older caller wants. Writes raise :class:`SpotifyAuthError` (the user must
 reconnect) or :class:`SpotifyApiError` (the call failed) so the route can react.
 
 References:
@@ -26,15 +29,19 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import lru_cache
+from typing import Literal
 from urllib.parse import urlencode
 
 import httpx
 
 from app.config import Settings, get_settings
+
+logger = logging.getLogger("app.services.spotify_client")
 
 
 def _safe_body(response: httpx.Response, limit: int = 300) -> str:
@@ -95,6 +102,38 @@ class SpotifyTokens:
     refresh_token: str | None
     scope: str | None
     expires_in: int
+
+
+@dataclass(frozen=True)
+class IsrcLookup:
+    """The outcome of one ISRC -> Spotify track search.
+
+    ``miss`` means Spotify answered and does not carry the track; ``error`` means we
+    got no usable answer (rate limit, refusal, outage, timeout), so nothing can be
+    said about the track. Callers must not treat the two alike: a wall of errors is a
+    broken integration, a wall of misses is a catalog gap.
+    """
+
+    outcome: Literal["hit", "miss", "error"]
+    uri: str | None = None
+    # HTTP status when the failure was a response; None for timeouts and network errors.
+    status: int | None = None
+    # A short fixed label ("timeout", "network", "bad-json", "http") for aggregation.
+    reason: str = ""
+    # Seconds Spotify asked us to wait (Retry-After on a 429), when it said.
+    retry_after: float | None = None
+
+
+def _retry_after_seconds(response: httpx.Response) -> float | None:
+    """The 429's ``Retry-After`` in seconds, or None if absent/unparseable."""
+    raw = response.headers.get("retry-after")
+    if raw is None:
+        return None
+    try:
+        seconds = float(raw)
+    except ValueError:
+        return None
+    return seconds if seconds >= 0 else None
 
 
 @dataclass(frozen=True)
@@ -221,9 +260,15 @@ class SpotifyClient:
                 return self._app_token
             try:
                 payload = await self._token_request({"grant_type": "client_credentials"})
-            except (SpotifyApiError, SpotifyAuthError):
+            except (SpotifyApiError, SpotifyAuthError) as exc:
+                # The whole matching step depends on this token, and its failure used
+                # to be invisible. The message carries Spotify's error body (which
+                # never contains our secret) and a status, not any credential.
+                logger.warning("spotify app token request failed: %s", exc)
                 return None
             self._app_token = payload.get("access_token")
+            if not self._app_token:
+                logger.warning("spotify app token response had no access_token")
             self._app_token_expiry = time.monotonic() + max(
                 0, int(payload.get("expires_in", 0)) - _APP_TOKEN_SKEW_SECONDS
             )
@@ -231,13 +276,15 @@ class SpotifyClient:
 
     # ----------------------------------------------------------- matching #
 
-    async def search_track_uri_by_isrc(self, isrc: str, access_token: str) -> str | None:
-        """Resolve an ISRC to a ``spotify:track:`` URI, or ``None``.
+    async def lookup_track_by_isrc(self, isrc: str, access_token: str) -> IsrcLookup:
+        """Resolve an ISRC to a ``spotify:track:`` URI and say how it went.
 
-        Best-effort: any missing input, non-200, or empty result yields ``None``.
+        Never raises. A missing input is an ``error`` (the caller has nothing to ask
+        with); an empty result set or a non-track URI is a ``miss``; everything else
+        that is not a clean 200 is an ``error`` carrying its status.
         """
         if not isrc or not access_token:
-            return None
+            return IsrcLookup("error", reason="no-input")
         params: dict[str, str | int] = {"q": f"isrc:{isrc}", "type": "track", "limit": 1}
         try:
             async with self._client_factory() as client:
@@ -246,18 +293,33 @@ class SpotifyClient:
                     params=params,
                     headers={"Authorization": f"Bearer {access_token}"},
                 )
+        except httpx.TimeoutException:
+            return IsrcLookup("error", reason="timeout")
         except httpx.HTTPError:
-            return None
+            return IsrcLookup("error", reason="network")
         if response.status_code != 200:
-            return None
+            return IsrcLookup(
+                "error",
+                status=response.status_code,
+                reason="http",
+                retry_after=_retry_after_seconds(response) if response.status_code == 429 else None,
+            )
         try:
             items = (response.json().get("tracks") or {}).get("items") or []
-        except ValueError:
-            return None
+        except (ValueError, AttributeError):
+            return IsrcLookup("error", status=200, reason="bad-json")
         if not items:
-            return None
+            return IsrcLookup("miss")
         uri = items[0].get("uri")
-        return uri if isinstance(uri, str) and uri.startswith("spotify:track:") else None
+        if isinstance(uri, str) and uri.startswith("spotify:track:"):
+            return IsrcLookup("hit", uri=uri)
+        return IsrcLookup("miss")
+
+    async def search_track_uri_by_isrc(self, isrc: str, access_token: str) -> str | None:
+        """The URI for an ISRC, or ``None`` for any non-hit. Prefer
+        :meth:`lookup_track_by_isrc` when the difference between a miss and an
+        error matters."""
+        return (await self.lookup_track_by_isrc(isrc, access_token)).uri
 
     async def track_identity_by_id(self, track_id: str) -> SpotifyTrack | None:
         """Exact identity (title/artist/album/thumbnail/isrc) for a Spotify track

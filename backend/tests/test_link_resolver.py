@@ -189,7 +189,7 @@ async def test_apple_version_suffix_is_cleaned_before_search():
     url = "https://music.apple.com/us/album/x/1?i=2"
     song = await _resolver(handler).resolve(url)
     assert 'track:"American Pie"' in seen["q"]
-    assert 'artist:"Don McLean"' in seen["q"]
+    assert seen["q"].endswith(" Don McLean") and "artist:" not in seen["q"]
     assert song.isrc == "USEM38600088"
 
 
@@ -316,7 +316,7 @@ async def test_youtube_artist_dash_title_is_split():
 
     handler = _router(search=_search_spy(seen), youtube=youtube)
     song = await _resolver(handler).resolve("https://www.youtube.com/watch?v=PRpiBpDy7MQ")
-    assert 'artist:"Don McLean"' in seen["q"]
+    assert seen["q"].endswith(" Don McLean") and "artist:" not in seen["q"]
     assert 'track:"American Pie"' in seen["q"]
     assert song.isrc == "USEM38600088"
 
@@ -332,7 +332,7 @@ async def test_youtube_topic_channel_supplies_artist():
 
     handler = _router(search=_search_spy(seen), youtube=youtube)
     song = await _resolver(handler).resolve("https://music.youtube.com/watch?v=abc")
-    assert 'artist:"Don McLean"' in seen["q"]
+    assert seen["q"].endswith(" Don McLean") and "artist:" not in seen["q"]
     assert 'track:"American Pie"' in seen["q"]
     assert song.isrc == "USEM38600088"
 
@@ -379,7 +379,7 @@ async def test_bandcamp_track_funnels_through_deezer_search(url):
     )
     song = await _resolver(handler).resolve(url)
     assert 'track:"Song Title"' in seen["q"]
-    assert 'artist:"Artist Name"' in seen["q"]
+    assert seen["q"].endswith(" Artist Name") and "artist:" not in seen["q"]
     # Canonical identity comes from the Deezer hit, ISRC included.
     assert song.title == "American Pie"
     assert song.artist == "Don McLean"
@@ -398,7 +398,7 @@ async def test_bandcamp_content_first_attribute_order_and_entities():
     )
     song = await _resolver(handler).resolve("https://x.bandcamp.com/track/dont-stop")
     assert 'track:"Don\'t Stop"' in seen["q"]
-    assert 'artist:"Rock & Roll Band"' in seen["q"]
+    assert seen["q"].endswith(" Rock & Roll Band") and "artist:" not in seen["q"]
     assert song.isrc == "USEM38600088"
 
 
@@ -413,12 +413,12 @@ async def test_bandcamp_title_containing_by_splits_on_last():
     )
     await _resolver(handler).resolve("https://coolband.bandcamp.com/track/standing-by-the-sea")
     assert 'track:"Standing, by the Sea"' in seen["q"]
-    assert 'artist:"Cool Band"' in seen["q"]
+    assert seen["q"].endswith(" Cool Band") and "artist:" not in seen["q"]
 
 
 async def test_bandcamp_title_without_by_searches_title_only():
     # No ", by " separator: the whole og:title is the title, artist None — so the
-    # Deezer query is the bare title with no artist:""/track:"" filter grammar.
+    # Deezer query is the bare title with no track:"" filter or artist term.
     seen: dict[str, str] = {}
     handler = _router(
         search=_search_spy(seen),
@@ -586,7 +586,7 @@ async def test_bandcamp_data_property_meta_cannot_spoof_og_title():
     )
     await _resolver(handler).resolve("https://coolband.bandcamp.com/track/x")
     assert 'track:"Song Title"' in seen["q"]
-    assert 'artist:"Artist Name"' in seen["q"]
+    assert seen["q"].endswith(" Artist Name") and "artist:" not in seen["q"]
 
 
 async def test_bandcamp_data_content_attribute_cannot_spoof_content():
@@ -601,7 +601,7 @@ async def test_bandcamp_data_content_attribute_cannot_spoof_content():
     )
     await _resolver(handler).resolve("https://coolband.bandcamp.com/track/x")
     assert 'track:"Song Title"' in seen["q"]
-    assert 'artist:"Artist Name"' in seen["q"]
+    assert seen["q"].endswith(" Artist Name") and "artist:" not in seen["q"]
 
 
 async def test_bandcamp_page_without_og_title_is_not_found():

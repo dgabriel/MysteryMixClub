@@ -12,12 +12,16 @@ the scaling lever that lets a small upstream budget serve a large audience.
 
 Reference: https://developers.deezer.com/api/search
   GET https://api.deezer.com/search?q=<query>&limit=10
-Advanced query filters (used when an artist is supplied):
-  q=artist:"<artist>" track:"<title>"
+Query shape when an artist is supplied:
+  q=track:"<title>" <artist>
+The artist rides along as a plain term. Deezer's ``artist:"..."`` filter stopped
+matching anything around 2026-09-23 (HTTP 200, empty ``data``, no error), while
+the ``track:"..."`` filter still works.
 """
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Callable
 from functools import lru_cache
@@ -27,9 +31,17 @@ from pydantic import BaseModel
 
 from app.services.search_relevance import rank as _rank_candidates
 
+logger = logging.getLogger("app.services.deezer_search")
+
 _SEARCH_URL = "https://api.deezer.com/search"
 _DEFAULT_TIMEOUT = 10.0
 _RESULT_LIMIT = 10
+# With an artist, Deezer only uses it as a loose hint (the artist: filter is dead,
+# see _build_query), so a common title fills a 10-row page with other artists'
+# songs ("If", "Cocoon", "Swan Song"). Fetch a wider page, let the ranker pull the
+# right artist up, then trim back to _RESULT_LIMIT. Measured on a real 15-track
+# club: top-10 hit rate 11/15 at limit 10 vs 14/15 at limit 50.
+_ARTIST_FETCH_LIMIT = 50
 _CACHE_TTL_SECONDS = 600.0
 _CACHE_MAXSIZE = 256
 # Deezer signals quota/rate-limit as an error body (HTTP 200) with code 4.
@@ -101,9 +113,11 @@ class _TTLCache:
 def _build_query(title: str, artist: str | None) -> str:
     if artist:
         # Deezer's advanced filter has no quote escaping, so a stray double-quote
-        # in a title/artist would corrupt the artist:"" track:"" grammar and
-        # silently mis-/zero-match. Drop quotes; fuzzy match still lands the track.
-        return f'artist:"{_strip_quotes(artist)}" track:"{_strip_quotes(title)}"'
+        # in a title/artist would corrupt the track:"" grammar and silently
+        # mis-/zero-match. Drop quotes; fuzzy match still lands the track.
+        # The artist is a plain term, not artist:"" -- that filter returns nothing
+        # since 2026-09-23 (MysteryMixClub-0ui0). Re-ranking sorts out the rest.
+        return f'track:"{_strip_quotes(title)}" {_strip_quotes(artist)}'
     return title.replace('"', " ").strip() or title
 
 
@@ -156,7 +170,10 @@ class DeezerSearchClient:
         if cached is not None:
             return cached
 
-        params: dict[str, str | int] = {"q": _build_query(title, artist), "limit": _RESULT_LIMIT}
+        params: dict[str, str | int] = {
+            "q": _build_query(title, artist),
+            "limit": _ARTIST_FETCH_LIMIT if artist else _RESULT_LIMIT,
+        }
         try:
             async with self._client_factory() as client:
                 response = await client.get(_SEARCH_URL, params=params)
@@ -181,6 +198,12 @@ class DeezerSearchClient:
             raise DeezerUnavailableError(f"Deezer error: {error.get('message', 'unknown')}")
 
         items = payload.get("data") or []
+        if artist and not items:
+            # Deezer answers a query it can't parse with a clean 200 and an empty
+            # list (that is how the artist: filter broke unnoticed). A real miss is
+            # possible too, so this is a canary to count, not proof. No query text:
+            # it is user input.
+            logger.warning("deezer returned zero results for an artist-qualified search")
         results = [t for t in (_track_from_item(item) for item in items) if t is not None]
         total = payload.get("total", len(results))
         # Deezer returns results in its own relevance order, which frequently
@@ -188,7 +211,7 @@ class DeezerSearchClient:
         # (MYS-175). Re-rank against the query before returning.
         results = _rank_candidates(
             title, artist, results, title_of=lambda t: t.title, artist_of=lambda t: t.artist
-        )
+        )[:_RESULT_LIMIT]
         too_many = artist is None and isinstance(total, int) and total > _RESULT_LIMIT
 
         result = SongSearchResult(results=results, too_many_results=too_many)

@@ -158,6 +158,39 @@ sequenced, not because off is the correct end state.
 ## Template for a new flag
 
 ```
+### `SONG_SEARCH_PROVIDER` — where song search gets its ISRCs
+
+| | |
+|---|---|
+| **Env var** | `SONG_SEARCH_PROVIDER` (`apple` or `deezer`; not a boolean) |
+| **Companion** | `SONG_SEARCH_APPLE_STOREFRONT` (ISO 3166 alpha-2, default `us`) |
+| **Default** | `apple` (deliberately not "off": see below) |
+| **Code** | `app/config.py`, built in `app/services/song_search.py` `build_song_search_service`; used by `GET /songs/search` and `app/services/link_resolver.py` |
+| **Introduced** | MysteryMixClub-etjx (ADR 0039) |
+| **Use in** | every environment. Set `deezer` to switch Apple off. |
+
+**What it does.** With `apple`, song search asks Apple Music's catalog (developer
+token only) for candidate ISRCs, then resolves each through Deezer's exact ISRC
+lookup, and everything displayed or stored comes from Deezer. A pasted Apple
+Music song URL is resolved directly through the catalog in the URL's own
+storefront. With `deezer`, none of that runs and search is Deezer's plain
+search, as it was before.
+
+**Fail-safe.** `apple` with no `APPLE_MUSIC_TEAM_ID` / `KEY_ID` / `PRIVATE_KEY`
+behaves exactly like `deezer`. Any Apple failure (429, timeout, rejected token,
+bad response), no relevant candidates, or no candidate Deezer can enrich falls
+back to Deezer's search for that request. Failures are never cached.
+
+**Why the default is not off** (a departure from the convention above). This is a
+provider selector that is inert without credentials and falls back per request,
+and the alternative (default `deezer`, enable per environment) needs a manual
+secrets change on prod. The open Apple licensing question is in ADR 0039.
+
+**How to test.** With Apple credentials set and the value `apple`, search for a
+known song with its artist and confirm results carry Deezer artwork; set
+`deezer` and restart to confirm the same search still works. Unset the Apple
+credentials to confirm it degrades to Deezer with no error.
+
 ### `FLAG_NAME` — one-line purpose
 
 | | |

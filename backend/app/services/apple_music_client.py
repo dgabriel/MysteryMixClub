@@ -16,7 +16,9 @@ generate. See ``docs/discovery/spike-apple-music.md`` §4.1.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
+from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
 
@@ -29,8 +31,14 @@ from app.services.apple_music_token import (
 )
 from app.services.search_relevance import best_match
 
+logger = logging.getLogger("app.services.apple_music_client")
+
 _API = "https://api.music.apple.com/v1"
 CATALOG_SONGS_URL = _API + "/catalog/{storefront}/songs"
+CATALOG_SONG_URL = _API + "/catalog/{storefront}/songs/{song_id}"
+CATALOG_SEARCH_URL = _API + "/catalog/{storefront}/search"
+# Apple's cap on rows per resource type in a catalog search.
+CATALOG_SEARCH_LIMIT = 25
 _LIBRARY_PLAYLISTS = _API + "/me/library/playlists"
 _DEFAULT_TIMEOUT = 20.0
 DEFAULT_STOREFRONT = "us"
@@ -52,6 +60,46 @@ class AppleMusicAuthError(AppleMusicError):
 
 class AppleMusicApiError(AppleMusicError):
     """Apple returned an unexpected status."""
+
+
+class AppleMusicRateLimitError(AppleMusicError):
+    """Apple throttled the developer token (HTTP 429). Apple publishes no limit."""
+
+
+class AppleMusicUnavailableError(AppleMusicError):
+    """Apple couldn't be reached or answered unusably: timeout, network error,
+    5xx, or a rejected developer token. Nothing the caller can fix per request."""
+
+
+@dataclass(frozen=True)
+class AppleCatalogSong:
+    """The few catalog fields song identification needs.
+
+    Deliberately narrow: song search uses Apple only to obtain the ISRC, and
+    everything shown or stored comes from Deezer (ADR 0039). ``title``/``artist``
+    exist so candidates can be relevance-ranked, not to be displayed.
+    """
+
+    id: str
+    title: str
+    artist: str | None
+    isrc: str | None
+
+
+def _catalog_song(item: Any) -> AppleCatalogSong | None:
+    """Parse one catalog ``songs`` resource, or None if it is unusable."""
+    if not isinstance(item, dict):
+        return None
+    attrs = item.get("attributes")
+    song_id = item.get("id")
+    if not isinstance(attrs, dict) or not song_id or not attrs.get("name"):
+        return None
+    return AppleCatalogSong(
+        id=str(song_id),
+        title=attrs["name"],
+        artist=attrs.get("artistName") or None,
+        isrc=attrs.get("isrc") or None,
+    )
 
 
 def pick_catalog_song(
@@ -182,6 +230,78 @@ class AppleMusicClient:
         except (httpx.HTTPError, ValueError, AppleMusicApiError):
             return None
         return chosen.get("id") if chosen else None
+
+    async def _catalog_get(self, url: str, params: dict[str, Any] | None = None) -> Any:
+        """GET a developer-token-only catalog URL and return its JSON, or ``None``
+        on a 404. Raises the typed errors above; never logs the token."""
+        headers = await self._headers()
+        try:
+            async with self._client_factory() as client:
+                resp = await client.get(url, params=params, headers=headers)
+        except httpx.TimeoutException as exc:
+            raise AppleMusicUnavailableError("apple music timed out") from exc
+        except httpx.HTTPError as exc:
+            raise AppleMusicUnavailableError("could not reach apple music") from exc
+
+        if resp.status_code == 404:
+            return None
+        if resp.status_code == 429:
+            raise AppleMusicRateLimitError("apple music rate limit hit")
+        if resp.status_code in (401, 403):
+            # The developer token itself was refused (expired/revoked key, lapsed
+            # membership): every catalog call will fail until it is fixed.
+            logger.warning(
+                "apple music refused the request as unauthorized (HTTP %s); "
+                "check the Apple developer membership and MusicKit setup",
+                resp.status_code,
+            )
+            raise AppleMusicUnavailableError("apple music rejected the developer token")
+        if resp.status_code >= 500:
+            raise AppleMusicUnavailableError(f"apple music returned {resp.status_code}")
+        if resp.status_code != 200:
+            raise AppleMusicApiError(f"apple music returned {resp.status_code}")
+        try:
+            return resp.json()
+        except ValueError as exc:
+            raise AppleMusicApiError("apple music returned a non-JSON body") from exc
+
+    async def search_songs(self, term: str) -> list[AppleCatalogSong]:
+        """Catalog song search in this client's storefront, developer token only.
+
+        Returns the songs Apple ranked for ``term`` (possibly empty). Unlike
+        :meth:`catalog_song_id_for_isrc` this raises on failure, so the caller can
+        tell "not in the catalog" apart from "Apple is broken" and fall back only
+        on the latter.
+        """
+        payload = await self._catalog_get(
+            CATALOG_SEARCH_URL.format(storefront=self._storefront),
+            {"term": term, "types": "songs", "limit": CATALOG_SEARCH_LIMIT},
+        )
+        if payload is None:
+            raise AppleMusicApiError("apple music search returned 404")
+        try:
+            rows = ((payload.get("results") or {}).get("songs") or {}).get("data") or []
+        except AttributeError as exc:
+            raise AppleMusicApiError("apple music returned an unreadable search") from exc
+        return [song for song in (_catalog_song(row) for row in rows) if song is not None]
+
+    async def catalog_song(self, song_id: str) -> AppleCatalogSong | None:
+        """One catalog song by id in this client's storefront, or None if Apple
+        has no such song there. Raises on any failure other than not-found."""
+        if not song_id.isdigit():
+            # Catalog song ids are numeric; anything else (a library id, junk
+            # from a pasted URL) can't be one, and must not reach a URL path.
+            return None
+        payload = await self._catalog_get(
+            CATALOG_SONG_URL.format(storefront=self._storefront, song_id=song_id)
+        )
+        if payload is None:
+            return None
+        try:
+            rows = payload.get("data") or []
+        except AttributeError as exc:
+            raise AppleMusicApiError("apple music returned an unreadable song") from exc
+        return _catalog_song(rows[0]) if rows else None
 
     async def storefront_for_user(self, music_user_token: str) -> str:
         """The user's storefront, falling back to the default when unavailable.

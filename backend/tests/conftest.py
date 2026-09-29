@@ -36,8 +36,16 @@ after themselves.
 """
 
 import asyncio
+import os
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
+
+# Settings read the developer's real backend/.env, which can hold live Apple Music
+# credentials. Song search asks Apple first when it is configured (ADR 0039), so
+# without this any test that builds the default service would call Apple's live
+# API. Set before the app is imported; tests that exercise the Apple path build a
+# SongSearchService directly with fakes and never depend on this.
+os.environ["SONG_SEARCH_PROVIDER"] = "deezer"
 
 import pytest
 import pytest_asyncio

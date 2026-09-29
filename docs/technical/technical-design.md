@@ -62,7 +62,7 @@ mysterymixclub/
 | Database | PostgreSQL | Relational model fits the data; row-level security enforced at DB layer |
 | Auth | Magic link + password + Google OAuth, JWT + refresh tokens (ADR 0007) | Magic link is passwordless-by-default; password and Google Sign-In are additive alternatives on the same two-token session model |
 | Email | Resend | Magic links and mystery-mix notifications; generous free tier; developer-friendly |
-| Song identity | Keyless resolver chain — Deezer + iTunes + Apple Music catalog + YouTube Data API (§8) | Odesli's public API retired 2026-07-31 (MYS-81); ISRC (from Deezer) remains the canonical identity backbone |
+| Song identity | Apple Music catalog (ISRCs) enriched by Deezer, with Deezer search as fallback; plus iTunes + YouTube Data API for links (§8, ADR 0039) | Odesli's public API retired 2026-07-31 (MYS-81); ISRC remains the canonical identity backbone, now sourced from Apple first because Deezer's search proved fragile |
 | Hosting | DigitalOcean Droplet, self-managed (ADR 0002) | Migrated off App Platform 2026-07-23 (MYS-225) for cost/control; Nginx + systemd + local Postgres on both staging and prod |
 
 ---
@@ -617,10 +617,35 @@ links are instead assembled from several keyless (and, where a token is
 configured, keyed) per-platform sources.
 
 ### Search
-`GET /songs/search` (`app/routers/songs.py`) searches Deezer by title
-(+ optional artist) via `DeezerSearchClient`
-(`app/services/deezer_search.py`), keyless. Returns title/artist/ISRC/album/
-cover for the player to pick from.
+`GET /songs/search` (`app/routers/songs.py`) returns title/artist/ISRC/album/
+cover for the player to pick from, through `SongSearchService`
+(`app/services/song_search.py`, ADR 0039):
+
+1. **Apple asks, Deezer answers.** When `SONG_SEARCH_PROVIDER=apple` (the default)
+   and the Apple Music credentials are configured, Apple's catalog search
+   (developer token only) supplies **candidate ISRCs only**. Candidates are
+   relevance-ranked, rows under a minimum relevance or without an ISRC are dropped,
+   duplicate ISRCs are collapsed, and at most 10 are kept. Each ISRC is then
+   resolved through Deezer's exact `/track/isrc:{isrc}` lookup, and the title,
+   artist, album, artwork and Deezer identity all come from Deezer. A candidate
+   Deezer cannot enrich is **omitted, never shown with Apple's metadata**.
+2. **Deezer is the fallback.** No credentials, an Apple 429/timeout/rejected
+   token, no relevant candidates, or no enrichable candidate falls through to
+   `DeezerSearchClient.search` (`app/services/deezer_search.py`, keyless), which
+   builds `track:"<title>" <artist>` because Deezer's `artist:` filter stopped
+   matching in September 2026 (MysteryMixClub-0ui0).
+3. Successful searches are cached in memory for about 10 minutes, keyed by query
+   and storefront; failures and empty outcomes are never cached. Picker searches
+   use `SONG_SEARCH_APPLE_STOREFRONT` (default `us`), since a user's own
+   storefront needs a Music User Token we never persist.
+
+> **Licensing, open question.** Apple's Developer Program License Agreement
+> section 3.3.6(D) may restrict using catalog lookups for purposes unrelated to
+> Apple Music subscriptions. Obtaining only ISRCs does not resolve that. The
+> integration was built on Dawn's explicit authorization while Apple's
+> clarification is pending. It is **not** legally approved, and no retention
+> deadline has been invented. `SONG_SEARCH_PROVIDER=deezer` switches Apple off
+> with no code change. See ADR 0039.
 
 ### Paste-a-link resolution
 `POST /songs/resolve` identifies a pasted platform URL via `LinkResolver`
@@ -629,7 +654,12 @@ and only Deezer returns one keyless, so every platform's identity funnels
 through a Deezer lookup:
 
 - **Deezer** URL — direct `GET /track/{id}`, exact, no search needed.
-- **Apple Music** URL — iTunes lookup for title/artist (no ISRC) → Deezer search.
+- **Apple Music** URL — resolved directly through the Apple catalog
+  (`/catalog/{storefront}/songs/{id}`, using the URL's own two-letter storefront)
+  to its ISRC, then enriched through Deezer's ISRC lookup (ADR 0039). Both
+  `?i=` album links and `/{storefront}/song/{slug}/{id}` links are accepted. If
+  Apple is unavailable, lacks the song, or Deezer lacks its ISRC, the previous
+  path runs: iTunes lookup for title/artist (no ISRC) → Deezer search.
 - **Spotify** URL — oEmbed for track title only (no artist) → Deezer search on
   title alone; the weakest path, expected.
 - **YouTube** URL — oEmbed's "Artist - Title (Official Video)"-style string,
@@ -763,6 +793,9 @@ RESEND_API_KEY
 ALLOWED_ORIGINS             (CORS)
 ENVIRONMENT                 (development | production)
 APP_BASE_URL                (base URL used to build magic-link URLs in emails)
+
+SONG_SEARCH_PROVIDER        (apple | deezer, default apple; ISRC source for song search, ADR 0039)
+SONG_SEARCH_APPLE_STOREFRONT (ISO 3166 alpha-2, default us; picker-search storefront)
 
 # Frontend
 VITE_API_BASE_URL

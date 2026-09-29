@@ -3,7 +3,8 @@
 Two endpoints back the home-screen Song Search card:
 
 * ``POST /api/v1/songs/resolve`` — paste a link, get the canonical cross-platform song
-* ``GET  /api/v1/songs/search``  — search Deezer by title (+ optional artist)
+* ``GET  /api/v1/songs/search``  — search by title (+ optional artist): Apple Music
+  catalog for ISRCs, Deezer for the metadata, plain Deezer as the fallback
 
 Both are authenticated. Search uses Deezer (keyless). Resolve assembles
 cross-service links keyless (:mod:`app.services.song_links`); a *pasted* URL is
@@ -30,6 +31,7 @@ from app.services.deezer_search import (
     SongSearchResult,
     get_deezer_client,
 )
+from app.services.song_search import SongSearchService, song_search_for
 from app.services.link_resolver import (
     InvalidSongURLError,
     LinkResolver,
@@ -174,8 +176,11 @@ async def search_songs(
     _user: User = Depends(get_current_user),
     deezer: DeezerSearchClient = Depends(get_deezer_client),
 ) -> SongSearchResult:
+    # Apple-first when configured, Deezer otherwise/on failure (ADR 0039). Still
+    # depends on the Deezer client so it stays the one thing tests override.
+    search: SongSearchService = song_search_for(deezer)
     try:
-        return await deezer.search(q, artist)
+        return await search.search(q, artist)
     except DeezerRateLimitError as exc:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="rate limited, try again shortly"

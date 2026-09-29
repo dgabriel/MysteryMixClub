@@ -403,6 +403,55 @@ async def test_search_maps_service_errors(session_factory, db_session, error, ex
     assert resp.status_code == expected
 
 
+async def test_search_uses_apple_isrcs_enriched_by_deezer_when_apple_is_active(
+    session_factory, db_session, monkeypatch
+):
+    """The route hands the query to the provider-selecting service (ADR 0039):
+    Apple supplies the ISRC, Deezer supplies everything in the response."""
+    from app.services.apple_music_client import AppleCatalogSong
+    from app.services.song_search import SongSearchService
+
+    class _Apple:
+        is_configured = True
+
+        def with_storefront(self, storefront):
+            return self
+
+        async def search_songs(self, term):
+            return [AppleCatalogSong("a1", "Pepper", "Butthole Surfers", "USCA29600428")]
+
+    class _DeezerByIsrc(_FakeDeezer):
+        async def lookup_isrc(self, isrc):
+            return SongTrack(
+                id="3643236",
+                title="Pepper",
+                artist="Butthole Surfers",
+                album="Electriclarryland",
+                thumbnail_url="https://deezer.img/pepper.jpg",
+                isrc=isrc,
+                resolve_url="https://www.deezer.com/track/3643236",
+            )
+
+    deezer = _DeezerByIsrc(result=SongSearchResult(results=[]))
+    service = SongSearchService(deezer=deezer, apple=_Apple(), provider="apple")
+    monkeypatch.setattr("app.routers.songs.song_search_for", lambda _deezer: service)
+
+    user = await _seed_user(db_session)
+    async with _build_client(session_factory, deezer=deezer) as client:
+        resp = await client.get(
+            SEARCH_URL,
+            params={"q": "Pepper", "artist": "Butthole Surfers"},
+            headers=_auth_header(user.id),
+        )
+
+    assert resp.status_code == 200, resp.text
+    row = resp.json()["results"][0]
+    assert row["id"] == "3643236"
+    assert row["isrc"] == "USCA29600428"
+    assert row["thumbnail_url"] == "https://deezer.img/pepper.jpg"
+    assert row["resolve_url"] == "https://www.deezer.com/track/3643236"
+
+
 # --------------------------------------------------------------------------- #
 # youtube_video_id passthrough (MysteryMixClub-0rkm)
 # --------------------------------------------------------------------------- #

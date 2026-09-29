@@ -314,3 +314,84 @@ async def test_transport_error_raises_unavailable():
 
     with pytest.raises(DeezerUnavailableError):
         await _client(handler).search("x")
+
+
+# --------------------------------------------------------------------------- #
+# lookup_isrc -- exact enrichment for an ISRC found elsewhere (ADR 0039)
+# --------------------------------------------------------------------------- #
+
+_PEPPER = {
+    "id": 3643236,
+    "title": "Pepper",
+    "link": "https://www.deezer.com/track/3643236",
+    "isrc": "USCA29600428",
+    "artist": {"name": "Butthole Surfers"},
+    "album": {"title": "Electriclarryland", "cover_medium": "https://img/m.jpg"},
+}
+
+
+async def test_lookup_isrc_returns_the_deezer_track():
+    rec = _Recorder(httpx.Response(200, json=_PEPPER))
+    track = await _client(rec).lookup_isrc("usca29600428")
+
+    assert rec.calls[0].url.path == "/track/isrc:USCA29600428"
+    assert track is not None
+    assert (track.id, track.title, track.artist, track.album) == (
+        "3643236",
+        "Pepper",
+        "Butthole Surfers",
+        "Electriclarryland",
+    )
+    assert track.isrc == "USCA29600428"
+    assert track.thumbnail_url == "https://img/m.jpg"
+    assert track.resolve_url == "https://www.deezer.com/track/3643236"
+
+
+async def test_lookup_isrc_deezer_no_data_error_is_a_miss():
+    body = {"error": {"type": "DataException", "message": "no data", "code": 800}}
+    assert (
+        await _client(_Recorder(httpx.Response(200, json=body))).lookup_isrc("USCA29600429") is None
+    )
+
+
+async def test_lookup_isrc_404_is_a_miss():
+    assert await _client(_Recorder(httpx.Response(404))).lookup_isrc("USCA29600428") is None
+
+
+@pytest.mark.parametrize("bad", ["", "short", "USCA2960042", "US CA29600428", "../track/1"])
+async def test_lookup_isrc_malformed_isrc_is_a_miss_without_a_request(bad):
+    rec = _Recorder(httpx.Response(200, json=_PEPPER))
+    assert await _client(rec).lookup_isrc(bad) is None
+    assert rec.calls == []
+
+
+async def test_lookup_isrc_never_returns_a_different_recording():
+    other = dict(_PEPPER, isrc="USZZZ9999999")
+    assert (
+        await _client(_Recorder(httpx.Response(200, json=other))).lookup_isrc("USCA29600428")
+        is None
+    )
+
+
+async def test_lookup_isrc_quota_body_raises_rate_limit():
+    body = {"error": {"type": "Exception", "message": "Quota limit exceeded", "code": 4}}
+    with pytest.raises(DeezerRateLimitError):
+        await _client(_Recorder(httpx.Response(200, json=body))).lookup_isrc("USCA29600428")
+
+
+async def test_lookup_isrc_other_error_and_bad_status_raise_unavailable():
+    body = {"error": {"type": "Exception", "message": "boom", "code": 100}}
+    with pytest.raises(DeezerUnavailableError):
+        await _client(_Recorder(httpx.Response(200, json=body))).lookup_isrc("USCA29600428")
+    with pytest.raises(DeezerUnavailableError):
+        await _client(_Recorder(httpx.Response(502))).lookup_isrc("USCA29600428")
+    with pytest.raises(DeezerUnavailableError):
+        await _client(_Recorder(httpx.Response(200, content=b"<html>"))).lookup_isrc("USCA29600428")
+
+
+async def test_lookup_isrc_timeout_raises_timeout():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("slow")
+
+    with pytest.raises(DeezerTimeoutError):
+        await _client(handler).lookup_isrc("USCA29600428")

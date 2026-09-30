@@ -544,7 +544,46 @@ GET    /admin/waitlist                 List waitlist entries, oldest first (plat
 POST   /admin/waitlist/:id/invite      Mint + email an email-locked platform invite for a waitlist entry (platform-admin, MYS-215)
 GET    /admin/metrics                  Platform-wide aggregate snapshot: users, clubs, mixes, submissions, votes, notes, waitlist -- aggregate-only, no user-level data (platform-admin, MysteryMixClub-etz7.1)
 GET    /admin/metrics/signups?days=N   Daily signup counts over the last N UTC days, zero-filled (default 30, max 365; platform-admin, MysteryMixClub-etz7.2)
+POST   /admin/spotify-playlists/regenerate  Queue Spotify playlist regeneration for mixes in voting (platform-admin, MysteryMixClub-lz7c; see below)
 ```
+
+> **`POST /admin/spotify-playlists/regenerate`** (MysteryMixClub-lz7c). Spotify
+> generation is otherwise queued exactly once, when voting opens, and a failed job
+> is never retried, so a mix whose playlist came out wrong had no way back. This
+> enqueues the same job through the same queue (ADR 0006); the background worker
+> runs it, never the request. API-only, no UI.
+>
+> Body (all optional): `{"mix_ids": ["<uuid>", ...], "dry_run": false}`. With no
+> body, or `mix_ids` omitted, it targets **every mix in `open_voting`**. An explicit
+> list is targeted exactly: an unknown id is a 404 for the whole call (a typo cannot
+> silently skip a mix), and a mix not in `open_voting` is reported `skipped` with a
+> reason. An empty list or more than 100 ids is a 422. `dry_run` reports what would
+> be queued and changes nothing.
+>
+> Each result is `queued` (202), `would_queue` (dry run), `already_active` (a job is
+> already queued or running, and no second one is added) or `skipped`. A prior
+> `complete` or `failed` job never blocks a new one, since a failed job is exactly
+> what needs re-running. It answers 409 when Spotify playlist generation is not
+> configured on the environment or the shared Spotify account has not connected.
+>
+> Regeneration reuses each submission's cached track URI and only looks up the
+> tracks that have none, and it updates the existing playlist in place, so the link
+> members already have keeps working. If Spotify is refusing the lookups the job
+> fails without touching the playlist (MysteryMixClub-gz6c).
+>
+> **Calling it.** The access token lives only in browser memory. Sign in to the app
+> as a platform admin, open the browser dev tools, and copy the `Authorization:
+> Bearer ...` header from any `/api/v1/` request (it is valid for 60 minutes):
+>
+> ```
+> TOKEN='<paste the JWT, without "Bearer ">'
+> curl -s -X POST https://<host>/api/v1/admin/spotify-playlists/regenerate \
+>   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+>   -d '{"dry_run": true}'          # look first; drop dry_run (or send {}) to queue
+> ```
+>
+> Read the outcome in the worker journal (one summary line per run), and through
+> `GET /mixes/:id/spotify-playlist`, whose `status` reflects the latest job.
 
 ### Waitlist
 ```

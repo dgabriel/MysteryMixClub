@@ -5,7 +5,7 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
 
 from app.api.wire import WireModel
 from sqlalchemy import Date, cast, func, select
@@ -27,6 +27,7 @@ from app.models.invite import Invite
 from app.models.magic_link_token import MagicLinkToken
 from app.models.mix import Mix
 from app.models.note import Note
+from app.models.playlist_job import PlaylistJob
 from app.models.report import Report
 from app.models.submission import Submission
 from app.models.user import User
@@ -34,6 +35,11 @@ from app.models.vote import Vote
 from app.models.waitlist_entry import WaitlistEntry
 from app.services.email import EmailSender, get_email_sender
 from app.services.notifications import send_waitlist_invite
+from app.services.playlist_jobs import enqueue_playlist_job
+from app.services.spotify_playlist_generation import (
+    get_shared_connection,
+    playlist_account_user_id,
+)
 
 logger = logging.getLogger("app.api.routes.admin")
 
@@ -620,3 +626,183 @@ async def mark_report_reviewed(
         await db.commit()
         await db.refresh(report)
     return await _to_admin_report(db, report)
+
+
+# --------------------------------------------------------------------------- #
+# Spotify playlist regeneration (MysteryMixClub-lz7c)
+# --------------------------------------------------------------------------- #
+
+# Bounds one call: the worker drains jobs one at a time and Spotify throttles, so a
+# huge batch is a way to earn a 429 wall, not to finish sooner.
+_REGENERATE_MAX_MIXES = 100
+
+
+class RegenerateSpotifyRequest(WireModel):
+    """``mix_ids`` omitted (or null) means every mix currently in ``open_voting``."""
+
+    mix_ids: list[uuid.UUID] | None = None
+    dry_run: bool = False
+
+
+class RegenerateSpotifyItem(WireModel):
+    mix_id: uuid.UUID
+    club_id: uuid.UUID
+    mix_number: int
+    status: Literal["queued", "would_queue", "already_active", "skipped"]
+    reason: str | None = None
+
+
+class RegenerateSpotifyResponse(WireModel):
+    dry_run: bool
+    queued: int
+    already_active: int
+    skipped: int
+    results: list[RegenerateSpotifyItem]
+
+
+@router.post(
+    "/spotify-playlists/regenerate",
+    response_model=RegenerateSpotifyResponse,
+    summary="Queue Spotify playlist regeneration (platform-admin)",
+)
+async def regenerate_spotify_playlists(
+    response: Response,
+    payload: RegenerateSpotifyRequest | None = Body(default=None),
+    admin: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> RegenerateSpotifyResponse:
+    """Re-run the shared-account Spotify playlist generation for mixes in voting.
+
+    Generation is otherwise queued exactly once, when voting opens, and a job that
+    failed is never retried, so a mix whose playlist came out wrong had no way back.
+    This enqueues the same job the voting-open path does, through the same queue
+    (ADR 0006), so it runs in the background worker and never in this request.
+
+    * No body (or ``mix_ids`` omitted): every mix in ``open_voting``.
+    * ``mix_ids``: exactly those. An unknown id is a 404 for the whole call, so a
+      typo cannot silently skip a mix; a mix that is not in ``open_voting`` is
+      reported as ``skipped`` (a closed mix's voting playlist no longer matters).
+    * ``dry_run``: report what would be queued and queue nothing.
+
+    Regeneration reuses each submission's cached Spotify track URI and only looks up
+    the tracks that have none, and it updates the existing playlist in place, so the
+    link members already have keeps working. It fails the job, rather than emptying
+    the playlist, if Spotify is refusing the lookups (MysteryMixClub-gz6c).
+    """
+    request = payload or RegenerateSpotifyRequest()
+    admin_id = admin.id  # read now: the commit below expires ORM attributes
+
+    account_id = playlist_account_user_id(settings)
+    if account_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Spotify playlist generation is not configured on this environment",
+        )
+    if await get_shared_connection(db, account_id) is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="the shared Spotify account has not been connected",
+        )
+
+    if request.mix_ids is not None:
+        wanted = list(dict.fromkeys(request.mix_ids))  # de-duplicate, keep order
+        if not wanted:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="mix_ids must not be empty; omit it to target every mix in voting",
+            )
+        if len(wanted) > _REGENERATE_MAX_MIXES:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"at most {_REGENERATE_MAX_MIXES} mixes per call",
+            )
+        found = {m.id: m for m in await db.scalars(select(Mix).where(Mix.id.in_(wanted)))}
+        missing = [str(mix_id) for mix_id in wanted if mix_id not in found]
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"unknown mix id(s): {', '.join(missing)}",
+            )
+        mixes = [found[mix_id] for mix_id in wanted]
+    else:
+        mixes = list(
+            await db.scalars(
+                select(Mix)
+                .where(Mix.state == "open_voting")
+                .order_by(Mix.created_at, Mix.id)
+                .limit(_REGENERATE_MAX_MIXES + 1)
+            )
+        )
+        if len(mixes) > _REGENERATE_MAX_MIXES:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"more than {_REGENERATE_MAX_MIXES} mixes are in voting; "
+                    "pass mix_ids in batches"
+                ),
+            )
+
+    def item(
+        mix_: Mix,
+        item_status: Literal["queued", "would_queue", "already_active", "skipped"],
+        reason: str | None = None,
+    ) -> RegenerateSpotifyItem:
+        return RegenerateSpotifyItem(
+            mix_id=mix_.id,
+            club_id=mix_.club_id,
+            mix_number=mix_.mix_number,
+            status=item_status,
+            reason=reason,
+        )
+
+    results: list[RegenerateSpotifyItem] = []
+    queued_ids: list[uuid.UUID] = []
+    for mix_ in mixes:
+        if mix_.state != "open_voting":
+            results.append(item(mix_, "skipped", f"mix is {mix_.state}, not open_voting"))
+            continue
+        active = await db.scalar(
+            select(PlaylistJob.id)
+            .where(
+                PlaylistJob.mix_id == mix_.id,
+                PlaylistJob.provider == "spotify",
+                PlaylistJob.status.in_(("queued", "running")),
+            )
+            .limit(1)
+        )
+        if active is not None:
+            # The queue's unique index would drop a second row anyway; say so instead.
+            results.append(item(mix_, "already_active", "a job is already queued or running"))
+            continue
+        if request.dry_run:
+            results.append(item(mix_, "would_queue"))
+            continue
+        await enqueue_playlist_job(db, mix_.id, "spotify")
+        queued_ids.append(mix_.id)
+        results.append(item(mix_, "queued"))
+
+    if queued_ids:
+        # One commit for the whole batch: the NOTIFY inside each enqueue is only
+        # delivered when this transaction commits, so the worker wakes once it has
+        # everything, and a failure here queues nothing.
+        await db.commit()
+        response.status_code = status.HTTP_202_ACCEPTED
+
+    summary = RegenerateSpotifyResponse(
+        dry_run=request.dry_run,
+        queued=sum(1 for r in results if r.status in ("queued", "would_queue")),
+        already_active=sum(1 for r in results if r.status == "already_active"),
+        skipped=sum(1 for r in results if r.status == "skipped"),
+        results=results,
+    )
+    logger.info(
+        "admin %s spotify regenerate: dry_run=%s queued=%d already_active=%d skipped=%d mixes=%s",
+        admin_id,
+        request.dry_run,
+        summary.queued,
+        summary.already_active,
+        summary.skipped,
+        [str(i) for i in queued_ids],
+    )
+    return summary

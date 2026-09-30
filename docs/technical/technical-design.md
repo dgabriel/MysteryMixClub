@@ -62,7 +62,7 @@ mysterymixclub/
 | Database | PostgreSQL | Relational model fits the data; row-level security enforced at DB layer |
 | Auth | Magic link + password + Google OAuth, JWT + refresh tokens (ADR 0007) | Magic link is passwordless-by-default; password and Google Sign-In are additive alternatives on the same two-token session model |
 | Email | Resend | Magic links and mystery-mix notifications; generous free tier; developer-friendly |
-| Song identity | Keyless resolver chain — Deezer + iTunes + Apple Music catalog + YouTube Data API (§8) | Odesli's public API retired 2026-07-31 (MYS-81); ISRC (from Deezer) remains the canonical identity backbone |
+| Song identity | Apple Music catalog (ISRCs) enriched by Deezer, with Deezer search as fallback; plus iTunes + YouTube Data API for links (§8, ADR 0039) | Odesli's public API retired 2026-07-31 (MYS-81); ISRC remains the canonical identity backbone, now sourced from Apple first because Deezer's search proved fragile |
 | Hosting | DigitalOcean Droplet, self-managed (ADR 0002) | Migrated off App Platform 2026-07-23 (MYS-225) for cost/control; Nginx + systemd + local Postgres on both staging and prod |
 
 ---
@@ -544,7 +544,46 @@ GET    /admin/waitlist                 List waitlist entries, oldest first (plat
 POST   /admin/waitlist/:id/invite      Mint + email an email-locked platform invite for a waitlist entry (platform-admin, MYS-215)
 GET    /admin/metrics                  Platform-wide aggregate snapshot: users, clubs, mixes, submissions, votes, notes, waitlist -- aggregate-only, no user-level data (platform-admin, MysteryMixClub-etz7.1)
 GET    /admin/metrics/signups?days=N   Daily signup counts over the last N UTC days, zero-filled (default 30, max 365; platform-admin, MysteryMixClub-etz7.2)
+POST   /admin/spotify-playlists/regenerate  Queue Spotify playlist regeneration for mixes in voting (platform-admin, MysteryMixClub-lz7c; see below)
 ```
+
+> **`POST /admin/spotify-playlists/regenerate`** (MysteryMixClub-lz7c). Spotify
+> generation is otherwise queued exactly once, when voting opens, and a failed job
+> is never retried, so a mix whose playlist came out wrong had no way back. This
+> enqueues the same job through the same queue (ADR 0006); the background worker
+> runs it, never the request. API-only, no UI.
+>
+> Body (all optional): `{"mix_ids": ["<uuid>", ...], "dry_run": false}`. With no
+> body, or `mix_ids` omitted, it targets **every mix in `open_voting`**. An explicit
+> list is targeted exactly: an unknown id is a 404 for the whole call (a typo cannot
+> silently skip a mix), and a mix not in `open_voting` is reported `skipped` with a
+> reason. An empty list or more than 100 ids is a 422. `dry_run` reports what would
+> be queued and changes nothing.
+>
+> Each result is `queued` (202), `would_queue` (dry run), `already_active` (a job is
+> already queued or running, and no second one is added) or `skipped`. A prior
+> `complete` or `failed` job never blocks a new one, since a failed job is exactly
+> what needs re-running. It answers 409 when Spotify playlist generation is not
+> configured on the environment or the shared Spotify account has not connected.
+>
+> Regeneration reuses each submission's cached track URI and only looks up the
+> tracks that have none, and it updates the existing playlist in place, so the link
+> members already have keeps working. If Spotify is refusing the lookups the job
+> fails without touching the playlist (MysteryMixClub-gz6c).
+>
+> **Calling it.** The access token lives only in browser memory. Sign in to the app
+> as a platform admin, open the browser dev tools, and copy the `Authorization:
+> Bearer ...` header from any `/api/v1/` request (it is valid for 60 minutes):
+>
+> ```
+> TOKEN='<paste the JWT, without "Bearer ">'
+> curl -s -X POST https://<host>/api/v1/admin/spotify-playlists/regenerate \
+>   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+>   -d '{"dry_run": true}'          # look first; drop dry_run (or send {}) to queue
+> ```
+>
+> Read the outcome in the worker journal (one summary line per run), and through
+> `GET /mixes/:id/spotify-playlist`, whose `status` reflects the latest job.
 
 ### Waitlist
 ```
@@ -617,10 +656,35 @@ links are instead assembled from several keyless (and, where a token is
 configured, keyed) per-platform sources.
 
 ### Search
-`GET /songs/search` (`app/routers/songs.py`) searches Deezer by title
-(+ optional artist) via `DeezerSearchClient`
-(`app/services/deezer_search.py`), keyless. Returns title/artist/ISRC/album/
-cover for the player to pick from.
+`GET /songs/search` (`app/routers/songs.py`) returns title/artist/ISRC/album/
+cover for the player to pick from, through `SongSearchService`
+(`app/services/song_search.py`, ADR 0039):
+
+1. **Apple asks, Deezer answers.** When `SONG_SEARCH_PROVIDER=apple` (the default)
+   and the Apple Music credentials are configured, Apple's catalog search
+   (developer token only) supplies **candidate ISRCs only**. Candidates are
+   relevance-ranked, rows under a minimum relevance or without an ISRC are dropped,
+   duplicate ISRCs are collapsed, and at most 10 are kept. Each ISRC is then
+   resolved through Deezer's exact `/track/isrc:{isrc}` lookup, and the title,
+   artist, album, artwork and Deezer identity all come from Deezer. A candidate
+   Deezer cannot enrich is **omitted, never shown with Apple's metadata**.
+2. **Deezer is the fallback.** No credentials, an Apple 429/timeout/rejected
+   token, no relevant candidates, or no enrichable candidate falls through to
+   `DeezerSearchClient.search` (`app/services/deezer_search.py`, keyless), which
+   builds `track:"<title>" <artist>` because Deezer's `artist:` filter stopped
+   matching in September 2026 (MysteryMixClub-0ui0).
+3. Successful searches are cached in memory for about 10 minutes, keyed by query
+   and storefront; failures and empty outcomes are never cached. Picker searches
+   use `SONG_SEARCH_APPLE_STOREFRONT` (default `us`), since a user's own
+   storefront needs a Music User Token we never persist.
+
+> **Licensing, open question.** Apple's Developer Program License Agreement
+> section 3.3.6(D) may restrict using catalog lookups for purposes unrelated to
+> Apple Music subscriptions. Obtaining only ISRCs does not resolve that. The
+> integration was built on Dawn's explicit authorization while Apple's
+> clarification is pending. It is **not** legally approved, and no retention
+> deadline has been invented. `SONG_SEARCH_PROVIDER=deezer` switches Apple off
+> with no code change. See ADR 0039.
 
 ### Paste-a-link resolution
 `POST /songs/resolve` identifies a pasted platform URL via `LinkResolver`
@@ -629,7 +693,12 @@ and only Deezer returns one keyless, so every platform's identity funnels
 through a Deezer lookup:
 
 - **Deezer** URL — direct `GET /track/{id}`, exact, no search needed.
-- **Apple Music** URL — iTunes lookup for title/artist (no ISRC) → Deezer search.
+- **Apple Music** URL — resolved directly through the Apple catalog
+  (`/catalog/{storefront}/songs/{id}`, using the URL's own two-letter storefront)
+  to its ISRC, then enriched through Deezer's ISRC lookup (ADR 0039). Both
+  `?i=` album links and `/{storefront}/song/{slug}/{id}` links are accepted. If
+  Apple is unavailable, lacks the song, or Deezer lacks its ISRC, the previous
+  path runs: iTunes lookup for title/artist (no ISRC) → Deezer search.
 - **Spotify** URL — oEmbed for track title only (no artist) → Deezer search on
   title alone; the weakest path, expected.
 - **YouTube** URL — oEmbed's "Artist - Title (Official Video)"-style string,
@@ -669,6 +738,16 @@ per-platform lookups ranked against the query rather than trusted blindly
   the ordinary backfill path.
 - **Spotify** — deep link only (keyless); `submissions.spotify_track_uri` is
   resolved separately, lazily, at playlist-create time (MYS-83).
+  Playlist generation tells a clean **miss** (Spotify does not carry the ISRC)
+  apart from an **error** (429, refusal, outage, timeout, or no app token). It
+  logs one summary line per run (submissions, already cached, newly matched, not
+  on Spotify, lookup errors by reason), retries a 429 once after the `Retry-After`
+  Spotify sent (capped at 10 s) and stops asking if it persists, and when at least
+  half of the uncached lookups errored it persists the URIs it did resolve and then
+  **fails the job before touching the playlist**, so a truncated set never replaces
+  a good one. The failed status and error text surface through
+  `GET /mixes/:id/spotify-playlist`. A failed Spotify job is not re-enqueued
+  automatically; only voting-open enqueues one (MysteryMixClub-gz6c).
 - **Bandcamp** — deep link only; Bandcamp's API is partner-only, so there is
   nothing keyless to resolve an exact link against.
 
@@ -763,6 +842,9 @@ RESEND_API_KEY
 ALLOWED_ORIGINS             (CORS)
 ENVIRONMENT                 (development | production)
 APP_BASE_URL                (base URL used to build magic-link URLs in emails)
+
+SONG_SEARCH_PROVIDER        (apple | deezer, default apple; ISRC source for song search, ADR 0039)
+SONG_SEARCH_APPLE_STOREFRONT (ISO 3166 alpha-2, default us; picker-search storefront)
 
 # Frontend
 VITE_API_BASE_URL

@@ -6,9 +6,12 @@ error body (quota -> rate limit), timeout/unavailable branches, and the
 in-process TTL cache (a hit serves without re-hitting Deezer).
 """
 
+import logging
+
 import httpx
 import pytest
 
+from app.services import deezer_search as deezer_module
 from app.services.deezer_search import (
     DeezerError,
     DeezerRateLimitError,
@@ -131,12 +134,90 @@ async def test_too_many_results_false_when_total_within_limit():
     assert result.too_many_results is False
 
 
-async def test_artist_builds_advanced_query():
+async def test_artist_builds_track_filter_plus_plain_artist_term():
     rec = _Recorder(httpx.Response(200, json=_body(1, 1)))
     await _client(rec).search("take on me", "a-ha")
     q = dict(rec.calls[0].url.params)["q"]
-    assert 'track:"take on me"' in q
-    assert 'artist:"a-ha"' in q
+    assert q == 'track:"take on me" a-ha'
+
+
+async def test_artist_search_fetches_a_wide_page_then_trims_to_ten_ranked():
+    # Deezer treats the artist as a loose hint, so a common title buries the right
+    # artist beyond row 10. Fetch wide, rank, trim: the right artist's track must
+    # surface even when Deezer returned it last.
+    noise = [dict(_item(i), artist={"name": "Someone Else"}, title="If") for i in range(24)]
+    wanted = dict(_item(99), artist={"name": "Janet Jackson"}, title="If")
+    rec = _Recorder(httpx.Response(200, json={"data": noise + [wanted], "total": 25}))
+    result = await _client(rec).search("If", "Janet Jackson")
+    assert dict(rec.calls[0].url.params)["limit"] == "50"
+    assert len(result.results) == 10
+    assert result.results[0].artist == "Janet Jackson"
+
+
+async def test_no_artist_search_keeps_the_narrow_page():
+    rec = _Recorder(httpx.Response(200, json=_body(1, 1)))
+    await _client(rec).search("take on me")
+    assert dict(rec.calls[0].url.params)["limit"] == "10"
+
+
+async def test_artist_never_uses_the_dead_artist_filter():
+    # Deezer's artist:"..." filter returns HTTP 200 + empty data for every query
+    # (2026-09-23 on, MysteryMixClub-0ui0). Guard against reintroducing it.
+    rec = _Recorder(httpx.Response(200, json=_body(1, 1)))
+    await _client(rec).search("Until It Sleeps", "Metallica")
+    assert "artist:" not in dict(rec.calls[0].url.params)["q"]
+
+
+class _LogCollector(logging.Handler):
+    """Collects this module's log records. Not ``caplog``: ``app/main.py`` sets
+    ``propagate = False`` on the ``app`` logger, so records never reach the root
+    logger caplog listens on (same reason test_push_notifications.py attaches
+    its own handler)."""
+
+    def __init__(self) -> None:
+        super().__init__(level=logging.DEBUG)
+        self.messages: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.messages.append(record.getMessage())
+
+    @property
+    def text(self) -> str:
+        return "\n".join(self.messages)
+
+
+@pytest.fixture
+def deezer_logs():
+    handler = _LogCollector()
+    previous_level = deezer_module.logger.level
+    deezer_module.logger.setLevel(logging.DEBUG)
+    deezer_module.logger.addHandler(handler)
+    try:
+        yield handler
+    finally:
+        deezer_module.logger.removeHandler(handler)
+        deezer_module.logger.setLevel(previous_level)
+
+
+async def test_zero_results_with_artist_logs_a_warning(deezer_logs):
+    rec = _Recorder(httpx.Response(200, json={"data": [], "total": 0}))
+    result = await _client(rec).search("Secret Song Title", "Secret Artist")
+    assert result.results == []
+    assert "zero results for an artist-qualified search" in deezer_logs.text
+    # The query is user input; it must not reach the logs.
+    assert "Secret" not in deezer_logs.text
+
+
+async def test_zero_results_without_artist_does_not_warn(deezer_logs):
+    rec = _Recorder(httpx.Response(200, json={"data": [], "total": 0}))
+    await _client(rec).search("nothing matches this")
+    assert deezer_logs.messages == []
+
+
+async def test_results_with_artist_do_not_warn(deezer_logs):
+    rec = _Recorder(httpx.Response(200, json=_body(1, 1)))
+    await _client(rec).search("take on me", "a-ha")
+    assert deezer_logs.messages == []
 
 
 async def test_no_artist_uses_plain_query():
@@ -146,14 +227,14 @@ async def test_no_artist_uses_plain_query():
 
 
 async def test_quotes_are_stripped_from_advanced_query():
-    # A double-quote in title/artist would corrupt Deezer's artist:"" track:""
-    # filter grammar (no escaping); they must be removed before interpolation.
+    # A double-quote in title/artist would corrupt Deezer's track:"" filter
+    # grammar (no escaping); they must be removed before interpolation.
     rec = _Recorder(httpx.Response(200, json=_body(1, 1)))
     await _client(rec).search('That\'s Heavenly To Me "Live"', 'Sam "The Man" Cooke')
     q = dict(rec.calls[0].url.params)["q"]
     assert '"Live"' not in q
-    # Exactly the two filter-delimiter quote pairs remain, none stray.
-    assert q.count('"') == 4
+    # Exactly the one filter-delimiter quote pair remains, none stray.
+    assert q.count('"') == 2
 
 
 async def test_quotes_are_stripped_from_plain_query():
@@ -233,3 +314,84 @@ async def test_transport_error_raises_unavailable():
 
     with pytest.raises(DeezerUnavailableError):
         await _client(handler).search("x")
+
+
+# --------------------------------------------------------------------------- #
+# lookup_isrc -- exact enrichment for an ISRC found elsewhere (ADR 0039)
+# --------------------------------------------------------------------------- #
+
+_PEPPER = {
+    "id": 3643236,
+    "title": "Pepper",
+    "link": "https://www.deezer.com/track/3643236",
+    "isrc": "USCA29600428",
+    "artist": {"name": "Butthole Surfers"},
+    "album": {"title": "Electriclarryland", "cover_medium": "https://img/m.jpg"},
+}
+
+
+async def test_lookup_isrc_returns_the_deezer_track():
+    rec = _Recorder(httpx.Response(200, json=_PEPPER))
+    track = await _client(rec).lookup_isrc("usca29600428")
+
+    assert rec.calls[0].url.path == "/track/isrc:USCA29600428"
+    assert track is not None
+    assert (track.id, track.title, track.artist, track.album) == (
+        "3643236",
+        "Pepper",
+        "Butthole Surfers",
+        "Electriclarryland",
+    )
+    assert track.isrc == "USCA29600428"
+    assert track.thumbnail_url == "https://img/m.jpg"
+    assert track.resolve_url == "https://www.deezer.com/track/3643236"
+
+
+async def test_lookup_isrc_deezer_no_data_error_is_a_miss():
+    body = {"error": {"type": "DataException", "message": "no data", "code": 800}}
+    assert (
+        await _client(_Recorder(httpx.Response(200, json=body))).lookup_isrc("USCA29600429") is None
+    )
+
+
+async def test_lookup_isrc_404_is_a_miss():
+    assert await _client(_Recorder(httpx.Response(404))).lookup_isrc("USCA29600428") is None
+
+
+@pytest.mark.parametrize("bad", ["", "short", "USCA2960042", "US CA29600428", "../track/1"])
+async def test_lookup_isrc_malformed_isrc_is_a_miss_without_a_request(bad):
+    rec = _Recorder(httpx.Response(200, json=_PEPPER))
+    assert await _client(rec).lookup_isrc(bad) is None
+    assert rec.calls == []
+
+
+async def test_lookup_isrc_never_returns_a_different_recording():
+    other = dict(_PEPPER, isrc="USZZZ9999999")
+    assert (
+        await _client(_Recorder(httpx.Response(200, json=other))).lookup_isrc("USCA29600428")
+        is None
+    )
+
+
+async def test_lookup_isrc_quota_body_raises_rate_limit():
+    body = {"error": {"type": "Exception", "message": "Quota limit exceeded", "code": 4}}
+    with pytest.raises(DeezerRateLimitError):
+        await _client(_Recorder(httpx.Response(200, json=body))).lookup_isrc("USCA29600428")
+
+
+async def test_lookup_isrc_other_error_and_bad_status_raise_unavailable():
+    body = {"error": {"type": "Exception", "message": "boom", "code": 100}}
+    with pytest.raises(DeezerUnavailableError):
+        await _client(_Recorder(httpx.Response(200, json=body))).lookup_isrc("USCA29600428")
+    with pytest.raises(DeezerUnavailableError):
+        await _client(_Recorder(httpx.Response(502))).lookup_isrc("USCA29600428")
+    with pytest.raises(DeezerUnavailableError):
+        await _client(_Recorder(httpx.Response(200, content=b"<html>"))).lookup_isrc("USCA29600428")
+
+
+async def test_lookup_isrc_timeout_raises_timeout():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("slow")
+
+    with pytest.raises(DeezerTimeoutError):
+        await _client(handler).lookup_isrc("USCA29600428")

@@ -34,6 +34,16 @@ class Settings(BaseSettings):
     # PEM contents of the MusicKit .p8 key. Deploy secrets may store it single-line
     # with literal "\n" escapes; the token service normalizes both forms.
     apple_music_private_key: str = Field(default="")
+    # Where song search / pasted-link resolution get canonical ISRCs
+    # (MysteryMixClub-etjx, ADR 0039). "apple" asks Apple Music's catalog for
+    # candidate ISRCs and enriches them through Deezer; "deezer" skips Apple
+    # entirely. "apple" with no Apple credentials configured behaves like
+    # "deezer", and any Apple failure falls back to it per request, so flipping
+    # this to "deezer" is the switch-back, with no code change or redeploy.
+    song_search_provider: Literal["apple", "deezer"] = "apple"
+    # Apple's catalog is per-storefront (ISO 3166 alpha-2). Used for picker
+    # searches, which have no user region; a pasted Apple URL brings its own.
+    song_search_apple_storefront: str = Field(default="us")
     # Google Sign-In OAuth client (MysteryMixClub-ali8, ADR 0007). Server-side
     # only; the client secret must never reach the browser. Empty (any of the
     # three) = Google Sign-In is off and its endpoints 404, the same "hidden

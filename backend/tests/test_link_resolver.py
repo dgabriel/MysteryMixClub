@@ -189,7 +189,7 @@ async def test_apple_version_suffix_is_cleaned_before_search():
     url = "https://music.apple.com/us/album/x/1?i=2"
     song = await _resolver(handler).resolve(url)
     assert 'track:"American Pie"' in seen["q"]
-    assert 'artist:"Don McLean"' in seen["q"]
+    assert seen["q"].endswith(" Don McLean") and "artist:" not in seen["q"]
     assert song.isrc == "USEM38600088"
 
 
@@ -316,7 +316,7 @@ async def test_youtube_artist_dash_title_is_split():
 
     handler = _router(search=_search_spy(seen), youtube=youtube)
     song = await _resolver(handler).resolve("https://www.youtube.com/watch?v=PRpiBpDy7MQ")
-    assert 'artist:"Don McLean"' in seen["q"]
+    assert seen["q"].endswith(" Don McLean") and "artist:" not in seen["q"]
     assert 'track:"American Pie"' in seen["q"]
     assert song.isrc == "USEM38600088"
 
@@ -332,7 +332,7 @@ async def test_youtube_topic_channel_supplies_artist():
 
     handler = _router(search=_search_spy(seen), youtube=youtube)
     song = await _resolver(handler).resolve("https://music.youtube.com/watch?v=abc")
-    assert 'artist:"Don McLean"' in seen["q"]
+    assert seen["q"].endswith(" Don McLean") and "artist:" not in seen["q"]
     assert 'track:"American Pie"' in seen["q"]
     assert song.isrc == "USEM38600088"
 
@@ -379,7 +379,7 @@ async def test_bandcamp_track_funnels_through_deezer_search(url):
     )
     song = await _resolver(handler).resolve(url)
     assert 'track:"Song Title"' in seen["q"]
-    assert 'artist:"Artist Name"' in seen["q"]
+    assert seen["q"].endswith(" Artist Name") and "artist:" not in seen["q"]
     # Canonical identity comes from the Deezer hit, ISRC included.
     assert song.title == "American Pie"
     assert song.artist == "Don McLean"
@@ -398,7 +398,7 @@ async def test_bandcamp_content_first_attribute_order_and_entities():
     )
     song = await _resolver(handler).resolve("https://x.bandcamp.com/track/dont-stop")
     assert 'track:"Don\'t Stop"' in seen["q"]
-    assert 'artist:"Rock & Roll Band"' in seen["q"]
+    assert seen["q"].endswith(" Rock & Roll Band") and "artist:" not in seen["q"]
     assert song.isrc == "USEM38600088"
 
 
@@ -413,12 +413,12 @@ async def test_bandcamp_title_containing_by_splits_on_last():
     )
     await _resolver(handler).resolve("https://coolband.bandcamp.com/track/standing-by-the-sea")
     assert 'track:"Standing, by the Sea"' in seen["q"]
-    assert 'artist:"Cool Band"' in seen["q"]
+    assert seen["q"].endswith(" Cool Band") and "artist:" not in seen["q"]
 
 
 async def test_bandcamp_title_without_by_searches_title_only():
     # No ", by " separator: the whole og:title is the title, artist None — so the
-    # Deezer query is the bare title with no artist:""/track:"" filter grammar.
+    # Deezer query is the bare title with no track:"" filter or artist term.
     seen: dict[str, str] = {}
     handler = _router(
         search=_search_spy(seen),
@@ -586,7 +586,7 @@ async def test_bandcamp_data_property_meta_cannot_spoof_og_title():
     )
     await _resolver(handler).resolve("https://coolband.bandcamp.com/track/x")
     assert 'track:"Song Title"' in seen["q"]
-    assert 'artist:"Artist Name"' in seen["q"]
+    assert seen["q"].endswith(" Artist Name") and "artist:" not in seen["q"]
 
 
 async def test_bandcamp_data_content_attribute_cannot_spoof_content():
@@ -601,7 +601,7 @@ async def test_bandcamp_data_content_attribute_cannot_spoof_content():
     )
     await _resolver(handler).resolve("https://coolband.bandcamp.com/track/x")
     assert 'track:"Song Title"' in seen["q"]
-    assert 'artist:"Artist Name"' in seen["q"]
+    assert seen["q"].endswith(" Artist Name") and "artist:" not in seen["q"]
 
 
 async def test_bandcamp_page_without_og_title_is_not_found():
@@ -1015,3 +1015,177 @@ async def test_get_text_never_delegates_redirects_to_httpx():
     # Two Bandcamp hops (the 301 and the final page); Deezer search uses _get_json,
     # not stream, so only the page fetches are recorded here.
     assert seen == [False, False]
+
+
+# --------------------------------------------------------------------------- #
+# Apple Music catalog path (MysteryMixClub-etjx, ADR 0039)
+# --------------------------------------------------------------------------- #
+
+
+class _FakeSearch:
+    """Stands in for SongSearchService inside the resolver: records what it was
+    asked, answers ``identify_apple_song`` with a canned Deezer track (or None to
+    mean "use the old path") and ``search`` with a canned result."""
+
+    def __init__(self, *, track=None, results=None):
+        from app.services.deezer_search import SongSearchResult
+
+        self._track = track
+        self._results = SongSearchResult(results=results or [])
+        self.identified: list[tuple[str, str | None]] = []
+        self.searched: list[tuple[str, str | None]] = []
+
+    async def identify_apple_song(self, song_id, storefront=None):
+        self.identified.append((song_id, storefront))
+        return self._track
+
+    async def search(self, title, artist=None):
+        self.searched.append((title, artist))
+        return self._results
+
+
+def _deezer_track_model(**overrides):
+    from app.services.deezer_search import SongTrack
+
+    fields = {
+        "id": "3643236",
+        "title": "Pepper",
+        "artist": "Butthole Surfers",
+        "album": "Electriclarryland",
+        "thumbnail_url": "https://deezer.img/pepper.jpg",
+        "isrc": "USCA29600428",
+        "resolve_url": "https://www.deezer.com/track/3643236",
+    }
+    return SongTrack(**{**fields, **overrides})
+
+
+def _resolver_with_search(handler, search) -> LinkResolver:
+    def factory() -> httpx.AsyncClient:
+        return httpx.AsyncClient(transport=httpx.MockTransport(handler), timeout=5.0)
+
+    return LinkResolver(client_factory=factory, search=search)
+
+
+def _no_itunes_allowed(request: httpx.Request) -> httpx.Response:
+    raise AssertionError("the iTunes fallback must not run when the catalog resolves")
+
+
+async def test_apple_url_resolves_through_the_catalog_with_the_urls_storefront():
+    search = _FakeSearch(track=_deezer_track_model())
+    handler = _router(itunes=_no_itunes_allowed)
+    song = await _resolver_with_search(handler, search).resolve(
+        "https://music.apple.com/gb/album/pepper/1?i=724788539"
+    )
+
+    assert search.identified == [("724788539", "gb")]
+    assert (song.title, song.artist, song.album) == (
+        "Pepper",
+        "Butthole Surfers",
+        "Electriclarryland",
+    )
+    assert song.isrc == "USCA29600428"
+    assert song.thumbnail_url == "https://deezer.img/pepper.jpg"
+
+
+async def test_apple_direct_song_url_is_supported():
+    search = _FakeSearch(track=_deezer_track_model())
+    song = await _resolver_with_search(_router(itunes=_no_itunes_allowed), search).resolve(
+        "https://music.apple.com/jp/song/pepper/724788539"
+    )
+    assert search.identified == [("724788539", "jp")]
+    assert song.isrc == "USCA29600428"
+
+
+async def test_apple_url_without_a_storefront_segment_passes_none():
+    search = _FakeSearch(track=_deezer_track_model())
+    await _resolver_with_search(_router(itunes=_no_itunes_allowed), search).resolve(
+        "https://music.apple.com/song/pepper/724788539"
+    )
+    assert search.identified == [("724788539", None)]
+
+
+async def test_apple_url_storefront_is_lowercased_and_junk_ignored():
+    search = _FakeSearch(track=_deezer_track_model())
+    resolver = _resolver_with_search(_router(itunes=_no_itunes_allowed), search)
+    await resolver.resolve("https://music.apple.com/GB/song/pepper/1")
+    await resolver.resolve("https://music.apple.com/usa/song/pepper/2")
+    assert search.identified == [("1", "gb"), ("2", None)]
+
+
+async def test_apple_catalog_miss_falls_back_to_the_itunes_path():
+    # identify_apple_song -> None means Apple was unavailable, lacked the song, or
+    # Deezer lacked its ISRC. The pre-existing path must then run unchanged.
+    search = _FakeSearch(track=None, results=[_deezer_track_model(title="American Pie")])
+    seen: dict[str, str] = {}
+
+    def itunes(request: httpx.Request) -> httpx.Response:
+        seen.update(dict(request.url.params))
+        return httpx.Response(
+            200, json={"results": [{"trackName": "American Pie", "artistName": "Don McLean"}]}
+        )
+
+    song = await _resolver_with_search(_router(itunes=itunes), search).resolve(
+        "https://music.apple.com/us/album/x/1?i=2"
+    )
+    assert seen["id"] == "2"
+    assert search.searched == [("American Pie", "Don McLean")]
+    assert song.title == "American Pie"
+
+
+async def test_apple_catalog_miss_and_empty_itunes_is_still_not_found():
+    search = _FakeSearch(track=None)
+    handler = _router(itunes=lambda r: httpx.Response(200, json={"results": []}))
+    with pytest.raises(SongNotFoundError):
+        await _resolver_with_search(handler, search).resolve(
+            "https://music.apple.com/us/album/x/1?i=2"
+        )
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://music.apple.com/us/album/american-pie/1440834532",  # album, no ?i=
+        "https://music.apple.com/us/song/pepper/notanumber",
+        "https://music.apple.com/us/song/pepper/",
+        "https://music.apple.com/us/playlist/x/pl.abc123",
+    ],
+)
+async def test_apple_urls_that_are_not_a_song_are_invalid(url):
+    search = _FakeSearch(track=_deezer_track_model())
+    with pytest.raises(InvalidSongURLError):
+        await _resolver_with_search(_router(), search).resolve(url)
+    assert search.identified == []
+
+
+async def test_title_funnels_go_through_the_search_service_not_deezer_directly():
+    # YouTube/Bandcamp/Spotify-title identification uses the same provider-selecting
+    # search, so they get Apple-sourced ISRCs too. A raw Deezer search would raise
+    # AssertionError here (no /search route is stubbed).
+    search = _FakeSearch(results=[_deezer_track_model(title="American Pie", artist="Don McLean")])
+
+    def youtube(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json={"title": "Don McLean - American Pie", "author_name": "DonMcLeanVEVO"}
+        )
+
+    def no_deezer_search(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("resolver must not call Deezer search directly")
+
+    handler = _router(youtube=youtube, search=no_deezer_search)
+    song = await _resolver_with_search(handler, search).resolve(
+        "https://www.youtube.com/watch?v=PRpiBpDy7MQ"
+    )
+    assert search.searched == [("American Pie", "Don McLean")]
+    assert song.isrc == "USCA29600428"
+
+
+async def test_resolver_without_an_injected_search_is_plain_deezer_as_before():
+    # Default construction must not need Apple credentials or touch Apple.
+    song = await _resolver(
+        _router(
+            itunes=lambda r: httpx.Response(
+                200, json={"results": [{"trackName": "American Pie", "artistName": "Don McLean"}]}
+            )
+        )
+    ).resolve("https://music.apple.com/us/album/x/1?i=2")
+    assert song.isrc == "USEM38600088"

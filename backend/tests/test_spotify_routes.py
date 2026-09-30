@@ -37,7 +37,12 @@ from app.models.spotify_connection import SpotifyConnection
 from app.models.spotify_mix_playlist import SpotifyMixPlaylist
 from app.models.submission import Submission
 from app.models.user import User
-from app.services.spotify_client import SpotifyNotFoundError, SpotifyTokens, get_spotify_client
+from app.services.spotify_client import (
+    IsrcLookup,
+    SpotifyNotFoundError,
+    SpotifyTokens,
+    get_spotify_client,
+)
 from app.services.spotify_playlist_generation import generate_mix_playlist
 from app.services.spotify_token_crypto import encrypt_refresh_token
 from app.services.youtube_resolver import get_youtube_resolver
@@ -156,8 +161,12 @@ class FakeSpotifyClient:
         exchange_raises: Exception | None = None,
         get_user_id_raises: Exception | None = None,
         exchange_refresh_token: str | None = "rt-new",
+        lookup_overrides=None,
     ):
         self._isrc_map = isrc_map or {}
+        # ISRC -> IsrcLookup (or a list of them, consumed one per call, the last
+        # one repeating) to force a specific outcome such as a 429 or a 403.
+        self._lookup_overrides = lookup_overrides or {}
         self._configured = configured
         # When True, replace_tracks raises SpotifyNotFoundError (simulates deleted playlist).
         self._replace_raises_not_found = replace_raises_not_found
@@ -185,6 +194,16 @@ class FakeSpotifyClient:
     async def search_track_uri_by_isrc(self, isrc, access_token) -> str | None:
         self.searched_isrcs.append(isrc)
         return self._isrc_map.get(isrc)
+
+    async def lookup_track_by_isrc(self, isrc, access_token) -> IsrcLookup:
+        self.searched_isrcs.append(isrc)
+        forced = self._lookup_overrides.get(isrc)
+        if isinstance(forced, list):
+            return forced.pop(0) if len(forced) > 1 else forced[0]
+        if forced is not None:
+            return forced
+        uri = self._isrc_map.get(isrc)
+        return IsrcLookup("hit", uri=uri) if uri else IsrcLookup("miss")
 
     async def exchange_code(self, code) -> SpotifyTokens:
         if self._exchange_raises:

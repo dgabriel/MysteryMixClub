@@ -7,10 +7,14 @@ write calls, and error mapping (401 -> SpotifyAuthError, other non-2xx ->
 SpotifyApiError).
 """
 
+import logging
+
 import httpx
 import pytest
 
+from app.services import spotify_client as spotify_client_module
 from app.services.spotify_client import (
+    IsrcLookup,
     SpotifyApiError,
     SpotifyAuthError,
     SpotifyClient,
@@ -175,6 +179,158 @@ async def test_search_ignores_non_track_uri():
 
 async def test_search_returns_none_on_error_status():
     assert await _client(lambda r: httpx.Response(429)).search_track_uri_by_isrc("I", "tok") is None
+
+
+# --------------------------------------------------------------------------- #
+# lookup_track_by_isrc: a miss is not an error (MysteryMixClub-gz6c)
+# --------------------------------------------------------------------------- #
+
+_HIT = {"tracks": {"items": [{"uri": "spotify:track:abc123"}]}}
+
+
+async def test_lookup_hit_carries_the_uri():
+    result = await _client(lambda r: httpx.Response(200, json=_HIT)).lookup_track_by_isrc(
+        "USRC12345678", "tok"
+    )
+    assert result == IsrcLookup("hit", uri="spotify:track:abc123")
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"tracks": {"items": []}},
+        {"tracks": {}},
+        {},
+        {"tracks": {"items": [{"uri": "spotify:album:x"}]}},
+    ],
+)
+async def test_lookup_a_clean_answer_without_a_track_is_a_miss(payload):
+    result = await _client(lambda r: httpx.Response(200, json=payload)).lookup_track_by_isrc(
+        "I", "tok"
+    )
+    assert result.outcome == "miss"
+    assert result.uri is None
+
+
+@pytest.mark.parametrize("status", [400, 401, 403, 500, 502, 503])
+async def test_lookup_a_non_200_is_an_error_with_its_status(status):
+    result = await _client(lambda r: httpx.Response(status)).lookup_track_by_isrc("I", "tok")
+    assert result.outcome == "error"
+    assert result.status == status
+    assert result.reason == "http"
+    assert result.retry_after is None
+
+
+@pytest.mark.parametrize(("header", "expected"), [("7", 7.0), ("0", 0.0), ("2.5", 2.5)])
+async def test_lookup_429_reports_retry_after(header, expected):
+    handler = lambda r: httpx.Response(429, headers={"Retry-After": header})  # noqa: E731
+    result = await _client(handler).lookup_track_by_isrc("I", "tok")
+    assert (result.outcome, result.status, result.retry_after) == ("error", 429, expected)
+
+
+@pytest.mark.parametrize("header", [None, "soon", "-3", "Wed, 21 Oct 2026 07:28:00 GMT"])
+async def test_lookup_429_with_no_usable_retry_after_reports_none(header):
+    headers = {"Retry-After": header} if header is not None else {}
+    result = await _client(lambda r: httpx.Response(429, headers=headers)).lookup_track_by_isrc(
+        "I", "tok"
+    )
+    assert (result.outcome, result.status, result.retry_after) == ("error", 429, None)
+
+
+async def test_lookup_timeout_and_network_failures_are_errors_with_a_reason():
+    def timeout(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("slow")
+
+    def network(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("down")
+
+    slow = await _client(timeout).lookup_track_by_isrc("I", "tok")
+    down = await _client(network).lookup_track_by_isrc("I", "tok")
+    assert (slow.outcome, slow.status, slow.reason) == ("error", None, "timeout")
+    assert (down.outcome, down.status, down.reason) == ("error", None, "network")
+
+
+async def test_lookup_unparseable_200_is_an_error_not_a_miss():
+    result = await _client(lambda r: httpx.Response(200, content=b"<html>")).lookup_track_by_isrc(
+        "I", "tok"
+    )
+    assert (result.outcome, result.status, result.reason) == ("error", 200, "bad-json")
+
+
+async def test_lookup_without_input_is_an_error_and_makes_no_request():
+    def handler(_request: httpx.Request) -> httpx.Response:  # pragma: no cover
+        raise AssertionError("no request without an ISRC and a token")
+
+    assert (await _client(handler).lookup_track_by_isrc("", "tok")).outcome == "error"
+    assert (await _client(handler).lookup_track_by_isrc("I", "")).outcome == "error"
+
+
+async def test_the_old_search_method_still_flattens_every_non_hit_to_none():
+    assert await _client(lambda r: httpx.Response(429)).search_track_uri_by_isrc("I", "tok") is None
+    assert (
+        await _client(
+            lambda r: httpx.Response(200, json={"tracks": {"items": []}})
+        ).search_track_uri_by_isrc("I", "tok")
+        is None
+    )
+    assert (
+        await _client(lambda r: httpx.Response(200, json=_HIT)).search_track_uri_by_isrc("I", "tok")
+        == "spotify:track:abc123"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# The app token's failure is no longer silent (MysteryMixClub-gz6c)
+# --------------------------------------------------------------------------- #
+
+
+class _LogCollector(logging.Handler):
+    """Not ``caplog``: ``app/main.py`` sets ``propagate = False`` on the ``app``
+    logger, so records never reach the root logger caplog listens on."""
+
+    def __init__(self) -> None:
+        super().__init__(level=logging.DEBUG)
+        self.messages: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.messages.append(record.getMessage())
+
+
+@pytest.fixture
+def client_logs():
+    handler = _LogCollector()
+    logger = spotify_client_module.logger
+    previous = logger.level
+    logger.setLevel(logging.DEBUG)
+    logger.addHandler(handler)
+    try:
+        yield handler
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(previous)
+
+
+async def test_a_failed_app_token_request_is_logged_and_still_returns_none(client_logs):
+    body = {"error": "invalid_client", "error_description": "Invalid client secret"}
+    client = _client(lambda r: httpx.Response(400, json=body))
+
+    assert await client.app_access_token() is None
+    (message,) = client_logs.messages
+    assert message.startswith("spotify app token request failed:")
+    assert "invalid_client" in message
+    assert "secret" not in message.replace("Invalid client secret", "")  # no credential value
+
+
+async def test_a_token_response_without_an_access_token_is_logged(client_logs):
+    client = _client(lambda r: httpx.Response(200, json={"expires_in": 3600}))
+    await client.app_access_token()
+    assert any("no access_token" in m for m in client_logs.messages)
+
+
+async def test_a_healthy_app_token_logs_nothing(client_logs):
+    client = _client(lambda r: httpx.Response(200, json={"access_token": "t", "expires_in": 3600}))
+    assert await client.app_access_token() == "t"
+    assert client_logs.messages == []
 
 
 # --------------------------------------------------------------------------- #

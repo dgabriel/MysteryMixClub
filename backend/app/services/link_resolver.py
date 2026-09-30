@@ -44,7 +44,12 @@ from app.services.deezer_search import (
     DeezerSearchClient,
     DeezerTimeoutError,
     DeezerUnavailableError,
-    build_deezer_client,
+    get_deezer_client,
+)
+from app.services.song_search import (
+    SongSearchService,
+    get_default_song_search_service,
+    normalize_storefront,
 )
 from app.services.source_tracks import source_url_for
 from app.services.spotify_client import SpotifyClient, get_spotify_client
@@ -341,6 +346,7 @@ class LinkResolver:
         client_factory: Callable[[], httpx.AsyncClient] | None = None,
         deezer: DeezerSearchClient | None = None,
         spotify: SpotifyClient | None = None,
+        search: SongSearchService | None = None,
     ) -> None:
         self._timeout = timeout
         self._client_factory = client_factory or (lambda: httpx.AsyncClient(timeout=timeout))
@@ -348,6 +354,10 @@ class LinkResolver:
         self._deezer = deezer or DeezerSearchClient(
             timeout=timeout, client_factory=self._client_factory
         )
+        # Title/artist -> identity goes through the provider-selecting search
+        # (Apple ISRCs enriched by Deezer, ADR 0039). Without one injected it is
+        # plain Deezer, exactly as before.
+        self._search = search or SongSearchService(deezer=self._deezer, provider="deezer")
         # Optional: when Spotify is configured, resolve Spotify track ids exactly
         # via its API instead of the lossy oEmbed-title -> Deezer-search path.
         self._spotify = spotify
@@ -439,7 +449,7 @@ class LinkResolver:
         source-only callers can distinguish "not in the catalog" from "lookup
         broke" and fall back only in the former case (MYS-201)."""
         try:
-            result = await self._deezer.search(title, artist)
+            result = await self._search.search(title, artist)
         except DeezerRateLimitError as exc:
             raise ResolverRateLimitError("rate limited, try again shortly") from exc
         except DeezerTimeoutError as exc:
@@ -483,7 +493,20 @@ class LinkResolver:
             isrc=data.get("isrc") or None,
         )
 
-    async def _resolve_apple(self, track_id: str) -> SongIdentity:
+    async def _resolve_apple(self, track_id: str, storefront: str | None = None) -> SongIdentity:
+        # Exact path: the catalog resolves the pasted song id in the URL's own
+        # storefront straight to its ISRC, and Deezer supplies the identity for
+        # it (ADR 0039). Any miss or failure, including Deezer lacking that ISRC,
+        # drops to the title-based path below rather than guessing.
+        track = await self._search.identify_apple_song(track_id, storefront)
+        if track is not None:
+            return SongIdentity(
+                title=track.title,
+                artist=track.artist,
+                album=track.album,
+                thumbnail_url=track.thumbnail_url,
+                isrc=track.isrc,
+            )
         data = await self._get_json(_ITUNES_LOOKUP, {"id": track_id})
         results = data.get("results") or []
         if not results:
@@ -652,10 +675,10 @@ class LinkResolver:
             return await self._resolve_deezer(track_id)
 
         if host == "music.apple.com":
-            apple_id = parse_qs(parsed.query).get("i")
-            if not apple_id or not apple_id[0]:
+            apple_ref = _apple_song_ref(parsed.path, parsed.query)
+            if apple_ref is None:
                 raise InvalidSongURLError("Apple Music URL must reference a track (?i=)")
-            return await self._resolve_apple(apple_id[0])
+            return await self._resolve_apple(*apple_ref)
 
         if host == "open.spotify.com":
             if "/track/" not in path:
@@ -671,6 +694,24 @@ class LinkResolver:
             return await self._resolve_bandcamp(url)
 
         raise SongNotFoundError("unsupported or unrecognized music link")
+
+
+def _apple_song_ref(path: str, query: str) -> tuple[str, str | None] | None:
+    """``(song_id, storefront)`` from a music.apple.com song URL, or None.
+
+    Two shapes carry a song: an album link with the track in ``?i=`` and a direct
+    ``/{storefront}/song/{slug}/{id}`` link. The storefront is the first path
+    segment when it is a two-letter code, else None (the caller's default applies).
+    """
+    front_match = re.match(r"^/([A-Za-z]{2})/", path)
+    storefront = normalize_storefront(front_match.group(1)) if front_match else None
+    from_query = (parse_qs(query).get("i") or [""])[0]
+    if from_query:
+        return from_query, storefront
+    direct = re.search(r"/song/[^/]+/(\d+)/?$", path)
+    if direct:
+        return direct.group(1), storefront
+    return None
 
 
 def _deezer_track_id(path: str) -> str | None:
@@ -743,7 +784,11 @@ def _bandcamp_slug_display_artist(url: str) -> str | None:
 def build_link_resolver() -> LinkResolver:
     # Share one keyless Deezer client (its in-process cache) across resolves, and
     # the configured Spotify client for exact Spotify-link resolution (MYS-100).
-    return LinkResolver(deezer=build_deezer_client(), spotify=get_spotify_client())
+    return LinkResolver(
+        deezer=get_deezer_client(),
+        spotify=get_spotify_client(),
+        search=get_default_song_search_service(),
+    )
 
 
 _RESOLVER: LinkResolver | None = None

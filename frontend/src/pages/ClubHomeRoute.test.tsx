@@ -405,6 +405,26 @@ describe("ClubHomeRoute", () => {
       expect.objectContaining({ name: "Renamed Club" }),
     );
     expect(await screen.findByText(/name taken/i)).toBeInTheDocument();
+    // A failed save keeps the form open so the user can fix and retry.
+    expect(screen.getByRole("button", { name: /^save$/i })).toBeInTheDocument();
+  });
+
+  it("organizer update: a successful save closes the edit form (MysteryMixClub-g887)", async () => {
+    mockUpdateClub.mockResolvedValue(clubWith({ name: "Renamed Club" }));
+    const user = userEvent.setup();
+
+    renderClub();
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+    await user.click(screen.getByRole("button", { name: /^edit$/i }));
+    const nameInput = screen.getByLabelText(/^name$/i);
+    await user.clear(nameInput);
+    await user.type(nameInput, "Renamed Club");
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    expect(await screen.findByRole("button", { name: /^edit$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^save$/i })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^name$/i)).not.toBeInTheDocument();
   });
 
   // --- Songs per player is editable after creation (MysteryMixClub-guur). ---

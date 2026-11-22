@@ -296,8 +296,8 @@ export function ClubHomeRoute() {
     submission_time?: string;
     voting_weekday?: Weekday;
     voting_time?: string;
-  }) {
-    if (!id) return;
+  }): Promise<boolean> {
+    if (!id) return false;
     setUpdating(true);
     setUpdateError(null);
     try {
@@ -312,8 +312,10 @@ export function ClubHomeRoute() {
           // The club header is already current; leave the list as-is.
         }
       }
+      return true;
     } catch (err) {
       setUpdateError(err instanceof ApiError ? err.message : "couldn't save changes. try again.");
+      return false;
     } finally {
       setUpdating(false);
     }

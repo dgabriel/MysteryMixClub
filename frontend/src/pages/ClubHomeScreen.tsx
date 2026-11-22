@@ -74,6 +74,7 @@ type ClubHomeScreenProps = {
     description?: string | null;
     total_mixes?: number;
     songs_per_submission?: number;
+    votes_per_player?: number;
     submission_window_hours?: number;
     voting_window_hours?: number;
     deadline_mode?: "duration" | "weekly_anchor";
@@ -1221,6 +1222,8 @@ function OrganizerEdit({
   const [totalMixes, setTotalMixes] = useState(String(club.total_mixes));
   const [songsPerSubmission, setSongsPerSubmission] = useState(String(club.songs_per_submission));
   const [songsError, setSongsError] = useState<string | null>(null);
+  const [votesPerPlayer, setVotesPerPlayer] = useState(String(club.votes_per_player));
+  const [votesError, setVotesError] = useState<string | null>(null);
   const initialSubmissionWindow = hoursToDaysAndHours(club.submission_window_hours);
   const initialVotingWindow = hoursToDaysAndHours(club.voting_window_hours);
   const [submissionWindowDays, setSubmissionWindowDays] = useState(
@@ -1259,6 +1262,8 @@ function OrganizerEdit({
     setTotalMixes(String(club.total_mixes));
     setSongsPerSubmission(String(club.songs_per_submission));
     setSongsError(null);
+    setVotesPerPlayer(String(club.votes_per_player));
+    setVotesError(null);
     const submissionWindow = hoursToDaysAndHours(club.submission_window_hours);
     setSubmissionWindowDays(String(submissionWindow.days));
     setSubmissionWindowHours(String(submissionWindow.hours));
@@ -1284,6 +1289,7 @@ function OrganizerEdit({
       description?: string | null;
       total_mixes?: number;
       songs_per_submission?: number;
+      votes_per_player?: number;
       submission_window_hours?: number;
       voting_window_hours?: number;
       deadline_mode?: "duration" | "weekly_anchor";
@@ -1315,6 +1321,14 @@ function OrganizerEdit({
     }
     setSongsError(null);
     if (songs !== club.songs_per_submission) input.songs_per_submission = songs;
+
+    const votes = Number(votesPerPlayer);
+    if (!Number.isInteger(votes) || votes < 1) {
+      setVotesError("votes per player must be at least 1.");
+      return;
+    }
+    setVotesError(null);
+    if (votes !== club.votes_per_player) input.votes_per_player = votes;
 
     if (deadlineMode === "duration") {
       const submissionHours = daysAndHoursToTotal(
@@ -1456,6 +1470,27 @@ function OrganizerEdit({
         <p className="mt-2 text-meta leading-[1.6] text-ink-muted">
           how many songs each player can submit per mystery mix, from 1 to{" "}
           {MAX_SONGS_PER_SUBMISSION}. lowering it never removes songs already submitted.
+        </p>
+      </div>
+      <div>
+        <TextField
+          onPaper
+          id="edit-club-votes-per-player"
+          label="votes per player"
+          name="votes_per_player"
+          type="number"
+          min={1}
+          value={votesPerPlayer}
+          onChange={(e) => {
+            setVotesPerPlayer(e.target.value);
+            setVotesError(null);
+          }}
+          disabled={updating}
+          error={votesError}
+        />
+        <p className="mt-2 text-meta leading-[1.6] text-ink-muted">
+          applies to mystery mixes that haven&apos;t started yet. a mix already open keeps its
+          current number.
         </p>
       </div>
       <DeadlineModeToggle

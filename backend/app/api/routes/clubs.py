@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import Field, StringConstraints, field_validator, model_validator
 
 from app.api.wire import WIRE_ALIASES, WireModel
-from sqlalchemy import and_, delete, func, select
+from sqlalchemy import and_, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
@@ -82,6 +82,7 @@ class ClubCreate(WireModel):
     # Default 6; the backend auto-generates this many pending mixes at creation.
     # Upper-bounded to keep slate sizes sane.
     total_rounds: int = Field(default=6, ge=1, le=50)
+    # Editable later via PATCH, which applies it to pending mixes only.
     votes_per_player: int = Field(default=3, ge=1)
     # How many songs a player may submit per mix (MYS-116). 1 (default) =
     # classic one-song behaviour, capped at 5. Editable later via PATCH.
@@ -137,6 +138,10 @@ class ClubUpdate(WireModel):
     # submitted to the open mix; the new cap only blocks further submissions
     # (MysteryMixClub-guur).
     songs_per_submission: int | None = Field(default=None, ge=1, le=5)
+    # Same bound as create. Each mix carries its own copy, stamped when the
+    # slate is generated, so a change is pushed onto the club's still-pending
+    # mixes only; a mix that has opened keeps its number (MysteryMixClub-llea).
+    votes_per_player: int | None = Field(default=None, ge=1)
     # Deadline windows (in hours) for the club's mixes (MYS-159); 4..168. Only
     # affects mixes opened after the change — deadlines already stamped stay put.
     submission_window_hours: int | None = Field(default=None, ge=4, le=168)
@@ -165,6 +170,7 @@ class ClubUpdate(WireModel):
                 "total_rounds",
                 "default_vibe_mode",
                 "songs_per_submission",
+                "votes_per_player",
                 "submission_window_hours",
                 "voting_window_hours",
                 "deadline_mode",
@@ -791,9 +797,24 @@ async def update_club(
     reject_if_flagged(updates.get("name"))
     reject_if_flagged(updates.get("description"))
 
+    # Set before reconciling, so mixes appended by a total_rounds grow in the
+    # same request are stamped with the new value too.
+    new_votes = updates.pop("votes_per_player", None)
+    if new_votes is not None:
+        club.votes_per_player = new_votes
+
     if new_total is not None and new_total != club.total_mixes:
         await _reconcile_mixes(club, new_total, db)
         club.total_mixes = new_total
+
+    if new_votes is not None:
+        # Future mixes only (Dawn, 2026-11-22): a mix collecting submissions,
+        # voting, or closed keeps the number its players were told.
+        await db.execute(
+            update(Mix)
+            .where(Mix.club_id == club.id, Mix.state == "pending")
+            .values(votes_per_player=new_votes)
+        )
 
     # Weekday fields are wire strings ("tuesday") over an int-backed column —
     # every other field in `updates` maps 1:1 onto its Club attribute.

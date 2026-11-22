@@ -895,6 +895,7 @@ export async function updateClub(
     description?: string | null;
     total_mixes?: number;
     songs_per_submission?: number;
+    votes_per_player?: number;
     default_vibe_mode?: boolean;
     submission_window_hours?: number;
     voting_window_hours?: number;

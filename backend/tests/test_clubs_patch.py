@@ -12,6 +12,8 @@ PATCH /clubs/:id — organizer only).
 
 import uuid
 
+import pytest
+
 from sqlalchemy import select
 
 from app.auth.jwt import create_access_token
@@ -691,3 +693,114 @@ async def test_lowering_songs_per_submission_keeps_existing_submissions(client, 
         await db_session.scalars(select(Submission).where(Submission.mix_id == mix_id))
     )
     assert len(remaining) == 3
+
+
+# ========================================================================== #
+# votes_per_player is editable after creation (MysteryMixClub-llea)
+# ========================================================================== #
+
+
+async def _seed_mix(db_session, club, number, state, votes):
+    mix = Mix(
+        club_id=club.id,
+        mix_number=number,
+        theme=f"Theme {number}",
+        state=state,
+        votes_per_player=votes,
+    )
+    db_session.add(mix)
+    await db_session.commit()
+    return mix.id
+
+
+async def _votes_by_mix_number(db_session, club_id):
+    mixes = await db_session.scalars(
+        select(Mix).where(Mix.club_id == club_id).order_by(Mix.mix_number.asc())
+    )
+    return {m.mix_number: m.votes_per_player for m in mixes}
+
+
+async def test_votes_per_player_updates_club_and_only_pending_mixes(client, db_session):
+    # Dawn's call (2026-11-22): future mixes only. A mix that has opened, in
+    # any phase, keeps the number its players were told.
+    organizer = await _seed_user(db_session)
+    club = await _seed_club(db_session, organizer, votes_per_player=3, current_mix=3)
+    await _seed_mix(db_session, club, 1, "closed", 3)
+    await _seed_mix(db_session, club, 2, "open_voting", 3)
+    await _seed_mix(db_session, club, 3, "open_submission", 3)
+    await _seed_mix(db_session, club, 4, "pending", 3)
+    await _seed_mix(db_session, club, 5, "pending", 3)
+    club_id = club.id
+
+    resp = await client.patch(
+        _patch_url(club_id),
+        headers=_auth_header(organizer.id),
+        json={"votes_per_player": 5},
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["votes_per_player"] == 5
+    db_session.expire_all()
+    persisted = await db_session.scalar(select(Club).where(Club.id == club_id))
+    assert persisted.votes_per_player == 5
+    assert await _votes_by_mix_number(db_session, club_id) == {1: 3, 2: 3, 3: 3, 4: 5, 5: 5}
+
+
+async def test_votes_per_player_reaches_mixes_added_in_the_same_request(client, db_session):
+    organizer = await _seed_user(db_session)
+    created = await _create_club_via_api(client, organizer.id, total_mixes=2, votes_per_player=3)
+    club_id = uuid.UUID(created["id"])
+
+    resp = await client.patch(
+        _patch_url(club_id),
+        headers=_auth_header(organizer.id),
+        json={"votes_per_player": 4, "total_mixes": 4},
+    )
+
+    assert resp.status_code == 200, resp.text
+    db_session.expire_all()
+    assert await _votes_by_mix_number(db_session, club_id) == {1: 4, 2: 4, 3: 4, 4: 4}
+
+
+async def test_mixes_added_later_use_the_edited_votes_per_player(client, db_session):
+    organizer = await _seed_user(db_session)
+    created = await _create_club_via_api(client, organizer.id, total_mixes=2, votes_per_player=3)
+    club_id = uuid.UUID(created["id"])
+
+    for body in ({"votes_per_player": 6}, {"total_mixes": 3}):
+        resp = await client.patch(
+            _patch_url(club_id), headers=_auth_header(organizer.id), json=body
+        )
+        assert resp.status_code == 200, resp.text
+
+    db_session.expire_all()
+    assert await _votes_by_mix_number(db_session, club_id) == {1: 6, 2: 6, 3: 6}
+
+
+async def test_plain_member_cannot_update_votes_per_player(client, db_session):
+    organizer = await _seed_user(db_session)
+    member = await _seed_user(db_session, email="m@example.com", display_name="M")
+    club = await _seed_club(db_session, organizer)
+    await _seed_member(db_session, club, member)
+
+    resp = await client.patch(
+        _patch_url(club.id),
+        headers=_auth_header(member.id),
+        json={"votes_per_player": 10},
+    )
+
+    assert resp.status_code == 403, resp.text
+
+
+@pytest.mark.parametrize("bad", [0, -1, None])
+async def test_invalid_votes_per_player_returns_422(client, db_session, bad):
+    organizer = await _seed_user(db_session)
+    club = await _seed_club(db_session, organizer)
+
+    resp = await client.patch(
+        _patch_url(club.id),
+        headers=_auth_header(organizer.id),
+        json={"votes_per_player": bad},
+    )
+
+    assert resp.status_code == 422, resp.text

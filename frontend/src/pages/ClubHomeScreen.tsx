@@ -82,7 +82,7 @@ type ClubHomeScreenProps = {
     submission_time?: string;
     voting_weekday?: Weekday;
     voting_time?: string;
-  }) => void;
+  }) => Promise<boolean>;
   updating: boolean;
   updateError?: string | null;
   onRemoveMember: (userId: string) => void;
@@ -1277,7 +1277,7 @@ function OrganizerEdit({
     setOpen(true);
   }
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     const input: {
       name?: string;
@@ -1386,7 +1386,9 @@ function OrganizerEdit({
       }
     }
 
-    onUpdateClub(input);
+    // Close on success so the save reads as done (MysteryMixClub-g887); on
+    // failure stay open so the error shows beside the fields that caused it.
+    if (await onUpdateClub(input)) setOpen(false);
   }
 
   if (!open) {

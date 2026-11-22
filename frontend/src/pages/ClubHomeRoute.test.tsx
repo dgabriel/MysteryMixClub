@@ -483,6 +483,59 @@ describe("ClubHomeRoute", () => {
     expect(mockUpdateClub).not.toHaveBeenCalled();
   });
 
+  // --- Votes per player is editable after creation (MysteryMixClub-llea). ---
+
+  it("votes per player: pre-fills from the club and saves only when changed", async () => {
+    mockGetClub.mockResolvedValue(clubWith({ votes_per_player: 3 }));
+    mockUpdateClub.mockResolvedValue(clubWith({ votes_per_player: 5 }));
+    const user = userEvent.setup();
+
+    renderClub();
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+    await user.click(screen.getByRole("button", { name: /^edit$/i }));
+    const votesInput = screen.getByLabelText(/^votes per player$/i) as HTMLInputElement;
+    expect(votesInput.value).toBe("3");
+    fireEvent.change(votesInput, { target: { value: "5" } });
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    const [, input] = mockUpdateClub.mock.calls[0];
+    expect(input).toMatchObject({ votes_per_player: 5 });
+  });
+
+  it("votes per player: an unchanged value is not sent", async () => {
+    mockGetClub.mockResolvedValue(clubWith({ votes_per_player: 3 }));
+    mockUpdateClub.mockResolvedValue(clubWith({ votes_per_player: 3 }));
+    const user = userEvent.setup();
+
+    renderClub();
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+    await user.click(screen.getByRole("button", { name: /^edit$/i }));
+    const nameInput = screen.getByLabelText(/^name$/i);
+    await user.clear(nameInput);
+    await user.type(nameInput, "Renamed Club");
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    const [, input] = mockUpdateClub.mock.calls[0];
+    expect(input).not.toHaveProperty("votes_per_player");
+  });
+
+  it("votes per player: zero blocks the save and shows an error", async () => {
+    mockGetClub.mockResolvedValue(clubWith({ votes_per_player: 3 }));
+    const user = userEvent.setup();
+
+    renderClub();
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+    await user.click(screen.getByRole("button", { name: /^edit$/i }));
+    fireEvent.change(screen.getByLabelText(/^votes per player$/i), { target: { value: "0" } });
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    expect(await screen.findByText(/votes per player must be at least 1\./i)).toBeInTheDocument();
+    expect(mockUpdateClub).not.toHaveBeenCalled();
+  });
+
   // --- Deadline windows (MYS-160). The submission/voting window fields share
   // the "days"/"hours" labels between the two DeadlineWindowFields, so we look
   // them up by id rather than label text. ---

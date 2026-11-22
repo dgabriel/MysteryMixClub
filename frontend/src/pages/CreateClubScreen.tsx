@@ -253,11 +253,9 @@ export function CreateClubScreen({ onSubmit, submitting, error, onCancel }: Crea
           <h1 className="font-display text-[1.75rem] font-extrabold uppercase leading-[0.9] tracking-display-snug">
             new club
           </h1>
-          {/* Actual help, not a tagline. Two things a first-time organizer
-              cannot work out from the fields themselves: what a club *is*, and
-              that votes-per-player is the only setting here with no edit path
-              afterward (it is absent from the API's ClubUpdate; everything
-              else on this form is in it). */}
+          {/* Actual help, not a tagline: what a club *is*, which a first-time
+              organizer cannot work out from the fields themselves. Every
+              setting on this form can be edited later (MysteryMixClub-llea). */}
           <div className="mt-3 space-y-3">
             <p className="text-sm leading-[1.72] text-ink-muted">
               a club is a private group running a series of mystery mixes together, one mix at a
@@ -265,10 +263,7 @@ export function CreateClubScreen({ onSubmit, submitting, error, onCancel }: Crea
               link once it exists; anyone who uses it skips the waitlist and joins straight in.
             </p>
             <p className="text-sm leading-[1.72] text-ink-muted">
-              the name, the number of mixes, the songs per submission and the deadlines can all be
-              changed later.{" "}
-              <strong className="font-normal text-ink">votes per player can&apos;t.</strong> that is
-              fixed for the life of the club, so set it here.
+              you can change any of these settings later from the club page.
             </p>
           </div>
 

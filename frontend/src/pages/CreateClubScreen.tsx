@@ -255,9 +255,9 @@ export function CreateClubScreen({ onSubmit, submitting, error, onCancel }: Crea
           </h1>
           {/* Actual help, not a tagline. Two things a first-time organizer
               cannot work out from the fields themselves: what a club *is*, and
-              that votes-per-player and songs-per-submission are the only
-              settings here with no edit path afterward (they are absent from
-              the API's ClubUpdate — everything else on this form is in it). */}
+              that votes-per-player is the only setting here with no edit path
+              afterward (it is absent from the API's ClubUpdate; everything
+              else on this form is in it). */}
           <div className="mt-3 space-y-3">
             <p className="text-sm leading-[1.72] text-ink-muted">
               a club is a private group running a series of mystery mixes together, one mix at a
@@ -265,11 +265,10 @@ export function CreateClubScreen({ onSubmit, submitting, error, onCancel }: Crea
               link once it exists; anyone who uses it skips the waitlist and joins straight in.
             </p>
             <p className="text-sm leading-[1.72] text-ink-muted">
-              the name, the number of mixes and the deadlines can all be changed later.{" "}
-              <strong className="font-normal text-ink">
-                votes per player and songs per submission can&apos;t.
-              </strong>{" "}
-              those are fixed for the life of the club, so set them here.
+              the name, the number of mixes, the songs per submission and the deadlines can all be
+              changed later.{" "}
+              <strong className="font-normal text-ink">votes per player can&apos;t.</strong> that is
+              fixed for the life of the club, so set it here.
             </p>
           </div>
 

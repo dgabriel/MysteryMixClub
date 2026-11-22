@@ -576,6 +576,22 @@ describe("MixDetailRoute", () => {
       expect(screen.queryByRole("button", { name: /add another song/i })).not.toBeInTheDocument();
     });
 
+    it("cap lowered below what a player already submitted: keeps every song, no empty slot, no 'N of fewer' header", async () => {
+      // MysteryMixClub-guur: an organizer lowered the cap 3 -> 2 after this
+      // player had submitted 3. Extras are kept server-side.
+      mockGetClub.mockResolvedValue({ ...club(), songs_per_submission: 2 });
+      mockGetMine.mockResolvedValue([
+        mine({ id: "s1", title: "Song One" }),
+        mine({ id: "s2", title: "Song Two" }),
+        mine({ id: "s3", title: "Song Three" }),
+      ]);
+      renderMix();
+
+      expect(await screen.findByText("Song Three")).toBeInTheDocument();
+      expect(screen.getByText("your songs · 3 of 3")).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: /submit song \d/i })).not.toBeInTheDocument();
+    });
+
     it("cap > 1 with no songs: shows only the first empty submit slot", async () => {
       mockGetClub.mockResolvedValue({ ...club(), songs_per_submission: 2 });
       mockGetMine.mockResolvedValue([]);
@@ -2562,7 +2578,9 @@ describe("MixDetailRoute", () => {
       // The block follow-up (MysteryMixClub-4vii.42) keeps the dialog open
       // after a successful report; [done] dismisses it.
       expect(await screen.findByText(/report sent/i)).toBeInTheDocument();
-      expect(within(screen.getByRole("dialog")).getByRole("button", { name: /block bob/i })).toBeInTheDocument();
+      expect(
+        within(screen.getByRole("dialog")).getByRole("button", { name: /block bob/i }),
+      ).toBeInTheDocument();
       await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "done" }));
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
@@ -3458,7 +3476,9 @@ describe("MixDetailRoute", () => {
       // The block follow-up (MysteryMixClub-4vii.42) keeps the dialog open
       // after a successful report; [done] dismisses it.
       expect(await screen.findByText(/report sent/i)).toBeInTheDocument();
-      expect(within(screen.getByRole("dialog")).getByRole("button", { name: /block ada/i })).toBeInTheDocument();
+      expect(
+        within(screen.getByRole("dialog")).getByRole("button", { name: /block ada/i }),
+      ).toBeInTheDocument();
       await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "done" }));
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });

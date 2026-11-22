@@ -287,6 +287,7 @@ export function ClubHomeRoute() {
     name?: string;
     description?: string | null;
     total_mixes?: number;
+    songs_per_submission?: number;
     submission_window_hours?: number;
     voting_window_hours?: number;
     deadline_mode?: "duration" | "weekly_anchor";

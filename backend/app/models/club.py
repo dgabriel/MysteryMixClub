@@ -28,7 +28,8 @@ class Club(Base):
         Integer, nullable=False, default=3, server_default=text("3")
     )
     # Admin-set cap on how many songs a player may submit per mix (MYS-116).
-    # Chosen once at club setup and applied to every mix; 1..5, default 1
+    # Set at club setup, editable by an organizer afterward (MysteryMixClub-guur);
+    # applies to every mix; 1..5, default 1
     # (one song = today's behaviour). Enforced in the submission endpoint.
     songs_per_submission: Mapped[int] = mapped_column(
         Integer, nullable=False, default=1, server_default=text("1")

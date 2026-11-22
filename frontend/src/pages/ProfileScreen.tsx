@@ -920,7 +920,9 @@ function ExportDataSection({
         your data
       </h2>
       <p className="mt-2 text-sm leading-[1.72] text-ink-muted">
-        download a copy of everything tied to your account: profile, submissions, votes, and notes.
+        download a copy of your profile, submissions, votes, notes, and club memberships. for
+        anything else we hold about you, such as reports, blocks, sign-in sessions, or push device
+        registrations, email us.
       </p>
       <p className="mt-2 text-sm leading-[1.72] text-ink-muted">
         we provide this to meet gdpr's right of access (article 15) and data portability (article

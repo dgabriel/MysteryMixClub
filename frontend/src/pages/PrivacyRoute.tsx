@@ -52,7 +52,10 @@ export function PrivacyRoute() {
                 signed in; and, if you choose to sign in with google or apple, the account
                 identifier those providers give us to recognize you. if you turn on push
                 notifications in the iphone app, we store a device token so we know where to send
-                them.
+                them. if you report another member's note, we keep the report (the reason you
+                chose, any details you add, and which club and note it was about) so we can review
+                it, and if you block a member, we keep a record of that block so it stays in
+                effect.
               </p>
             </section>
 
@@ -87,7 +90,10 @@ export function PrivacyRoute() {
               </h2>
               <p className="mt-3">
                 four services process personal data on our behalf: resend (your email address, to
-                deliver sign-in links and notifications), digitalocean (hosting our servers and
+                deliver sign-in links and notifications; when a member reports content, the
+                moderation alert email it sends us also carries the names of the reporter and the
+                reported member, the club and mix, the quoted note, and any details the reporter
+                added), digitalocean (hosting our servers and
                 database, so everything you store in the app), google (if you choose to sign in with
                 google, we receive your google account id, name, and email address to create or sign
                 in to your account), and apple (on the iphone app: if you choose to sign in with
@@ -122,8 +128,11 @@ export function PrivacyRoute() {
                 registrations), email us and we'll send it; together these cover your rights of
                 access and data portability under gdpr articles 15 and 20. delete your account any
                 time from the same page: this cascades to your submissions, votes, notes, sessions,
-                club memberships, linked google/apple sign-in identities, and any push device
-                registrations, with a scheduled hard purge of any remaining trace within 30 days.
+                club memberships, linked google/apple sign-in identities, blocks you made or that
+                were made against you, and any push device registrations, with a scheduled hard
+                purge of that data within 30 days. the one exception is a content report: it is
+                kept so we can finish reviewing it, but your account is detached from it, so it no
+                longer points to you. any details the reporter typed into a report stay with it.
               </p>
             </section>
 

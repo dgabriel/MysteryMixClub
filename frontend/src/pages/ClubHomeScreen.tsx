@@ -73,6 +73,7 @@ type ClubHomeScreenProps = {
     name?: string;
     description?: string | null;
     total_mixes?: number;
+    songs_per_submission?: number;
     submission_window_hours?: number;
     voting_window_hours?: number;
     deadline_mode?: "duration" | "weekly_anchor";
@@ -81,7 +82,7 @@ type ClubHomeScreenProps = {
     submission_time?: string;
     voting_weekday?: Weekday;
     voting_time?: string;
-  }) => void;
+  }) => Promise<boolean>;
   updating: boolean;
   updateError?: string | null;
   onRemoveMember: (userId: string) => void;
@@ -454,9 +455,7 @@ export function ClubHomeScreen({
             page rather than inline here, mirroring /profile/history off
             ProfileScreen. */}
         <section className="mt-12">
-          <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-muted">
-            songs
-          </h2>
+          <h2 className="font-mono text-meta uppercase tracking-mono-wide text-ink-muted">songs</h2>
           <p className="mt-2 text-sm leading-[1.72] text-ink-muted">
             every song submitted to this club, once its mix has closed.
           </p>
@@ -545,6 +544,10 @@ export function ClubHomeScreen({
     </PaperSurface>
   );
 }
+
+/** Upper bound on songs a player may submit per mix; mirrors the API's 1..5
+ *  bound on ClubCreate/ClubUpdate (MYS-116, MysteryMixClub-guur). */
+const MAX_SONGS_PER_SUBMISSION = 5;
 
 const INVITE_GUIDE_STEPS = [
   {
@@ -1216,6 +1219,8 @@ function OrganizerEdit({
   const [name, setName] = useState(club.name);
   const [description, setDescription] = useState(club.description ?? "");
   const [totalMixes, setTotalMixes] = useState(String(club.total_mixes));
+  const [songsPerSubmission, setSongsPerSubmission] = useState(String(club.songs_per_submission));
+  const [songsError, setSongsError] = useState<string | null>(null);
   const initialSubmissionWindow = hoursToDaysAndHours(club.submission_window_hours);
   const initialVotingWindow = hoursToDaysAndHours(club.voting_window_hours);
   const [submissionWindowDays, setSubmissionWindowDays] = useState(
@@ -1252,6 +1257,8 @@ function OrganizerEdit({
     setName(club.name);
     setDescription(club.description ?? "");
     setTotalMixes(String(club.total_mixes));
+    setSongsPerSubmission(String(club.songs_per_submission));
+    setSongsError(null);
     const submissionWindow = hoursToDaysAndHours(club.submission_window_hours);
     setSubmissionWindowDays(String(submissionWindow.days));
     setSubmissionWindowHours(String(submissionWindow.hours));
@@ -1270,12 +1277,13 @@ function OrganizerEdit({
     setOpen(true);
   }
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     const input: {
       name?: string;
       description?: string | null;
       total_mixes?: number;
+      songs_per_submission?: number;
       submission_window_hours?: number;
       voting_window_hours?: number;
       deadline_mode?: "duration" | "weekly_anchor";
@@ -1299,6 +1307,14 @@ function OrganizerEdit({
     if (Number.isFinite(mixes) && mixes >= 1 && mixes !== club.total_mixes) {
       input.total_mixes = mixes;
     }
+
+    const songs = Number(songsPerSubmission);
+    if (!Number.isInteger(songs) || songs < 1 || songs > MAX_SONGS_PER_SUBMISSION) {
+      setSongsError(`songs per player must be between 1 and ${MAX_SONGS_PER_SUBMISSION}.`);
+      return;
+    }
+    setSongsError(null);
+    if (songs !== club.songs_per_submission) input.songs_per_submission = songs;
 
     if (deadlineMode === "duration") {
       const submissionHours = daysAndHoursToTotal(
@@ -1370,7 +1386,9 @@ function OrganizerEdit({
       }
     }
 
-    onUpdateClub(input);
+    // Close on success so the save reads as done (MysteryMixClub-g887); on
+    // failure stay open so the error shows beside the fields that caused it.
+    if (await onUpdateClub(input)) setOpen(false);
   }
 
   if (!open) {
@@ -1418,6 +1436,28 @@ function OrganizerEdit({
         onChange={(e) => setTotalMixes(e.target.value)}
         disabled={updating}
       />
+      <div>
+        <TextField
+          onPaper
+          id="edit-club-songs-per-submission"
+          label="songs per player"
+          name="songs_per_submission"
+          type="number"
+          min={1}
+          max={MAX_SONGS_PER_SUBMISSION}
+          value={songsPerSubmission}
+          onChange={(e) => {
+            setSongsPerSubmission(e.target.value);
+            setSongsError(null);
+          }}
+          disabled={updating}
+          error={songsError}
+        />
+        <p className="mt-2 text-meta leading-[1.6] text-ink-muted">
+          how many songs each player can submit per mystery mix, from 1 to{" "}
+          {MAX_SONGS_PER_SUBMISSION}. lowering it never removes songs already submitted.
+        </p>
+      </div>
       <DeadlineModeToggle
         onPaper
         value={deadlineMode}

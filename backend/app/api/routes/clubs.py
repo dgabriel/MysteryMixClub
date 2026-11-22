@@ -83,8 +83,8 @@ class ClubCreate(WireModel):
     # Upper-bounded to keep slate sizes sane.
     total_rounds: int = Field(default=6, ge=1, le=50)
     votes_per_player: int = Field(default=3, ge=1)
-    # How many songs a player may submit per mix (MYS-116). Fixed for the
-    # club at setup; 1 (default) = classic one-song behaviour, capped at 5.
+    # How many songs a player may submit per mix (MYS-116). 1 (default) =
+    # classic one-song behaviour, capped at 5. Editable later via PATCH.
     songs_per_submission: int = Field(default=1, ge=1, le=5)
     description: ClubDescription | None = None
     # Admin-set default participation mode for the club (MYS-112). Seeds every
@@ -133,6 +133,10 @@ class ClubUpdate(WireModel):
     # Changing the club default only affects members who join afterward; it does
     # not re-seed existing members' settings (MYS-112).
     default_vibe_mode: bool | None = None
+    # Same bounds as create (MYS-116). Lowering it keeps songs players already
+    # submitted to the open mix; the new cap only blocks further submissions
+    # (MysteryMixClub-guur).
+    songs_per_submission: int | None = Field(default=None, ge=1, le=5)
     # Deadline windows (in hours) for the club's mixes (MYS-159); 4..168. Only
     # affects mixes opened after the change — deadlines already stamped stay put.
     submission_window_hours: int | None = Field(default=None, ge=4, le=168)
@@ -160,6 +164,7 @@ class ClubUpdate(WireModel):
                 "name",
                 "total_rounds",
                 "default_vibe_mode",
+                "songs_per_submission",
                 "submission_window_hours",
                 "voting_window_hours",
                 "deadline_mode",

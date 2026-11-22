@@ -521,7 +521,7 @@ DELETE /users/me              Delete account and all associated data (right to b
 POST   /clubs               Create a new club (organizer sets default_vibe_mode — MYS-112)
 GET    /clubs               Get all clubs for current user
 GET    /clubs/:id           Get club detail
-PATCH  /clubs/:id           Update club (organizer only: name, total_mixes, default_vibe_mode — co-organizers now have parity, MYS-99)
+PATCH  /clubs/:id           Update club (organizer only: name, total_mixes, songs_per_submission, default_vibe_mode — co-organizers now have parity, MYS-99)
 GET    /clubs/:id/members   Get club members
 PATCH  /clubs/:id/membership Set the caller's own vibe_mode for the club (MYS-112)
 DELETE /clubs/:id/members/:userId   Remove a member (organizer only — co-organizers now have parity, MYS-99)

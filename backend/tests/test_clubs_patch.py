@@ -18,6 +18,7 @@ from app.auth.jwt import create_access_token
 from app.models.club import Club
 from app.models.club_member import ClubMember
 from app.models.mix import Mix
+from app.models.submission import Submission
 from app.models.user import User
 
 CLUBS_URL = "/api/v1/clubs"
@@ -586,3 +587,107 @@ async def test_total_mixes_below_current_mix_returns_409(client, db_session):
     persisted = await db_session.scalar(select(Club).where(Club.id == club_id))
     assert persisted.total_mixes == 4
     assert await _mix_numbers(db_session, club_id) == [1, 2, 3, 4]
+
+
+# ========================================================================== #
+# songs_per_submission is editable after creation (MysteryMixClub-guur)
+# ========================================================================== #
+
+
+async def test_organizer_updates_songs_per_submission(client, db_session):
+    organizer = await _seed_user(db_session)
+    club = await _seed_club(db_session, organizer, songs_per_submission=1)
+
+    resp = await client.patch(
+        _patch_url(club.id),
+        headers=_auth_header(organizer.id),
+        json={"songs_per_submission": 3},
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["songs_per_submission"] == 3
+
+    club_id = club.id
+    db_session.expire_all()
+    persisted = await db_session.scalar(select(Club).where(Club.id == club_id))
+    assert persisted.songs_per_submission == 3
+
+
+async def test_co_organizer_updates_songs_per_submission(client, db_session):
+    organizer = await _seed_user(db_session)
+    co_org = await _seed_user(db_session, email="co@example.com", display_name="Co")
+    club = await _seed_club(db_session, organizer, songs_per_submission=2)
+    await _seed_member(db_session, club, co_org, role="admin")
+
+    resp = await client.patch(
+        _patch_url(club.id),
+        headers=_auth_header(co_org.id),
+        json={"songs_per_submission": 4},
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["songs_per_submission"] == 4
+
+
+async def test_plain_member_cannot_update_songs_per_submission(client, db_session):
+    organizer = await _seed_user(db_session)
+    member = await _seed_user(db_session, email="m@example.com", display_name="M")
+    club = await _seed_club(db_session, organizer, songs_per_submission=1)
+    await _seed_member(db_session, club, member)
+
+    resp = await client.patch(
+        _patch_url(club.id),
+        headers=_auth_header(member.id),
+        json={"songs_per_submission": 5},
+    )
+
+    assert resp.status_code == 403, resp.text
+
+
+async def test_songs_per_submission_out_of_range_returns_422(client, db_session):
+    organizer = await _seed_user(db_session)
+    club = await _seed_club(db_session, organizer)
+
+    for bad in (0, 6, None):
+        resp = await client.patch(
+            _patch_url(club.id),
+            headers=_auth_header(organizer.id),
+            json={"songs_per_submission": bad},
+        )
+        assert resp.status_code == 422, (bad, resp.text)
+
+
+async def test_lowering_songs_per_submission_keeps_existing_submissions(client, db_session):
+    # Dawn's call (2026-11-22): lowering the cap mid-mix never deletes songs a
+    # player already submitted; it only stops further submissions.
+    organizer = await _seed_user(db_session)
+    club = await _seed_club(db_session, organizer, songs_per_submission=3, current_mix=1)
+    mix = Mix(club_id=club.id, mix_number=1, theme="Openers", state="open_submission")
+    db_session.add(mix)
+    await db_session.flush()
+    for i in range(3):
+        db_session.add(
+            Submission(
+                mix_id=mix.id,
+                user_id=organizer.id,
+                isrc=f"USRC1700000{i}",
+                title=f"Song {i}",
+                artist="Artist",
+            )
+        )
+    await db_session.commit()
+    mix_id = mix.id
+
+    resp = await client.patch(
+        _patch_url(club.id),
+        headers=_auth_header(organizer.id),
+        json={"songs_per_submission": 1},
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["songs_per_submission"] == 1
+    db_session.expire_all()
+    remaining = list(
+        await db_session.scalars(select(Submission).where(Submission.mix_id == mix_id))
+    )
+    assert len(remaining) == 3

@@ -407,6 +407,62 @@ describe("ClubHomeRoute", () => {
     expect(await screen.findByText(/name taken/i)).toBeInTheDocument();
   });
 
+  // --- Songs per player is editable after creation (MysteryMixClub-guur). ---
+
+  it("songs per player: pre-fills from the club and saves only when changed", async () => {
+    mockGetClub.mockResolvedValue(clubWith({ songs_per_submission: 3 }));
+    mockUpdateClub.mockResolvedValue(clubWith({ songs_per_submission: 2 }));
+    const user = userEvent.setup();
+
+    renderClub();
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+    await user.click(screen.getByRole("button", { name: /^edit$/i }));
+    const songsInput = screen.getByLabelText(/^songs per player$/i) as HTMLInputElement;
+    expect(songsInput.value).toBe("3");
+    fireEvent.change(songsInput, { target: { value: "2" } });
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    expect(mockUpdateClub).toHaveBeenCalledTimes(1);
+    const [, input] = mockUpdateClub.mock.calls[0];
+    expect(input).toMatchObject({ songs_per_submission: 2 });
+  });
+
+  it("songs per player: an unchanged value is not sent", async () => {
+    mockGetClub.mockResolvedValue(clubWith({ songs_per_submission: 3 }));
+    mockUpdateClub.mockResolvedValue(clubWith({ songs_per_submission: 3 }));
+    const user = userEvent.setup();
+
+    renderClub();
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+    await user.click(screen.getByRole("button", { name: /^edit$/i }));
+    const nameInput = screen.getByLabelText(/^name$/i);
+    await user.clear(nameInput);
+    await user.type(nameInput, "Renamed Club");
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    const [, input] = mockUpdateClub.mock.calls[0];
+    expect(input).not.toHaveProperty("songs_per_submission");
+  });
+
+  it("songs per player: an out-of-range value blocks the save and shows an error", async () => {
+    mockGetClub.mockResolvedValue(clubWith({ songs_per_submission: 1 }));
+    const user = userEvent.setup();
+
+    renderClub();
+    await screen.findByRole("heading", { name: "Friday Mixtape" });
+
+    await user.click(screen.getByRole("button", { name: /^edit$/i }));
+    fireEvent.change(screen.getByLabelText(/^songs per player$/i), { target: { value: "6" } });
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    expect(
+      await screen.findByText(/songs per player must be between 1 and 5\./i),
+    ).toBeInTheDocument();
+    expect(mockUpdateClub).not.toHaveBeenCalled();
+  });
+
   // --- Deadline windows (MYS-160). The submission/voting window fields share
   // the "days"/"hours" labels between the two DeadlineWindowFields, so we look
   // them up by id rather than label text. ---
@@ -525,17 +581,13 @@ describe("ClubHomeRoute", () => {
     expect(screen.getByRole("button", { name: /^unblock bo$/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^block bo ?--/i })).not.toBeInTheDocument();
     // A steady-state reminder of what blocking does appears once anyone is blocked.
-    expect(
-      screen.getByText(/a blocked member's notes are hidden from you/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/a blocked member's notes are hidden from you/i)).toBeInTheDocument();
   });
 
   it("unblock: a member marked blocked_by_me gets an 'unblock' action that restores the plain row", async () => {
     const user = userEvent.setup();
     mockGetClubMembers.mockResolvedValue([
-      ...members().map((m) =>
-        m.user_id === MEMBER_ID ? { ...m, blocked_by_me: true } : m,
-      ),
+      ...members().map((m) => (m.user_id === MEMBER_ID ? { ...m, blocked_by_me: true } : m)),
     ]);
     renderClub();
     await screen.findByRole("heading", { name: "Friday Mixtape" });
@@ -564,9 +616,7 @@ describe("ClubHomeRoute", () => {
     const user = userEvent.setup();
     setAuth(ORGANIZER_ID); // organizer controls = the cramped case
     mockGetClubMembers.mockResolvedValue([
-      ...members().map((m) =>
-        m.user_id === MEMBER_ID ? { ...m, blocked_by_me: true } : m,
-      ),
+      ...members().map((m) => (m.user_id === MEMBER_ID ? { ...m, blocked_by_me: true } : m)),
     ]);
     renderClub();
     await screen.findByRole("heading", { name: "Friday Mixtape" });
@@ -947,7 +997,11 @@ describe("ClubHomeRoute", () => {
 
   describe("open mix from the club home list (MysteryMixClub-4vii.4)", () => {
     it("a themed pending mix's 'open mix' button opens it for submissions", async () => {
-      const pending = closedMix({ id: "mix-pending", state: "pending", theme: "late summer feels" });
+      const pending = closedMix({
+        id: "mix-pending",
+        state: "pending",
+        theme: "late summer feels",
+      });
       mockGetMixes.mockResolvedValue([pending]);
       mockUpdateMix.mockResolvedValue({ ...pending, state: "open_submission" });
 
@@ -982,7 +1036,9 @@ describe("ClubHomeRoute", () => {
       mockGetMixes.mockResolvedValue([
         closedMix({ id: "mix-pending", state: "pending", theme: "late summer feels" }),
       ]);
-      mockUpdateMix.mockRejectedValue(new ApiError(409, "set a theme before opening this mystery mix"));
+      mockUpdateMix.mockRejectedValue(
+        new ApiError(409, "set a theme before opening this mystery mix"),
+      );
 
       renderClub();
       await screen.findByRole("heading", { name: "Friday Mixtape" });

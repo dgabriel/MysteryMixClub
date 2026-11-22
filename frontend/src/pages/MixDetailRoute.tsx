@@ -1604,16 +1604,20 @@ function SubmissionManager({
   const emptySlots = submissions.length < cap ? 1 : 0;
   // Number the slots only when more than one is allowed, so a single-song
   // club reads exactly as before ("submit a song" / "your song").
-  const numbered = cap > 1;
+  // An organizer can lower the cap after songs are in (MysteryMixClub-guur);
+  // extras are kept, so a player can hold more songs than the cap. Count
+  // against whichever is larger so the header never reads "3 of 1".
+  const slotTotal = Math.max(cap, submissions.length);
+  const numbered = slotTotal > 1;
   // Once every slot is filled (multi-song only), offer a confirm that returns to
   // the club — the natural "I'm done submitting" exit.
-  const allSubmitted = numbered && submissions.length === cap;
+  const allSubmitted = numbered && submissions.length >= cap;
 
   return (
     <>
       {numbered && submissions.length > 0 ? (
         <h2 className="mb-4 font-mono uppercase tracking-mono-wide text-meta text-ink-muted">
-          your songs · {submissions.length} of {cap}
+          your songs · {submissions.length} of {slotTotal}
         </h2>
       ) : null}
 
